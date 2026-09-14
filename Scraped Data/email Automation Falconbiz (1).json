@@ -1,0 +1,574 @@
+{
+  "name": "email Automation Falconbiz",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "cdb0a734-b7d6-45e3-9bd8-3ad77837bdb1",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -3920,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "17CNmu7MJl2wLhOs1uTK1YPouD2c8zn8atBV8kNEfT18",
+          "mode": "list",
+          "cachedResultName": "6K Emails Automation",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/17CNmu7MJl2wLhOs1uTK1YPouD2c8zn8atBV8kNEfT18/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/17CNmu7MJl2wLhOs1uTK1YPouD2c8zn8atBV8kNEfT18/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "e395c948-25b7-4f48-979f-9f6f6dcc2ae6",
+      "name": "Read Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        -3632,
+        -48
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GYyysi4hZsQQRkJq",
+          "name": "Sheets -Himanshu"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.map(item => {\n  const email = item.json['EMAIL'] || '';\n  if (!email || !email.includes('@')) {\n    item.json['Status'] = 'Invalid Email';\n    item.json['skip'] = true;\n  } else {\n    item.json['skip'] = false;\n  }\n  return item;\n});"
+      },
+      "id": "0fcded1f-dbec-4214-a3f5-503122168430",
+      "name": "Validate Emails",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -3328,
+        -48
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "7c99964b-24b2-41b1-83c7-312ffc2e244f",
+      "name": "Filter Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -3024,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "17CNmu7MJl2wLhOs1uTK1YPouD2c8zn8atBV8kNEfT18",
+          "mode": "list",
+          "cachedResultName": "6K Emails Automation",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/17CNmu7MJl2wLhOs1uTK1YPouD2c8zn8atBV8kNEfT18/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/17CNmu7MJl2wLhOs1uTK1YPouD2c8zn8atBV8kNEfT18/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "a223bf18-3cb3-4c20-bb5c-c839ca563901",
+      "name": "Mark Invalid",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        -3024,
+        160
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GYyysi4hZsQQRkJq",
+          "name": "Sheets -Himanshu"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "f51160ea-2bcc-4b2e-8b81-94e3b8ae7317",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [
+        -2720,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.map(item => {\n  const segment = (item.json['Segment'] || '').toLowerCase();\n  const activity = (item.json['ACTIVITY'] || '').toLowerCase();\n  const fintechKeywords = ['payments', 'fintech', 'payout', 'gateway'];\n  const verificationKeywords = ['kyc', 'pan', 'aadhaar', 'gst', 'verification'];\n\n  let mode = 'fintech';\n  let products = ['payouts', 'QR', 'bill pay', 'gateway', 'remittance'];\n\n  if (verificationKeywords.some(k => segment.includes(k) || activity.includes(k))) {\n    mode = 'verification';\n    products = ['PAN', 'Aadhaar', 'GST', 'bank account', 'KYC'];\n  }\n\n  item.json['structuredPayload'] = {\n    company: item.json['COMPANY NAME'],\n    email: item.json['EMAIL'],\n    state: item.json['STATE'],\n    district: item.json['DISTRICT'],\n    activity: item.json['ACTIVITY'],\n    segment: item.json['Segment'],\n    mode,\n    products\n  };\n\n  return item;\n});"
+      },
+      "id": "61f18e3e-a38d-42be-b350-01029389f18d",
+      "name": "Prep Row",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -2512,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Robust parser for OpenAI output with subject/body_html/cta_text\n\nfunction firstStringCandidate(obj) {\n  if (!obj) return \"\";\n  const paths = [\n    \"message.content\",\n    \"choices[0].message.content\",\n    \"text\",\n    \"data\",\n    \"result\",\n    \"output\",\n    \"content\"\n  ];\n\n  for (const path of paths) {\n    try {\n      const parts = path.split(\".\");\n      let value = obj;\n      for (const part of parts) {\n        if (!value) break;\n        value = value[part];\n      }\n      if (typeof value === \"string\" && value.trim().startsWith(\"{\")) return value;\n    } catch (e) {}\n  }\n  return \"\";\n}\n\nfunction extractJson(text) {\n  try {\n    const match = text.match(/{[\\s\\S]*}/);\n    return match ? JSON.parse(match[0]) : null;\n  } catch (err) {\n    return null;\n  }\n}\n\nfunction cleanFences(text) {\n  if (!text) return \"\";\n  return text.replace(/```(json)?/gi, \"\").trim();\n}\n\nreturn items.map(item => {\n  const j = item.json;\n\n  // Step 1: Grab raw string output from OpenAI\n  const rawCandidate = firstStringCandidate(j);\n  const raw = cleanFences(rawCandidate);\n\n  // Step 2: Try to parse\n  const obj = extractJson(raw);\n\n  // Step 3: Fallbacks if parsing fails\n  const subject = obj?.subject ?? \"Couldn’t parse subject\";\n  const body = obj?.body_html ?? \"<p>Couldn’t parse body</p>\";\n  const cta = obj?.cta_text ?? \"Reply Now\";\n\n  return {\n    json: {\n   EMAIL: item.json?.[\"Prep Row\"]?.EMAIL || \"\",\n      parsed_subject: subject,\n      parsed_body_html: body,\n      parsed_cta_text: cta,\n      AI_Raw: raw,\n      Status: obj ? \"Drafted\" : \"AI_PARSE_ERROR\"\n    }\n  };\n});\n"
+      },
+      "id": "e8587fe1-1e55-4d06-b152-90279814dd1f",
+      "name": "Parse AI JSON",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -1840,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "17CNmu7MJl2wLhOs1uTK1YPouD2c8zn8atBV8kNEfT18",
+          "mode": "list",
+          "cachedResultName": "6K Emails Automation",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/17CNmu7MJl2wLhOs1uTK1YPouD2c8zn8atBV8kNEfT18/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/17CNmu7MJl2wLhOs1uTK1YPouD2c8zn8atBV8kNEfT18/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email Body": "={{ $json.parsed_body_html }}",
+            "CTA": "={{ $json.parsed_cta_text }}",
+            "EMAIL": "={{ $('Prep Row').item.json.EMAIL }}",
+            "Email Subject": "={{ $json.parsed_subject }}"
+          },
+          "matchingColumns": [
+            "EMAIL"
+          ],
+          "schema": [
+            {
+              "id": "COMPANY NAME",
+              "displayName": "COMPANY NAME",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ROC",
+              "displayName": "ROC",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CATEGORY",
+              "displayName": "CATEGORY",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "SUB-CATEGORY",
+              "displayName": "SUB-CATEGORY",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "EMAIL",
+              "displayName": "EMAIL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ADDRESS",
+              "displayName": "ADDRESS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "STATE",
+              "displayName": "STATE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DISTRICT",
+              "displayName": "DISTRICT",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PINCODE",
+              "displayName": "PINCODE",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ACTIVITY",
+              "displayName": "ACTIVITY",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DIRECTORS",
+              "displayName": "DIRECTORS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Segment",
+              "displayName": "Segment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Subject",
+              "displayName": "Email Subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Body",
+              "displayName": "Email Body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CTA",
+              "displayName": "CTA",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "b974adac-2372-4014-9df2-a54095c1359a",
+      "name": "Update Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        -1088,
+        -48
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GYyysi4hZsQQRkJq",
+          "name": "Sheets -Himanshu"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5",
+          "mode": "list",
+          "cachedResultName": "GPT-5"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are a senior B2B email copywriter for Eko (India). \nYour task is to produce a concise, personalized cold email for one recipient company based on structured JSON inputs.\n\nAlways break the email into these **internal planning sections** before drafting:  \n- Objective: What we want to achieve with this email  \n- Audience: Who we are writing to (industry, role, pain points)  \n- Offer: What Eko’s product/solution provides  \n- Tone: The voice/style to use (e.g., professional, respectful, outcome-driven, India context)  \n\nThen write the email with these final components:  \n1. Subject Line → Hook + clear outcome (≤ 8 words)  \n2. Opening / Hook → Relatable intro that connects with the audience’s pain point  \n3. Problem Statement → Show we understand their challenge  \n4. Solution (Eko APIs) → Present Eko’s APIs as the answer  \n5. Benefits / Outcomes → Bullet or short sentences (scannable, measurable)  \n6. Trust / Social Proof → Eko’s credibility (18+ years, SBI BC, 520 CSPs, 10,000+ entrepreneurs, etc.)  \n7. CTA → One clear action (reply, book a demo, or link if provided)  \n\n**Output Contract (strict):**  \nReturn ONE minified JSON object with exactly these keys:  \n- \"subject\" (≤ 8 words, high intent, no emojis)  \n- \"body_html\" (valid HTML, ~120–150 words, short <p> + <ul> for benefits)  \n- \"cta_text\" (2–6 words, clear action)  \n\nRules:  \n- Do NOT include Markdown, code fences, or extra keys.  \n- Personalize using company, district, state, and activity naturally in the opening.  \n- Tone: crisp, human, respectful; avoid hype/buzzwords.  \n- End body_html with a light opt-out line inside <p> (e.g., “If this isn’t relevant, reply STOP and I’ll close this.”).  \n- Subject ≤ 8 words; no brackets, emojis, RE:/FW:.  \n",
+              "role": "system"
+            },
+            {
+              "content": "=Use the following JSON as inputs. Fields may be empty; do not invent facts. Respect the output contract.\n\n{{ JSON.stringify($json.structuredPayload) }}\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        -2224,
+        -80
+      ],
+      "id": "db0b55b8-5088-45ec-8a75-21a56069b356",
+      "name": "OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "5Z2rmtaDtg8eFp5q",
+          "name": "OpenAi-ekodigital"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Read Sheet').item.json.EMAIL }}",
+        "subject": "={{ $json.final_subject }}",
+        "message": "={{ $json.final_html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -1344,
+        -48
+      ],
+      "id": "65c265a0-01a9-4be4-b980-3719e3bcbfca",
+      "name": "Gmail",
+      "webhookId": "e9a2a1c4-df09-4c0d-95a8-47b2548a4d4c",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "HZZSJwsfWPSgrFzg",
+          "name": "Gmail account-Himanshu"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 15,
+        "unit": "minutes"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -864,
+        -48
+      ],
+      "id": "7f85863a-3d4e-4907-bc79-01b375112a7a",
+      "name": "Wait",
+      "webhookId": "6756265c-be60-40b3-9c76-a802fd72264c"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Assemble Email - Function node\n// Uses upstream values directly from $input.first().json\n\nconst TEMPLATE = `\n<!doctype html>\n<html lang=\"en\" xmlns=\"http://www.w3.org/1999/xhtml\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>{{SUBJECT}}</title>\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body{margin:0;padding:0;width:100%;background:#f5f7fb}\n    .wrapper{width:100%;background:#f5f7fb;padding:20px 0}\n    .container{width:100%;max-width:600px;margin:0 auto;background:#ffffff}\n    .topbar{height:4px;background:#fbb11b}\n    .header{padding:28px}\n    .brand{font:700 18px system-ui,Arial;color:#04394b}\n    .hero{padding:0 28px 8px}\n    .h1{font:700 22px system-ui,Arial;color:#111;margin:0 0 6px}\n    .sub{font:400 14px system-ui,Arial;color:#444;margin:0 0 8px}\n    .body{padding:8px 28px}\n    .p{font:400 14px system-ui,Arial;color:#333;margin:0 0 12px}\n    .ul{padding-left:18px;margin:0 0 12px}\n    .ul li{margin:0 0 6px;color:#333;font:400 14px system-ui,Arial}\n    .cta-wrap{padding:8px 28px 24px}\n    .btn{background:#04394b;color:#ffffff;display:inline-block;padding:12px 20px;\n      border-radius:6px;font:600 14px system-ui,Arial}\n    .trust{background:#fafbff;border-top:1px solid #eef1f6;border-bottom:1px solid #eef1f6;padding:14px 28px}\n    .trust p{margin:0;font:400 12px system-ui,Arial;color:#5a6b7a}\n    .footer{padding:16px 28px 28px}\n    .mini{font:400 12px system-ui,Arial;color:#7a8793}\n  </style>\n</head>\n<body>\n  <table role=\"presentation\" width=\"100%\" class=\"wrapper\">\n    <tr><td align=\"center\">\n      <table role=\"presentation\" width=\"600\" class=\"container\">\n        <tr><td class=\"topbar\"></td></tr>\n\n        <tr><td class=\"header\">\n          <img src=\"{{LOGO_URL}}\" alt=\"Eko\" width=\"96\" style=\"display:block;margin-bottom:8px\">\n          <div class=\"brand\">Eko India Financial Services</div>\n        </td></tr>\n\n        <tr><td class=\"hero\">\n          <h1 class=\"h1\">{{SUBJECT}}</h1>\n          <p class=\"sub\">{{SUBHEAD}}</p>\n        </td></tr>\n\n        <tr><td class=\"body\">\n          {{AI_BODY_HTML}}\n        </td></tr>\n\n        <tr><td class=\"cta-wrap\">\n          <a class=\"btn\" href=\"{{CTA_URL}}\" target=\"_blank\">{{CTA_TEXT}}</a>\n        </td></tr>\n\n        <tr><td class=\"trust\">\n          <p>18+ years in Indian fintech • National Business Correspondent of SBI • 520+ CSPs • Powering 10,000+ entrepreneurs</p>\n        </td></tr>\n\n        <tr><td class=\"footer\">\n          <p class=\"mini\">If this isn’t relevant, reply <strong>STOP</strong> and we’ll close the loop.</p>\n          <p class=\"mini\">Eko India Financial Services • www.eko.co.in</p>\n        </td></tr>\n      </table>\n    </td></tr>\n  </table>\n</body>\n</html>\n`;\n\nconst subject = $input.first().json.parsed_subject || \"Eko Verification APIs\";\nconst subhead = \"Automate KYC and verification across PAN, Aadhaar, Bank Account, GST and more.\";\nconst aiBody  = $input.first().json.parsed_body_html || \"<p>Details inside.</p>\";\nconst ctaText = $input.first().json.parsed_cta_text || \"Book a demo\";\nconst ctaUrl  = $input.first().json.parsed_cta_url || \"https://zfrmz.in/NdicUcVlxXtlSYFP50lb\";\nconst logoUrl = \"https://assets.eko.co.in/logo/eko-logo.png\";\n\nlet html = TEMPLATE\n  .replace(/{{SUBJECT}}/g, subject)\n  .replace(/{{SUBHEAD}}/g, subhead)\n  .replace(/{{AI_BODY_HTML}}/g, aiBody)\n  .replace(/{{CTA_TEXT}}/g, ctaText)\n  .replace(/{{CTA_URL}}/g, ctaUrl)\n  .replace(/{{LOGO_URL}}/g, logoUrl);\n\nreturn [{\n  json: {\n    ...$input.first().json,\n    final_subject: subject,\n    final_html: html\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1632,
+        -48
+      ],
+      "id": "13ae7be6-57b7-48c1-85ee-bb767e7ef34f",
+      "name": "Code"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Read Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Sheet": {
+      "main": [
+        [
+          {
+            "node": "Validate Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Emails": {
+      "main": [
+        [
+          {
+            "node": "Filter Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Valid": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Prep Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI JSON": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sheet": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Row": {
+      "main": [
+        [
+          {
+            "node": "OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Parse AI JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1768a5e1-7902-44b6-b503-49beb8d76763",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ed858f2e9d2e9b5f605e3a546e5dba9dab4602286a32cf5edaa9b685442744e7"
+  },
+  "id": "IVuEefuy5zUx0Dr6",
+  "tags": []
+}

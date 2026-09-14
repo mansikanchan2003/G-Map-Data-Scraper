@@ -1,0 +1,31 @@
+from pydantic import BaseModel, ConfigDict
+from datetime import datetime
+from typing import Optional
+
+class BusinessBase(BaseModel):
+    name: str
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    google_maps_url: Optional[str] = None
+    category: str
+    district: Optional[str] = None
+    state: Optional[str] = None
+    officename: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    distance_km: Optional[float] = None
+    is_valid: bool
+
+class BusinessResponse(BusinessBase):
+    business_id: str
+    job_id: str
+    place_id: Optional[str] = None
+    source_query: str
+    dedup_key: str
+    validation_errors: Optional[str] = None
+    discovered_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

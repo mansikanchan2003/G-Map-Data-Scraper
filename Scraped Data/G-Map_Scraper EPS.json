@@ -1,0 +1,298 @@
+{
+  "name": "G-Map_Scraper EPS",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "a10af7a2-ba25-42f7-b03a-a9e287b4940d",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1djsHo0-hLyTxZU_DUJmudFXqftk-xLeRkCk2q-Qr6qM",
+          "mode": "list",
+          "cachedResultName": "All India Pincodes",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1djsHo0-hLyTxZU_DUJmudFXqftk-xLeRkCk2q-Qr6qM/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1djsHo0-hLyTxZU_DUJmudFXqftk-xLeRkCk2q-Qr6qM/edit?gid=885374006#gid=885374006",
+          "mode": "url"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "A1:D24"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        224,
+        0
+      ],
+      "id": "23ddfe5c-9ff8-4a15-8281-1fdab65f70b9",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "FcG3kpEHdKpSbOyX",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "=node \"C:\\Users\\Himanshu\\Desktop\\gmap-scraper\\scraper.js\" \"{{$json['category']}}\" \"{{$json['officename']}}\" \"{{$json['district']}}\" \"{{$json['statename']}}\""
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        704,
+        0
+      ],
+      "id": "e9aa872b-7d39-43a4-b746-8996920dc3d0",
+      "name": "Execute Command"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.item.json;\n\nconst listingsRaw = input.stdout.match(/\\[.*\\]/s);\nif (!listingsRaw) {\n  throw new Error('No listings array found in stdout');\n}\n\nconst listings = JSON.parse(listingsRaw[0]);\nconst base = {\n  category: input.category,\n  officename: input.officename,\n  district: input.district,\n  statename: input.statename\n};\n\nreturn listings.map(entry => ({\n  json: {\n    ...base,\n    name: entry.title || '',\n    address: entry.address || '',\n    phone: entry.phone || '',\n    website: entry.website || ''\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        0
+      ],
+      "id": "f5df31f3-6ffc-419f-9c99-11104d11ac28",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "12xD3rrUrlpkYp3NpEtd4IJCigzGX1Ga0d8B6c-kx2G8",
+          "mode": "list",
+          "cachedResultName": "45k leads data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/12xD3rrUrlpkYp3NpEtd4IJCigzGX1Ga0d8B6c-kx2G8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/12xD3rrUrlpkYp3NpEtd4IJCigzGX1Ga0d8B6c-kx2G8/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "name": "={{ $json.name }}",
+            "address": "={{ $json.address }}",
+            "phone": "={{ $json.phone }}",
+            "website": "={{ $json.website }}",
+            "category": "={{ $('Get row(s) in sheet').item.json.category }}",
+            "officename": "={{ $('Get row(s) in sheet').item.json.officename }}",
+            "district": "={{ $('Get row(s) in sheet').item.json.district }}",
+            "statename": "={{ $('Get row(s) in sheet').item.json.statename }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "address",
+              "displayName": "address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "website",
+              "displayName": "website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "officename",
+              "displayName": "officename",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "district",
+              "displayName": "district",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "statename",
+              "displayName": "statename",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        1152,
+        0
+      ],
+      "id": "631c284a-0e52-4de7-ba96-2d10bd8e36b5",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "FcG3kpEHdKpSbOyX",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        448,
+        -144
+      ],
+      "id": "29f6353a-2807-4056-ac3a-e3293656fb85",
+      "name": "Loop Over Items"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Command": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Execute Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2ef62263-9581-44b6-bee2-9c21c9973c8e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3cf99f709c8a4b66ccff7de4a49df042d9e1188ec791cea045143baa2a08775e"
+  },
+  "id": "tUiijGwYty9ninZS",
+  "tags": []
+}
