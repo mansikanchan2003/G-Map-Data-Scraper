@@ -12,10 +12,6 @@ router = APIRouter(prefix="/api/v1/jobs", tags=["Jobs"])
 @router.post("/generate", status_code=201)
 def generate_jobs(db: Session = Depends(get_db)):
     result = job_manager.generate_jobs(db)
-    if result["jobs_created"] == 0:
-        # FastAPI lets us return 200 for unchanged state if we want, 
-        # but 201 is specified in contract when jobs are generated.
-        pass 
     return result
 
 @router.get("", response_model=Pagination[JobResponse])
@@ -23,11 +19,17 @@ def get_jobs(
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=500),
     status: Optional[str] = None,
+    location_id: Optional[str] = None,
+    category_id: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     query = db.query(Job)
     if status:
         query = query.filter(Job.status == status)
+    if location_id:
+        query = query.filter(Job.location_id == location_id)
+    if category_id:
+        query = query.filter(Job.category_id == category_id)
         
     total = query.count()
     items = query.offset((page - 1) * page_size).limit(page_size).all()
@@ -49,3 +51,21 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+@router.post("/{job_id}/run")
+def run_job(job_id: str, db: Session = Depends(get_db)):
+    result = job_manager.execute_single_job(job_id, db)
+    if result.get("error") and "not found" in result["error"].lower():
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+@router.post("/{job_id}/retry")
+def retry_single_job(job_id: str, db: Session = Depends(get_db)):
+    result = job_manager.retry_job(job_id, db)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+@router.post("/retry-all")
+def retry_all(status: str = Query("FAILED"), db: Session = Depends(get_db)):
+    return job_manager.retry_all_jobs(db, target_status=status)

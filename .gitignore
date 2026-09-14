@@ -3,4 +3,6 @@ __pycache__/
 *$py.class
 .env
 data/*.db
+*.db
+cmd_output.txt
 .pytest_cache/

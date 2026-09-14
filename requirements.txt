@@ -6,3 +6,4 @@ pydantic-settings
 openpyxl
 pytest
 httpx
+playwright

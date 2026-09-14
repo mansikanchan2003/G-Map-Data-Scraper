@@ -16,4 +16,6 @@ settings = Settings()
 # Ensure data directory exists for SQLite
 if settings.database_url.startswith("sqlite:///"):
     db_path = settings.database_url.replace("sqlite:///", "")
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    dir_name = os.path.dirname(db_path)
+    if dir_name:
+        os.makedirs(dir_name, exist_ok=True)

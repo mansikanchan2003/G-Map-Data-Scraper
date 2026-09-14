@@ -1,0 +1,269 @@
+{
+  "name": "Autonomous Google Maps Daily",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [ 0, 0 ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_BASE_URL }}/health",
+        "options": {
+          "retry": {
+            "retryOnAllErrors": true,
+            "retryInterval": 5000,
+            "maxRetries": 3
+          }
+        }
+      },
+      "name": "Health Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [ 200, 0 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_BASE_URL }}/api/v1/config/sync",
+        "options": {}
+      },
+      "name": "Config Sync",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [ 400, 0 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_BASE_URL }}/api/v1/jobs/generate",
+        "options": {}
+      },
+      "name": "Generate Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [ 600, 0 ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_BASE_URL }}/api/v1/stats",
+        "options": {}
+      },
+      "name": "Check Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [ 800, 0 ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.jobs.pending }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "name": "Jobs Pending?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [ 1000, 0 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_BASE_URL }}/api/v1/discovery/batch",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "batch_size",
+              "value": "={{ $env.BATCH_SIZE || 50 }}"
+            },
+            {
+              "name": "trigger_source",
+              "value": "n8n_daily"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 1200000 
+        }
+      },
+      "name": "Run Batch Discovery",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [ 1200, -100 ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_BASE_URL }}/api/v1/export/businesses",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "since",
+              "value": "={{ $('Schedule Trigger').first().json.timestamp }}"
+            },
+            {
+              "name": "is_valid",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Export Businesses",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [ 1400, -100 ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.N8N_OUTPUT_SPREADSHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData"
+        },
+        "options": {}
+      },
+      "name": "Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [ 1600, -100 ]
+    },
+    {
+      "parameters": {
+        "content": "No pending jobs today. Run complete."
+      },
+      "name": "No-Op",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [ 1200, 100 ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health Check": {
+      "main": [
+        [
+          {
+            "node": "Config Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config Sync": {
+      "main": [
+        [
+          {
+            "node": "Generate Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Jobs": {
+      "main": [
+        [
+          {
+            "node": "Check Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Stats": {
+      "main": [
+        [
+          {
+            "node": "Jobs Pending?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobs Pending?": {
+      "main": [
+        [
+          {
+            "node": "Run Batch Discovery",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No-Op",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Batch Discovery": {
+      "main": [
+        [
+          {
+            "node": "Export Businesses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Export Businesses": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true
+  }
+}
