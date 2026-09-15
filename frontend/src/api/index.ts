@@ -16,6 +16,7 @@ import type {
   ConfigSyncResult,
   JobGenerateResult,
   ApiError,
+  GoogleSheetsExportResult,
 } from '../types/api';
 
 const DEFAULT_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -242,6 +243,24 @@ export function triggerExcelStream(): void {
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
+}
+
+/**
+ * Creates a new Google Sheet on the server side using FastAPI and returns the URL.
+ */
+export async function exportToGoogleSheets(
+  filters: Record<string, any> = {},
+  selectedIds: string[] = [],
+  exportAll: boolean = false
+): Promise<GoogleSheetsExportResult> {
+  return request<GoogleSheetsExportResult>('/api/v1/export/google-sheets', {
+    method: 'POST',
+    body: JSON.stringify({
+      filters,
+      selected_ids: selectedIds,
+      export_all: exportAll
+    }),
+  });
 }
 
 // ---------------------------------------------------------

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { BusinessItem, PaginatedResponse, ApiError } from '../types/api';
-import { fetchBusinesses, triggerCsvStream, triggerExcelStream } from '../api';
+import { fetchBusinesses, triggerCsvStream, triggerExcelStream, exportToGoogleSheets } from '../api';
 
 interface BusinessesViewProps {
   initialSearch?: string;
@@ -16,6 +16,8 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
   const [totalPages, setTotalPages] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<ApiError | null>(null);
+  const [googleSheetsLoading, setGoogleSheetsLoading] = useState<boolean>(false);
+  const [googleSheetsSuccess, setGoogleSheetsSuccess] = useState<string | null>(null);
 
   // Filters
   const [search, setSearch] = useState<string>(initialSearch);
@@ -59,6 +61,21 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
     if (!isNaN(num) && num >= 1 && num <= totalPages) {
       handlePageChange(num);
       setJumpPage('');
+    }
+  };
+
+  const handleGoogleSheetsExport = async () => {
+    setGoogleSheetsLoading(true);
+    setGoogleSheetsSuccess(null);
+    setError(null);
+    try {
+      const filters = { search, state: selectedState !== 'All' ? selectedState : undefined };
+      const res = await exportToGoogleSheets(filters, [], true); // exportAll = true for current filters
+      setGoogleSheetsSuccess(res.spreadsheet_url);
+    } catch (err: any) {
+      setError(err);
+    } finally {
+      setGoogleSheetsLoading(false);
     }
   };
 
@@ -129,6 +146,21 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
                 </span>
               </div>
             </div>
+
+            {/* Primary Action: Export to Google Sheets */}
+            <button
+              onClick={handleGoogleSheetsExport}
+              disabled={googleSheetsLoading || loading}
+              className="h-8 px-3.5 bg-sky-700 hover:bg-sky-600 disabled:bg-slate-700 disabled:opacity-70 border border-sky-600 disabled:border-slate-600 text-white font-mono-code text-xs font-semibold rounded flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
+              title="Export all matching records to a new Google Sheet"
+            >
+              {googleSheetsLoading ? (
+                <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <span className="material-symbols-outlined text-[17px] text-white">post_add</span>
+              )}
+              <span>{googleSheetsLoading ? 'Exporting...' : 'Google Sheets'}</span>
+            </button>
           </div>
         </div>
 
@@ -190,6 +222,25 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
           >
             Retry
           </button>
+        </div>
+      )}
+
+      {/* Google Sheets Success Banner */}
+      {googleSheetsSuccess && (
+        <div className="m-4 p-4 bg-emerald-950/70 border border-emerald-800 rounded text-emerald-200 space-y-2 flex justify-between items-center">
+          <div className="flex items-center gap-2 font-semibold text-sm">
+            <span className="material-symbols-outlined text-emerald-400">check_circle</span>
+            <span>Google Sheet created successfully</span>
+          </div>
+          <a
+            href={googleSheetsSuccess}
+            target="_blank"
+            rel="noreferrer"
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono-code rounded font-semibold flex items-center gap-1 transition-colors"
+          >
+            <span>Open Google Sheet</span>
+            <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+          </a>
         </div>
       )}
 

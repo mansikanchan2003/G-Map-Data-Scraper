@@ -164,3 +164,10 @@ export interface ApiError {
   endpoint?: string;
   isNetworkError?: boolean;
 }
+
+export interface GoogleSheetsExportResult {
+  status: string;
+  spreadsheet_id: string;
+  spreadsheet_url: string;
+  rows_exported: number;
+}
