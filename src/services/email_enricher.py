@@ -161,6 +161,14 @@ class EmailEnricher:
                 except Exception:
                     pass
                 
+                # Extract emails from rendered HTML source
+                try:
+                    html_content = await page.content()
+                    html_emails = self._extract_emails_from_text(html_content)
+                    page_emails.update(html_emails)
+                except Exception:
+                    pass
+                
                 if page_emails:
                     found_emails.update(page_emails)
                     email_source = current_url
