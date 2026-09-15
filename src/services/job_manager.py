@@ -253,6 +253,43 @@ def execute_single_job(
 
     db.commit()
 
+    # Email Enrichment Phase
+    try:
+        businesses_in_job = db.query(Business).filter(Business.job_id == job.job_id).all()
+        to_enrich_dicts = []
+        
+        for b in businesses_in_job:
+            if b.website:
+                if b.email:
+                    if not b.email_enrichment_status:
+                        b.email_enrichment_status = "skipped_existing_email"
+                else:
+                    to_enrich_dicts.append({
+                        "business_id": b.business_id,
+                        "name": b.name,
+                        "website": b.website
+                    })
+        
+        if to_enrich_dicts:
+            from src.services.email_enricher import email_enricher
+            enrichment_results = email_enricher.enrich_batch(to_enrich_dicts)
+            
+            now_dt = datetime.now(timezone.utc)
+            for res in enrichment_results:
+                b_model = next((b for b in businesses_in_job if b.business_id == res["business_id"]), None)
+                if b_model:
+                    if res["email"]:
+                        b_model.email = res["email"]
+                    b_model.email_source_url = res.get("email_source_url")
+                    b_model.email_enrichment_status = res.get("email_enrichment_status")
+                    b_model.email_enriched_at = now_dt
+                    
+            db.commit()
+        else:
+            db.commit() # commit the skipped statuses
+    except Exception as enrich_err:
+        logger.error(f"Email enrichment failed for Job {job_id}: {enrich_err}")
+
     return {
         "status": "success" if job.status in ("COMPLETED", "PARTIAL") else "failed",
         "job_id": job.job_id,

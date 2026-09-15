@@ -7,6 +7,9 @@ class BusinessBase(BaseModel):
     address: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    email_source_url: Optional[str] = None
+    email_enrichment_status: Optional[str] = None
+    email_enriched_at: Optional[datetime] = None
     website: Optional[str] = None
     google_maps_url: Optional[str] = None
     category: str
