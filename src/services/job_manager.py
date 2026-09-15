@@ -132,224 +132,247 @@ def execute_single_job(
     db.commit()
     db.refresh(job)
 
-    engine = custom_engine or discovery_engine
-    job_payload = {
-        "job_id": job.job_id,
-        "category": cat.category_name,
-        "pincode": loc.pincode,
-        "latitude": loc.latitude,
-        "longitude": loc.longitude,
-        "radius_km": loc.radius_km or 20.0
-    }
+    try:
+        engine = custom_engine or discovery_engine
+        job_payload = {
+            "job_id": job.job_id,
+            "category": cat.category_name,
+            "pincode": loc.pincode,
+            "latitude": loc.latitude,
+            "longitude": loc.longitude,
+            "radius_km": loc.radius_km or 20.0
+        }
 
-    # Execute discovery
-    discovery_res = engine.execute_discovery(job_payload, page_override=page_override)
-    
-    raw_listings = discovery_res.get("results", [])
-    raw_status = discovery_res.get("status", "failed")
-    error_msg = discovery_res.get("error")
-    blocked_reason = discovery_res.get("blocked_reason")
+        # Execute discovery
+        discovery_res = engine.execute_discovery(job_payload, page_override=page_override)
 
-    saved_count = 0
-    updated_count_biz = 0
-    duplicate_count = 0
-    persisted_results = []
+        raw_listings = discovery_res.get("results", [])
+        raw_status = discovery_res.get("status", "failed")
+        error_msg = discovery_res.get("error")
+        blocked_reason = discovery_res.get("blocked_reason")
 
-    if raw_status in ("success", "partial") and raw_listings:
-        for item in raw_listings:
-            normalized = normalize_business_record(item)
-            
-            # Geo distance validation
-            is_valid, distance_km, geo_notes = validate_geo_distance(
-                business_lat=normalized.get("latitude"),
-                business_lng=normalized.get("longitude"),
-                target_lat=loc.latitude,
-                target_lng=loc.longitude,
-                radius_km=loc.radius_km or 20.0
-            )
+        saved_count = 0
+        updated_count_biz = 0
+        duplicate_count = 0
+        persisted_results = []
 
-            # Deduplication
-            dedup_key = generate_dedup_key(
-                name=normalized["name"],
-                address=normalized["address"],
-                phone=normalized["phone"],
-                place_id=normalized["place_id"],
-                maps_url=normalized["google_maps_url"]
-            )
+        if raw_status in ("success", "partial") and raw_listings:
+            for item in raw_listings:
+                normalized = normalize_business_record(item)
 
-            biz_id = generate_business_id(
-                name=normalized["name"],
-                phone=normalized["phone"],
-                lat=normalized["latitude"],
-                lng=normalized["longitude"],
-                maps_url=normalized["google_maps_url"]
-            )
+                # Geo distance validation
+                is_valid, distance_km, geo_notes = validate_geo_distance(
+                    business_lat=normalized.get("latitude"),
+                    business_lng=normalized.get("longitude"),
+                    target_lat=loc.latitude,
+                    target_lng=loc.longitude,
+                    radius_km=loc.radius_km or 20.0
+                )
 
-            existing_biz = db.query(Business).filter(Business.dedup_key == dedup_key).first()
-
-            if existing_biz:
-                # Update existing record if richer data
-                updated_field = False
-                if not existing_biz.phone and normalized["phone"]:
-                    existing_biz.phone = normalized["phone"]
-                    updated_field = True
-                if not existing_biz.address and normalized["address"]:
-                    existing_biz.address = normalized["address"]
-                    updated_field = True
-                if not existing_biz.website and normalized["website"]:
-                    existing_biz.website = normalized["website"]
-                    updated_field = True
-                if not existing_biz.place_id and normalized["place_id"]:
-                    existing_biz.place_id = normalized["place_id"]
-                    updated_field = True
-                if existing_biz.latitude is None and normalized["latitude"] is not None:
-                    existing_biz.latitude = normalized["latitude"]
-                    existing_biz.longitude = normalized["longitude"]
-                    existing_biz.distance_km = distance_km
-                    existing_biz.is_valid = is_valid
-                    existing_biz.validation_errors = json.dumps(geo_notes) if geo_notes else None
-                    updated_field = True
-                    
-                if updated_field:
-                    updated_count_biz += 1
-                else:
-                    duplicate_count += 1
-                    
-                persisted_results.append({
-                    "business_id": existing_biz.business_id,
-                    "name": existing_biz.name,
-                    "phone": existing_biz.phone,
-                    "address": existing_biz.address,
-                    "is_valid": existing_biz.is_valid,
-                    "distance_km": existing_biz.distance_km,
-                    "is_duplicate": True
-                })
-            else:
-                new_biz = Business(
-                    business_id=biz_id,
-                    job_id=job.job_id,
+                # Deduplication
+                dedup_key = generate_dedup_key(
                     name=normalized["name"],
                     address=normalized["address"],
                     phone=normalized["phone"],
-                    email=normalized["email"],
-                    website=normalized["website"],
-                    google_maps_url=normalized["google_maps_url"],
                     place_id=normalized["place_id"],
-                    category=cat.category_name,
-                    district=loc.district,
-                    state=loc.state,
-                    officename=loc.anchor_name,
-                    latitude=normalized["latitude"],
-                    longitude=normalized["longitude"],
-                    distance_km=distance_km,
-                    source_query=job.search_query,
-                    dedup_key=dedup_key,
-                    is_valid=is_valid,
-                    validation_errors=json.dumps(geo_notes) if geo_notes else None
+                    maps_url=normalized["google_maps_url"]
                 )
-                db.add(new_biz)
-                saved_count += 1
-                persisted_results.append({
-                    "business_id": biz_id,
-                    "name": normalized["name"],
-                    "phone": normalized["phone"],
-                    "address": normalized["address"],
-                    "is_valid": is_valid,
-                    "distance_km": distance_km,
-                    "is_duplicate": False
-                })
 
-    # Update job status
-    completion_time = datetime.now(timezone.utc)
-    job.listings_found = len(raw_listings)
-    job.businesses_saved = saved_count
-    job.completed_at = completion_time
+                biz_id = generate_business_id(
+                    name=normalized["name"],
+                    phone=normalized["phone"],
+                    lat=normalized["latitude"],
+                    lng=normalized["longitude"],
+                    maps_url=normalized["google_maps_url"]
+                )
 
-    if raw_status == "blocked":
-        job.status = "BLOCKED"
-        job.blocked_reason = blocked_reason or "CAPTCHA or access restriction"
-        job.error_message = error_msg
-    elif raw_status == "failed":
-        job.status = "FAILED"
-        job.error_message = error_msg
-    elif raw_status == "zero_results":
-        job.status = "COMPLETED"
-        job.error_message = None
-    elif raw_status == "partial":
-        job.status = "PARTIAL"
-        job.error_message = f"Extracted {len(raw_listings)} listings with some detail extraction failures"
-    else:
-        job.status = "COMPLETED"
-        job.error_message = None
+                existing_biz = db.query(Business).filter(Business.dedup_key == dedup_key).first()
 
-    db.commit()
+                if existing_biz:
+                    # Update existing record if richer data
+                    updated_field = False
+                    if not existing_biz.phone and normalized["phone"]:
+                        existing_biz.phone = normalized["phone"]
+                        updated_field = True
+                    if not existing_biz.address and normalized["address"]:
+                        existing_biz.address = normalized["address"]
+                        updated_field = True
+                    if not existing_biz.website and normalized["website"]:
+                        existing_biz.website = normalized["website"]
+                        updated_field = True
+                    if not existing_biz.place_id and normalized["place_id"]:
+                        existing_biz.place_id = normalized["place_id"]
+                        updated_field = True
+                    if existing_biz.latitude is None and normalized["latitude"] is not None:
+                        existing_biz.latitude = normalized["latitude"]
+                        existing_biz.longitude = normalized["longitude"]
+                        existing_biz.distance_km = distance_km
+                        existing_biz.is_valid = is_valid
+                        existing_biz.validation_errors = json.dumps(geo_notes) if geo_notes else None
+                        updated_field = True
 
-    emails_found = 0
-    emails_not_found = 0
-    emails_failed = 0
+                    if updated_field:
+                        updated_count_biz += 1
+                    else:
+                        duplicate_count += 1
 
-    # Email Enrichment Phase
-    try:
-        businesses_in_job = db.query(Business).filter(Business.job_id == job.job_id).all()
-        to_enrich_dicts = []
-        
-        for b in businesses_in_job:
-            if b.website:
-                if b.email:
-                    if not b.email_enrichment_status:
-                        b.email_enrichment_status = "skipped_existing_email"
-                else:
-                    to_enrich_dicts.append({
-                        "business_id": b.business_id,
-                        "name": b.name,
-                        "website": b.website
+                    persisted_results.append({
+                        "business_id": existing_biz.business_id,
+                        "name": existing_biz.name,
+                        "phone": existing_biz.phone,
+                        "address": existing_biz.address,
+                        "is_valid": existing_biz.is_valid,
+                        "distance_km": existing_biz.distance_km,
+                        "is_duplicate": True
                     })
-        
-        if to_enrich_dicts:
-            from src.services.email_enricher import email_enricher
-            enrichment_results = email_enricher.enrich_batch(to_enrich_dicts)
-            
-            now_dt = datetime.now(timezone.utc)
-            for res in enrichment_results:
-                b_model = next((b for b in businesses_in_job if b.business_id == res["business_id"]), None)
-                if b_model:
-                    if res["email"]:
-                        b_model.email = res["email"]
-                    b_model.email_source_url = res.get("email_source_url")
-                    b_model.email_enrichment_status = res.get("email_enrichment_status")
-                    b_model.email_enriched_at = now_dt
-                    
-                    status_val = b_model.email_enrichment_status
-                    if status_val == "found":
-                        emails_found += 1
-                    elif status_val in ("not_found", "no_website"):
-                        emails_not_found += 1
-                    elif status_val in ("error", "timeout", "blocked"):
-                        emails_failed += 1
-                    
-            db.commit()
+                else:
+                    new_biz = Business(
+                        business_id=biz_id,
+                        job_id=job.job_id,
+                        name=normalized["name"],
+                        address=normalized["address"],
+                        phone=normalized["phone"],
+                        email=normalized["email"],
+                        website=normalized["website"],
+                        google_maps_url=normalized["google_maps_url"],
+                        place_id=normalized["place_id"],
+                        category=cat.category_name,
+                        district=loc.district,
+                        state=loc.state,
+                        officename=loc.anchor_name,
+                        latitude=normalized["latitude"],
+                        longitude=normalized["longitude"],
+                        distance_km=distance_km,
+                        source_query=job.search_query,
+                        dedup_key=dedup_key,
+                        is_valid=is_valid,
+                        validation_errors=json.dumps(geo_notes) if geo_notes else None
+                    )
+                    db.add(new_biz)
+                    saved_count += 1
+                    persisted_results.append({
+                        "business_id": biz_id,
+                        "name": normalized["name"],
+                        "phone": normalized["phone"],
+                        "address": normalized["address"],
+                        "is_valid": is_valid,
+                        "distance_km": distance_km,
+                        "is_duplicate": False
+                    })
+
+        # Update job status
+        completion_time = datetime.now(timezone.utc)
+        job.listings_found = len(raw_listings)
+        job.businesses_saved = saved_count
+        job.completed_at = completion_time
+
+        if raw_status == "blocked":
+            job.status = "BLOCKED"
+            job.blocked_reason = blocked_reason or "CAPTCHA or access restriction"
+            job.error_message = error_msg
+        elif raw_status == "failed":
+            job.status = "FAILED"
+            job.error_message = error_msg
+        elif raw_status == "zero_results":
+            job.status = "COMPLETED"
+            job.error_message = None
+        elif raw_status == "partial":
+            job.status = "PARTIAL"
+            job.error_message = f"Extracted {len(raw_listings)} listings with some detail extraction failures"
         else:
-            db.commit() # commit the skipped statuses
-    except Exception as enrich_err:
-        logger.error(f"Email enrichment failed for Job {job_id}: {enrich_err}")
+            job.status = "COMPLETED"
+            job.error_message = None
 
-    return {
-        "status": "success" if job.status in ("COMPLETED", "PARTIAL") else "failed",
-        "job_id": job.job_id,
-        "job_status": job.status,
-        "query": job.search_query,
-        "listings_found": len(raw_listings),
-        "businesses_saved": saved_count,
-        "businesses_updated": updated_count_biz,
-        "businesses_duplicate": duplicate_count,
-        "emails_found": emails_found,
-        "emails_not_found": emails_not_found,
-        "emails_failed": emails_failed,
-        "results": persisted_results,
-        "error": job.error_message,
-        "blocked_reason": job.blocked_reason
-    }
+        db.commit()
 
+        emails_found = 0
+        emails_not_found = 0
+        emails_failed = 0
+
+        # Email Enrichment Phase
+        try:
+            businesses_in_job = db.query(Business).filter(Business.job_id == job.job_id).all()
+            to_enrich_dicts = []
+
+            for b in businesses_in_job:
+                if b.website:
+                    if b.email:
+                        if not b.email_enrichment_status:
+                            b.email_enrichment_status = "skipped_existing_email"
+                    else:
+                        to_enrich_dicts.append({
+                            "business_id": b.business_id,
+                            "name": b.name,
+                            "website": b.website
+                        })
+
+            if to_enrich_dicts:
+                from src.services.email_enricher import email_enricher
+                enrichment_results = email_enricher.enrich_batch(to_enrich_dicts)
+
+                now_dt = datetime.now(timezone.utc)
+                for res in enrichment_results:
+                    b_model = next((b for b in businesses_in_job if b.business_id == res["business_id"]), None)
+                    if b_model:
+                        if res["email"]:
+                            b_model.email = res["email"]
+                        b_model.email_source_url = res.get("email_source_url")
+                        b_model.email_enrichment_status = res.get("email_enrichment_status")
+                        b_model.email_enriched_at = now_dt
+
+                        status_val = b_model.email_enrichment_status
+                        if status_val == "found":
+                            emails_found += 1
+                        elif status_val in ("not_found", "no_website"):
+                            emails_not_found += 1
+                        elif status_val in ("error", "timeout", "blocked"):
+                            emails_failed += 1
+
+                db.commit()
+            else:
+                db.commit() # commit the skipped statuses
+        except Exception as enrich_err:
+            logger.error(f"Email enrichment failed for Job {job_id}: {enrich_err}")
+
+        return {
+            "status": "success" if job.status in ("COMPLETED", "PARTIAL") else "failed",
+            "job_id": job.job_id,
+            "job_status": job.status,
+            "query": job.search_query,
+            "listings_found": len(raw_listings),
+            "businesses_saved": saved_count,
+            "businesses_updated": updated_count_biz,
+            "businesses_duplicate": duplicate_count,
+            "emails_found": emails_found,
+            "emails_not_found": emails_not_found,
+            "emails_failed": emails_failed,
+            "results": persisted_results,
+            "error": job.error_message,
+            "blocked_reason": job.blocked_reason
+        }
+
+    except Exception as e:
+        logger.error(f"Unexpected error executing job {job_id}: {e}")
+        db.rollback()
+        job.status = "FAILED"
+        job.error_message = f"Internal System Error: {str(e)}"
+        db.commit()
+        return {
+            "status": "failed",
+            "job_id": job_id,
+            "job_status": "FAILED",
+            "query": job.search_query if job else "",
+            "listings_found": 0,
+            "businesses_saved": 0,
+            "businesses_updated": 0,
+            "businesses_duplicate": 0,
+            "emails_found": 0,
+            "emails_not_found": 0,
+            "emails_failed": 0,
+            "results": [],
+            "error": str(e),
+            "blocked_reason": None
+        }
 def retry_job(job_id: str, db: Session) -> Dict[str, Any]:
     job = db.query(Job).filter(Job.job_id == job_id).first()
     if not job:

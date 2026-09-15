@@ -24,8 +24,8 @@ _discovery_state = {
 }
 
 class BatchRequest(BaseModel):
-    batch_size: int = 10
-    delay_between_jobs_seconds: float = 2.0
+    batch_size: int = Field(10, ge=1, le=100)
+    delay_between_jobs_seconds: float = Field(2.0, ge=0.0, le=60.0)
     trigger_source: str = "api"
     jobs_retried: int = Field(0, ge=0)
     jobs_recovered: int = Field(0, ge=0)

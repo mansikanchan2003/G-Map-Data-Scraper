@@ -456,3 +456,54 @@ def test_end_to_end_job_execution_and_retries():
 
     finally:
         db.close()
+
+def test_batch_isolation_on_exception():
+    """
+    Proves Rule 11 (Batch Isolation) and Rule 3 (Transaction Rollback):
+    If execute_single_job hits an unhandled exception, it should rollback, 
+    mark job as FAILED, and allow the batch to continue to the next job.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from src.database import Base
+    from src.models import Job, Location, Category
+    import uuid
+    from src.services.job_manager import execute_single_job
+
+    engine = create_engine("sqlite:///:memory:", echo=False)
+    Base.metadata.create_all(bind=engine)
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = TestingSessionLocal()
+
+    try:
+        # Setup
+        loc = Location(location_id="loc_crash", pincode="110001", state="Delhi", district="New Delhi", anchor_name="CP", latitude=28.0, longitude=77.0)
+        cat = Category(category_id="cat_crash", category_name="ATM")
+        db.add(loc)
+        db.add(cat)
+        db.commit()
+
+        j1 = Job(job_id=str(uuid.uuid4()), location_id="loc_crash", category_id="cat_crash", status="PENDING", search_query="test query")
+        db.add(j1)
+        db.commit()
+        
+        j1_id = j1.job_id
+        
+        class ExplodingEngine:
+            def execute_discovery(self, payload, page_override=None):
+                raise RuntimeError("Simulated Database or System Crash")
+
+        # Run execute_single_job with the exploding engine
+        res = execute_single_job(j1_id, db, custom_engine=ExplodingEngine())
+        
+        # Assert
+        assert res["status"] == "failed"
+        assert res["job_status"] == "FAILED"
+        assert "Simulated Database or System Crash" in res["error"]
+        
+        # Check DB state to ensure rollback + proper state update happened
+        db.refresh(j1)
+        assert j1.status == "FAILED"
+        assert "Simulated Database or System Crash" in j1.error_message
+    finally:
+        db.close()
