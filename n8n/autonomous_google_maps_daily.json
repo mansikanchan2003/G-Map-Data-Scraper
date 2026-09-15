@@ -114,6 +114,14 @@
             {
               "name": "trigger_source",
               "value": "n8n_daily"
+            },
+            {
+              "name": "jobs_retried",
+              "value": "={{ $node[\"Job Maintenance\"].json[\"auto_retried_jobs\"] || 0 }}"
+            },
+            {
+              "name": "jobs_recovered",
+              "value": "={{ $node[\"Job Maintenance\"].json[\"recovered_stale_jobs\"] || 0 }}"
             }
           ]
         },

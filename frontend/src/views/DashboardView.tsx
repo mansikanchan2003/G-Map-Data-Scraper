@@ -446,20 +446,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="p-3 bg-slate-950 rounded border border-slate-800">
               <div className="text-[10px] font-mono-code text-slate-400 uppercase flex items-center gap-1.5 font-semibold">
                 <span className="material-symbols-outlined text-[14px]">task_alt</span>
-                Completed Jobs (Last Run)
+                Jobs Status (Last Run)
               </div>
-              <div className="font-mono-code text-slate-200 mt-1 font-semibold">
-                {stats?.last_run?.jobs_completed ?? 0} jobs finished
+              <div className="font-mono-code text-slate-200 mt-1 font-semibold flex items-center gap-2">
+                <span className="text-emerald-400" title="Completed">{stats?.last_run?.jobs_completed ?? 0}</span> / 
+                <span className="text-rose-400" title="Failed">{stats?.last_run?.jobs_failed ?? 0}</span> / 
+                <span className="text-slate-300" title="Total">{stats?.last_run?.jobs_total ?? 0}</span>
               </div>
             </div>
 
             <div className="p-3 bg-slate-950 rounded border border-slate-800">
               <div className="text-[10px] font-mono-code text-slate-400 uppercase flex items-center gap-1.5 font-semibold">
                 <span className="material-symbols-outlined text-[14px] text-emerald-400">domain_add</span>
-                New Businesses (Last Run)
+                Business Extraction
               </div>
-              <div className="font-mono-code text-emerald-400 mt-1 font-semibold">
-                {stats?.last_run?.businesses_new ?? 0} persisted
+              <div className="font-mono-code mt-1 font-semibold flex gap-2">
+                <span className="text-emerald-400" title="New">{stats?.last_run?.businesses_new ?? 0}</span>
+                <span className="text-sky-400" title="Updated">{stats?.last_run?.businesses_updated ?? 0}</span>
+                <span className="text-slate-400" title="Duplicate">{stats?.last_run?.businesses_duplicate ?? 0}</span>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-950 rounded border border-slate-800">
+              <div className="text-[10px] font-mono-code text-slate-400 uppercase flex items-center gap-1.5 font-semibold">
+                <span className="material-symbols-outlined text-[14px] text-amber-400">mail</span>
+                Emails Found
+              </div>
+              <div className="font-mono-code text-amber-400 mt-1 font-semibold">
+                {stats?.last_run?.email_enriched ?? 0}
               </div>
             </div>
 

@@ -80,8 +80,15 @@ export interface LastRunInfo {
   run_id: string;
   started_at: string | null;
   status: string;
+  jobs_total: number;
   jobs_completed: number;
+  jobs_failed: number;
+  businesses_discovered: number;
   businesses_new: number;
+  businesses_updated: number;
+  businesses_duplicate: number;
+  email_enriched: number;
+  duration_seconds: number | null;
 }
 
 export interface SystemStatsRaw {

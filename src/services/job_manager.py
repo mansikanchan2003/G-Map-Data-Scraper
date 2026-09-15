@@ -151,6 +151,8 @@ def execute_single_job(
     blocked_reason = discovery_res.get("blocked_reason")
 
     saved_count = 0
+    updated_count_biz = 0
+    duplicate_count = 0
     persisted_results = []
 
     if raw_status in ("success", "partial") and raw_listings:
@@ -187,20 +189,32 @@ def execute_single_job(
 
             if existing_biz:
                 # Update existing record if richer data
+                updated_field = False
                 if not existing_biz.phone and normalized["phone"]:
                     existing_biz.phone = normalized["phone"]
+                    updated_field = True
                 if not existing_biz.address and normalized["address"]:
                     existing_biz.address = normalized["address"]
+                    updated_field = True
                 if not existing_biz.website and normalized["website"]:
                     existing_biz.website = normalized["website"]
+                    updated_field = True
                 if not existing_biz.place_id and normalized["place_id"]:
                     existing_biz.place_id = normalized["place_id"]
+                    updated_field = True
                 if existing_biz.latitude is None and normalized["latitude"] is not None:
                     existing_biz.latitude = normalized["latitude"]
                     existing_biz.longitude = normalized["longitude"]
                     existing_biz.distance_km = distance_km
                     existing_biz.is_valid = is_valid
                     existing_biz.validation_errors = json.dumps(geo_notes) if geo_notes else None
+                    updated_field = True
+                    
+                if updated_field:
+                    updated_count_biz += 1
+                else:
+                    duplicate_count += 1
+                    
                 persisted_results.append({
                     "business_id": existing_biz.business_id,
                     "name": existing_biz.name,
@@ -270,6 +284,10 @@ def execute_single_job(
 
     db.commit()
 
+    emails_found = 0
+    emails_not_found = 0
+    emails_failed = 0
+
     # Email Enrichment Phase
     try:
         businesses_in_job = db.query(Business).filter(Business.job_id == job.job_id).all()
@@ -301,6 +319,14 @@ def execute_single_job(
                     b_model.email_enrichment_status = res.get("email_enrichment_status")
                     b_model.email_enriched_at = now_dt
                     
+                    status_val = b_model.email_enrichment_status
+                    if status_val == "found":
+                        emails_found += 1
+                    elif status_val in ("not_found", "no_website"):
+                        emails_not_found += 1
+                    elif status_val in ("error", "timeout", "blocked"):
+                        emails_failed += 1
+                    
             db.commit()
         else:
             db.commit() # commit the skipped statuses
@@ -314,6 +340,11 @@ def execute_single_job(
         "query": job.search_query,
         "listings_found": len(raw_listings),
         "businesses_saved": saved_count,
+        "businesses_updated": updated_count_biz,
+        "businesses_duplicate": duplicate_count,
+        "emails_found": emails_found,
+        "emails_not_found": emails_not_found,
+        "emails_failed": emails_failed,
         "results": persisted_results,
         "error": job.error_message,
         "blocked_reason": job.blocked_reason

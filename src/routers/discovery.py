@@ -6,7 +6,7 @@ from src.database import get_db
 from src.models import Job, RunLog
 from src.services import job_manager
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 import json
 
@@ -27,6 +27,8 @@ class BatchRequest(BaseModel):
     batch_size: int = 10
     delay_between_jobs_seconds: float = 2.0
     trigger_source: str = "api"
+    jobs_retried: int = Field(0, ge=0)
+    jobs_recovered: int = Field(0, ge=0)
 
 @router.post("/batch")
 def run_batch_discovery(
@@ -63,6 +65,11 @@ def run_batch_discovery(
     blocked = 0
     discovered = 0
     saved = 0
+    updated_businesses = 0
+    duplicate_businesses = 0
+    emails_found_total = 0
+    emails_not_found_total = 0
+    emails_failed_total = 0
     errors = []
 
     try:
@@ -94,8 +101,19 @@ def run_batch_discovery(
 
             found = res.get("listings_found", 0)
             persisted = res.get("businesses_saved", 0)
+            updated = res.get("businesses_updated", 0)
+            duplicate = res.get("businesses_duplicate", 0)
+            e_found = res.get("emails_found", 0)
+            e_not_found = res.get("emails_not_found", 0)
+            e_failed = res.get("emails_failed", 0)
+            
             discovered += found
             saved += persisted
+            updated_businesses += updated
+            duplicate_businesses += duplicate
+            emails_found_total += e_found
+            emails_not_found_total += e_not_found
+            emails_failed_total += e_failed
 
             if res.get("error"):
                 errors.append({"job_id": job.job_id, "error": res["error"]})
@@ -123,10 +141,18 @@ def run_batch_discovery(
             run_log.jobs_attempted = attempted
             run_log.jobs_completed = completed
             run_log.jobs_failed = failed
+            run_log.jobs_total = _discovery_state["jobs_total"]
+            run_log.jobs_retried = payload.jobs_retried
+            run_log.jobs_recovered = payload.jobs_recovered
             run_log.businesses_discovered = discovered
-            # We don't have exact counts of new/updated/duplicate in discovery.py unless we parse the results
-            # but we can count from saved
             run_log.businesses_new = saved
+            run_log.businesses_updated = updated_businesses
+            run_log.businesses_duplicate = duplicate_businesses
+            run_log.email_enriched = emails_found_total + emails_not_found_total + emails_failed_total
+            run_log.email_found = emails_found_total
+            run_log.email_not_found = emails_not_found_total
+            run_log.email_failed = emails_failed_total
+            run_log.errors_count = len(errors)
             run_log.duration_seconds = duration
             run_log.error_summary = json.dumps(errors) if errors else None
             run_log.completed_at = datetime.now(timezone.utc)

@@ -26,6 +26,27 @@ def _migrate_db(engine):
                 conn.execute(text('ALTER TABLE businesses ADD COLUMN email_enriched_at DATETIME'))
             conn.commit()
 
+    if 'run_log' in inspector.get_table_names():
+        columns = [c['name'] for c in inspector.get_columns('run_log')]
+        with engine.connect() as conn:
+            if 'jobs_total' not in columns:
+                conn.execute(text('ALTER TABLE run_log ADD COLUMN jobs_total INTEGER NOT NULL DEFAULT 0'))
+            if 'jobs_retried' not in columns:
+                conn.execute(text('ALTER TABLE run_log ADD COLUMN jobs_retried INTEGER NOT NULL DEFAULT 0'))
+            if 'jobs_recovered' not in columns:
+                conn.execute(text('ALTER TABLE run_log ADD COLUMN jobs_recovered INTEGER NOT NULL DEFAULT 0'))
+            if 'email_enriched' not in columns:
+                conn.execute(text('ALTER TABLE run_log ADD COLUMN email_enriched INTEGER NOT NULL DEFAULT 0'))
+            if 'email_found' not in columns:
+                conn.execute(text('ALTER TABLE run_log ADD COLUMN email_found INTEGER NOT NULL DEFAULT 0'))
+            if 'email_not_found' not in columns:
+                conn.execute(text('ALTER TABLE run_log ADD COLUMN email_not_found INTEGER NOT NULL DEFAULT 0'))
+            if 'email_failed' not in columns:
+                conn.execute(text('ALTER TABLE run_log ADD COLUMN email_failed INTEGER NOT NULL DEFAULT 0'))
+            if 'errors_count' not in columns:
+                conn.execute(text('ALTER TABLE run_log ADD COLUMN errors_count INTEGER NOT NULL DEFAULT 0'))
+            conn.commit()
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate_db(engine)

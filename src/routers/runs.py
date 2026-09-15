@@ -35,6 +35,13 @@ def get_runs(
         "has_prev": page > 1
     }
 
+@router.get("/latest", response_model=RunLogResponse)
+def get_latest_run(db: Session = Depends(get_db)):
+    run = db.query(RunLog).order_by(RunLog.started_at.desc()).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="No runs found")
+    return run
+
 @router.get("/{run_id}", response_model=RunLogResponse)
 def get_run(run_id: str, db: Session = Depends(get_db)):
     run = db.query(RunLog).filter(RunLog.run_id == run_id).first()

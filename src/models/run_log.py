@@ -18,3 +18,13 @@ class RunLog(Base):
     error_summary = Column(Text, nullable=True)
     started_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Step 8: Observability additions
+    jobs_total = Column(Integer, nullable=False, default=0)
+    jobs_retried = Column(Integer, nullable=False, default=0)
+    jobs_recovered = Column(Integer, nullable=False, default=0)
+    email_enriched = Column(Integer, nullable=False, default=0)
+    email_found = Column(Integer, nullable=False, default=0)
+    email_not_found = Column(Integer, nullable=False, default=0)
+    email_failed = Column(Integer, nullable=False, default=0)
+    errors_count = Column(Integer, nullable=False, default=0)
