@@ -37,7 +37,7 @@ def export_businesses(
         writer = csv.writer(output)
         
         # Write headers
-        headers = ["name", "address", "phone", "email", "website", "category", "officename", "district", "statename"]
+        headers = ["name", "address", "phone", "email", "website", "category", "officename", "district", "statename", "email_source_url", "email_enrichment_status", "email_enriched_at"]
         writer.writerow(headers)
         
         for biz in all_items:
@@ -50,7 +50,10 @@ def export_businesses(
                 biz.category,
                 biz.officename,
                 biz.district,
-                biz.state
+                biz.state,
+                biz.email_source_url,
+                biz.email_enrichment_status,
+                biz.email_enriched_at.isoformat() if biz.email_enriched_at else None
             ])
             
         output.seek(0)
