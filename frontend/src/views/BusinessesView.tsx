@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { BusinessItem, PaginatedResponse, ApiError } from '../types/api';
-import { fetchBusinesses, triggerCsvStream } from '../api';
+import { fetchBusinesses, triggerCsvStream, triggerExcelStream } from '../api';
 
 interface BusinessesViewProps {
   initialSearch?: string;
@@ -96,24 +96,36 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
               <span>Refresh</span>
             </button>
 
-            {/* Primary Action: Download CSV (Backend Streaming) */}
+            {/* Primary Action: Download CSV */}
             <div className="relative group">
               <button
                 onClick={() => triggerCsvStream()}
-                className="h-8 px-3.5 bg-sky-600 hover:bg-sky-500 text-white font-mono-code text-xs font-semibold rounded flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
-                title="Download full business dataset via backend streaming endpoint"
+                className="h-8 px-3.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white font-mono-code text-xs font-semibold rounded flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
+                title="Download CSV"
               >
-                <span className="material-symbols-outlined text-[17px] text-white">cloud_download</span>
-                <span>Download CSV</span>
+                <span className="material-symbols-outlined text-[17px] text-white">description</span>
+                <span>CSV</span>
+              </button>
+            </div>
+
+            {/* Primary Action: Download Excel */}
+            <div className="relative group">
+              <button
+                onClick={() => triggerExcelStream()}
+                className="h-8 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-mono-code text-xs font-semibold rounded flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
+                title="Download full business dataset as Excel (XLSX)"
+              >
+                <span className="material-symbols-outlined text-[17px] text-white">table</span>
+                <span>Download Excel</span>
               </button>
 
               <div className="absolute right-0 top-full mt-1.5 hidden group-hover:flex flex-col z-50 w-72 p-2.5 bg-slate-900 border border-slate-700 text-slate-200 rounded shadow-xl pointer-events-none text-left">
-                <span className="text-[10px] font-mono-code text-sky-400 uppercase font-bold">STREAM ENDPOINT</span>
+                <span className="text-[10px] font-mono-code text-emerald-400 uppercase font-bold">STREAM ENDPOINT</span>
                 <span className="text-xs font-mono-code text-slate-100 mt-0.5 break-all font-semibold">
-                  GET /api/v1/export/businesses?format=csv
+                  GET /api/v1/export/businesses?format=excel
                 </span>
                 <span className="text-xs text-slate-400 mt-1">
-                  Streams full dataset directly from FastAPI backend with zero browser memory bloat.
+                  Streams full dataset directly from FastAPI backend in native Excel format with optimized columns.
                 </span>
               </div>
             </div>
@@ -205,9 +217,6 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
                 Category
               </th>
               <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold border-r border-slate-800 min-w-[120px]">
-                Office Name
-              </th>
-              <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold border-r border-slate-800 min-w-[120px]">
                 District
               </th>
               <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold min-w-[110px]">
@@ -245,7 +254,7 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
                       <span className="truncate max-w-[220px]" title={biz.name}>
                         {biz.name}
                       </span>
-                      {biz.is_valid && (
+                      {biz.verified && (
                         <span
                           className="material-symbols-outlined text-[15px] text-emerald-400 shrink-0"
                           title="Verified valid business"
@@ -285,10 +294,6 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
                     <span className="inline-block px-1.5 py-0.5 rounded text-[10px] uppercase bg-slate-800 text-slate-300 border border-slate-700 truncate max-w-[150px]">
                       {biz.category || 'General'}
                     </span>
-                  </td>
-                  {/* Correct mapping to backend 'officename' */}
-                  <td className="px-3 border-r border-slate-800 text-slate-400 font-sans truncate max-w-[120px]">
-                    {biz.officename || '—'}
                   </td>
                   <td className="px-3 border-r border-slate-800 text-slate-300 font-sans truncate max-w-[120px]">
                     {biz.district || '—'}

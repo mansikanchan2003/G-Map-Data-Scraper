@@ -229,6 +229,21 @@ export function triggerCsvStream(): void {
   document.body.removeChild(anchor);
 }
 
+/**
+ * Triggers native streaming download of all businesses in Excel (XLSX) format.
+ */
+export function triggerExcelStream(): void {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}/api/v1/export/businesses?format=excel`;
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.setAttribute('download', `businesses_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  anchor.target = '_blank';
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+}
+
 // ---------------------------------------------------------
 // 4. JOBS
 // ---------------------------------------------------------

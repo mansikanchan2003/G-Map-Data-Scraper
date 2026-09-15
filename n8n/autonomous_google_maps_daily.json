@@ -15,10 +15,7 @@
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
-      "position": [
-        0,
-        0
-      ]
+      "position": [0, 0]
     },
     {
       "parameters": {
@@ -34,10 +31,7 @@
       "name": "Health Check",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        200,
-        0
-      ]
+      "position": [200, 0]
     },
     {
       "parameters": {
@@ -48,10 +42,18 @@
       "name": "Config Sync",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        400,
-        0
-      ]
+      "position": [400, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_BASE_URL }}/api/v1/jobs/maintenance",
+        "options": {}
+      },
+      "name": "Job Maintenance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 0]
     },
     {
       "parameters": {
@@ -62,10 +64,7 @@
       "name": "Generate Jobs",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        600,
-        0
-      ]
+      "position": [800, 0]
     },
     {
       "parameters": {
@@ -75,10 +74,7 @@
       "name": "Check Stats",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        800,
-        0
-      ]
+      "position": [1000, 0]
     },
     {
       "parameters": {
@@ -95,10 +91,7 @@
       "name": "Jobs Pending?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [
-        1000,
-        0
-      ]
+      "position": [1200, 0]
     },
     {
       "parameters": {
@@ -114,14 +107,6 @@
             {
               "name": "trigger_source",
               "value": "n8n_daily"
-            },
-            {
-              "name": "jobs_retried",
-              "value": "={{ $node[\"Job Maintenance\"].json[\"auto_retried_jobs\"] || 0 }}"
-            },
-            {
-              "name": "jobs_recovered",
-              "value": "={{ $node[\"Job Maintenance\"].json[\"recovered_stale_jobs\"] || 0 }}"
             }
           ]
         },
@@ -132,10 +117,50 @@
       "name": "Run Batch Discovery",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        1200,
-        -100
-      ]
+      "position": [1400, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equal",
+              "value2": "blocked"
+            }
+          ]
+        }
+      },
+      "name": "Is Blocked?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1600, -100]
+    },
+    {
+      "parameters": {
+        "content": "Discovery encountered a block. Halting to preserve queue."
+      },
+      "name": "Discovery Blocked / Stop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1800, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.pending_jobs_remaining }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "name": "More Jobs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1800, -300]
     },
     {
       "parameters": {
@@ -158,10 +183,7 @@
       "name": "Export Businesses",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        1400,
-        -100
-      ]
+      "position": [2000, -100]
     },
     {
       "parameters": {
@@ -184,10 +206,7 @@
       "name": "Google Sheets",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4,
-      "position": [
-        1600,
-        -100
-      ]
+      "position": [2200, -100]
     },
     {
       "parameters": {
@@ -196,132 +215,51 @@
       "name": "No-Op",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [
-        1200,
-        100
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $env.BACKEND_BASE_URL }}/api/v1/jobs/maintenance",
-        "options": {}
-      },
-      "name": "Job Maintenance",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        500,
-        0
-      ]
+      "position": [1400, 100]
     }
   ],
   "connections": {
     "Schedule Trigger": {
-      "main": [
-        [
-          {
-            "node": "Health Check",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Health Check", "type": "main", "index": 0}]]
     },
     "Health Check": {
-      "main": [
-        [
-          {
-            "node": "Config Sync",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Config Sync", "type": "main", "index": 0}]]
     },
     "Config Sync": {
-      "main": [
-        [
-          {
-            "node": "Job Maintenance",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Job Maintenance", "type": "main", "index": 0}]]
+    },
+    "Job Maintenance": {
+      "main": [[{"node": "Generate Jobs", "type": "main", "index": 0}]]
     },
     "Generate Jobs": {
-      "main": [
-        [
-          {
-            "node": "Check Stats",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Check Stats", "type": "main", "index": 0}]]
     },
     "Check Stats": {
-      "main": [
-        [
-          {
-            "node": "Jobs Pending?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Jobs Pending?", "type": "main", "index": 0}]]
     },
     "Jobs Pending?": {
       "main": [
-        [
-          {
-            "node": "Run Batch Discovery",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "No-Op",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{"node": "Run Batch Discovery", "type": "main", "index": 0}],
+        [{"node": "No-Op", "type": "main", "index": 0}]
       ]
     },
     "Run Batch Discovery": {
+      "main": [[{"node": "Is Blocked?", "type": "main", "index": 0}]]
+    },
+    "Is Blocked?": {
       "main": [
-        [
-          {
-            "node": "Export Businesses",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{"node": "Discovery Blocked / Stop", "type": "main", "index": 0}],
+        [{"node": "More Jobs?", "type": "main", "index": 0}]
+      ]
+    },
+    "More Jobs?": {
+      "main": [
+        [{"node": "Run Batch Discovery", "type": "main", "index": 0}],
+        [{"node": "Export Businesses", "type": "main", "index": 0}]
       ]
     },
     "Export Businesses": {
-      "main": [
-        [
-          {
-            "node": "Google Sheets",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Job Maintenance": {
-      "main": [
-        [
-          {
-            "node": "Generate Jobs",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "Google Sheets", "type": "main", "index": 0}]]
     }
   },
   "settings": {

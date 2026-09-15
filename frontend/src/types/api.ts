@@ -57,11 +57,11 @@ export interface BusinessItem {
   category: string;
   district?: string | null;
   state?: string | null;
-  officename?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   distance_km?: number | null;
   is_valid: boolean;
+  verified: boolean;
   discovered_at: string;
   updated_at?: string;
 }

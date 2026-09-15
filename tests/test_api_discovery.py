@@ -72,8 +72,8 @@ def test_api_run_job_endpoint():
 def test_api_discovery_status_and_stop():
     res_status = client.get("/api/v1/discovery/status")
     assert res_status.status_code == 200
-    assert "is_running" in res_status.json()
+    assert "State is fully managed via PostgreSQL" in res_status.json()["message"]
 
     res_stop = client.post("/api/v1/discovery/stop")
     assert res_stop.status_code == 200
-    assert "message" in res_stop.json()
+    assert "Draining is orchestrated externally" in res_stop.json()["message"]

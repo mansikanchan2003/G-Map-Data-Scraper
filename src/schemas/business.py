@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 from datetime import datetime
 from typing import Optional
 
@@ -15,11 +15,15 @@ class BusinessBase(BaseModel):
     category: str
     district: Optional[str] = None
     state: Optional[str] = None
-    officename: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     distance_km: Optional[float] = None
     is_valid: bool
+    
+    @computed_field
+    @property
+    def verified(self) -> bool:
+        return self.is_valid
 
 class BusinessResponse(BusinessBase):
     business_id: str

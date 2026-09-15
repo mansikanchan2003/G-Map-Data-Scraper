@@ -45,18 +45,19 @@ def test_runs_endpoint_empty(client):
     assert "items" in data
 
 def test_export_endpoint_empty(client):
-    res = client.get("/api/v1/export/businesses")
+    res = client.get("/api/v1/export/businesses?format=json")
     assert res.status_code == 200
     data = res.json()
-    assert "total" in data
+    assert "items" in data
     assert "export_metadata" in data
+    assert isinstance(data["items"], list)
 
 def test_export_endpoint_csv(client):
     res = client.get("/api/v1/export/businesses?format=csv")
     assert res.status_code == 200
     assert res.headers["content-type"] == "text/csv; charset=utf-8"
     csv_content = res.text
-    assert "email,website,category,officename,district,statename,email_source_url,email_enrichment_status,email_enriched_at" in csv_content
+    assert "email,website,category,district,state,verified" in csv_content
 
 def test_businesses_endpoint_pagination(client):
     res = client.get("/api/v1/businesses")

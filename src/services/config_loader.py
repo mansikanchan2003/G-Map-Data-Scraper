@@ -30,7 +30,15 @@ def sync_config(db: Session) -> dict:
             if i == 0:
                 continue
             
-            pincode, lat, lng = row[0], row[1], row[2]
+            # The columns are: PIN Code, Latitude, Longitude, District, State, Tehsil, Anchor Village/Town
+            pincode = row[0]
+            lat = row[1] if len(row) > 1 else None
+            lng = row[2] if len(row) > 2 else None
+            district = str(row[3]).strip() if len(row) > 3 and row[3] is not None else None
+            state = str(row[4]).strip() if len(row) > 4 and row[4] is not None else None
+            tehsil = str(row[5]).strip() if len(row) > 5 and row[5] is not None else None
+            anchor_name = str(row[6]).strip() if len(row) > 6 and row[6] is not None else None
+            
             if not pincode or lat is None or lng is None:
                 continue
                 
@@ -54,10 +62,23 @@ def sync_config(db: Session) -> dict:
                     pincode=str(pincode).strip(),
                     latitude=lat,
                     longitude=lng,
-                    radius_km=settings.default_radius_km
+                    radius_km=settings.default_radius_km,
+                    district=district,
+                    state=state,
+                    tehsil=tehsil,
+                    anchor_name=anchor_name
                 )
                 db.add(loc)
                 locations_added += 1
+            else:
+                # Update existing location with metadata if missing
+                updated = False
+                if not existing.district and district: existing.district = district; updated = True
+                if not existing.state and state: existing.state = state; updated = True
+                if not existing.tehsil and tehsil: existing.tehsil = tehsil; updated = True
+                if not existing.anchor_name and anchor_name: existing.anchor_name = anchor_name; updated = True
+                if updated:
+                    db.add(existing)
 
     except Exception as e:
         logger.error(f"Error loading locations: {e}")
