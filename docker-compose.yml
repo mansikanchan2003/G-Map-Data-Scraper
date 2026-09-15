@@ -1,0 +1,116 @@
+# =============================================================================
+# G-Map Data Scraper 2.0 — Docker Compose
+# Services: backend, postgres, n8n
+#
+# USAGE:
+#   1. Copy .env.example to .env and fill in all required values.
+#   2. docker compose up -d
+#   3. docker compose exec backend alembic upgrade head
+#   4. Verify: curl http://localhost:8000/health
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — production database
+  # Data persisted in a named volume (not the container filesystem).
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gmap_scraper}
+      POSTGRES_USER: ${POSTGRES_USER:-gmap_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gmap_user} -d ${POSTGRES_DB:-gmap_scraper}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Backend — FastAPI + Playwright
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Database — point to the postgres service above
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-gmap_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gmap_scraper}
+
+      # API settings
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+
+      # CORS — set to your actual frontend origin in production
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+
+      # Backend URL (used by n8n and for internal references)
+      BACKEND_BASE_URL: ${BACKEND_BASE_URL:-http://backend:8000}
+
+      # Discovery settings
+      BROWSER_HEADLESS: "true"
+      DISCOVERY_CONCURRENCY: ${DISCOVERY_CONCURRENCY:-1}
+      BATCH_SIZE: ${BATCH_SIZE:-50}
+      JOB_RETRY_LIMIT: ${JOB_RETRY_LIMIT:-3}
+      DEFAULT_RADIUS_KM: ${DEFAULT_RADIUS_KM:-20.0}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENVIRONMENT: "production"
+
+      # Playwright browser path (must match Dockerfile ENV)
+      PLAYWRIGHT_BROWSERS_PATH: /app/.playwright
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount data files if you want to update them without rebuilding
+      - ./Geocoded_Ad_Targeting_Locations_FINAL.xlsx:/app/Geocoded_Ad_Targeting_Locations_FINAL.xlsx:ro
+      - ./G-Map Scraper Categories.xlsx:/app/G-Map Scraper Categories.xlsx:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # n8n — workflow automation
+  # Import the workflow from n8n/autonomous_google_maps_daily.json
+  # ---------------------------------------------------------------------------
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    environment:
+      # n8n environment variables that the workflow reads via $env.BACKEND_BASE_URL
+      BACKEND_BASE_URL: http://backend:8000
+      BATCH_SIZE: ${BATCH_SIZE:-50}
+      N8N_OUTPUT_SPREADSHEET_ID: ${N8N_OUTPUT_SPREADSHEET_ID:-}
+
+      # n8n internal settings
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: "http"
+      GENERIC_TIMEZONE: "Asia/Kolkata"
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    driver: local
+  n8n_data:
+    driver: local
