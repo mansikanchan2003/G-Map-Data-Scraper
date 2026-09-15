@@ -1,5 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 sqlalchemy
 pydantic
 pydantic-settings
@@ -7,3 +7,5 @@ openpyxl
 pytest
 httpx
 playwright
+psycopg[binary]
+alembic
