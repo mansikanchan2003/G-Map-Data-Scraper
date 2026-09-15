@@ -69,3 +69,17 @@ def retry_single_job(job_id: str, db: Session = Depends(get_db)):
 @router.post("/retry-all")
 def retry_all(status: str = Query("FAILED"), db: Session = Depends(get_db)):
     return job_manager.retry_all_jobs(db, target_status=status)
+
+@router.post("/maintenance")
+def run_maintenance(
+    max_stale_age_minutes: int = Query(30, ge=5),
+    max_retries: int = Query(3, ge=1, le=10),
+    db: Session = Depends(get_db)
+):
+    recovered = job_manager.recover_stale_jobs(db, max_age_minutes=max_stale_age_minutes)
+    retried = job_manager.auto_retry_failed_jobs(db, max_retries=max_retries)
+    return {
+        "status": "success",
+        "recovered_stale_jobs": recovered["recovered_count"],
+        "auto_retried_jobs": retried["retried_count"]
+    }

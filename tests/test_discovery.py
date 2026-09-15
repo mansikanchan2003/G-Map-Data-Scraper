@@ -441,6 +441,9 @@ def test_end_to_end_job_execution_and_retries():
         assert "COORDINATES_UNAVAILABLE" in nocoord_biz.validation_errors
 
         # Second run with same mock: test deduplication at DB level (businesses_saved should be 0 new)
+        # Must reset job to PENDING first because execute_single_job now requires PENDING
+        saved_job.status = "PENDING"
+        db.commit()
         res_dup = job_manager.execute_single_job("job_test_01", db, custom_engine=mock_engine)
         assert res_dup["status"] == "success"
         assert res_dup["businesses_saved"] == 0 # all 3 were duplicates

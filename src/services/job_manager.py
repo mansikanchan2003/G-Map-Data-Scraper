@@ -108,12 +108,29 @@ def execute_single_job(
             "error": job.error_message
         }
 
-    # Mark RUNNING
+    # Atomically lock and mark RUNNING to prevent race conditions
     now = datetime.now(timezone.utc)
-    job.status = "RUNNING"
-    job.attempt_count += 1
-    job.last_attempt_at = now
+    updated_count = db.query(Job).filter(
+        Job.job_id == job_id,
+        Job.status == "PENDING"
+    ).update({
+        "status": "RUNNING",
+        "attempt_count": Job.attempt_count + 1,
+        "last_attempt_at": now
+    }, synchronize_session="fetch")
+    
+    if updated_count == 0:
+        db.rollback()
+        return {
+            "status": "failed",
+            "job_id": job_id,
+            "query": job.search_query,
+            "count": 0,
+            "results": [],
+            "error": "Job is no longer PENDING or could not be claimed safely."
+        }
     db.commit()
+    db.refresh(job)
 
     engine = custom_engine or discovery_engine
     job_payload = {
@@ -334,3 +351,42 @@ def retry_all_jobs(db: Session, target_status: str = "FAILED") -> Dict[str, Any]
         "jobs_retried": count,
         "message": f"{count} jobs queued for retry"
     }
+
+def recover_stale_jobs(db: Session, max_age_minutes: int = 30) -> Dict[str, Any]:
+    """Finds RUNNING jobs older than max_age_minutes and resets them to PENDING."""
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    threshold = now - timedelta(minutes=max_age_minutes)
+    
+    stale_jobs = db.query(Job).filter(
+        Job.status == "RUNNING",
+        Job.last_attempt_at < threshold
+    ).all()
+    
+    count = 0
+    for j in stale_jobs:
+        j.status = "PENDING"
+        j.error_message = "Recovered from stale RUNNING state"
+        j.blocked_reason = None
+        count += 1
+    
+    db.commit()
+    logger.info(f"Recovered {count} stale RUNNING jobs.")
+    return {"recovered_count": count}
+
+def auto_retry_failed_jobs(db: Session, max_retries: int = 3) -> Dict[str, Any]:
+    """Finds FAILED jobs with attempt_count < max_retries and sets them to PENDING."""
+    failed_jobs = db.query(Job).filter(
+        Job.status == "FAILED",
+        Job.attempt_count < max_retries
+    ).all()
+    
+    count = 0
+    for j in failed_jobs:
+        j.status = "PENDING"
+        j.error_message = "Auto-queued for retry"
+        count += 1
+        
+    db.commit()
+    logger.info(f"Auto-retried {count} FAILED jobs.")
+    return {"retried_count": count}
