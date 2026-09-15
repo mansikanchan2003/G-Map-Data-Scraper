@@ -97,7 +97,9 @@ class EmailEnricher:
             website = 'https://' + website
 
         parsed_url = urlparse(website)
-        base_domain = parsed_url.netloc
+        base_domain = parsed_url.netloc.lower()
+        if base_domain.startswith('www.'):
+            base_domain = base_domain[4:]
 
         logger.info(f"Enriching email for {name} at {website}")
         
@@ -126,6 +128,9 @@ class EmailEnricher:
                             break
                         else:
                             continue
+                    
+                    # Bounded wait for JavaScript-rendered content
+                    await page.wait_for_timeout(2000)
                 except Exception as e:
                     logger.debug(f"Failed to navigate to {current_url}: {e}")
                     if pages_visited == 1:
@@ -174,11 +179,15 @@ class EmailEnricher:
                             if not link or not link.startswith('http'):
                                 continue
                             link_parsed = urlparse(link)
-                            if link_parsed.netloc != base_domain:
+                            link_domain = link_parsed.netloc.lower()
+                            if link_domain.startswith('www.'):
+                                link_domain = link_domain[4:]
+                                
+                            if link_domain != base_domain:
                                 continue
                                 
-                            path_lower = link_parsed.path.lower()
-                            if any(k in path_lower for k in ['contact', 'about']):
+                            path_and_fragment = (link_parsed.path + link_parsed.fragment).lower()
+                            if any(k in path_and_fragment for k in ['contact', 'about']):
                                 contact_links.append(link)
                                 
                         # Add unique contact links to visit queue
