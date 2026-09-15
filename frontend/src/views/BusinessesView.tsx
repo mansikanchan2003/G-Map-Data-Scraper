@@ -1,281 +1,364 @@
-import { useEffect, useState, useCallback } from 'react';
-import { BusinessesService } from '../api';
-import { Search, Download, ChevronLeft, ChevronRight, X, Loader2, MapPin } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import type { BusinessItem, PaginatedResponse, ApiError } from '../types/api';
+import { fetchBusinesses, triggerCsvStream } from '../api';
 
-export default function BusinessesView() {
-  const [data, setData] = useState<any>({ items: [], total: 0, page: 1, total_pages: 1 });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedBiz, setSelectedBiz] = useState<any>(null);
+interface BusinessesViewProps {
+  initialSearch?: string;
+}
+
+export const BusinessesView: React.FC<BusinessesViewProps> = ({
+  initialSearch = '',
+}) => {
+  const [businesses, setBusinesses] = useState<BusinessItem[]>([]);
+  const [total, setTotal] = useState<number>(0);
+  const [page, setPage] = useState<number>(1);
+  const [pageSize] = useState<number>(100);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<ApiError | null>(null);
 
   // Filters
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [stateFilter, setStateFilter] = useState('');
-  const [districtFilter, setDistrictFilter] = useState('');
-  const [isValidFilter, setIsValidFilter] = useState('true'); // Default to valid
+  const [search, setSearch] = useState<string>(initialSearch);
+  const [selectedState, setSelectedState] = useState<string>('All');
+  const [jumpPage, setJumpPage] = useState<string>('');
 
-  // Debounce search
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearch(search);
-      setPage(1); // Reset to page 1 on new search
-    }, 500);
-    return () => clearTimeout(handler);
-  }, [search]);
-
-  const loadData = useCallback(async () => {
+  const loadData = async (targetPage = page, searchTerm = search, st = selectedState) => {
     setLoading(true);
     setError(null);
     try {
-      const params: any = { page, page_size: 100 };
-      if (debouncedSearch) params.search = debouncedSearch;
-      if (stateFilter) params.state = stateFilter;
-      if (districtFilter) params.district = districtFilter;
-      if (isValidFilter !== 'all') params.is_valid = isValidFilter === 'true';
-
-      const res = await BusinessesService.getBusinesses(params);
-      setData(res);
+      const res: PaginatedResponse<BusinessItem> = await fetchBusinesses({
+        page: targetPage,
+        page_size: pageSize,
+        search: searchTerm,
+        state: st !== 'All' ? st : undefined,
+      });
+      setBusinesses(res.items);
+      setTotal(res.total);
+      setPage(res.page);
+      setTotalPages(res.total_pages || Math.max(1, Math.ceil(res.total / pageSize)));
     } catch (err: any) {
-      setError(err.message || 'Failed to load business data');
+      setError(err);
     } finally {
       setLoading(false);
     }
-  }, [page, debouncedSearch, stateFilter, districtFilter, isValidFilter]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const handleExport = () => {
-    BusinessesService.downloadCsv(); // Downloads all data ignoring pagination (handled by backend streaming)
   };
 
-  return (
-    <div className="flex-col gap-6 w-full max-w-7xl mx-auto relative h-full">
-      <header className="flex justify-between items-center mb-6">
-        <div>
-          <h1>Business Data Explorer</h1>
-          <p>Browse and export discovered business records</p>
-        </div>
-        <button onClick={handleExport} className="btn btn-primary">
-          <Download size={18} /> Export CSV
-        </button>
-      </header>
+  useEffect(() => {
+    loadData(1, search, selectedState);
+  }, [search, selectedState]);
 
-      {/* Filters */}
-      <div className="glass-card mb-6 flex items-end gap-4 flex-wrap">
-        <div className="input-group flex-1 min-w-[250px]">
-          <label className="input-label">Search Name/Address</label>
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-            <input 
-              type="text" 
-              className="input-field w-full pl-9" 
-              placeholder="e.g. Axis Bank..." 
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages && newPage !== page) {
+      setPage(newPage);
+      loadData(newPage, search, selectedState);
+    }
+  };
+
+  const handleJump = () => {
+    const num = parseInt(jumpPage, 10);
+    if (!isNaN(num) && num >= 1 && num <= totalPages) {
+      handlePageChange(num);
+      setJumpPage('');
+    }
+  };
+
+  const startRecord = total > 0 ? (page - 1) * pageSize + 1 : 0;
+  const endRecord = total > 0 ? Math.min(page * pageSize, total) : 0;
+
+  return (
+    <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-950 text-slate-100 select-none">
+      {/* Content Header & Filter Bar */}
+      <div className="px-6 py-4 border-b border-slate-800 bg-slate-900 flex flex-col gap-3 shrink-0">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-semibold text-white tracking-tight">Business Data</h1>
+              <span className="px-2 py-0.5 bg-sky-950/80 border border-sky-800 text-sky-400 font-mono-code text-xs rounded flex items-center gap-1.5 font-medium">
+                <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-ping" />
+                {total.toLocaleString()} records discovered
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Discovered, deduplicated, and geographically validated Google Maps business records
+            </p>
+          </div>
+
+          {/* Action Bar */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => loadData(page)}
+              disabled={loading}
+              className="h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-mono-code rounded flex items-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
+            >
+              <span className={`material-symbols-outlined text-[16px] text-slate-400 ${loading ? 'animate-spin' : ''}`}>
+                refresh
+              </span>
+              <span>Refresh</span>
+            </button>
+
+            {/* Primary Action: Download CSV (Backend Streaming) */}
+            <div className="relative group">
+              <button
+                onClick={() => triggerCsvStream()}
+                className="h-8 px-3.5 bg-sky-600 hover:bg-sky-500 text-white font-mono-code text-xs font-semibold rounded flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
+                title="Download full business dataset via backend streaming endpoint"
+              >
+                <span className="material-symbols-outlined text-[17px] text-white">cloud_download</span>
+                <span>Download CSV</span>
+              </button>
+
+              <div className="absolute right-0 top-full mt-1.5 hidden group-hover:flex flex-col z-50 w-72 p-2.5 bg-slate-900 border border-slate-700 text-slate-200 rounded shadow-xl pointer-events-none text-left">
+                <span className="text-[10px] font-mono-code text-sky-400 uppercase font-bold">STREAM ENDPOINT</span>
+                <span className="text-xs font-mono-code text-slate-100 mt-0.5 break-all font-semibold">
+                  GET /api/v1/export/businesses?format=csv
+                </span>
+                <span className="text-xs text-slate-400 mt-1">
+                  Streams full dataset directly from FastAPI backend with zero browser memory bloat.
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="input-group w-48">
-          <label className="input-label">State</label>
-          <input 
-            type="text" 
-            className="input-field" 
-            placeholder="e.g. DELHI" 
-            value={stateFilter}
-            onChange={e => {setStateFilter(e.target.value); setPage(1);}}
-          />
-        </div>
-        <div className="input-group w-48">
-          <label className="input-label">District</label>
-          <input 
-            type="text" 
-            className="input-field" 
-            placeholder="e.g. NEW DELHI" 
-            value={districtFilter}
-            onChange={e => {setDistrictFilter(e.target.value); setPage(1);}}
-          />
-        </div>
-        <div className="input-group w-48">
-          <label className="input-label">Validation Status</label>
-          <select 
-            className="input-field" 
-            value={isValidFilter}
-            onChange={e => {setIsValidFilter(e.target.value); setPage(1);}}
-          >
-            <option value="true">Valid Only (Default)</option>
-            <option value="false">Invalid / Failed</option>
-            <option value="all">All Records</option>
-          </select>
+
+        {/* Filter and Search Bar */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pt-1">
+          <div className="flex items-center gap-2 flex-1 max-w-2xl">
+            <div className="relative flex-1">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-[16px] material-symbols-outlined">
+                search
+              </span>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by business name or address..."
+                className="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 rounded pl-8 pr-3 h-8 text-xs font-mono-code text-slate-100 placeholder:text-slate-500 outline-none transition-all"
+              />
+            </div>
+
+            <select
+              value={selectedState}
+              onChange={(e) => setSelectedState(e.target.value)}
+              className="h-8 px-2 bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono-code rounded shadow-sm focus:outline-none focus:border-sky-500 cursor-pointer"
+            >
+              <option value="All">State: All</option>
+              <option value="DELHI">Delhi</option>
+              <option value="UTTAR PRADESH">Uttar Pradesh</option>
+              <option value="HARYANA">Haryana</option>
+              <option value="MAHARASHTRA">Maharashtra</option>
+              <option value="KARNATAKA">Karnataka</option>
+              <option value="TAMIL NADU">Tamil Nadu</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2 self-end lg:self-auto px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs font-mono-code text-slate-400">
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            <span>
+              Server-side page size: <strong className="text-slate-200 font-semibold">{pageSize} / page</strong>
+            </span>
+          </div>
         </div>
       </div>
 
+      {/* Error State Banner */}
       {error && (
-        <div className="glass-card border-red-500 text-red-500 mb-6">
-          <p>{error}</p>
+        <div className="m-4 p-4 bg-rose-950/70 border border-rose-800 rounded text-rose-200 space-y-2">
+          <div className="flex items-center gap-2 font-semibold text-sm">
+            <span className="material-symbols-outlined text-rose-400">error</span>
+            <span>Unable to load business records</span>
+          </div>
+          <p className="text-xs font-mono-code text-rose-300">
+            {error.isNetworkError
+              ? `Backend connection error at ${error.endpoint || '/api/v1/businesses'}. Ensure FastAPI is running.`
+              : error.message}
+          </p>
+          <button
+            onClick={() => loadData(page)}
+            className="px-3 py-1 bg-slate-900 border border-rose-700 hover:bg-slate-800 text-rose-300 text-xs font-mono-code rounded font-semibold cursor-pointer"
+          >
+            Retry
+          </button>
         </div>
       )}
 
-      {/* Data Table */}
-      <div className="glass-card p-0 overflow-hidden flex-1 flex flex-col min-h-[500px]">
-        <div className="table-container flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="flex h-64 items-center justify-center">
-              <Loader2 className="animate-spin text-cyan" size={32} />
-            </div>
-          ) : data.items.length === 0 ? (
-            <div className="flex h-64 items-center justify-center text-muted">
-              No business records found matching the current filters.
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Category</th>
-                  <th>Phone</th>
-                  <th>District / State</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.items.map((biz: any) => (
-                  <tr 
-                    key={biz.business_id} 
-                    className="cursor-pointer hover:bg-[rgba(255,255,255,0.05)]"
-                    onClick={() => setSelectedBiz(biz)}
-                  >
-                    <td className="font-medium max-w-xs truncate">{biz.name}</td>
-                    <td className="text-muted">{biz.category}</td>
-                    <td>{biz.phone || '-'}</td>
-                    <td className="text-muted text-xs uppercase">
-                      {biz.district || 'N/A'}, {biz.state || 'N/A'}
-                    </td>
-                    <td>
-                      <span className={`badge ${biz.is_valid ? 'badge-success' : 'badge-error'}`}>
-                        {biz.is_valid ? 'Valid' : 'Invalid'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* Pagination Footer */}
-        <div className="p-4 border-t border-[rgba(255,255,255,0.08)] flex justify-between items-center bg-[rgba(15,23,42,0.8)]">
-          <div className="text-sm text-muted">
-            Showing <span className="text-primary font-medium">{data.items.length > 0 ? (data.page - 1) * data.page_size + 1 : 0}</span> to <span className="text-primary font-medium">{Math.min(data.page * data.page_size, data.total)}</span> of <span className="text-primary font-medium">{data.total.toLocaleString()}</span> records
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted">Page {data.page} of {data.total_pages || 1}</span>
-            <div className="flex gap-2">
-              <button 
-                className="btn btn-secondary px-2 py-1" 
-                disabled={!data.has_prev}
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-              >
-                <ChevronLeft size={18} /> Prev
-              </button>
-              <button 
-                className="btn btn-secondary px-2 py-1" 
-                disabled={!data.has_next}
-                onClick={() => setPage(p => p + 1)}
-              >
-                Next <ChevronRight size={18} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Slide-out Detail Panel */}
-      {selectedBiz && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedBiz(null)} />
-          <div className="relative w-full max-w-md bg-surface h-full shadow-glass border-l border-color p-6 overflow-y-auto animate-in slide-in-from-right duration-200" style={{ backgroundColor: 'var(--bg-surface)' }}>
-            <button 
-              className="absolute top-4 right-4 text-muted hover:text-primary transition-colors"
-              onClick={() => setSelectedBiz(null)}
-            >
-              <X size={24} />
-            </button>
-            
-            <h2 className="text-xl pr-8 mb-1">{selectedBiz.name}</h2>
-            <div className="text-cyan text-sm mb-6 font-medium">{selectedBiz.category}</div>
-            
-            <div className="flex-col gap-6">
-              <div>
-                <h4 className="text-xs uppercase text-muted tracking-wider mb-2">Location & Address</h4>
-                <p className="text-sm bg-[rgba(0,0,0,0.2)] p-3 rounded-lg border border-[rgba(255,255,255,0.05)]">
-                  {selectedBiz.address}
-                </p>
-                <div className="flex justify-between mt-2 text-sm">
-                  <span className="text-muted">District: <span className="text-primary">{selectedBiz.district || '-'}</span></span>
-                  <span className="text-muted">State: <span className="text-primary">{selectedBiz.state || '-'}</span></span>
-                </div>
-              </div>
-              
-              <div>
-                <h4 className="text-xs uppercase text-muted tracking-wider mb-2">Contact Info</h4>
-                <div className="bg-[rgba(0,0,0,0.2)] p-3 rounded-lg border border-[rgba(255,255,255,0.05)] text-sm flex-col gap-2">
-                  <div className="flex justify-between">
-                    <span className="text-muted">Phone</span>
-                    <span className="font-medium">{selectedBiz.phone || 'Not available'}</span>
+      {/* DENSE DATA TABLE */}
+      <div className="flex-1 overflow-auto relative bg-slate-950 border-b border-slate-800">
+        <table className="w-full text-left border-collapse select-text">
+          <thead className="sticky top-0 z-20 bg-slate-900 border-b-2 border-slate-800">
+            <tr className="h-9">
+              <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold border-r border-slate-800 min-w-[200px]">
+                Name
+              </th>
+              <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold border-r border-slate-800 min-w-[260px]">
+                Address
+              </th>
+              <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold border-r border-slate-800 min-w-[130px]">
+                Phone
+              </th>
+              <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold border-r border-slate-800 min-w-[160px]">
+                Email
+              </th>
+              <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold border-r border-slate-800 min-w-[140px]">
+                Website
+              </th>
+              <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold border-r border-slate-800 min-w-[160px]">
+                Category
+              </th>
+              <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold border-r border-slate-800 min-w-[120px]">
+                Office Name
+              </th>
+              <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold border-r border-slate-800 min-w-[120px]">
+                District
+              </th>
+              <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold min-w-[110px]">
+                State
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800 text-xs font-mono-code">
+            {loading ? (
+              <tr>
+                <td colSpan={9} className="py-16 text-center text-slate-400 bg-slate-950">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <span className="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+                    <span>Loading businesses (page {page} of {totalPages})...</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted">Email</span>
-                    <span className="font-medium">{selectedBiz.email || 'Not available'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted">Website</span>
-                    {selectedBiz.website ? (
-                      <a href={selectedBiz.website} target="_blank" rel="noopener noreferrer" className="text-cyan hover:underline truncate max-w-[200px]">
-                        {selectedBiz.website}
-                      </a>
-                    ) : (
-                      <span className="font-medium">Not available</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-xs uppercase text-muted tracking-wider mb-2">Metadata</h4>
-                <div className="bg-[rgba(0,0,0,0.2)] p-3 rounded-lg border border-[rgba(255,255,255,0.05)] text-sm flex-col gap-2">
-                  <div className="flex justify-between">
-                    <span className="text-muted">Status</span>
-                    <span className={`badge ${selectedBiz.is_valid ? 'badge-success' : 'badge-error'}`}>
-                      {selectedBiz.is_valid ? 'Valid' : 'Invalid'}
+                </td>
+              </tr>
+            ) : businesses.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="py-16 text-center text-slate-400 bg-slate-950">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <span className="material-symbols-outlined text-[32px] text-slate-600">inventory_2</span>
+                    <span className="font-semibold text-slate-300">No businesses discovered yet.</span>
+                    <span className="text-xs text-slate-500">
+                      Run discovery batches from the Dashboard or Jobs Monitor to populate records.
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted">Discovered At</span>
-                    <span>{new Date(selectedBiz.discovered_at).toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
+                </td>
+              </tr>
+            ) : (
+              businesses.map((biz) => (
+                <tr key={biz.business_id} className="h-9 hover:bg-slate-900/60 transition-colors bg-slate-950/40">
+                  <td className="px-3 border-r border-slate-800 font-medium text-slate-100 font-sans">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate max-w-[220px]" title={biz.name}>
+                        {biz.name}
+                      </span>
+                      {biz.is_valid && (
+                        <span
+                          className="material-symbols-outlined text-[15px] text-emerald-400 shrink-0"
+                          title="Verified valid business"
+                        >
+                          verified
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 border-r border-slate-800 text-slate-400 truncate max-w-[260px]" title={biz.address || '—'}>
+                    {biz.address || '—'}
+                  </td>
+                  <td className="px-3 border-r border-slate-800 text-slate-200">
+                    {biz.phone || '—'}
+                  </td>
+                  <td className="px-3 border-r border-slate-800 text-sky-400 truncate max-w-[160px]">
+                    {biz.email ? (
+                      <a href={`mailto:${biz.email}`} className="hover:underline">{biz.email}</a>
+                    ) : '—'}
+                  </td>
+                  <td className="px-3 border-r border-slate-800">
+                    {biz.website ? (
+                      <a
+                        href={biz.website.startsWith('http') ? biz.website : `https://${biz.website}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 truncate max-w-[130px]"
+                      >
+                        <span className="truncate">{biz.website.replace(/^https?:\/\//, '')}</span>
+                        <span className="material-symbols-outlined text-[12px]">open_in_new</span>
+                      </a>
+                    ) : (
+                      <span className="text-slate-600">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 border-r border-slate-800">
+                    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] uppercase bg-slate-800 text-slate-300 border border-slate-700 truncate max-w-[150px]">
+                      {biz.category || 'General'}
+                    </span>
+                  </td>
+                  {/* Correct mapping to backend 'officename' */}
+                  <td className="px-3 border-r border-slate-800 text-slate-400 font-sans truncate max-w-[120px]">
+                    {biz.officename || '—'}
+                  </td>
+                  <td className="px-3 border-r border-slate-800 text-slate-300 font-sans truncate max-w-[120px]">
+                    {biz.district || '—'}
+                  </td>
+                  <td className="px-3 text-slate-300 font-sans truncate max-w-[110px]">
+                    {biz.state || '—'}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
-              {selectedBiz.google_maps_url && (
-                <div className="mt-4">
-                  <a 
-                    href={selectedBiz.google_maps_url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="btn btn-primary w-full"
-                  >
-                    <MapPin size={16} /> Open in Google Maps
-                  </a>
-                </div>
-              )}
-            </div>
+      {/* SERVER-SIDE PAGINATION FOOTER */}
+      <footer className="h-12 bg-slate-900 border-t border-slate-800 px-4 flex flex-col sm:flex-row items-center justify-between gap-2 select-none shadow-sm shrink-0">
+        <div className="flex items-center gap-4 text-xs font-mono-code text-slate-400">
+          <div>
+            Showing <span className="text-slate-100 font-bold">{startRecord} - {endRecord}</span> of{' '}
+            <span className="text-slate-100 font-bold">{total.toLocaleString()}</span> records
+          </div>
+          <div className="hidden md:flex items-center gap-1 text-slate-500">
+            <span>•</span>
+            <span>Server-side pagination (100 / page)</span>
           </div>
         </div>
-      )}
+
+        <div className="flex items-center gap-2 font-mono-code text-xs">
+          <button
+            onClick={() => handlePageChange(page - 1)}
+            disabled={page <= 1 || loading}
+            className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <span className="material-symbols-outlined text-[14px]">chevron_left</span>
+            <span>Prev</span>
+          </button>
+
+          <span className="text-slate-200 font-semibold px-1">
+            Page {page} of {totalPages}
+          </span>
+
+          <button
+            onClick={() => handlePageChange(page + 1)}
+            disabled={page >= totalPages || loading}
+            className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded flex items-center gap-1 transition-colors cursor-pointer shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <span>Next</span>
+            <span className="material-symbols-outlined text-[14px]">chevron_right</span>
+          </button>
+
+          {/* Jump to page input */}
+          <div className="hidden sm:flex items-center gap-1.5 ml-2 pl-2 border-l border-slate-800 text-slate-400">
+            <span className="text-[10px] uppercase font-semibold">Go to:</span>
+            <input
+              type="text"
+              value={jumpPage}
+              onChange={(e) => setJumpPage(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleJump()}
+              placeholder={String(page)}
+              className="h-7 w-12 bg-slate-950 border border-slate-700 text-center text-xs text-slate-200 rounded focus:border-sky-500 focus:outline-none"
+            />
+            <button
+              onClick={handleJump}
+              className="h-7 px-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[10px] rounded uppercase font-semibold cursor-pointer"
+            >
+              Jump
+            </button>
+          </div>
+        </div>
+      </footer>
     </div>
   );
-}
+};

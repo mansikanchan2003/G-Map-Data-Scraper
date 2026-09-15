@@ -15,11 +15,28 @@ async def lifespan(app: FastAPI):
     # Shutdown
     discovery_engine.close()
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(
     title="Autonomous Google Maps Business Discovery Agent",
     version="1.0.0",
     lifespan=lifespan
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 app.include_router(config.router)
 app.include_router(jobs.router)

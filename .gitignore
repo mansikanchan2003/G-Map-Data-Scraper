@@ -6,3 +6,9 @@ data/*.db
 *.db
 cmd_output.txt
 .pytest_cache/
+
+# Local/experimental scraper repository
+Scraped Data/gmap-scraper/
+
+# AI Studio reference export
+AI_Studio_UI/
