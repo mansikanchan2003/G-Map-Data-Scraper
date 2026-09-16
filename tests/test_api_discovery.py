@@ -61,7 +61,7 @@ def test_api_run_job_endpoint():
         ]
     }
 
-    with patch("src.services.job_manager.discovery_engine.execute_discovery", return_value=mock_discovery_result):
+    with patch("src.services.job_manager.GoogleMapsDiscoveryEngine.execute_discovery", return_value=mock_discovery_result):
         response = client.post("/api/v1/jobs/job_api_01/run")
         assert response.status_code == 200
         data = response.json()

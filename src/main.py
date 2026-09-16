@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from src.routers import config, jobs, businesses, discovery, export, runs
 from src.database import init_db, get_db
 from src.utils.logging import setup_logging
-from src.services.discovery_engine import discovery_engine
+
 from src.config import settings
 from contextlib import asynccontextmanager
 import logging
@@ -23,8 +23,6 @@ async def lifespan(app: FastAPI):
     logger.info("Database schema initialized")
     yield
     # --- Shutdown ---
-    logger.info("Shutting down — closing Playwright browser")
-    discovery_engine.close()
     logger.info("Shutdown complete")
 
 

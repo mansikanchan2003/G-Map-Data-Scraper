@@ -41,7 +41,7 @@ def generate_dedup_key(
     phone: Optional[str] = None,
     place_id: Optional[str] = None,
     maps_url: Optional[str] = None
-) -> str:
+) -> Optional[str]:
     """
     Generate composite deduplication key following strict hierarchy:
     1. Google Maps place identifier
@@ -51,6 +51,7 @@ def generate_dedup_key(
     5. fallback with URL hash or unique hash
 
     CRITICAL RULE: Never deduplicate on business name alone.
+    If no stable identity can be established, return None.
     """
     # 1. Place identifier (explicit or extracted from URL)
     pid = place_id or extract_place_id(maps_url)
@@ -81,9 +82,8 @@ def generate_dedup_key(
         url_hash = hashlib.sha256(maps_url.encode('utf-8')).hexdigest()[:12]
         return f"name_url:{norm_name[:30]}:{url_hash}"
 
-    # 6. Safe unique fallback using full name hash
-    fallback_hash = hashlib.sha256(f"{name}_{address}_{phone}".encode('utf-8')).hexdigest()[:12]
-    return f"fallback:{norm_name[:30]}:{fallback_hash}"
+    # 6. No stable identity can be established
+    return None
 
 def generate_business_id(name: str, phone: Optional[str], lat: Optional[float], lng: Optional[float], maps_url: Optional[str] = None) -> str:
     """Deterministic 16-char hex identifier for Business record."""

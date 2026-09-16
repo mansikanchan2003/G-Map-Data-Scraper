@@ -18,7 +18,7 @@ def test_db():
     db.close()
     Base.metadata.drop_all(bind=engine)
 
-@patch('src.services.job_manager.discovery_engine')
+@patch('src.services.job_manager.GoogleMapsDiscoveryEngine')
 @patch('src.services.email_enricher.EmailEnricher.enrich_batch')
 def test_email_enrichment_integration(mock_enrich_batch, mock_discovery, test_db: Session):
     # Setup test data
@@ -28,7 +28,7 @@ def test_email_enrichment_integration(mock_enrich_batch, mock_discovery, test_db
     test_db.add_all([loc, cat, job])
     test_db.commit()
 
-    # Mock discovery engine
+    # Mock discovery returning the same business, ensuring phone is updated
     mock_discovery.execute_discovery.return_value = {
         "status": "success",
         "results": [
@@ -100,7 +100,7 @@ def test_email_enrichment_integration(mock_enrich_batch, mock_discovery, test_db
     assert b2.email_enrichment_status == "found"
     assert b2.email_enriched_at is not None
 
-@patch('src.services.job_manager.discovery_engine')
+@patch('src.services.job_manager.GoogleMapsDiscoveryEngine')
 @patch('src.services.email_enricher.EmailEnricher.enrich_batch')
 def test_existing_email_not_overwritten(mock_enrich_batch, mock_discovery, test_db: Session):
     # Setup test data
@@ -165,7 +165,7 @@ def test_existing_email_not_overwritten(mock_enrich_batch, mock_discovery, test_
     assert biz.email == "do_not_touch@existing.com"
     assert biz.email_enrichment_status == "skipped_existing_email"
 
-@patch('src.services.job_manager.discovery_engine')
+@patch('src.services.job_manager.GoogleMapsDiscoveryEngine')
 @patch('src.services.email_enricher.EmailEnricher.enrich_batch')
 def test_enrichment_failure_does_not_fail_discovery(mock_enrich_batch, mock_discovery, test_db: Session):
     loc = Location(location_id="loc3", pincode="12345", latitude=10.0, longitude=20.0)

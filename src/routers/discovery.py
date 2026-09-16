@@ -66,6 +66,8 @@ def run_batch_discovery(
     emails_found_total = 0
     emails_not_found_total = 0
     emails_failed_total = 0
+    unidentifiable_total = 0
+    detail_extraction_failed_total = 0
     errors = []
     
     try:
@@ -85,6 +87,8 @@ def run_batch_discovery(
             saved += res.get("businesses_saved", 0)
             updated_businesses += res.get("businesses_updated", 0)
             duplicate_businesses += res.get("businesses_duplicate", 0)
+            unidentifiable_total += res.get("unidentifiable_count", 0)
+            detail_extraction_failed_total += res.get("detail_extraction_failed_count", 0)
             emails_found_total += res.get("emails_found", 0)
             emails_not_found_total += res.get("emails_not_found", 0)
             emails_failed_total += res.get("emails_failed", 0)
@@ -132,6 +136,8 @@ def run_batch_discovery(
         "jobs_completed": completed,
         "jobs_failed": failed,
         "businesses_saved": saved,
+        "unidentifiable_total": unidentifiable_total,
+        "detail_extraction_failed_total": detail_extraction_failed_total,
         "pending_jobs_remaining": remaining,
         "duration_seconds": duration,
         "errors": errors

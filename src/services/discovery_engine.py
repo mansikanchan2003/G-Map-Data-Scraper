@@ -2,7 +2,7 @@ import time
 import urllib.parse
 from typing import Dict, Any, List, Optional
 from src.utils.logging import logger
-from src.services.geo_validator import extract_coords_from_url
+from src.services.geo_validator import extract_coords_from_url, haversine_distance
 from src.services.deduplicator import extract_place_id
 
 class Selectors:
@@ -11,18 +11,18 @@ class Selectors:
     LISTING_ITEM = 'div.Nv2PK, div[role="article"]'
     TITLE_LINK = 'a.hfpxzc'
     TITLE_TEXT = 'div.qBF1Pd'
-    
+
     # Detail elements on single place view or detail page
     PHONE_BUTTON = 'button[data-item-id^="phone:tel:"], button[aria-label^="Phone"], button[aria-label*="Phone"]'
     ADDRESS_BUTTON = 'button[data-item-id="address"], button[aria-label*="Address"]'
     WEBSITE_LINK = 'a[data-item-id="authority"], a[aria-label^="Open website"], a[aria-label*="website"]'
-    
+
     # Cookie consent / Interstitials
     CONSENT_BUTTON = 'button:has-text("Accept all"), button:has-text("I agree"), form[action*="consent"] button'
-    
+
     # Blocking / CAPTCHA
     CAPTCHA = '#captcha-form, iframe[src*="recaptcha"], div.g-recaptcha, form#captcha'
-    
+
     # Zero results
     NO_RESULTS = 'div:has-text("Google Maps can\'t find"), div:has-text("No results found")'
 
@@ -35,7 +35,7 @@ def build_search_url(category: str, pincode: Optional[str], latitude: float, lon
         search_term = f"{category} near {clean_pincode}"
     else:
         search_term = category
-        
+
     encoded_query = urllib.parse.quote(search_term)
     return f"https://www.google.com/maps/search/{encoded_query}/@{latitude},{longitude},12z"
 
@@ -98,10 +98,11 @@ class GoogleMapsDiscoveryEngine:
         page_override: Optional mocked or external Playwright Page object for testability.
         """
         job_id = job_data.get("job_id", "unknown")
-        category = job_data.get("category")
+        category = job_data.get("category", "")
+        pincode = job_data.get("pincode")
         latitude = job_data.get("latitude")
         longitude = job_data.get("longitude")
-        pincode = job_data.get("pincode")
+        job_radius = job_data.get("radius_km") or 20.0
 
         # 1. Validation of input parameters
         if not category or not str(category).strip():
@@ -258,13 +259,13 @@ class GoogleMapsDiscoveryEngine:
 
             # 9. Extract listings (bounded and error-isolated)
             detail_page = context.new_page() if context else None
-            
+
             for index, card in enumerate(listing_cards):
                 try:
                     title_elem = card.locator(Selectors.TITLE_LINK).first
                     name = None
                     listing_url = None
-                    
+
                     if title_elem.count() > 0:
                         name = title_elem.get_attribute("aria-label") or title_elem.inner_text()
                         listing_url = title_elem.get_attribute("href")
@@ -283,36 +284,67 @@ class GoogleMapsDiscoveryEngine:
                     lat_ext, lng_ext = extract_coords_from_url(listing_url)
                     place_id = extract_place_id(listing_url)
 
-                    # Extract detail page info if URL available
-                    if listing_url and detail_page:
-                        try:
-                            detail_page.goto(listing_url, timeout=12000, wait_until="domcontentloaded")
-                            page.wait_for_timeout(int(self.delay_between_listings * 1000))
+                    # Pre-detail geographic filtering
+                    skip_detail = False
+                    if lat_ext is not None and lng_ext is not None:
+                        dist = haversine_distance(lat, lng, lat_ext, lng_ext)
+                        if dist > job_radius:
+                            skip_detail = True
+                            logger.info(f"Skipping detail extraction for '{name}': out of bounds ({dist:.2f}km > {job_radius}km)")
 
-                            # Phone
-                            phone_btn = detail_page.locator(Selectors.PHONE_BUTTON).first
-                            if phone_btn.count() > 0:
-                                phone = phone_btn.inner_text() or phone_btn.get_attribute("aria-label")
+                    # Extract detail page info if URL available and within bounds
+                    detail_extraction_failed = False
+                    if not skip_detail and listing_url and detail_page:
+                        max_attempts = 2
+                        for attempt in range(max_attempts):
+                            try:
+                                detail_page.goto(listing_url, timeout=12000, wait_until="domcontentloaded")
+                                page.wait_for_timeout(int(self.delay_between_listings * 1000))
 
-                            # Address
-                            addr_btn = detail_page.locator(Selectors.ADDRESS_BUTTON).first
-                            if addr_btn.count() > 0:
-                                address = addr_btn.get_attribute("aria-label") or addr_btn.inner_text()
+                                if detail_page.locator(Selectors.CAPTCHA).count() > 0:
+                                    logger.warning(f"CAPTCHA detected on detail page for Job {job_id}")
+                                    return {
+                                        "status": "blocked",
+                                        "job_id": job_id,
+                                        "query": search_url,
+                                        "count": len(raw_results),
+                                        "results": raw_results,
+                                        "error": "Google Maps access restricted or CAPTCHA presented on detail page",
+                                        "blocked_reason": "CAPTCHA_DETECTED"
+                                    }
 
-                            # Website
-                            web_link = detail_page.locator(Selectors.WEBSITE_LINK).first
-                            if web_link.count() > 0:
-                                website = web_link.get_attribute("href")
+                                # Phone
+                                phone_btn = detail_page.locator(Selectors.PHONE_BUTTON).first
+                                if phone_btn.count() > 0:
+                                    phone = phone_btn.inner_text() or phone_btn.get_attribute("aria-label")
 
-                            # Coordinate extraction from current URL after redirects
-                            if not lat_ext or not lng_ext:
-                                lat_ext, lng_ext = extract_coords_from_url(detail_page.url)
-                            if not place_id:
-                                place_id = extract_place_id(detail_page.url)
+                                # Address
+                                addr_btn = detail_page.locator(Selectors.ADDRESS_BUTTON).first
+                                if addr_btn.count() > 0:
+                                    address = addr_btn.get_attribute("aria-label") or addr_btn.inner_text()
 
-                        except Exception as detail_err:
-                            logger.warning(f"Error fetching details for listing '{name}': {detail_err}")
-                            partial_extraction_errors += 1
+                                # Website
+                                web_link = detail_page.locator(Selectors.WEBSITE_LINK).first
+                                if web_link.count() > 0:
+                                    website = web_link.get_attribute("href")
+
+                                # Coordinate extraction from current URL after redirects
+                                if not lat_ext or not lng_ext:
+                                    lat_ext, lng_ext = extract_coords_from_url(detail_page.url)
+                                if not place_id:
+                                    place_id = extract_place_id(detail_page.url)
+
+                                # If we reached here, extraction succeeded, break out of retry loop
+                                break
+
+                            except Exception as detail_err:
+                                if attempt < max_attempts - 1:
+                                    logger.warning(f"Detail retry {attempt+1} for '{name}': {detail_err}")
+                                    page.wait_for_timeout(1000)
+                                else:
+                                    logger.warning(f"Error fetching details for listing '{name}': {detail_err}")
+                                    partial_extraction_errors += 1
+                                    detail_extraction_failed = True
 
                     raw_results.append({
                         "name": name,
@@ -323,7 +355,8 @@ class GoogleMapsDiscoveryEngine:
                         "place_id": place_id,
                         "latitude": lat_ext,
                         "longitude": lng_ext,
-                        "category": category
+                        "category": category,
+                        "detail_extraction_failed": detail_extraction_failed
                     })
 
                 except Exception as listing_err:
@@ -371,6 +404,3 @@ class GoogleMapsDiscoveryEngine:
                     context.close()
                 except Exception:
                     pass
-
-# Singleton engine instance
-discovery_engine = GoogleMapsDiscoveryEngine()

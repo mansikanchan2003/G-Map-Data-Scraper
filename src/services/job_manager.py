@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 from src.models import Location, Category, Job, Business
-from src.services.discovery_engine import discovery_engine, build_search_url
+from src.services.discovery_engine import GoogleMapsDiscoveryEngine, build_search_url
 from src.services.normalizer import normalize_business_record
 from src.services.geo_validator import validate_geo_distance
 from src.services.deduplicator import generate_dedup_key, generate_business_id
@@ -21,24 +21,24 @@ def build_search_query(category_name: str, latitude: float, longitude: float) ->
 
 def generate_jobs(db: Session) -> dict:
     logger.info("Starting job generation...")
-    
+
     locations = db.query(Location).all()
     categories = db.query(Category).all()
-    
+
     if not locations or not categories:
         logger.warning("Locations or categories are empty. Cannot generate jobs.")
         return {"jobs_created": 0, "jobs_existing": 0, "total_jobs": 0, "message": "No locations or categories found."}
 
     existing_jobs_count = db.query(Job).count()
     jobs_created = 0
-    
+
     existing_job_ids = {job.job_id for job in db.query(Job.job_id).all()}
     new_jobs = []
-    
+
     for loc in locations:
         for cat in categories:
             job_id = generate_job_id(loc.location_id, cat.category_id)
-            
+
             if job_id not in existing_job_ids:
                 search_query = build_search_url(cat.category_name, loc.pincode, loc.latitude, loc.longitude)
                 new_job = Job(
@@ -59,7 +59,7 @@ def generate_jobs(db: Session) -> dict:
         logger.info("All jobs already exist.")
 
     total_jobs = db.query(Job).count()
-    
+
     return {
         "jobs_created": jobs_created,
         "jobs_existing": total_jobs - jobs_created,
@@ -118,7 +118,7 @@ def execute_single_job(
         "attempt_count": Job.attempt_count + 1,
         "last_attempt_at": now
     }, synchronize_session="fetch")
-    
+
     if updated_count == 0:
         db.rollback()
         return {
@@ -133,18 +133,28 @@ def execute_single_job(
     db.refresh(job)
 
     try:
-        engine = custom_engine or discovery_engine
-        job_payload = {
-            "job_id": job.job_id,
-            "category": cat.category_name,
-            "pincode": loc.pincode,
-            "latitude": loc.latitude,
-            "longitude": loc.longitude,
-            "radius_km": loc.radius_km or 20.0
-        }
+        local_engine_created = False
+        try:
+            if custom_engine:
+                engine = custom_engine
+            else:
+                engine = GoogleMapsDiscoveryEngine()
+                local_engine_created = True
 
-        # Execute discovery
-        discovery_res = engine.execute_discovery(job_payload, page_override=page_override)
+            job_payload = {
+                "job_id": job.job_id,
+                "category": cat.category_name,
+                "pincode": loc.pincode,
+                "latitude": loc.latitude,
+                "longitude": loc.longitude,
+                "radius_km": loc.radius_km or 20.0
+            }
+
+            # Execute discovery
+            discovery_res = engine.execute_discovery(job_payload, page_override=page_override)
+        finally:
+            if local_engine_created:
+                engine.close()
 
         raw_listings = discovery_res.get("results", [])
         raw_status = discovery_res.get("status", "failed")
@@ -154,10 +164,15 @@ def execute_single_job(
         saved_count = 0
         updated_count_biz = 0
         duplicate_count = 0
+        unidentifiable_count = 0
+        detail_extraction_failed_count = 0
         persisted_results = []
 
         if raw_status in ("success", "partial") and raw_listings:
             for item in raw_listings:
+                if item.get("detail_extraction_failed"):
+                    detail_extraction_failed_count += 1
+
                 normalized = normalize_business_record(item)
 
                 # Geo distance validation
@@ -177,6 +192,11 @@ def execute_single_job(
                     place_id=normalized["place_id"],
                     maps_url=normalized["google_maps_url"]
                 )
+
+                if not dedup_key:
+                    # No stable identity can be established. Discard as unresolved discovery.
+                    unidentifiable_count += 1
+                    continue
 
                 biz_id = generate_business_id(
                     name=normalized["name"],
@@ -343,6 +363,8 @@ def execute_single_job(
             "businesses_saved": saved_count,
             "businesses_updated": updated_count_biz,
             "businesses_duplicate": duplicate_count,
+            "unidentifiable_count": unidentifiable_count,
+            "detail_extraction_failed_count": detail_extraction_failed_count,
             "emails_found": emails_found,
             "emails_not_found": emails_not_found,
             "emails_failed": emails_failed,
@@ -366,6 +388,8 @@ def execute_single_job(
             "businesses_saved": 0,
             "businesses_updated": 0,
             "businesses_duplicate": 0,
+            "unidentifiable_count": 0,
+            "detail_extraction_failed_count": 0,
             "emails_found": 0,
             "emails_not_found": 0,
             "emails_failed": 0,
@@ -377,7 +401,7 @@ def retry_job(job_id: str, db: Session) -> Dict[str, Any]:
     job = db.query(Job).filter(Job.job_id == job_id).first()
     if not job:
         return {"error": "Job not found", "job_id": job_id}
-    
+
     prev_status = job.status
     job.status = "PENDING"
     job.error_message = None
@@ -411,19 +435,19 @@ def recover_stale_jobs(db: Session, max_age_minutes: int = 30) -> Dict[str, Any]
     from datetime import timedelta
     now = datetime.now(timezone.utc)
     threshold = now - timedelta(minutes=max_age_minutes)
-    
+
     stale_jobs = db.query(Job).filter(
         Job.status == "RUNNING",
         Job.last_attempt_at < threshold
     ).all()
-    
+
     count = 0
     for j in stale_jobs:
         j.status = "PENDING"
         j.error_message = "Recovered from stale RUNNING state"
         j.blocked_reason = None
         count += 1
-    
+
     db.commit()
     logger.info(f"Recovered {count} stale RUNNING jobs.")
     return {"recovered_count": count}
@@ -434,13 +458,13 @@ def auto_retry_failed_jobs(db: Session, max_retries: int = 3) -> Dict[str, Any]:
         Job.status == "FAILED",
         Job.attempt_count < max_retries
     ).all()
-    
+
     count = 0
     for j in failed_jobs:
         j.status = "PENDING"
         j.error_message = "Auto-queued for retry"
         count += 1
-        
+
     db.commit()
     logger.info(f"Auto-retried {count} FAILED jobs.")
     return {"retried_count": count}
