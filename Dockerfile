@@ -80,8 +80,8 @@ COPY alembic.ini .
 
 # Copy data files needed for config sync (xlsx files)
 # These can alternatively be mounted as a volume at runtime.
-COPY "Geocoded_Ad_Targeting_Locations_FINAL.xlsx" .
-COPY "G-Map Scraper Categories.xlsx" .
+COPY ["Geocoded_Ad_Targeting_Locations_FINAL.xlsx", "."]
+COPY ["G-Map Scraper Categories.xlsx", "."]
 
 # ---------------------------------------------------------------------------
 # Runtime configuration

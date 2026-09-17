@@ -99,7 +99,7 @@ Copy `.env.example` to `.env` and configure all required values:
 | `BACKEND_BASE_URL` | ✅ | URL n8n uses to call the backend (e.g. `http://backend:8000`) |
 | `CORS_ORIGINS` | ✅ | Comma-separated frontend origins (e.g. `https://dashboard.example.com`) |
 | `N8N_OUTPUT_SPREADSHEET_ID` | For export | Google Sheets ID for daily export |
-| `BATCH_SIZE` | Optional | Jobs per n8n batch run (default: 50) |
+| `BATCH_SIZE` | Optional | Jobs per n8n batch run (default: 15) |
 | `JOB_RETRY_LIMIT` | Optional | Max auto-retries per job (default: 3) |
 | `DEFAULT_RADIUS_KM` | Optional | Discovery radius in km (default: 20) |
 | `LOG_LEVEL` | Optional | `INFO` or `DEBUG` (default: INFO) |
@@ -128,7 +128,7 @@ curl http://localhost:8000/health
 
 # 6. Configure n8n environment variables in n8n UI:
 #    BACKEND_BASE_URL = http://backend:8000
-#    BATCH_SIZE = 50
+#    BATCH_SIZE = 15
 #    N8N_OUTPUT_SPREADSHEET_ID = your-sheet-id
 
 # 7. Sync configuration data
@@ -246,7 +246,7 @@ The daily automation workflow file: `n8n/autonomous_google_maps_daily.json`
 | Variable | Value |
 |---|---|
 | `BACKEND_BASE_URL` | `http://backend:8000` (Docker) or `http://your-server:8000` |
-| `BATCH_SIZE` | `50` (or as configured) |
+| `BATCH_SIZE` | `15` (or as configured) |
 | `N8N_OUTPUT_SPREADSHEET_ID` | Your Google Sheets ID |
 
 **Google Sheets credential**: Add a Google OAuth2 credential in n8n (Settings → Credentials → Google Sheets OAuth2 API). The credential never leaves n8n's encrypted store.

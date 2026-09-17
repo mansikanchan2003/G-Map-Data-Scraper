@@ -34,7 +34,7 @@ if config.config_file_name is not None:
 # This ensures alembic always uses the same DB as the running application.
 from src.config import settings as app_settings
 
-config.set_main_option("sqlalchemy.url", app_settings.database_url)
+config.set_main_option("sqlalchemy.url", str(app_settings.database_url).replace("%", "%%"))
 
 target_metadata = Base.metadata
 

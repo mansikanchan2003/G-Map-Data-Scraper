@@ -58,7 +58,7 @@ services:
       # Discovery settings
       BROWSER_HEADLESS: "true"
       DISCOVERY_CONCURRENCY: ${DISCOVERY_CONCURRENCY:-1}
-      BATCH_SIZE: ${BATCH_SIZE:-50}
+      BATCH_SIZE: ${BATCH_SIZE:-15}
       JOB_RETRY_LIMIT: ${JOB_RETRY_LIMIT:-3}
       DEFAULT_RADIUS_KM: ${DEFAULT_RADIUS_KM:-20.0}
 
@@ -72,6 +72,7 @@ services:
       - "8000:8000"
     volumes:
       # Mount data files if you want to update them without rebuilding
+      - ./data:/app/data
       - ./Geocoded_Ad_Targeting_Locations_FINAL.xlsx:/app/Geocoded_Ad_Targeting_Locations_FINAL.xlsx:ro
       - ./G-Map Scraper Categories.xlsx:/app/G-Map Scraper Categories.xlsx:ro
     depends_on:
@@ -94,7 +95,7 @@ services:
     environment:
       # n8n environment variables that the workflow reads via $env.BACKEND_BASE_URL
       BACKEND_BASE_URL: http://backend:8000
-      BATCH_SIZE: ${BATCH_SIZE:-50}
+      BATCH_SIZE: ${BATCH_SIZE:-15}
       N8N_OUTPUT_SPREADSHEET_ID: ${N8N_OUTPUT_SPREADSHEET_ID:-}
 
       # n8n internal settings

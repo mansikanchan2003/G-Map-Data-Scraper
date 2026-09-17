@@ -102,7 +102,7 @@
           "parameters": [
             {
               "name": "batch_size",
-              "value": "={{ $env.BATCH_SIZE || 50 }}"
+              "value": "={{ $env.BATCH_SIZE || 15 }}"
             },
             {
               "name": "trigger_source",
