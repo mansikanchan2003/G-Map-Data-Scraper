@@ -77,3 +77,82 @@ def test_api_discovery_status_and_stop():
     res_stop = client.post("/api/v1/discovery/stop")
     assert res_stop.status_code == 200
     assert "Draining is orchestrated externally" in res_stop.json()["message"]
+
+
+def test_business_api_public_contract():
+    """Verify GET /api/v1/businesses exposes exactly the 9 user-facing fields
+    and does NOT expose the 3 internal email-enrichment fields."""
+    db = TestingSessionLocal()
+    loc = Location(location_id="loc_pub_01", pincode="560001", latitude=12.9716, longitude=77.5946, radius_km=20.0)
+    cat = Category(category_id="cat_pub_01", category_name="Savings bank")
+    job = Job(
+        job_id="job_pub_01",
+        location_id="loc_pub_01",
+        category_id="cat_pub_01",
+        status="COMPLETED",
+        search_query="https://maps.google.com",
+    )
+    biz = Business(
+        business_id="biz_pub_01",
+        job_id="job_pub_01",
+        name="Test Bank",
+        address="123 MG Road, Bangalore",
+        phone="08012345678",
+        email="test@testbank.com",
+        email_source_url="https://testbank.com/contact",
+        email_enrichment_status="found",
+        website="https://testbank.com",
+        category="Savings bank",
+        district="Bangalore Urban",
+        state="Karnataka",
+        is_valid=True,
+        source_query="https://maps.google.com",
+        dedup_key="pid:test_pub_01",
+    )
+    db.add_all([loc, cat, job, biz])
+    db.commit()
+    db.close()
+
+    response = client.get("/api/v1/businesses?page=1&page_size=100")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] >= 1
+
+    # Find the business we just seeded
+    matches = [b for b in data["items"] if b.get("name") == "Test Bank"]
+    assert len(matches) == 1, "Test Bank not found in /api/v1/businesses response"
+    item = matches[0]
+
+    # --- 9 user-facing fields MUST be present ---
+    EXPECTED_FIELDS = {"name", "address", "phone", "email", "website",
+                       "category", "district", "state", "verified"}
+    for field in EXPECTED_FIELDS:
+        assert field in item, f"Expected user-facing field '{field}' is missing"
+
+    # --- 3 internal fields MUST be absent ---
+    FORBIDDEN_FIELDS = {"email_source_url", "email_enrichment_status", "email_enriched_at"}
+    for field in FORBIDDEN_FIELDS:
+        assert field not in item, f"Internal field '{field}' must not be exposed in public API"
+
+    # --- Verify values round-trip correctly ---
+    assert item["name"] == "Test Bank"
+    assert item["verified"] is True
+    assert item["email"] == "test@testbank.com"
+
+
+def test_business_detail_api_public_contract():
+    """Verify GET /api/v1/businesses/{id} also follows the public contract."""
+    response = client.get("/api/v1/businesses/biz_pub_01")
+    assert response.status_code == 200
+    item = response.json()
+
+    EXPECTED_FIELDS = {"name", "address", "phone", "email", "website",
+                       "category", "district", "state", "verified"}
+    for field in EXPECTED_FIELDS:
+        assert field in item, f"Expected user-facing field '{field}' is missing"
+
+    FORBIDDEN_FIELDS = {"email_source_url", "email_enrichment_status", "email_enriched_at"}
+    for field in FORBIDDEN_FIELDS:
+        assert field not in item, f"Internal field '{field}' must not be exposed in public detail API"
+
+    assert item["verified"] is True

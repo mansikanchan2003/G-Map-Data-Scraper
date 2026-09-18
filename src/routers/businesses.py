@@ -4,13 +4,13 @@ from sqlalchemy import or_
 from src.database import get_db
 from src.models import Business, Job, Location
 from src.schemas.common import Pagination
-from src.schemas.business import BusinessResponse
+from src.schemas.business import BusinessPublicResponse
 from typing import Optional
 from datetime import datetime
 
 router = APIRouter(prefix="/api/v1/businesses", tags=["Businesses"])
 
-@router.get("", response_model=Pagination[BusinessResponse])
+@router.get("", response_model=Pagination[BusinessPublicResponse])
 def get_businesses(
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=500),
@@ -63,7 +63,7 @@ def get_businesses(
     total_pages = (total + page_size - 1) // page_size
     
     return {
-        "items": items,
+        "items": [BusinessPublicResponse.from_orm_business(b) for b in items],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -72,9 +72,9 @@ def get_businesses(
         "has_prev": page > 1
     }
 
-@router.get("/{business_id}", response_model=BusinessResponse)
+@router.get("/{business_id}", response_model=BusinessPublicResponse)
 def get_business(business_id: str, db: Session = Depends(get_db)):
     biz = db.query(Business).filter(Business.business_id == business_id).first()
     if not biz:
         raise HTTPException(status_code=404, detail="Business not found")
-    return biz
+    return BusinessPublicResponse.from_orm_business(biz)
