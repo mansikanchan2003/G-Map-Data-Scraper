@@ -96,7 +96,7 @@ Copy `.env.example` to `.env` and configure all required values:
 |---|---|---|
 | `DATABASE_URL` | ✅ | PostgreSQL connection string: `postgresql+psycopg://user:pass@host:5432/db` |
 | `POSTGRES_PASSWORD` | ✅ | PostgreSQL password (Docker Compose only) |
-| `BACKEND_BASE_URL` | ✅ | URL n8n uses to call the backend (e.g. `http://backend:8000`) |
+| `N8N_BACKEND_BASE_URL` | ✅ | URL n8n uses to call the backend (e.g. `http://backend:8000`) |
 | `CORS_ORIGINS` | ✅ | Comma-separated frontend origins (e.g. `https://dashboard.example.com`) |
 | `N8N_OUTPUT_SPREADSHEET_ID` | For export | Google Sheets ID for daily export |
 | `BATCH_SIZE` | Optional | Jobs per n8n batch run (default: 15) |
@@ -127,7 +127,7 @@ curl http://localhost:8000/health
 # Settings → Import workflow → select n8n/autonomous_google_maps_daily.json
 
 # 6. Configure n8n environment variables in n8n UI:
-#    BACKEND_BASE_URL = http://backend:8000
+#    N8N_BACKEND_BASE_URL = http://backend:8000
 #    BATCH_SIZE = 15
 #    N8N_OUTPUT_SPREADSHEET_ID = your-sheet-id
 
@@ -245,7 +245,7 @@ The daily automation workflow file: `n8n/autonomous_google_maps_daily.json`
 
 | Variable | Value |
 |---|---|
-| `BACKEND_BASE_URL` | `http://backend:8000` (Docker) or `http://your-server:8000` |
+| `N8N_BACKEND_BASE_URL` | `http://backend:8000` (Docker) or `http://your-server:8000` |
 | `BATCH_SIZE` | `15` (or as configured) |
 | `N8N_OUTPUT_SPREADSHEET_ID` | Your Google Sheets ID |
 
@@ -495,7 +495,7 @@ python -m json.tool n8n/autonomous_google_maps_daily.json > /dev/null && echo "V
 - [ ] `DATABASE_URL` points to PostgreSQL (not SQLite)
 - [ ] `POSTGRES_PASSWORD` is a strong random password
 - [ ] `CORS_ORIGINS` lists only your actual frontend origin(s)
-- [ ] `BACKEND_BASE_URL` is reachable from n8n
+- [ ] `N8N_BACKEND_BASE_URL` is reachable from n8n
 - [ ] `alembic upgrade head` has been run on the production database
 - [ ] `/health` returns `{"status": "healthy"}`
 - [ ] Playwright Chromium launches successfully in the backend container

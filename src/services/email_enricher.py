@@ -1,4 +1,5 @@
 import asyncio
+import os
 import re
 from typing import List, Dict, Optional, Set
 from urllib.parse import urljoin, urlparse
@@ -9,13 +10,19 @@ EMAIL_REGEX = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
 class EmailEnricher:
     def __init__(
         self,
-        max_pages_per_site: int = 4,
-        navigation_timeout_ms: int = 15000,
-        max_concurrency: int = 5
+        max_pages_per_site: int = None,
+        navigation_timeout_ms: int = None,
+        max_concurrency: int = None,
+        enrichment_enabled: bool = None,
+        business_timeout_seconds: int = None,
+        batch_timeout_seconds: int = None
     ):
-        self.max_pages_per_site = max_pages_per_site
-        self.navigation_timeout_ms = navigation_timeout_ms
-        self.max_concurrency = max_concurrency
+        self.max_pages_per_site = max_pages_per_site if max_pages_per_site is not None else int(os.getenv("EMAIL_MAX_PAGES_PER_SITE", "4"))
+        self.navigation_timeout_ms = navigation_timeout_ms if navigation_timeout_ms is not None else int(os.getenv("EMAIL_NAVIGATION_TIMEOUT_MS", "15000"))
+        self.max_concurrency = max_concurrency if max_concurrency is not None else int(os.getenv("EMAIL_MAX_CONCURRENCY", "5"))
+        self.enrichment_enabled = enrichment_enabled if enrichment_enabled is not None else str(os.getenv("EMAIL_ENRICHMENT_ENABLED", "true")).lower() == "true"
+        self.business_timeout_seconds = business_timeout_seconds if business_timeout_seconds is not None else int(os.getenv("EMAIL_ENRICHMENT_TIMEOUT_SECONDS", "30"))
+        self.batch_timeout_seconds = batch_timeout_seconds if batch_timeout_seconds is not None else int(os.getenv("EMAIL_ENRICHMENT_BATCH_TIMEOUT_SECONDS", "120"))
 
     def enrich_batch(self, businesses: List[Dict]) -> List[Dict]:
         """
@@ -23,9 +30,9 @@ class EmailEnricher:
         Returns a list of dicts with business_id and the enriched fields:
         email, email_source_url, email_enrichment_status
         """
-        if not businesses:
+        if not businesses or not self.enrichment_enabled:
             return []
-        
+
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
@@ -37,43 +44,73 @@ class EmailEnricher:
 
         return asyncio.run(self._enrich_batch_async(businesses))
 
+    async def _process_business_with_timeout(self, context, biz: Dict, semaphore: asyncio.Semaphore) -> Dict:
+        try:
+            return await asyncio.wait_for(
+                self._process_business(context, biz, semaphore),
+                timeout=self.business_timeout_seconds
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout enriching business {biz.get('name')}")
+            return {
+                "business_id": biz["business_id"],
+                "email": None,
+                "email_source_url": None,
+                "email_enrichment_status": "timeout"
+            }
+        except Exception as e:
+            logger.error(f"Error enriching {biz.get('name')}: {e}")
+            return {
+                "business_id": biz["business_id"],
+                "email": None,
+                "email_source_url": None,
+                "email_enrichment_status": "error"
+            }
+
     async def _enrich_batch_async(self, businesses: List[Dict]) -> List[Dict]:
         from playwright.async_api import async_playwright
-        
+
         results = []
         semaphore = asyncio.Semaphore(self.max_concurrency)
-        
+
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True, args=['--disable-blink-features=AutomationControlled'])
             context = await browser.new_context(
                 viewport={"width": 1280, "height": 800},
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             )
-            
-            tasks = []
-            for biz in businesses:
-                tasks.append(self._process_business(context, biz, semaphore))
-                
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
+
+            tasks = [asyncio.create_task(self._process_business_with_timeout(context, biz, semaphore)) for biz in businesses]
+            done, pending = await asyncio.wait(tasks, timeout=self.batch_timeout_seconds)
+
+            for task in pending:
+                task.cancel()
+
+            for i, task in enumerate(tasks):
+                if task in done:
+                    try:
+                        results.append(task.result())
+                    except Exception as e:
+                        logger.error(f"Error enriching {businesses[i].get('name')}: {e}")
+                        results.append({
+                            "business_id": businesses[i]["business_id"],
+                            "email": None,
+                            "email_source_url": None,
+                            "email_enrichment_status": "error"
+                        })
+                else:
+                    logger.warning(f"Batch timeout exceeded for {businesses[i].get('name')}")
+                    results.append({
+                        "business_id": businesses[i]["business_id"],
+                        "email": None,
+                        "email_source_url": None,
+                        "email_enrichment_status": "batch_timeout"
+                    })
+
             await context.close()
             await browser.close()
-            
-        # Clean up results (handle exceptions from gather)
-        final_results = []
-        for i, res in enumerate(results):
-            if isinstance(res, Exception):
-                logger.error(f"Error enriching {businesses[i].get('name')}: {res}")
-                final_results.append({
-                    "business_id": businesses[i]["business_id"],
-                    "email": None,
-                    "email_source_url": None,
-                    "email_enrichment_status": "error"
-                })
-            else:
-                final_results.append(res)
-                
-        return final_results
+
+        return results
 
     async def _process_business(self, context, biz: Dict, semaphore: asyncio.Semaphore) -> Dict:
         async with semaphore:
@@ -91,7 +128,7 @@ class EmailEnricher:
                 "email_source_url": None,
                 "email_enrichment_status": "no_website"
             }
-            
+
         website = website.strip()
         if not website.startswith('http'):
             website = 'https://' + website
@@ -102,7 +139,7 @@ class EmailEnricher:
             base_domain = base_domain[4:]
 
         logger.info(f"Enriching email for {name} at {website}")
-        
+
         page = await context.new_page()
         visited: Set[str] = set()
         to_visit = [website]
@@ -116,10 +153,10 @@ class EmailEnricher:
                 current_url = to_visit.pop(0)
                 if current_url in visited:
                     continue
-                    
+
                 visited.add(current_url)
                 pages_visited += 1
-                
+
                 try:
                     response = await page.goto(current_url, timeout=self.navigation_timeout_ms, wait_until="domcontentloaded")
                     if response and response.status in [403, 401, 429]:
@@ -128,7 +165,7 @@ class EmailEnricher:
                             break
                         else:
                             continue
-                    
+
                     # Bounded wait for JavaScript-rendered content
                     await page.wait_for_timeout(2000)
                 except Exception as e:
@@ -137,7 +174,7 @@ class EmailEnricher:
                         status = "timeout"
                         break
                     continue
-                
+
                 # Check for blocking/captcha on page content
                 page_text = await page.evaluate("document.body.innerText")
                 if "captcha" in page_text.lower() and ("verify you are human" in page_text.lower() or "security check" in page_text.lower()):
@@ -148,7 +185,7 @@ class EmailEnricher:
 
                 # Extract emails from mailto and text
                 page_emails = self._extract_emails_from_text(page_text)
-                
+
                 # Check mailto links
                 try:
                     hrefs = await page.evaluate("""() => {
@@ -160,7 +197,7 @@ class EmailEnricher:
                             page_emails.add(email.lower())
                 except Exception:
                     pass
-                
+
                 # Extract emails from rendered HTML source
                 try:
                     html_content = await page.content()
@@ -168,20 +205,20 @@ class EmailEnricher:
                     page_emails.update(html_emails)
                 except Exception:
                     pass
-                
+
                 if page_emails:
                     found_emails.update(page_emails)
                     email_source = current_url
                     status = "found"
                     break # Stop at first page we find an email
-                
+
                 # If homepage, find internal links to contact/about
                 if pages_visited == 1:
                     try:
                         links = await page.evaluate("""() => {
                             return Array.from(document.querySelectorAll('a')).map(a => a.href);
                         }""")
-                        
+
                         contact_links = []
                         for link in links:
                             if not link or not link.startswith('http'):
@@ -190,21 +227,21 @@ class EmailEnricher:
                             link_domain = link_parsed.netloc.lower()
                             if link_domain.startswith('www.'):
                                 link_domain = link_domain[4:]
-                                
+
                             if link_domain != base_domain:
                                 continue
-                                
+
                             path_and_fragment = (link_parsed.path + link_parsed.fragment).lower()
                             if any(k in path_and_fragment for k in ['contact', 'about']):
                                 contact_links.append(link)
-                                
+
                         # Add unique contact links to visit queue
                         for link in set(contact_links):
                             if link not in visited and link not in to_visit:
                                 to_visit.append(link)
                     except Exception:
                         pass
-                        
+
         finally:
             await page.close()
 
@@ -234,7 +271,7 @@ class EmailEnricher:
             if self._is_valid_email(match):
                 emails.add(match)
         return emails
-        
+
     def _is_valid_email(self, email: str) -> bool:
         email = email.lower()
         if email.endswith(('.png', '.jpg', '.jpeg', '.gif', '.css', '.js')):
@@ -246,16 +283,16 @@ class EmailEnricher:
     def _select_best_email(self, emails: Set[str]) -> Optional[str]:
         if not emails:
             return None
-            
+
         emails_list = list(emails)
         # Prefer info, contact, sales, support, hello, office, admin
         preferred_prefixes = ['info@', 'contact@', 'sales@', 'support@', 'hello@', 'office@', 'admin@']
-        
+
         for email in emails_list:
             for prefix in preferred_prefixes:
                 if email.startswith(prefix):
                     return email
-                    
+
         return emails_list[0]
 
 email_enricher = EmailEnricher()

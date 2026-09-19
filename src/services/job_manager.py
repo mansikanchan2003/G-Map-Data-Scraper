@@ -280,29 +280,31 @@ def execute_single_job(
                         "is_duplicate": False
                     })
 
-        # Update job status
+        # Update base job status
         completion_time = datetime.now(timezone.utc)
         job.listings_found = len(raw_listings)
         job.businesses_saved = saved_count
         job.completed_at = completion_time
 
+        base_status = "COMPLETED"
         if raw_status == "blocked":
-            job.status = "BLOCKED"
+            base_status = "BLOCKED"
             job.blocked_reason = blocked_reason or "CAPTCHA or access restriction"
             job.error_message = error_msg
         elif raw_status == "failed":
-            job.status = "FAILED"
+            base_status = "FAILED"
             job.error_message = error_msg
         elif raw_status == "zero_results":
-            job.status = "COMPLETED"
+            base_status = "COMPLETED"
             job.error_message = None
         elif raw_status == "partial":
-            job.status = "PARTIAL"
+            base_status = "PARTIAL"
             job.error_message = f"Extracted {len(raw_listings)} listings with some detail extraction failures"
         else:
-            job.status = "COMPLETED"
+            base_status = "COMPLETED"
             job.error_message = None
 
+        job.status = base_status
         db.commit()
 
         emails_found = 0
@@ -348,11 +350,25 @@ def execute_single_job(
                         elif status_val in ("error", "timeout", "blocked"):
                             emails_failed += 1
 
+                if emails_failed > 0 and job.status == "COMPLETED":
+                    job.status = "PARTIAL"
+                    if not job.error_message:
+                        job.error_message = "Enrichment partial failures"
+                    else:
+                        job.error_message += " | Enrichment partial failures"
+
                 db.commit()
             else:
                 db.commit() # commit the skipped statuses
         except Exception as enrich_err:
             logger.error(f"Email enrichment failed for Job {job_id}: {enrich_err}")
+            if job.status == "COMPLETED":
+                job.status = "PARTIAL"
+                if not job.error_message:
+                    job.error_message = "Enrichment phase failed"
+                else:
+                    job.error_message += " | Enrichment phase failed"
+            db.commit()
 
         return {
             "status": "success" if job.status in ("COMPLETED", "PARTIAL") else "failed",

@@ -93,8 +93,6 @@ services:
     image: n8nio/n8n:latest
     restart: unless-stopped
     environment:
-      # n8n environment variables that the workflow reads via $env.BACKEND_BASE_URL
-      BACKEND_BASE_URL: http://backend:8000
       BATCH_SIZE: ${BATCH_SIZE:-15}
       N8N_OUTPUT_SPREADSHEET_ID: ${N8N_OUTPUT_SPREADSHEET_ID:-}
 

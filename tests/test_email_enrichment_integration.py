@@ -55,7 +55,7 @@ def test_email_enrichment_integration(mock_enrich_batch, mock_discovery, test_db
 
     # Setup the business 1 to ALREADY have an email via some mechanism or we just test that Plumber 1 gets skipped.
     # Wait, the job manager creates the businesses. Initially both have NO email.
-    
+
     # Mock the email enricher to return an email for Plumber 2 only
     def mock_enrich(businesses):
         results = []
@@ -75,7 +75,7 @@ def test_email_enrichment_integration(mock_enrich_batch, mock_discovery, test_db
                     "email_enrichment_status": "found"
                 })
         return results
-        
+
     mock_enrich_batch.side_effect = mock_enrich
 
     # Execute
@@ -108,7 +108,7 @@ def test_existing_email_not_overwritten(mock_enrich_batch, mock_discovery, test_
     cat = Category(category_id="cat2", category_name="Plumbers")
     job = Job(job_id="job2", location_id="loc2", category_id="cat2", status="PENDING", search_query="test")
     test_db.add_all([loc, cat, job])
-    
+
     from src.services.deduplicator import generate_dedup_key, generate_business_id
     dedup_key = generate_dedup_key(
         name="Existing Plumber",
@@ -149,9 +149,9 @@ def test_existing_email_not_overwritten(mock_enrich_batch, mock_discovery, test_
             }
         ]
     }
-    
+
     res = execute_single_job("job2", test_db, custom_engine=mock_discovery)
-    
+
     # Enrich batch should NOT have been called with existing plumber
     called_with_existing = False
     if mock_enrich_batch.called:
@@ -160,7 +160,7 @@ def test_existing_email_not_overwritten(mock_enrich_batch, mock_discovery, test_
             if a["name"] == "Existing Plumber":
                 called_with_existing = True
     assert not called_with_existing
-    
+
     test_db.refresh(biz)
     assert biz.email == "do_not_touch@existing.com"
     assert biz.email_enrichment_status == "skipped_existing_email"
@@ -184,16 +184,60 @@ def test_enrichment_failure_does_not_fail_discovery(mock_enrich_batch, mock_disc
             }
         ]
     }
-    
+
     # Force enricher to throw exception
     mock_enrich_batch.side_effect = Exception("Browser crashed")
-    
+
     res = execute_single_job("job3", test_db, custom_engine=mock_discovery)
-    
+
     # Discovery should still be successful and business saved!
     assert res["status"] == "success"
     assert res["businesses_saved"] == 1
-    
+
     b = test_db.query(Business).filter(Business.name == "Plumber Fail").first()
     assert b is not None
     assert b.email is None
+
+    # Job status should be PARTIAL
+    j = test_db.query(Job).filter(Job.job_id == "job3").first()
+    assert j.status == "PARTIAL"
+    assert "Enrichment phase failed" in j.error_message
+
+@patch('src.services.job_manager.GoogleMapsDiscoveryEngine')
+@patch('src.services.email_enricher.EmailEnricher.enrich_batch')
+def test_partial_enrichment_status(mock_enrich_batch, mock_discovery, test_db: Session):
+    loc = Location(location_id="loc4", pincode="12345", latitude=10.0, longitude=20.0)
+    cat = Category(category_id="cat4", category_name="Plumbers")
+    job = Job(job_id="job4", location_id="loc4", category_id="cat4", status="PENDING", search_query="test")
+    test_db.add_all([loc, cat, job])
+    test_db.commit()
+
+    mock_discovery.execute_discovery.return_value = {
+        "status": "success",
+        "results": [
+            {
+                "name": "Plumber 1",
+                "website": "http://1.com",
+                "google_maps_url": "http://maps/1"
+            },
+            {
+                "name": "Plumber 2",
+                "website": "http://2.com",
+                "google_maps_url": "http://maps/2"
+            }
+        ]
+    }
+
+    # Force enricher to return timeout for one
+    def mock_enrich(businesses):
+        return [
+            {"business_id": businesses[0]["business_id"], "email": "success@test.com", "email_enrichment_status": "found"},
+            {"business_id": businesses[1]["business_id"], "email": None, "email_enrichment_status": "timeout"}
+        ]
+    mock_enrich_batch.side_effect = mock_enrich
+
+    res = execute_single_job("job4", test_db, custom_engine=mock_discovery)
+
+    j = test_db.query(Job).filter(Job.job_id == "job4").first()
+    assert j.status == "PARTIAL"
+    assert "Enrichment partial failures" in j.error_message
