@@ -1,12 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
+import { useTheme } from './hooks/useTheme';
 import type { NavTab } from './components/Header';
 import { BackendSettingsModal } from './components/BackendSettingsModal';
 import { DashboardView } from './views/DashboardView';
 import { BusinessesView } from './views/BusinessesView';
 import { JobsView } from './views/JobsView';
 import { ConfigView } from './views/ConfigView';
+import { WhatsAppCampaignView } from './views/WhatsAppCampaignView';
+import { WhatsAppTemplatesView } from './views/WhatsAppTemplatesView';
+import { WhatsAppHistoryView } from './views/WhatsAppHistoryView';
 import { fetchStats, fetchDiscoveryStatus, checkBackendHealth } from './api';
 import type { NormalizedSystemStats, DiscoveryStatus, ApiError } from './types/api';
 
@@ -26,12 +30,13 @@ export default function App() {
   const [latencyMs, setLatencyMs] = useState<number | undefined>(undefined);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const { theme, toggleTheme } = useTheme();
 
   // Synchronize hash with activeTab
   useEffect(() => {
     const handleHash = () => {
       const hash = window.location.hash.replace('#', '');
-      if (hash === 'businesses' || hash === 'jobs' || hash === 'config' || hash === 'dashboard') {
+      if (['businesses', 'jobs', 'config', 'dashboard', 'whatsapp-campaign', 'whatsapp-templates', 'whatsapp-history'].includes(hash)) {
         setActiveTab(hash as NavTab);
       }
     };
@@ -112,6 +117,8 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0 pl-60 h-screen overflow-hidden">
         {/* Sticky Header */}
         <Header
+          theme={theme}
+          onToggleTheme={toggleTheme}
           activeTab={activeTab}
           isBackendConnected={isBackendConnected}
           latencyMs={latencyMs}
@@ -151,6 +158,12 @@ export default function App() {
           )}
 
           {activeTab === 'config' && <ConfigView />}
+
+          {activeTab === 'whatsapp-campaign' && <WhatsAppCampaignView />}
+
+          {activeTab === 'whatsapp-templates' && <WhatsAppTemplatesView />}
+
+          {activeTab === 'whatsapp-history' && <WhatsAppHistoryView />}
         </main>
       </div>
 

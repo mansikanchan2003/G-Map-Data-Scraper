@@ -171,6 +171,32 @@ npm run build
 
 ---
 
+## WHATSAPP META CONFIGURATION
+
+1. `META_ACCESS_TOKEN`
+   - Used to authenticate API requests to the Meta Graph API.
+   - Must be kept secret.
+   - Must never be committed to Git.
+
+2. `META_APP_SECRET`
+   - Used for webhook signature verification.
+   - Must be kept secret.
+
+3. `META_PHONE_NUMBER_ID`
+   - Identifies the specific WhatsApp sending phone number.
+   - Obtained from the Meta Business/WhatsApp configuration dashboard.
+
+**Important Security & Usage Notes:**
+- Actual credentials belong in your local `.env` or the approved secret-management system.
+- The `.env` file must not be committed.
+- `.env.example` contains no real credentials.
+- The frontend must never receive these credentials.
+- Credentials must never be logged.
+- Meta API calls should only occur when the user intentionally starts a real campaign and the account is properly configured.
+- The Meta account connection status should not be claimed as "connected" merely because environment variables exist. Connection should only be reported as "Connected" after an actual successful Meta API connectivity check.
+
+---
+
 ## Playwright Browser Setup
 
 The discovery engine and email enricher both use Playwright Chromium.

@@ -72,7 +72,7 @@ export const BackendSettingsModal: React.FC<BackendSettingsModalProps> = ({
         <div className="px-5 py-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <span className="material-symbols-outlined text-sky-400 text-[22px]">settings_ethernet</span>
-            <h2 className="text-base font-semibold text-white tracking-tight">FastAPI Backend Connection</h2>
+            <h2 className="text-base font-semibold text-slate-100 tracking-tight">FastAPI Backend Connection</h2>
           </div>
           <button
             onClick={onClose}

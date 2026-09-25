@@ -74,9 +74,13 @@ def test_api_discovery_status_and_stop():
     assert res_status.status_code == 200
     assert "State is fully managed via PostgreSQL" in res_status.json()["message"]
 
+    # /stop now acts on the active run instead of returning a fixed message.
+    # With nothing running it reports idle rather than pretending to stop.
     res_stop = client.post("/api/v1/discovery/stop")
     assert res_stop.status_code == 200
-    assert "Draining is orchestrated externally" in res_stop.json()["message"]
+    body = res_stop.json()
+    assert body["status"] == "idle"
+    assert "No discovery batch is running" in body["message"]
 
 
 def test_business_api_public_contract():

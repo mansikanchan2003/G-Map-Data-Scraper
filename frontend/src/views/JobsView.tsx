@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { JobItem, PaginatedResponse, NormalizedSystemStats, ApiError } from '../types/api';
 import { fetchJobs, retryJob, runJob, retryAllFailedJobs } from '../api';
+import { formatDateTime, localTimeZone } from '../utils/datetime';
 import { StatusBadge } from '../components/StatusBadge';
 
 interface JobsViewProps {
@@ -136,7 +137,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-semibold text-white tracking-tight">Jobs Monitor</h1>
+              <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Jobs Monitor</h1>
               <span className="px-2 py-0.5 bg-sky-950/80 border border-sky-800 text-sky-400 font-mono-code text-xs rounded flex items-center gap-1.5 font-medium">
                 <span className="h-1.5 w-1.5 rounded-full bg-sky-400 pulse-glow" />
                 FastAPI Orchestration Queue
@@ -189,7 +190,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="p-2.5 bg-slate-950 border border-slate-800 rounded flex flex-col justify-between">
             <span className="text-[10px] font-mono-code text-slate-400 uppercase font-semibold">Total Jobs</span>
-            <span className="text-lg font-mono-code text-white font-bold mt-1">{totalScrapes.toLocaleString()}</span>
+            <span className="text-lg font-mono-code text-slate-100 font-bold mt-1">{totalScrapes.toLocaleString()}</span>
           </div>
           <div className="p-2.5 bg-sky-950/40 border border-sky-800 rounded flex flex-col justify-between">
             <span className="text-[10px] font-mono-code text-sky-400 uppercase font-semibold flex items-center gap-1">
@@ -311,7 +312,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               <tr>
                 <td colSpan={8} className="py-16 text-center text-slate-400 bg-slate-950">
                   <div className="flex flex-col items-center justify-center gap-2">
-                    <span className="material-symbols-outlined text-[32px] text-slate-600">task</span>
+                    <span className="material-symbols-outlined text-[32px] text-slate-500">task</span>
                     <span className="font-semibold text-slate-300">No jobs match the current filter.</span>
                     <span className="text-xs text-slate-500">Select "All Jobs" or run batch discovery.</span>
                   </div>
@@ -355,7 +356,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                       {job.businesses_saved ?? '—'}
                     </td>
                     <td className="px-3 border-r border-slate-800 text-slate-400 text-[11px] truncate max-w-[140px]">
-                      {job.created_at ? job.created_at.slice(0, 19).replace('T', ' ') : '—'}
+                      {formatDateTime(job.created_at)}
                     </td>
                     <td className="px-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1.5">
@@ -423,7 +424,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                 </div>
               ) : (
                 <div className="text-slate-500">
-                  <span className="text-emerald-500">[STATUS]</span> Job recorded in database. Created: {selectedJob.created_at.slice(0, 19).replace('T', ' ')} UTC.
+                  <span className="text-emerald-500">[STATUS]</span> Job recorded in database. Created: {formatDateTime(selectedJob.created_at)} ({localTimeZone()}).
                 </div>
               )}
             </>

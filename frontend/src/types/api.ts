@@ -13,6 +13,8 @@ export interface LocationItem {
   state?: string | null;
   source_dataset?: string | null;
   created_at?: string;
+  tehsil?: string | null;
+  anchor_name?: string | null;
 }
 
 export interface CategoryItem {

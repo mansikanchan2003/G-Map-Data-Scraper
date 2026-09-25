@@ -54,3 +54,159 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #334155;
 }
+
+
+/* ===========================================================================
+   LIGHT THEME — built on Eko's own design tokens (about.eko.in)
+
+     teal #094053   navy #0c2531   gold #f9ab10
+     hero gradient #0a3543 -> #16435a   border #e0e7eb
+
+   Tailwind v4 compiles colour utilities to var(--color-<name>-<step>), so
+   redefining those variables re-themes the ~490 existing `slate-*` usages
+   without editing a single component. The slate ramp is inverted: steps used
+   as dark surfaces become light ones, steps used for bright text become ink.
+
+   On top of that inversion, a few structural elements are styled directly so
+   the result reads as Eko rather than as a washed-out greyscale flip: a deep
+   teal sidebar, gold as the active accent, and real elevation on cards.
+   =========================================================================== */
+:root[data-theme="light"] {
+  /* Surfaces. slate-950 carries a teal tint so the page is not flat grey and
+     white cards have something to lift off. */
+  --color-slate-950: #e9f0f4;   /* page background, inset panels */
+  --color-slate-900: #ffffff;   /* cards, header                 */
+  --color-slate-800: #d5e3e9;   /* borders, hover fills          */
+  --color-slate-700: #bdd1da;
+  --color-slate-600: #9cb6c2;
+
+  /* Ink */
+  --color-slate-500: #5f7a86;   /* muted labels    */
+  --color-slate-400: #46626f;   /* secondary text  */
+  --color-slate-300: #1d4859;
+  --color-slate-200: #0c2531;   /* body text       */
+  --color-slate-100: #071d26;   /* headings        */
+  --color-slate-50:  #05161d;
+
+  /* Primary action -> Eko teal */
+  --color-sky-700: #062e3b;
+  --color-sky-600: #094053;
+  --color-sky-500: #16435a;
+  --color-sky-400: #0f5f78;
+  --color-sky-300: #094053;
+  --color-sky-200: #062e3b;
+  --color-sky-950: #e8f2f6;
+  --color-sky-900: #d2e6ee;
+  --color-sky-800: #a3c7d5;
+
+  /* Status tints: dark washes become light washes, labels darken to stay legible */
+  --color-emerald-950: #e9faf1;
+  --color-emerald-900: #cdf0de;
+  --color-emerald-800: #86d9b0;
+  --color-emerald-500: #047857;
+  --color-emerald-400: #04785a;
+  --color-emerald-300: #045c46;
+  --color-emerald-200: #033f32;
+
+  --color-rose-950: #fef0f2;
+  --color-rose-900: #fde0e4;
+  --color-rose-800: #f5a6b1;
+  --color-rose-500: #c81e43;
+  --color-rose-400: #be123c;
+  --color-rose-300: #9f1239;
+  --color-rose-200: #7f1d2e;
+
+  --color-amber-950: #fdf6e7;   /* Eko gold-light */
+  --color-amber-900: #fbeac4;
+  --color-amber-800: #f0c96f;
+  --color-amber-400: #9c6a06;
+  --color-amber-300: #7d5405;
+  --color-amber-200: #5e3f04;
+
+  --color-purple-950: #f7f2fe;
+  --color-purple-900: #ece0fb;
+  --color-purple-800: #cfb0f5;
+  --color-purple-400: #7128be;
+  --color-purple-300: #5b21b6;
+  --color-purple-200: #46157f;
+
+  --eko-gold: #f9ab10;
+  --eko-teal: #094053;
+  --eko-navy: #0c2531;
+}
+
+:root[data-theme="light"] body {
+  background-color: #e9f0f4;
+  color: #0c2531;
+}
+
+/* --- Sidebar: Eko's hero gradient, which anchors the whole page ------------ */
+:root[data-theme="light"] aside {
+  background: linear-gradient(175deg, #0a3543 0%, #0c2531 100%);
+  border-right-color: #06222c;
+}
+:root[data-theme="light"] aside .text-slate-400 { color: #94b6c3; }
+:root[data-theme="light"] aside .text-slate-500 { color: #7fa4b3; }
+:root[data-theme="light"] aside .text-slate-100,
+:root[data-theme="light"] aside .text-slate-200,
+:root[data-theme="light"] aside .text-slate-300 { color: #f2f8fa; }
+:root[data-theme="light"] aside [class*="bg-slate-800"] { background-color: #ffffff14; }
+:root[data-theme="light"] aside [class*="border-slate-800"],
+:root[data-theme="light"] aside [class*="border-slate-700"] { border-color: #ffffff1f; }
+:root[data-theme="light"] aside .bg-slate-900 { background-color: #ffffff0a; box-shadow: none; }
+
+/* Gold marks the active section and the primary action */
+:root[data-theme="light"] aside [class*="bg-sky-950"] { background-color: #f9ab101f; }
+:root[data-theme="light"] aside [class*="border-sky-800"] { border-color: #f9ab1047; }
+:root[data-theme="light"] aside [class*="border-l-sky-500"] { border-left-color: var(--eko-gold); }
+:root[data-theme="light"] aside .text-sky-400,
+:root[data-theme="light"] aside .text-sky-300 { color: var(--eko-gold); }
+:root[data-theme="light"] aside [class*="bg-sky-600"] {
+  background-color: var(--eko-gold);
+  color: var(--eko-navy);
+}
+:root[data-theme="light"] aside [class*="bg-sky-600"]:hover { background-color: #e09706; }
+
+/* Inset panels inside the sidebar must stay darker than it, not lighter:
+   slate-950 is a light surface everywhere else in this theme. */
+:root[data-theme="light"] aside [class*="bg-slate-950"] {
+  background-color: #00000029;
+  border-color: #ffffff1a;
+}
+
+/* Status colours are tuned for light cards, so they are lifted back up for
+   the one surface in this theme that is dark. */
+:root[data-theme="light"] aside .text-emerald-400 { color: #5fd7a4; }
+:root[data-theme="light"] aside .text-amber-400   { color: var(--eko-gold); }
+:root[data-theme="light"] aside .text-rose-400    { color: #ff8fa3; }
+
+/* --- Header ---------------------------------------------------------------- */
+:root[data-theme="light"] header {
+  background-color: #ffffff;
+  border-bottom-color: #dbe7ec;
+  box-shadow: 0 1px 3px #0c25310a;
+}
+
+/* --- Cards: white on tinted ground, with genuine elevation ----------------- */
+:root[data-theme="light"] main .bg-slate-900 {
+  border-color: #dbe7ec;
+  box-shadow: 0 1px 2px #0c25310f, 0 1px 3px #0c25310a;
+}
+
+/* Gold focus ring */
+:root[data-theme="light"] input:focus,
+:root[data-theme="light"] select:focus,
+:root[data-theme="light"] textarea:focus {
+  border-color: var(--eko-gold) !important;
+  box-shadow: 0 0 0 3px #f9ab1029;
+}
+
+/* Scrollbars */
+:root[data-theme="light"] ::-webkit-scrollbar-track { background: #e2ecf1; }
+:root[data-theme="light"] ::-webkit-scrollbar-thumb { background: #b3cad5; }
+:root[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #94b1bf; }
+
+/* Theme transition — kept off inputs so typing never feels laggy */
+body, aside, header, .bg-slate-900, .bg-slate-950, .bg-slate-800 {
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}

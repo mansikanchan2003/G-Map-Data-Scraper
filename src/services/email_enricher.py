@@ -23,6 +23,8 @@ class EmailEnricher:
         self.enrichment_enabled = enrichment_enabled if enrichment_enabled is not None else str(os.getenv("EMAIL_ENRICHMENT_ENABLED", "true")).lower() == "true"
         self.business_timeout_seconds = business_timeout_seconds if business_timeout_seconds is not None else int(os.getenv("EMAIL_ENRICHMENT_TIMEOUT_SECONDS", "30"))
         self.batch_timeout_seconds = batch_timeout_seconds if batch_timeout_seconds is not None else int(os.getenv("EMAIL_ENRICHMENT_BATCH_TIMEOUT_SECONDS", "120"))
+        # Budget for unwinding cancelled work and closing the browser.
+        self.teardown_timeout_seconds = int(os.getenv("EMAIL_ENRICHMENT_TEARDOWN_TIMEOUT_SECONDS", "20"))
 
     def enrich_batch(self, businesses: List[Dict]) -> List[Dict]:
         """
@@ -33,16 +35,48 @@ class EmailEnricher:
         if not businesses or not self.enrichment_enabled:
             return []
 
+        # enrich_batch runs on a worker thread (FastAPI executes sync endpoints
+        # in a threadpool), so there is normally no loop here and asyncio.run
+        # owns a fresh one. Guard the lookup broadly: a missing nest_asyncio
+        # would otherwise raise ImportError, which the old RuntimeError-only
+        # handler let escape.
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # Cannot use asyncio.run() if event loop is already running
                 import nest_asyncio
                 nest_asyncio.apply()
-        except RuntimeError:
+        except Exception:
             pass
 
-        return asyncio.run(self._enrich_batch_async(businesses))
+        # Enrichment is best-effort: businesses are already persisted by this
+        # point, so a stuck browser must degrade to "no email" rather than
+        # hang the discovery batch and, with it, the whole API process.
+        overall_budget = self.batch_timeout_seconds + (2 * self.teardown_timeout_seconds) + 30
+
+        async def _run():
+            return await asyncio.wait_for(
+                self._enrich_batch_async(businesses), timeout=overall_budget
+            )
+
+        try:
+            return asyncio.run(_run())
+        except asyncio.TimeoutError:
+            logger.error(
+                f"Email enrichment exceeded its {overall_budget}s budget for "
+                f"{len(businesses)} businesses; continuing without emails"
+            )
+        except Exception as enrich_err:
+            logger.exception(f"Email enrichment batch failed: {enrich_err}")
+
+        return [
+            {
+                "business_id": b["business_id"],
+                "email": None,
+                "email_source_url": None,
+                "email_enrichment_status": "batch_timeout",
+            }
+            for b in businesses
+        ]
 
     async def _process_business_with_timeout(self, context, biz: Dict, semaphore: asyncio.Semaphore) -> Dict:
         try:
@@ -83,8 +117,16 @@ class EmailEnricher:
             tasks = [asyncio.create_task(self._process_business_with_timeout(context, biz, semaphore)) for biz in businesses]
             done, pending = await asyncio.wait(tasks, timeout=self.batch_timeout_seconds)
 
-            for task in pending:
-                task.cancel()
+            if pending:
+                # Cancellation in asyncio is cooperative: .cancel() only
+                # requests it. These tasks are still inside Playwright calls on
+                # `context`, so they must be given a chance to unwind before it
+                # is closed. Skipping this wedges the batch -- context.close()
+                # waits on pages that are themselves waiting on the loop, no
+                # further work happens, and Chromium is left spinning.
+                for task in pending:
+                    task.cancel()
+                await asyncio.wait(pending, timeout=self.teardown_timeout_seconds)
 
             for i, task in enumerate(tasks):
                 if task in done:
@@ -107,8 +149,14 @@ class EmailEnricher:
                         "email_enrichment_status": "batch_timeout"
                     })
 
-            await context.close()
-            await browser.close()
+            # Even after unwinding, a wedged browser must not hold the calling
+            # thread. If teardown does not finish, the process is left for the
+            # OS to reap rather than blocking the batch indefinitely.
+            for name, closer in (("context", context), ("browser", browser)):
+                try:
+                    await asyncio.wait_for(closer.close(), timeout=self.teardown_timeout_seconds)
+                except Exception as close_err:
+                    logger.warning(f"Email enrichment {name} did not close cleanly: {close_err}")
 
         return results
 

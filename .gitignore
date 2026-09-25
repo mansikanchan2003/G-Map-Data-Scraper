@@ -87,3 +87,9 @@ docker-compose.override.yml
 cmd_output.txt
 Scraped Data/gmap-scraper/
 AI_Studio_UI/
+
+# Exported business records. These are real contact details for real
+# businesses and must never reach a public repository.
+data/backups/
+*.csv
+!G-Map*.csv

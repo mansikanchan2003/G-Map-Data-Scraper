@@ -1,3 +1,4 @@
+import { formatDateTime } from '../utils/datetime';
 import React, { useState } from 'react';
 import type { NormalizedSystemStats, DiscoveryStatus, ApiError } from '../types/api';
 import type { NavTab } from '../components/Header';
@@ -94,7 +95,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <section className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-800">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold text-white tracking-tight">Dashboard</h1>
+            <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Dashboard</h1>
             <span className="px-2 py-0.5 rounded text-[10px] font-mono-code bg-sky-950/80 border border-sky-800 text-sky-400 font-bold uppercase">
               v2.0 Orchestrator
             </span>
@@ -174,7 +175,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="material-symbols-outlined text-slate-500 text-[18px]">pin_drop</span>
           </div>
           <div className="mt-2 flex items-baseline justify-between">
-            <div className="text-2xl font-mono-code text-white font-bold">
+            <div className="text-2xl font-mono-code text-slate-100 font-bold">
               {totalLocations.toLocaleString()}
             </div>
             <div className="text-xs font-mono-code text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/80 flex items-center gap-0.5 font-semibold">
@@ -196,7 +197,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="material-symbols-outlined text-slate-500 text-[18px]">category</span>
           </div>
           <div className="mt-2 flex items-baseline justify-between">
-            <div className="text-2xl font-mono-code text-white font-bold">
+            <div className="text-2xl font-mono-code text-slate-100 font-bold">
               {totalCategories.toLocaleString()}
             </div>
             <div className="text-xs font-mono-code text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 font-medium">
@@ -217,7 +218,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="material-symbols-outlined text-sky-400 text-[18px]">hub</span>
           </div>
           <div className="mt-2 flex items-baseline justify-between">
-            <div className="text-2xl font-mono-code text-white font-bold">
+            <div className="text-2xl font-mono-code text-slate-100 font-bold">
               {totalJobs.toLocaleString()}
             </div>
             <div className="text-xs font-mono-code text-sky-400 bg-sky-950/60 px-1.5 py-0.5 rounded border border-sky-800/80 flex items-center gap-0.5 font-semibold">
@@ -273,7 +274,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 QUEUED
               </span>
             </div>
-            <div className="text-xl font-mono-code text-white font-bold">{pendingJobs.toLocaleString()}</div>
+            <div className="text-xl font-mono-code text-slate-100 font-bold">{pendingJobs.toLocaleString()}</div>
             <div className="text-[11px] font-mono-code text-slate-400 mt-1">{pctPending}% of total</div>
           </div>
 
@@ -298,7 +299,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 DONE
               </span>
             </div>
-            <div className="text-xl font-mono-code text-white font-bold">{completedJobs.toLocaleString()}</div>
+            <div className="text-xl font-mono-code text-slate-100 font-bold">{completedJobs.toLocaleString()}</div>
             <div className="text-[11px] font-mono-code text-emerald-400 font-medium mt-1">{pctCompleted}% finished</div>
           </div>
 
@@ -310,7 +311,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 CAPPED
               </span>
             </div>
-            <div className="text-xl font-mono-code text-white font-bold">{partialJobs.toLocaleString()}</div>
+            <div className="text-xl font-mono-code text-slate-100 font-bold">{partialJobs.toLocaleString()}</div>
             <div className="text-[11px] font-mono-code text-amber-400 font-medium mt-1">{pctPartial}% limit hit</div>
           </div>
 
@@ -320,7 +321,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span className="text-[10px] font-mono-code text-rose-400 font-bold uppercase">FAILED</span>
               <button
                 onClick={() => onNavigate('jobs', 'FAILED')}
-                className="px-1.5 py-0.5 rounded text-[9px] font-mono-code border border-rose-800 bg-rose-950/80 text-rose-300 hover:bg-rose-900 hover:text-white transition-all uppercase font-semibold cursor-pointer"
+                className="px-1.5 py-0.5 rounded text-[9px] font-mono-code border border-rose-800 bg-rose-950/80 text-rose-300 hover:bg-rose-900 hover:text-slate-100 transition-all uppercase font-semibold cursor-pointer"
               >
                 Inspect
               </button>
@@ -337,7 +338,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 RATE LIMIT
               </span>
             </div>
-            <div className="text-xl font-mono-code text-white font-bold">{blockedJobs.toLocaleString()}</div>
+            <div className="text-xl font-mono-code text-slate-100 font-bold">{blockedJobs.toLocaleString()}</div>
             <div className="text-[11px] font-mono-code text-purple-400 font-medium mt-1">{pctBlocked}% throttled</div>
           </div>
         </div>
@@ -348,7 +349,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-sky-400 text-[18px]">bar_chart</span>
-            <h3 className="text-sm font-semibold text-white">Job Distribution Across Matrix</h3>
+            <h3 className="text-sm font-semibold text-slate-100">Job Distribution Across Matrix</h3>
           </div>
           <span className="text-xs font-mono-code text-slate-400 font-medium">
             {totalCalculated.toLocaleString()} Total Jobs ({pctCompleted}% Completed)
@@ -419,7 +420,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex items-center justify-between pb-3 border-b border-slate-800">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-emerald-400 text-[20px]">alt_route</span>
-              <h3 className="text-sm font-semibold text-white">Latest Orchestration Run</h3>
+              <h3 className="text-sm font-semibold text-slate-100">Latest Orchestration Run</h3>
             </div>
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded text-xs font-mono-code border border-emerald-800 bg-emerald-950/60 text-emerald-300 font-semibold">
@@ -439,7 +440,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 Started At
               </div>
               <div className="font-mono-code text-slate-200 mt-1 font-semibold truncate">
-                {stats?.last_run?.started_at ? stats.last_run.started_at.slice(0, 19).replace('T', ' ') : 'Ready on standby'}
+                {stats?.last_run?.started_at ? formatDateTime(stats.last_run.started_at) : 'Ready on standby'}
               </div>
             </div>
 
@@ -449,8 +450,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 Jobs Status (Last Run)
               </div>
               <div className="font-mono-code text-slate-200 mt-1 font-semibold flex items-center gap-2">
-                <span className="text-emerald-400" title="Completed">{stats?.last_run?.jobs_completed ?? 0}</span> / 
-                <span className="text-rose-400" title="Failed">{stats?.last_run?.jobs_failed ?? 0}</span> / 
+                <span className="text-emerald-400" title="Completed">{stats?.last_run?.jobs_completed ?? 0}</span> /
+                <span className="text-rose-400" title="Failed">{stats?.last_run?.jobs_failed ?? 0}</span> /
                 <span className="text-slate-300" title="Total">{stats?.last_run?.jobs_total ?? 0}</span>
               </div>
             </div>
@@ -489,7 +490,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           {/* Engine Execution Details */}
-          <div className="bg-[#050811] text-slate-200 rounded p-3 font-mono-code text-xs flex flex-col gap-1 border border-slate-800">
+          <div className="bg-slate-950 text-slate-200 rounded p-3 font-mono-code text-xs flex flex-col gap-1 border border-slate-800">
             <div className="flex items-center justify-between pb-1 border-b border-slate-800 text-[10px] uppercase text-slate-400">
               <span>Engine Status [FastAPI + Playwright]</span>
               <span className={isDiscoveryRunning ? 'text-sky-400 font-semibold' : 'text-emerald-400 font-semibold'}>
@@ -520,7 +521,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-sky-400 text-[18px]">memory</span>
-                <h3 className="text-sm font-semibold text-white">Engine Architecture</h3>
+                <h3 className="text-sm font-semibold text-slate-100">Engine Architecture</h3>
               </div>
               <span className="text-[10px] font-mono-code text-emerald-400 font-bold uppercase bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800">
                 HEALTHY
@@ -561,7 +562,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-slate-400 text-[18px]">bolt</span>
-                <h3 className="text-sm font-semibold text-white">Operational Controls</h3>
+                <h3 className="text-sm font-semibold text-slate-100">Operational Controls</h3>
               </div>
               <span className="text-xs font-mono-code text-slate-400 font-medium">Direct API</span>
             </div>
@@ -569,7 +570,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <button
                 onClick={handleTriggerPipeline}
                 disabled={actionLoading !== null || isDiscoveryRunning}
-                className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-sky-500 text-white rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-sky-500 text-slate-100 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
                 title="Run batch of 25 pending discovery jobs"
               >
                 <span className="material-symbols-outlined text-[16px] text-sky-400">play_circle</span>

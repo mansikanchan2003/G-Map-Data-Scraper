@@ -86,3 +86,61 @@ def test_enrich_batch_mocked(mock_async):
     res = enricher.enrich_batch([{"business_id": "1", "name": "Test", "website": "http://test.com"}])
     assert len(res) == 1
     assert res[0]["email"] == "info@test.com"
+
+
+# --- Hang containment -------------------------------------------------------
+# Enrichment used to cancel pending tasks and immediately close the Playwright
+# context. Cancellation is cooperative, so those tasks were still inside
+# Playwright calls on that context; close() then waited on pages that were
+# waiting on the loop. The batch wedged, Chromium kept spinning, and the whole
+# API process stopped responding. Businesses are already persisted before
+# enrichment runs, so a stuck browser must degrade to "no email" instead.
+
+def test_enrich_batch_survives_a_wedged_browser():
+    """A hung enrichment run must return, not block the caller forever."""
+    enricher = EmailEnricher(batch_timeout_seconds=1, business_timeout_seconds=1)
+    enricher.teardown_timeout_seconds = 1
+
+    async def _never_finishes(_businesses):
+        await asyncio.sleep(3600)
+
+    businesses = [
+        {"business_id": "b1", "name": "One", "website": "https://one.example"},
+        {"business_id": "b2", "name": "Two", "website": "https://two.example"},
+    ]
+
+    with patch.object(enricher, "_enrich_batch_async", _never_finishes):
+        results = enricher.enrich_batch(businesses)
+
+    assert len(results) == 2
+    assert {r["business_id"] for r in results} == {"b1", "b2"}
+    assert all(r["email"] is None for r in results)
+    assert all(r["email_enrichment_status"] == "batch_timeout" for r in results)
+
+
+def test_enrich_batch_reports_failure_instead_of_raising():
+    """An unexpected enrichment error must not abort the discovery batch."""
+    enricher = EmailEnricher(batch_timeout_seconds=1)
+
+    async def _blows_up(_businesses):
+        raise RuntimeError("playwright exploded")
+
+    businesses = [{"business_id": "b1", "name": "One", "website": "https://one.example"}]
+
+    with patch.object(enricher, "_enrich_batch_async", _blows_up):
+        results = enricher.enrich_batch(businesses)
+
+    assert len(results) == 1
+    assert results[0]["email_enrichment_status"] == "batch_timeout"
+
+
+def test_pending_tasks_are_awaited_before_teardown():
+    """Cancelled tasks must be allowed to unwind before the context closes."""
+    import inspect
+    source = inspect.getsource(EmailEnricher._enrich_batch_async)
+    cancel_at = source.index("task.cancel()")
+    unwind_at = source.index("await asyncio.wait(pending")
+    close_at = source.index("closer.close()")
+    assert cancel_at < unwind_at < close_at, (
+        "pending tasks must be awaited after cancel() and before the browser is closed"
+    )

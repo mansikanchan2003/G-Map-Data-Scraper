@@ -94,22 +94,47 @@ def normalize_address(address: Optional[str]) -> Optional[str]:
     raw = re.sub(r'^(?:Address|Loc)[:\s]*', '', str(address), flags=re.IGNORECASE).strip()
     return normalize_text(raw)
 
+# Column widths in the businesses table. Scraped values have no length limit
+# of their own -- a long Maps listing name or a URL full of query parameters
+# can exceed them. Since businesses are inserted in one transaction per job, a
+# single oversized value used to abort the insert and discard every business
+# that job had found, so values are clamped to fit instead.
+FIELD_LIMITS = {
+    "name": 500,
+    "email": 200,
+    "website": 500,
+    "place_id": 100,
+    "category": 200,
+    "officename": 100,
+    "district": 100,
+    "statename": 100,
+}
+
+
+def clamp(value: Optional[str], limit: int) -> Optional[str]:
+    """Trim a value to the width its column allows."""
+    if value is None:
+        return None
+    text = str(value)
+    return text if len(text) <= limit else text[:limit]
+
+
 def normalize_business_record(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Normalize all fields in an extracted business dictionary.
     """
     return {
-        "name": normalize_text(data.get("name")),
+        "name": clamp(normalize_text(data.get("name")), FIELD_LIMITS["name"]),
         "address": normalize_address(data.get("address")),
         "phone": normalize_phone(data.get("phone")),
-        "email": normalize_text(data.get("email")),
-        "website": normalize_url(data.get("website")),
+        "email": clamp(normalize_text(data.get("email")), FIELD_LIMITS["email"]),
+        "website": clamp(normalize_url(data.get("website")), FIELD_LIMITS["website"]),
         "google_maps_url": normalize_url(data.get("google_maps_url")),
-        "place_id": normalize_text(data.get("place_id")),
-        "category": normalize_text(data.get("category")),
+        "place_id": clamp(normalize_text(data.get("place_id")), FIELD_LIMITS["place_id"]),
+        "category": clamp(normalize_text(data.get("category")), FIELD_LIMITS["category"]),
         "latitude": data.get("latitude"),
         "longitude": data.get("longitude"),
-        "officename": normalize_text(data.get("officename")),
-        "district": normalize_text(data.get("district")),
-        "statename": normalize_text(data.get("statename") or data.get("state"))
+        "officename": clamp(normalize_text(data.get("officename")), FIELD_LIMITS["officename"]),
+        "district": clamp(normalize_text(data.get("district")), FIELD_LIMITS["district"]),
+        "statename": clamp(normalize_text(data.get("statename") or data.get("state")), FIELD_LIMITS["statename"])
     }

@@ -9,6 +9,8 @@ class LocationBase(BaseModel):
     radius_km: float
     district: Optional[str] = None
     state: Optional[str] = None
+    tehsil: Optional[str] = None
+    anchor_name: Optional[str] = None
     source_dataset: str
 
 class LocationResponse(LocationBase):

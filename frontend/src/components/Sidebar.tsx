@@ -42,6 +42,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'businesses', label: 'Business Data', icon: 'dataset' },
     { id: 'jobs', label: 'Jobs Monitor', icon: 'sync' },
     { id: 'config', label: 'Configuration', icon: 'tune' },
+    { id: 'whatsapp-campaign', label: 'WhatsApp Campaign', icon: 'campaign' },
+    { id: 'whatsapp-templates', label: 'Templates', icon: 'chat' },
+    { id: 'whatsapp-history', label: 'Campaign History', icon: 'history' },
   ];
 
   return (
@@ -57,7 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="material-symbols-outlined text-[20px]">deployed_code</span>
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="text-[17px] font-bold tracking-tight text-white uppercase leading-none truncate">
+            <span className="text-[17px] font-bold tracking-tight text-slate-100 uppercase leading-none truncate">
               AutoGMap
             </span>
             <div className="flex items-center gap-1.5 mt-1">

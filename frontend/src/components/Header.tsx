@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { triggerCsvStream } from '../api';
+import { ThemeToggle } from './ThemeToggle';
+import type { Theme } from '../hooks/useTheme';
 
-export type NavTab = 'dashboard' | 'businesses' | 'jobs' | 'config';
+export type NavTab = 'dashboard' | 'businesses' | 'jobs' | 'config' | 'whatsapp-campaign' | 'whatsapp-templates' | 'whatsapp-history';
 
 interface HeaderProps {
   activeTab: NavTab;
@@ -13,6 +15,8 @@ interface HeaderProps {
   onNavigate: (tab: NavTab) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  theme: Theme;
+  onToggleTheme: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,6 +29,8 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigate,
   searchQuery,
   onSearchChange,
+  theme,
+  onToggleTheme,
 }) => {
   const [downloading, setDownloading] = useState(false);
 
@@ -42,9 +48,12 @@ export const Header: React.FC<HeaderProps> = ({
     businesses: { section: 'records', sub: 'discovered-businesses' },
     jobs: { section: 'orchestration', sub: 'jobs-monitor' },
     config: { section: 'configuration', sub: 'matrix-sources' },
+    'whatsapp-campaign': { section: 'whatsapp', sub: 'campaign-builder' },
+    'whatsapp-templates': { section: 'whatsapp', sub: 'templates' },
+    'whatsapp-history': { section: 'whatsapp', sub: 'history' },
   };
 
-  const { section, sub } = breadcrumbs[activeTab];
+  const { section, sub } = breadcrumbs[activeTab] || breadcrumbs['dashboard'];
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between px-4 h-14 w-full bg-slate-900 border-b border-slate-800 shadow-sm select-none shrink-0">
@@ -190,6 +199,7 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <span className="material-symbols-outlined text-[18px]">tune</span>
           </button>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
 
         {/* Operator Badge */}

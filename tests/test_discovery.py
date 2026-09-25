@@ -507,3 +507,133 @@ def test_batch_isolation_on_exception():
         assert "Simulated Database or System Crash" in j1.error_message
     finally:
         db.close()
+
+
+# 12. Out-of-range listings must be discarded, not saved as name-only rows.
+# Google treats the map viewport as a hint and regularly returns results
+# hundreds of km away. Those used to be persisted with every contact field
+# empty, which is what produced batches of names with no phone/address.
+def test_out_of_range_listings_are_discarded():
+    engine = GoogleMapsDiscoveryEngine(headless=True)
+
+    # Delhi job; one listing in Delhi, one in Mumbai (~1150 km away).
+    near_url = "https://www.google.com/maps/place/Near+Co/data=!3d28.6314!4d77.2187"
+    far_url = "https://www.google.com/maps/place/Far+Co/data=!3d19.0760!4d72.8777"
+
+    def make_card(name, url):
+        card = MagicMock()
+        title = MagicMock()
+        title.count.return_value = 1
+        title.get_attribute.side_effect = lambda a: url if a == "href" else name
+        title.inner_text.return_value = name
+        card.locator.return_value.first = title
+        return card
+
+    cards = [make_card("Near Co", near_url), make_card("Far Co", far_url)]
+
+    mock_page = MagicMock()
+
+    def mock_locator(selector):
+        loc = MagicMock()
+        if selector == Selectors.LISTING_ITEM:
+            loc.all.return_value = cards
+            loc.count.return_value = len(cards)
+        else:
+            loc.count.return_value = 0
+            loc.all.return_value = []
+        return loc
+
+    mock_page.locator.side_effect = mock_locator
+
+    job = {
+        "job_id": "test_out_of_range",
+        "category": "Veterinary",
+        "pincode": "110001",
+        "latitude": 28.6304,
+        "longitude": 77.2177,
+        "radius_km": 20.0,
+    }
+
+    res = engine.execute_discovery(job, page_override=mock_page)
+
+    names = [r["name"] for r in res["results"]]
+    assert "Near Co" in names
+    assert "Far Co" not in names, "a listing outside the radius must not be persisted"
+    assert res["out_of_range_skipped"] == 1
+
+
+# 13. A business Google re-lists under a new place_id must not break the job.
+# dedup_key includes place_id while business_id does not, so such a record
+# looked new by dedup_key yet collided on the primary key. The insert failed
+# and rolled back the entire job, discarding every business it had found.
+def test_existing_business_is_matched_by_either_identity():
+    from src.services import job_manager
+    import inspect
+
+    source = inspect.getsource(job_manager.execute_single_job)
+    lookup = source[source.index("existing_biz = db.query(Business)"):]
+    lookup = lookup[:lookup.index(".first()")]
+
+    assert "dedup_key" in lookup, "dedup_key must still be matched"
+    assert "business_id" in lookup, (
+        "business_id must also be matched, otherwise a new place_id for a known "
+        "business collides on the primary key and fails the whole job"
+    )
+
+
+# 14. One oversized scraped value must not discard a whole job's results.
+# Businesses are inserted in a single transaction per job, so a name or URL
+# longer than its column aborted the insert and lost every business found.
+def test_oversized_fields_are_clamped_to_column_width():
+    from src.services.normalizer import normalize_business_record, FIELD_LIMITS
+
+    record = normalize_business_record({
+        "name": "A" * 900,
+        "website": "https://example.com/?q=" + "b" * 900,
+        "email": "x" * 300 + "@example.com",
+        "place_id": "P" * 300,
+        "category": "C" * 400,
+        "district": "D" * 200,
+        "state": "S" * 200,
+    })
+
+    assert len(record["name"]) == FIELD_LIMITS["name"]
+    assert len(record["website"]) <= FIELD_LIMITS["website"]
+    assert len(record["place_id"]) <= FIELD_LIMITS["place_id"]
+    assert len(record["category"]) <= FIELD_LIMITS["category"]
+    assert len(record["district"]) <= FIELD_LIMITS["district"]
+    assert len(record["statename"]) <= FIELD_LIMITS["statename"]
+
+
+def test_normal_values_are_untouched_by_clamping():
+    from src.services.normalizer import normalize_business_record
+
+    record = normalize_business_record({
+        "name": "Kalka Printers",
+        "website": "https://kalkaprinters.in",
+        "category": "Print shop",
+    })
+    assert record["name"] == "Kalka Printers"
+    assert record["website"] == "https://kalkaprinters.in"
+    assert record["category"] == "Print shop"
+
+
+# 15. Two cards for the same shop inside ONE job must not collide.
+# Google can return the same business twice under different place_ids: the
+# dedup_keys differ so both look new, but business_id omits place_id so both
+# hash the same. Neither exists in the database yet, so a database lookup
+# alone cannot catch it and the insert failed on the primary key.
+def test_job_tracks_business_ids_queued_within_itself():
+    import inspect
+    from src.services import job_manager
+
+    source = inspect.getsource(job_manager.execute_single_job)
+    init_at = source.index("seen_business_ids = set()")
+    loop_at = source.index("for item in raw_listings:")
+    guard_at = source.index("if biz_id in seen_business_ids:")
+    add_at = source.index("seen_business_ids.add(biz_id)")
+
+    assert init_at < loop_at, "the set must be created before the loop"
+    assert loop_at < guard_at < add_at, (
+        "an id already queued by this job must be skipped before another row is built"
+    )

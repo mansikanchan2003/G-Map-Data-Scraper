@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 from src.models import Location, Category, Job, Business
+from src.config import settings
 from src.services.discovery_engine import GoogleMapsDiscoveryEngine, build_search_url
 from src.services.normalizer import normalize_business_record
 from src.services.geo_validator import validate_geo_distance
@@ -138,7 +139,16 @@ def execute_single_job(
             if custom_engine:
                 engine = custom_engine
             else:
-                engine = GoogleMapsDiscoveryEngine()
+                # The engine used to be constructed bare, so its constructor
+                # defaults silently won and the tuning values in config.py had
+                # no effect. Pass them through so timings are configurable.
+                engine = GoogleMapsDiscoveryEngine(
+                    headless=settings.browser_headless,
+                    navigation_timeout_ms=settings.browser_timeout_ms,
+                    element_timeout_ms=settings.element_timeout_ms,
+                    delay_between_listings=settings.listing_delay_seconds,
+                    max_scroll_attempts=settings.max_scroll_attempts,
+                )
                 local_engine_created = True
 
             job_payload = {
@@ -169,6 +179,14 @@ def execute_single_job(
         persisted_results = []
 
         if raw_status in ("success", "partial") and raw_listings:
+            # business_id is derived without place_id, so two cards Google
+            # returned for the same shop under different place_ids produce
+            # different dedup_keys but an identical business_id. Both are new
+            # as far as the database is concerned, so both got queued and the
+            # insert failed on the primary key -- taking the whole job's
+            # results with it. Track what this job has already queued.
+            seen_business_ids = set()
+
             for item in raw_listings:
                 if item.get("detail_extraction_failed"):
                     detail_extraction_failed_count += 1
@@ -206,7 +224,19 @@ def execute_single_job(
                     maps_url=normalized["google_maps_url"]
                 )
 
-                existing_biz = db.query(Business).filter(Business.dedup_key == dedup_key).first()
+                # dedup_key includes place_id but business_id does not, so a shop
+                # Google re-lists under a new place_id looks new by dedup_key
+                # while hashing to an existing business_id. Inserting it then
+                # violated the primary key and rolled back the whole job, losing
+                # every business it had found. Match on either identity.
+                if biz_id in seen_business_ids:
+                    # Already queued in this same job; nothing new to record.
+                    duplicate_count += 1
+                    continue
+
+                existing_biz = db.query(Business).filter(
+                    (Business.dedup_key == dedup_key) | (Business.business_id == biz_id)
+                ).first()
 
                 if existing_biz:
                     # Update existing record if richer data
@@ -246,6 +276,7 @@ def execute_single_job(
                         "is_duplicate": True
                     })
                 else:
+                    seen_business_ids.add(biz_id)
                     new_biz = Business(
                         business_id=biz_id,
                         job_id=job.job_id,

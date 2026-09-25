@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     discovery_concurrency: int = 1           # simultaneous browser contexts
     max_scroll_attempts: int = 4             # feed scroll iterations
     search_delay_seconds: float = 2.0        # delay between jobs in a batch
+    listing_delay_seconds: float = 1.0       # pause after each detail page
     max_results_per_job: int = 200           # safety cap on listings per job
 
     # -----------------------------------------------------------------------

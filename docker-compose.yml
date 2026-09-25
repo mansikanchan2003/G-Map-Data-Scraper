@@ -27,7 +27,7 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gmap_user} -d ${POSTGRES_DB:-gmap_scraper}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gmap_user} -d ${POSTGRES_DB:-gmap_scraper}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -56,6 +56,18 @@ services:
       BACKEND_BASE_URL: ${BACKEND_BASE_URL:-http://backend:8000}
 
       # Discovery settings
+      # Timings tuned from measured job profiles: detail-page fetching is ~78%
+      # of a job, so the per-listing pause is the cheapest thing to trim.
+      LISTING_DELAY_SECONDS: ${LISTING_DELAY_SECONDS:-0.3}
+      MAX_SCROLL_ATTEMPTS: ${MAX_SCROLL_ATTEMPTS:-3}
+      ELEMENT_TIMEOUT_MS: ${ELEMENT_TIMEOUT_MS:-4000}
+
+      # Email enrichment is the remaining ~22%; it is best-effort, so its
+      # budgets are kept tight rather than letting slow sites dominate a job.
+      EMAIL_MAX_CONCURRENCY: ${EMAIL_MAX_CONCURRENCY:-8}
+      EMAIL_ENRICHMENT_TIMEOUT_SECONDS: ${EMAIL_ENRICHMENT_TIMEOUT_SECONDS:-15}
+      EMAIL_ENRICHMENT_BATCH_TIMEOUT_SECONDS: ${EMAIL_ENRICHMENT_BATCH_TIMEOUT_SECONDS:-60}
+
       BROWSER_HEADLESS: "true"
       DISCOVERY_CONCURRENCY: ${DISCOVERY_CONCURRENCY:-1}
       BATCH_SIZE: ${BATCH_SIZE:-15}
@@ -65,6 +77,21 @@ services:
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ENVIRONMENT: "production"
+
+      # WhatsApp Meta API (read from .env, never hardcoded)
+      META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
+      META_PHONE_NUMBER_ID: ${META_PHONE_NUMBER_ID:-}
+      META_WABA_ID: ${META_WABA_ID:-}
+      META_API_VERSION: ${META_API_VERSION:-v21.0}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-gmap_scraper_verify_token}
+
+      # Campaign link tracking. PUBLIC_BASE_URL must be an address a phone can
+      # reach over the internet, otherwise the tracking links will not open.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      CAMPAIGN_LINK_TARGET_URL: ${CAMPAIGN_LINK_TARGET_URL:-https://kiosk.eko.in/?utm_source=WhatsApp+Campaign#apply-now}
+      CAMPAIGN_LINK_FALLBACK_URL: ${CAMPAIGN_LINK_FALLBACK_URL:-https://kiosk.eko.in/}
+      CAMPAIGN_LINK_HASH_SALT: ${CAMPAIGN_LINK_HASH_SALT:-gmap-campaign}
 
       # Playwright browser path (must match Dockerfile ENV)
       PLAYWRIGHT_BROWSERS_PATH: /app/.playwright
@@ -79,7 +106,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\"" ]
       interval: 30s
       timeout: 10s
       retries: 3

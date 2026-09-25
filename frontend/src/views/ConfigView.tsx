@@ -91,7 +91,7 @@ export const ConfigView: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-semibold text-white tracking-tight">Configuration</h1>
+              <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Configuration</h1>
               <span className="px-2 py-0.5 bg-sky-950/80 border border-sky-800 text-sky-400 font-mono-code text-xs rounded flex items-center gap-1.5 font-medium">
                 <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
                 Source Datasets
@@ -147,7 +147,7 @@ export const ConfigView: React.FC = () => {
               <span>Configured Locations</span>
               <span className="material-symbols-outlined text-[16px] text-slate-500">pin_drop</span>
             </div>
-            <div className="text-xl font-mono-code text-white font-bold mt-1">{totalLocations.toLocaleString()} PINs</div>
+            <div className="text-xl font-mono-code text-slate-100 font-bold mt-1">{totalLocations.toLocaleString()} PINs</div>
             <div className="text-[11px] font-mono-code text-slate-400 mt-0.5">Geocoded Ad Targeting Source</div>
           </div>
 
@@ -156,7 +156,7 @@ export const ConfigView: React.FC = () => {
               <span>Target Categories</span>
               <span className="material-symbols-outlined text-[16px] text-slate-500">category</span>
             </div>
-            <div className="text-xl font-mono-code text-white font-bold mt-1">{totalCategories.toLocaleString()} Personas</div>
+            <div className="text-xl font-mono-code text-slate-100 font-bold mt-1">{totalCategories.toLocaleString()} Personas</div>
             <div className="text-[11px] font-mono-code text-slate-400 mt-0.5">G-Map Categories Source</div>
           </div>
 
@@ -213,6 +213,10 @@ export const ConfigView: React.FC = () => {
                 <tr className="h-8">
                   <th className="px-3 w-12 border-r border-slate-800 text-center">#</th>
                   <th className="px-3 border-r border-slate-800">PIN Code</th>
+                  <th className="px-3 border-r border-slate-800">District</th>
+                  <th className="px-3 border-r border-slate-800">State</th>
+                  <th className="px-3 border-r border-slate-800">Tehsil</th>
+                  <th className="px-3 border-r border-slate-800">Anchor Village/Town</th>
                   <th className="px-3 border-r border-slate-800">Latitude</th>
                   <th className="px-3 border-r border-slate-800">Longitude</th>
                   <th className="px-3">Radius</th>
@@ -221,13 +225,13 @@ export const ConfigView: React.FC = () => {
               <tbody className="divide-y divide-slate-800">
                 {locLoading ? (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-slate-500">
+                    <td colSpan={9} className="py-12 text-center text-slate-500">
                       Loading configured locations...
                     </td>
                   </tr>
                 ) : locations.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-slate-500">
+                    <td colSpan={9} className="py-12 text-center text-slate-500">
                       No locations found in dataset.
                     </td>
                   </tr>
@@ -239,6 +243,18 @@ export const ConfigView: React.FC = () => {
                       </td>
                       <td className="px-3 border-r border-slate-800 font-semibold text-sky-400">
                         {loc.pincode}
+                      </td>
+                      <td className="px-3 border-r border-slate-800 text-slate-300">
+                        {loc.district || '—'}
+                      </td>
+                      <td className="px-3 border-r border-slate-800 text-slate-300">
+                        {loc.state || '—'}
+                      </td>
+                      <td className="px-3 border-r border-slate-800 text-slate-300">
+                        {loc.tehsil || '—'}
+                      </td>
+                      <td className="px-3 border-r border-slate-800 text-slate-300">
+                        {loc.anchor_name || '—'}
                       </td>
                       <td className="px-3 border-r border-slate-800 text-slate-300">
                         {loc.latitude?.toFixed(4)}

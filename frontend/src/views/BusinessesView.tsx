@@ -89,7 +89,7 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-semibold text-white tracking-tight">Business Data</h1>
+              <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Business Data</h1>
               <span className="px-2 py-0.5 bg-sky-950/80 border border-sky-800 text-sky-400 font-mono-code text-xs rounded flex items-center gap-1.5 font-medium">
                 <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-ping" />
                 {total.toLocaleString()} records discovered
@@ -117,10 +117,10 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
             <div className="relative group">
               <button
                 onClick={() => triggerCsvStream()}
-                className="h-8 px-3.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white font-mono-code text-xs font-semibold rounded flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
+                className="h-8 px-3.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-100 font-mono-code text-xs font-semibold rounded flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
                 title="Download CSV"
               >
-                <span className="material-symbols-outlined text-[17px] text-white">description</span>
+                <span className="material-symbols-outlined text-[17px] text-slate-100">description</span>
                 <span>CSV</span>
               </button>
             </div>
@@ -160,6 +160,16 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
                 <span className="material-symbols-outlined text-[17px] text-white">post_add</span>
               )}
               <span>{googleSheetsLoading ? 'Exporting...' : 'Google Sheets'}</span>
+            </button>
+            
+            {/* WhatsApp Campaign Button */}
+            <button
+              onClick={() => window.location.hash = 'whatsapp-campaign'}
+              className="h-8 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-mono-code text-xs font-semibold rounded flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
+              title="Launch WhatsApp Campaign with Scraped Data"
+            >
+              <span className="material-symbols-outlined text-[17px]">campaign</span>
+              <span>Send WhatsApp</span>
             </button>
           </div>
         </div>
@@ -289,7 +299,7 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
               <tr>
                 <td colSpan={9} className="py-16 text-center text-slate-400 bg-slate-950">
                   <div className="flex flex-col items-center justify-center gap-2">
-                    <span className="material-symbols-outlined text-[32px] text-slate-600">inventory_2</span>
+                    <span className="material-symbols-outlined text-[32px] text-slate-500">inventory_2</span>
                     <span className="font-semibold text-slate-300">No businesses discovered yet.</span>
                     <span className="text-xs text-slate-500">
                       Run discovery batches from the Dashboard or Jobs Monitor to populate records.
@@ -338,7 +348,7 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
                         <span className="material-symbols-outlined text-[12px]">open_in_new</span>
                       </a>
                     ) : (
-                      <span className="text-slate-600">—</span>
+                      <span className="text-slate-500">—</span>
                     )}
                   </td>
                   <td className="px-3 border-r border-slate-800">

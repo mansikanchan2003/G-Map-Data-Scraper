@@ -12,6 +12,11 @@ class Selectors:
     TITLE_LINK = 'a.hfpxzc'
     TITLE_TEXT = 'div.qBF1Pd'
 
+    # The place panel is rendered by JS well after domcontentloaded fires.
+    # Waiting for one of these is what makes detail extraction deterministic.
+    PLACE_PANEL = ('h1.DUwDvf, div[role="main"] h1, button[data-item-id^="phone:tel:"], '
+                   'button[data-item-id="address"], a[data-item-id="authority"]')
+
     # Detail elements on single place view or detail page
     PHONE_BUTTON = 'button[data-item-id^="phone:tel:"], button[aria-label^="Phone"], button[aria-label*="Phone"]'
     ADDRESS_BUTTON = 'button[data-item-id="address"], button[aria-label*="Address"]'
@@ -156,6 +161,8 @@ class GoogleMapsDiscoveryEngine:
 
         raw_results: List[Dict[str, Any]] = []
         partial_extraction_errors = 0
+        out_of_range_skipped = 0
+        no_contact_data = 0
 
         try:
             # 2. Navigation
@@ -284,22 +291,43 @@ class GoogleMapsDiscoveryEngine:
                     lat_ext, lng_ext = extract_coords_from_url(listing_url)
                     place_id = extract_place_id(listing_url)
 
-                    # Pre-detail geographic filtering
-                    skip_detail = False
+                    # Pre-detail geographic filtering.
+                    # Google treats the viewport as a hint, not a constraint, and
+                    # regularly returns results hundreds of km away. Those are
+                    # discarded outright: without detail extraction they would be
+                    # persisted as name-only rows that carry no usable contact
+                    # data and only dilute the dataset.
                     if lat_ext is not None and lng_ext is not None:
                         dist = haversine_distance(lat, lng, lat_ext, lng_ext)
                         if dist > job_radius:
-                            skip_detail = True
-                            logger.info(f"Skipping detail extraction for '{name}': out of bounds ({dist:.2f}km > {job_radius}km)")
+                            out_of_range_skipped += 1
+                            logger.info(
+                                f"Discarding '{name}': out of range ({dist:.2f}km > {job_radius}km)"
+                            )
+                            continue
 
                     # Extract detail page info if URL available and within bounds
                     detail_extraction_failed = False
-                    if not skip_detail and listing_url and detail_page:
+                    if listing_url and detail_page:
                         max_attempts = 2
                         for attempt in range(max_attempts):
                             try:
-                                detail_page.goto(listing_url, timeout=12000, wait_until="domcontentloaded")
-                                page.wait_for_timeout(int(self.delay_between_listings * 1000))
+                                detail_page.goto(listing_url, timeout=15000, wait_until="domcontentloaded")
+
+                                # Google Maps is a single-page app: domcontentloaded
+                                # fires long before the place panel exists. Without
+                                # this wait the selectors below silently match
+                                # nothing and every field comes back empty.
+                                try:
+                                    detail_page.wait_for_selector(
+                                        Selectors.PLACE_PANEL, timeout=self.element_timeout_ms
+                                    )
+                                except Exception:
+                                    pass
+
+                                detail_page.wait_for_timeout(
+                                    int(self.delay_between_listings * 1000)
+                                )
 
                                 if detail_page.locator(Selectors.CAPTCHA).count() > 0:
                                     logger.warning(f"CAPTCHA detected on detail page for Job {job_id}")
@@ -313,15 +341,24 @@ class GoogleMapsDiscoveryEngine:
                                         "blocked_reason": "CAPTCHA_DETECTED"
                                     }
 
-                                # Phone
+                                # Phone. data-item-id carries the number in a
+                                # stable form ("phone:tel:+919911844469"), which
+                                # survives Google's frequent layout changes far
+                                # better than the rendered text does.
                                 phone_btn = detail_page.locator(Selectors.PHONE_BUTTON).first
                                 if phone_btn.count() > 0:
-                                    phone = phone_btn.inner_text() or phone_btn.get_attribute("aria-label")
+                                    item_id = phone_btn.get_attribute("data-item-id") or ""
+                                    if item_id.startswith("phone:tel:"):
+                                        phone = item_id.split("phone:tel:", 1)[1]
+                                    else:
+                                        phone = (phone_btn.get_attribute("aria-label")
+                                                 or phone_btn.inner_text())
 
                                 # Address
                                 addr_btn = detail_page.locator(Selectors.ADDRESS_BUTTON).first
                                 if addr_btn.count() > 0:
-                                    address = addr_btn.get_attribute("aria-label") or addr_btn.inner_text()
+                                    address = (addr_btn.get_attribute("aria-label")
+                                               or addr_btn.inner_text())
 
                                 # Website
                                 web_link = detail_page.locator(Selectors.WEBSITE_LINK).first
@@ -345,6 +382,13 @@ class GoogleMapsDiscoveryEngine:
                                     logger.warning(f"Error fetching details for listing '{name}': {detail_err}")
                                     partial_extraction_errors += 1
                                     detail_extraction_failed = True
+
+                    if not any([phone, address, website]):
+                        no_contact_data += 1
+                        logger.warning(
+                            f"No contact data extracted for '{name}' (Job {job_id}) - "
+                            f"detail page rendered but phone/address/website were all absent"
+                        )
 
                     raw_results.append({
                         "name": name,
@@ -374,12 +418,20 @@ class GoogleMapsDiscoveryEngine:
             if not raw_results:
                 status = "zero_results"
 
+            logger.info(
+                f"Job {job_id} extraction summary | in_range={len(raw_results)} "
+                f"out_of_range_discarded={out_of_range_skipped} "
+                f"no_contact_data={no_contact_data} errors={partial_extraction_errors}"
+            )
+
             return {
                 "status": status,
                 "job_id": job_id,
                 "query": search_url,
                 "count": len(raw_results),
                 "results": raw_results,
+                "out_of_range_skipped": out_of_range_skipped,
+                "no_contact_data": no_contact_data,
                 "error": None
             }
 
