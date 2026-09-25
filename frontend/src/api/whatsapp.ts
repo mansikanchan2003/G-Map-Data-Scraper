@@ -297,3 +297,94 @@ export const submitTemplate = async (
   }
   return res.json();
 };
+
+// --- Campaign audience selection -------------------------------------------
+
+export interface GeoOption {
+  value: string;
+  businesses: number;
+}
+
+export interface AudienceOptions {
+  states: GeoOption[];
+  districts: GeoOption[];
+  tehsils: GeoOption[];
+}
+
+export interface AudienceFilters {
+  state: string;
+  district: string;
+  tehsil: string;
+  limit?: number | null;
+  include_already_contacted: boolean;
+}
+
+export interface AudienceSummary {
+  total_businesses: number;
+  with_phone: number;
+  already_contacted: number;
+  never_contacted: number;
+  sendable: number;
+  limit_applied?: number | null;
+}
+
+export interface AudiencePreview extends AudienceSummary {
+  contacts: { name: string; phone: string; business_id: string }[];
+}
+
+export const fetchAudienceOptions = async (
+  state = 'All',
+  district = 'All'
+): Promise<AudienceOptions> => {
+  const params = new URLSearchParams({ state, district });
+  const res = await fetch(`${API_BASE}/audience/options?${params}`);
+  if (!res.ok) throw new Error('Failed to load audience options');
+  return res.json();
+};
+
+export const fetchAudienceSummary = async (f: AudienceFilters): Promise<AudienceSummary> => {
+  const res = await fetch(`${API_BASE}/audience/summary`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(f),
+  });
+  if (!res.ok) throw new Error('Failed to summarise audience');
+  return res.json();
+};
+
+export const fetchAudiencePreview = async (f: AudienceFilters): Promise<AudiencePreview> => {
+  const res = await fetch(`${API_BASE}/audience/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(f),
+  });
+  if (!res.ok) throw new Error('Failed to build audience');
+  return res.json();
+};
+
+/**
+ * Hand a chosen audience to the campaign builder.
+ *
+ * sessionStorage rather than a URL: the list can hold thousands of contacts,
+ * and it should not survive the tab being closed.
+ */
+const AUDIENCE_KEY = 'gmap-campaign-audience';
+
+export const stashAudience = (payload: { contacts: any[]; label: string }) => {
+  try {
+    sessionStorage.setItem(AUDIENCE_KEY, JSON.stringify(payload));
+  } catch {
+    // Storage can throw in private mode; the builder then starts empty.
+  }
+};
+
+export const takeAudience = (): { contacts: any[]; label: string } | null => {
+  try {
+    const raw = sessionStorage.getItem(AUDIENCE_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(AUDIENCE_KEY);
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};

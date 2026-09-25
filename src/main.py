@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
-from src.routers import config, jobs, businesses, discovery, export, runs, whatsapp, tracking
+from src.routers import config, jobs, businesses, discovery, export, runs, whatsapp, tracking, audience
 from src.database import init_db, get_db
 from src.utils.logging import setup_logging
 
@@ -58,6 +58,7 @@ app.include_router(runs.router)
 app.include_router(whatsapp.router)
 # Short links live at the root (/r/{token}) so campaign URLs stay short.
 app.include_router(tracking.router)
+app.include_router(audience.router)
 
 
 @app.get("/health", tags=["Health"])

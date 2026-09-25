@@ -290,6 +290,7 @@ def execute_single_job(
                         category=cat.category_name,
                         district=loc.district,
                         state=loc.state,
+                        tehsil=loc.tehsil,
                         officename=loc.anchor_name,
                         latitude=normalized["latitude"],
                         longitude=normalized["longitude"],

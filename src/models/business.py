@@ -19,6 +19,9 @@ class Business(Base):
     place_id = Column(String(100), nullable=True)
     category = Column(String(200), nullable=False, index=True)
     district = Column(String(100), nullable=True)
+    # Mirrors the location's tehsil alongside district/state/officename so an
+    # audience can be filtered without joining back through jobs.
+    tehsil = Column(String(100), nullable=True, index=True)
     state = Column(String(100), nullable=True)
     officename = Column(String(200), nullable=True)
     latitude = Column(Float, nullable=True)

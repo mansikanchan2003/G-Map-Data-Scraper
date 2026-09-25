@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { BusinessItem, PaginatedResponse, ApiError } from '../types/api';
 import { fetchBusinesses, triggerCsvStream, triggerExcelStream, exportToGoogleSheets } from '../api';
+import { AudienceSelector } from '../components/AudienceSelector';
 
 interface BusinessesViewProps {
   initialSearch?: string;
@@ -9,6 +10,7 @@ interface BusinessesViewProps {
 export const BusinessesView: React.FC<BusinessesViewProps> = ({
   initialSearch = '',
 }) => {
+  const [audienceOpen, setAudienceOpen] = useState(false);
   const [businesses, setBusinesses] = useState<BusinessItem[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [page, setPage] = useState<number>(1);
@@ -164,7 +166,7 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
             
             {/* WhatsApp Campaign Button */}
             <button
-              onClick={() => window.location.hash = 'whatsapp-campaign'}
+              onClick={() => setAudienceOpen(true)}
               className="h-8 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-mono-code text-xs font-semibold rounded flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
               title="Launch WhatsApp Campaign with Scraped Data"
             >
@@ -425,6 +427,11 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
           </div>
         </div>
       </footer>
+      <AudienceSelector
+        isOpen={audienceOpen}
+        onClose={() => setAudienceOpen(false)}
+        onReady={() => { setAudienceOpen(false); window.location.hash = 'whatsapp-campaign'; }}
+      />
     </div>
   );
 };

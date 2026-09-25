@@ -51,6 +51,8 @@ def _migrate_db(eng) -> None:
                 conn.execute(text("ALTER TABLE businesses ADD COLUMN email_enrichment_status VARCHAR(100)"))
             if "email_enriched_at" not in columns:
                 conn.execute(text("ALTER TABLE businesses ADD COLUMN email_enriched_at DATETIME"))
+            if "tehsil" not in columns:
+                conn.execute(text("ALTER TABLE businesses ADD COLUMN tehsil VARCHAR(100)"))
             conn.commit()
 
     if "run_log" in inspector.get_table_names():

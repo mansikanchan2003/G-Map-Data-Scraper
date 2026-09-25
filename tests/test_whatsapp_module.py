@@ -543,3 +543,34 @@ def test_delete_reports_a_reason_instead_of_a_bare_500():
     assert "rollback" in source, "a failed delete must not leave the session dirty"
     assert "409" in source, "a blocked delete should be a conflict with an explanation"
     assert "campaigns_unlinked" in source, "the caller should learn what the delete affected"
+
+
+# --- Campaign audience selection --------------------------------------------
+
+def test_audience_geo_filters_combine():
+    """State, district and tehsil narrow the pool together, and All is a no-op."""
+    from src.routers.audience import _geo_filtered, AudienceFilters
+    from src.models import Business
+
+    q = MagicMock()
+    q.filter.return_value = q
+
+    _geo_filtered(q, AudienceFilters(state="All", district="All", tehsil="All"))
+    assert q.filter.call_count == 0, "'All' must not restrict anything"
+
+    q.reset_mock()
+    _geo_filtered(q, AudienceFilters(state="Haryana", district="SIRSA", tehsil="Ellenabad"))
+    assert q.filter.call_count == 3, "each chosen level adds a condition"
+
+
+def test_only_sent_recipients_count_as_contacted():
+    """
+    A recipient that was skipped or failed never received anything. Counting
+    them as contacted would quietly shrink every later audience.
+    """
+    import inspect
+    from src.routers import audience
+
+    source = inspect.getsource(audience._contacted_phones)
+    assert '"SENT"' in source
+    assert "FAILED" not in source and "SKIPPED" not in source

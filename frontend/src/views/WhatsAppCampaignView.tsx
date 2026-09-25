@@ -6,6 +6,7 @@ import {
   createCampaign,
   downloadCleanedData,
   connectAccount,
+  takeAudience,
   type WhatsAppAccount,
   type WhatsAppTemplate,
   type ValidationResponse
@@ -13,6 +14,10 @@ import {
 import { fetchBusinesses } from '../api';
 import { WhatsAppPreview } from '../components/WhatsAppPreview';
 import * as XLSX from 'xlsx';
+
+// The sending number campaigns should default to, matched on its last digits
+// so formatting differences in the stored value do not matter.
+const DEFAULT_SENDER_SUFFIX = '9911844469';
 
 export const WhatsAppCampaignView: React.FC = () => {
   const [step, setStep] = useState<number>(1);
@@ -38,13 +43,42 @@ export const WhatsAppCampaignView: React.FC = () => {
   // Step 4: Campaign creation
   const [campaignName, setCampaignName] = useState<string>('');
   const [campaignSuccessId, setCampaignSuccessId] = useState<string | null>(null);
+  const [audienceLabel, setAudienceLabel] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAccounts().then(accs => {
       setAccounts(accs);
-      if (accs.length > 0) setSelectedAccountId(accs[0].account_id);
+      if (accs.length > 0) {
+        // Default to the number campaigns actually send from, rather than
+        // whichever account happens to be first in the list.
+        const preferred =
+          accs.find(a => a.phone_number?.replace(/\D/g, '').endsWith(DEFAULT_SENDER_SUFFIX)) ||
+          accs.find(a => a.status === 'Connected') ||
+          accs[0];
+        setSelectedAccountId(preferred.account_id);
+      }
     });
     fetchTemplates().then(setTemplates);
+
+    // An audience chosen on the Business Data page arrives here ready to use,
+    // so the builder can skip straight past data selection.
+    const handed = takeAudience();
+    if (handed && handed.contacts.length > 0) {
+      setDataSource('scraped');
+      setAudienceLabel(handed.label);
+      setValidationResult({
+        total_records: handed.contacts.length,
+        valid_mobile_numbers: handed.contacts.length,
+        invalid_numbers: 0,
+        empty_phone_numbers: 0,
+        landlines: 0,
+        duplicates_removed: 0,
+        final_sendable_contacts: handed.contacts.length,
+        valid_contacts: handed.contacts,
+        invalid_contacts: [],
+      });
+      setStep(2);
+    }
   }, []);
 
   const handleVerifyConnection = async () => {
@@ -319,7 +353,9 @@ export const WhatsAppCampaignView: React.FC = () => {
               {validationResult && (
                 <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-sm font-semibold text-slate-200">Validation Report</h3>
+                    <h3 className="text-sm font-semibold text-slate-200">
+                      {audienceLabel ? `Audience · ${audienceLabel}` : 'Validation Report'}
+                    </h3>
                     <button 
                       onClick={() => downloadCleanedData(validationResult.valid_contacts)}
                       className="text-[11px] px-2 py-1 bg-emerald-900/30 text-emerald-400 border border-emerald-800 rounded flex items-center gap-1 hover:bg-emerald-900/50"
@@ -443,6 +479,13 @@ export const WhatsAppCampaignView: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-2 gap-y-4 text-sm bg-slate-950 p-5 rounded border border-slate-800">
+                {audienceLabel && (
+                  <>
+                    <div className="text-slate-500 font-semibold">Audience:</div>
+                    <div className="text-slate-200">{audienceLabel}</div>
+                  </>
+                )}
+
                 <div className="text-slate-500 font-semibold">Total Contacts:</div>
                 <div className="text-slate-200 font-mono-code">{validationResult?.total_records}</div>
                 
