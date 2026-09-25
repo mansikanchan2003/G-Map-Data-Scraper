@@ -1,22 +1,72 @@
-# Autonomous Google Maps Business Discovery Agent
+# AutoGMap — Business Discovery & WhatsApp Outreach
 
-An autonomous system that discovers Indian businesses on Google Maps, enriches them with email data, and exports results to Google Sheets via n8n.
-
-## Architecture
+Discovers Indian businesses on Google Maps, enriches them with contact details,
+and runs WhatsApp campaigns to them through the Meta Cloud API — from a single
+dashboard.
 
 ```
-React/Vite Dashboard  ←→  FastAPI Backend  ←→  PostgreSQL
-                               ↕
-                         Playwright (Chromium)
-                               ↕
-                      n8n Workflow Orchestrator
+┌──────────────────────────── React Dashboard ───────────────────────────┐
+│  Discovery  │  Business Data  │  Campaign Builder  │  Campaign History │
+└────────────────────────────────┬───────────────────────────────────────┘
+                                 │  REST
+                        ┌────────▼────────┐
+                        │  FastAPI        │
+                        └────┬───────┬────┘
+              Playwright ◄───┘       └───► Meta WhatsApp Cloud API
+             (Google Maps)                 (templates · sends · media)
+                        ┌─────────────────┐
+                        │   PostgreSQL    │  businesses · jobs · campaigns
+                        └─────────────────┘
+                                 ▲
+                        n8n scheduled workflow
 ```
 
-- **Backend**: Python 3.12 + FastAPI + SQLAlchemy
-- **Browser**: Playwright (Chromium, headless)
-- **Database**: PostgreSQL (production) / SQLite (development)
-- **Orchestration**: n8n scheduled workflow
-- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS v4
+| Layer | Stack |
+|---|---|
+| Backend | Python 3.12 · FastAPI · SQLAlchemy · Alembic |
+| Browser | Playwright (Chromium, headless) |
+| Database | PostgreSQL (production) · SQLite (development) |
+| Messaging | Meta WhatsApp Cloud API |
+| Orchestration | n8n scheduled workflow |
+| Frontend | React 19 · TypeScript · Vite · Tailwind CSS v4 |
+
+---
+
+## What it does
+
+### Discovery
+- Searches Google Maps per **(pincode × category)** pair and extracts name,
+  address, phone and website from each listing's detail page.
+- **Radius filtering.** Google treats the map viewport as a hint, not a
+  constraint, and regularly returns results hundreds of km away. Anything
+  outside the location's radius is discarded rather than stored as a
+  name-only row.
+- **Email enrichment** crawls each business website for a contact address,
+  on a strict time budget so a slow site cannot hold up a batch.
+- **Deduplication** on place ID, name, phone and coordinates, so the same
+  shop discovered under several categories is stored once.
+- CAPTCHA is detected and the batch stops early rather than escalating.
+
+### WhatsApp campaigns
+- **Template lifecycle against Meta.** Templates are composed in the UI with a
+  live preview, submitted for review automatically, and their status and
+  billing category are synced back from the WhatsApp Business Account.
+- **Pre-flight checks.** Before a campaign sends anything it verifies the
+  template is `APPROVED` in the WABA and that its header media exists and fits
+  Meta's per-type size limit. A misconfigured campaign fails once with a
+  readable reason instead of one rejected recipient at a time.
+- **Contact validation** normalises Indian numbers to `+91XXXXXXXXXX`,
+  separating landlines, malformed entries and duplicates before sending.
+- **Resumable campaigns.** A campaign stopped mid-run can continue for the
+  recipients it never reached, without re-contacting anyone already sent to.
+- **Per-campaign execution log** with Meta's own error codes, visible in the
+  dashboard rather than only in container logs.
+
+### Dashboard
+- Light and dark themes, remembered per browser.
+- Campaign history with a detail view: delivery counters, failure reasons
+  grouped by cause, the template that was sent, and the full execution log.
+- Timestamps render in the viewer's own timezone.
 
 ---
 
@@ -104,6 +154,39 @@ Copy `.env.example` to `.env` and configure all required values:
 | `DEFAULT_RADIUS_KM` | Optional | Discovery radius in km (default: 20) |
 | `LOG_LEVEL` | Optional | `INFO` or `DEBUG` (default: INFO) |
 
+**WhatsApp (Meta Cloud API)**
+
+| Variable | Required | Description |
+|---|---|---|
+| `META_ACCESS_TOKEN` | For campaigns | Graph API token. Use a **System User** token — a personal user token expires and every send then fails with `#131005`. |
+| `META_PHONE_NUMBER_ID` | For campaigns | The sending number's ID, from WhatsApp → API Setup |
+| `META_WABA_ID` | For campaigns | WhatsApp Business Account ID. Required to read and submit templates. |
+| `META_APP_SECRET` | For webhooks | Verifies webhook signatures |
+| `META_API_VERSION` | Optional | Graph API version (default: `v21.0`) |
+| `MOCK_WHATSAPP_API` | Optional | `true` simulates sends without contacting Meta. For local testing only. |
+
+**Discovery tuning** — defaults are tuned from measured job profiles; detail-page
+fetching is roughly 78% of a job, so the per-listing pause is the cheapest thing
+to trim.
+
+| Variable | Default | Description |
+|---|---|---|
+| `LISTING_DELAY_SECONDS` | `0.3` | Pause after each detail page |
+| `MAX_SCROLL_ATTEMPTS` | `3` | Result-feed scroll iterations |
+| `ELEMENT_TIMEOUT_MS` | `4000` | Wait for the place panel to render |
+| `EMAIL_MAX_CONCURRENCY` | `8` | Parallel website crawls during enrichment |
+| `EMAIL_ENRICHMENT_TIMEOUT_SECONDS` | `15` | Per-business enrichment budget |
+| `EMAIL_ENRICHMENT_BATCH_TIMEOUT_SECONDS` | `60` | Whole-batch enrichment budget |
+
+**Campaign link tracking** (optional)
+
+| Variable | Description |
+|---|---|
+| `PUBLIC_BASE_URL` | A URL a phone can reach over the internet, e.g. `https://link.example.com`. Without it, messages carry the plain destination and no clicks are recorded. |
+| `CAMPAIGN_LINK_TARGET_URL` | Where a tracked link forwards to |
+| `CAMPAIGN_LINK_FALLBACK_URL` | Destination for an unknown or expired token |
+| `CAMPAIGN_LINK_HASH_SALT` | Salt for hashing visitor IPs |
+
 **Never commit your `.env` file. It is excluded by `.gitignore`.**
 
 ### Option A — Docker Compose (Recommended)
@@ -171,29 +254,118 @@ npm run build
 
 ---
 
-## WHATSAPP META CONFIGURATION
+## WhatsApp Campaigns
 
-1. `META_ACCESS_TOKEN`
-   - Used to authenticate API requests to the Meta Graph API.
-   - Must be kept secret.
-   - Must never be committed to Git.
+### How a message actually gets sent
 
-2. `META_APP_SECRET`
-   - Used for webhook signature verification.
-   - Must be kept secret.
+This is the part that surprises people, and most campaign failures trace back
+to it:
 
-3. `META_PHONE_NUMBER_ID`
-   - Identifies the specific WhatsApp sending phone number.
-   - Obtained from the Meta Business/WhatsApp configuration dashboard.
+> **A template's text lives with Meta, not here.** A send transmits only the
+> template *name*, *language* and *parameters*. Meta renders the message from
+> its own approved copy.
 
-**Important Security & Usage Notes:**
-- Actual credentials belong in your local `.env` or the approved secret-management system.
-- The `.env` file must not be committed.
-- `.env.example` contains no real credentials.
-- The frontend must never receive these credentials.
-- Credentials must never be logged.
-- Meta API calls should only occur when the user intentionally starts a real campaign and the account is properly configured.
-- The Meta account connection status should not be claimed as "connected" merely because environment variables exist. Connection should only be reported as "Connected" after an actual successful Meta API connectivity check.
+Two consequences:
+
+- A template must be **submitted to Meta and approved** before it can be sent.
+  A local draft cannot be delivered — Meta answers `#132001 Template name does
+  not exist`.
+- Editing a template locally changes the dashboard preview but **not** what
+  recipients receive. The app therefore pushes edits to Meta, which sends the
+  template back through review.
+
+### Credentials
+
+| Variable | Notes |
+|---|---|
+| `META_ACCESS_TOKEN` | Use a **System User** token from Business Settings. A personal user token expires — often within hours — and every send then fails with `#131005 Access denied`. |
+| `META_PHONE_NUMBER_ID` | The sending number, from WhatsApp → API Setup |
+| `META_WABA_ID` | Needed to list, submit and edit templates |
+| `META_APP_SECRET` | Webhook signature verification |
+
+Credentials live in `.env` (git-ignored) or your secret manager. They are never
+sent to the frontend, and error messages are redacted before being logged.
+Connection is only reported as **Connected** after a successful Meta API call,
+never merely because the variables are set.
+
+### Template workflow
+
+```
+Compose in UI  →  auto-submitted to Meta  →  PENDING  →  APPROVED  →  sendable
+                                                     ↘  REJECTED  →  edit & resubmit
+```
+
+- Creating a template submits it for review automatically. If Meta refuses the
+  submission the template stays a local draft and the reason is shown.
+- **Sync Status** pulls each template's current review state and billing
+  category from the WABA. Meta can reclassify a template during review, so the
+  category shown is the one Meta assigned, not the one requested.
+- Deleting a template keeps past campaign history; the campaign's link to it is
+  cleared. The copy registered with Meta is left untouched.
+
+### Media limits
+
+Meta enforces different ceilings per media type and rejects anything larger at
+send time with an opaque `(#100) Invalid parameter`. The same limits are applied
+at upload instead, so an oversized file is refused while you are still looking at
+the dialog.
+
+| Header type | Limit |
+|---|---|
+| Image | 5 MB |
+| Video | 16 MB |
+
+Header media is uploaded to Meta **once per campaign** and reused for every
+recipient.
+
+### Costs
+
+Marketing and utility templates are priced very differently. Real figures for
+your account come from Meta:
+
+```bash
+# Per-message cost and volume, by category
+curl -s -G "https://graph.facebook.com/v21.0/$META_WABA_ID" \
+  -H "Authorization: Bearer $META_ACCESS_TOKEN" \
+  --data-urlencode "fields=currency,pricing_analytics.start(<unix>).end(<unix>).granularity(DAILY).dimensions([\"PRICING_CATEGORY\"])"
+```
+
+### Delivery visibility
+
+`SENT` means **Meta accepted the request**, not that the message arrived.
+Aggregate delivery counts are available without any webhook setup:
+
+```bash
+curl -s -G "https://graph.facebook.com/v21.0/$META_WABA_ID" \
+  -H "Authorization: Bearer $META_ACCESS_TOKEN" \
+  --data-urlencode "fields=analytics.start(<unix>).end(<unix>).granularity(DAY)"
+# → {"sent": 1270, "delivered": 1239}
+```
+
+Per-recipient delivery and read receipts require Meta to reach this backend over
+the internet, which means a public URL and a subscribed webhook.
+
+Note that Meta may accept a marketing message and silently not deliver it if the
+recipient has received many marketing messages without engaging. This is
+deliberate on Meta's side and is not reported back through the send response.
+
+### Click tracking (optional)
+
+WhatsApp does not report clicks on a link written in a message body, and a URL
+identical for every recipient cannot attribute a visit to anyone. Each recipient
+therefore gets their own short link:
+
+```
+https://<PUBLIC_BASE_URL>/r/<token>  →  click recorded  →  302 to the destination
+```
+
+Campaign History then shows **Unique Visits** (recipients who opened the link at
+least once) and **Repeated Visits** (opens beyond each recipient's first).
+
+Requirements: a publicly reachable `PUBLIC_BASE_URL`, and a template whose body
+contains `{{link}}`. Without `PUBLIC_BASE_URL` the plain destination is sent and
+no clicks are recorded — messages always carry a working link. Visitor IPs are
+hashed, never stored, and a tracking failure never blocks the redirect.
 
 ---
 
@@ -249,6 +421,17 @@ alembic current
 alembic history --verbose
 ```
 
+### Migrations in this project
+
+| Revision | Adds |
+|---|---|
+| `0001` | Locations, categories, jobs, businesses, run log |
+| `0e08654b0f18` | WhatsApp accounts, templates, campaigns, recipients, logs |
+| `1a7c3b9e2d40` | Template's Meta name and approved language |
+| `2b9f4c7d1e88` | Per-recipient tracking token and link-click records |
+| `3c1a8e5f7b22` | Template billing category as reported by Meta |
+| `4d2b7a9c3e51` | Template delete clears the campaign link instead of blocking |
+
 ---
 
 ## n8n Workflow
@@ -276,6 +459,26 @@ The daily automation workflow file: `n8n/autonomous_google_maps_daily.json`
 | `N8N_OUTPUT_SPREADSHEET_ID` | Your Google Sheets ID |
 
 **Google Sheets credential**: Add a Google OAuth2 credential in n8n (Settings → Credentials → Google Sheets OAuth2 API). The credential never leaves n8n's encrypted store.
+
+---
+
+## Dashboard
+
+```bash
+cd frontend && npm run dev     # http://localhost:5173
+```
+
+| View | Purpose |
+|---|---|
+| Dashboard | Job queue state, last orchestration run, engine health |
+| Business Data | Discovered businesses, searchable, exportable to CSV / Excel / Sheets |
+| Jobs Monitor | Per-job status, retries, and a job inspector |
+| Configuration | Locations (pincode, district, tehsil, anchor) and categories |
+| WhatsApp Campaign | Four-step builder: data → template → preview → confirm |
+| Templates | Compose with live WhatsApp preview; search, edit, submit, status |
+| Campaign History | Counters, visit tracking, and a per-campaign detail view |
+
+The theme toggle sits in the header and is remembered per browser.
 
 ---
 
@@ -446,6 +649,53 @@ This is expected behavior. Google Maps rate-limits automated access. The system:
 - The job can be retried later via `/api/v1/jobs/retry-all`
 - Reduce `BATCH_SIZE` and increase `SEARCH_DELAY_SECONDS` to reduce blocking
 
+### WhatsApp campaign failures
+
+Every campaign failure is written to `whatsapp_campaign_logs` and shown in
+Campaign History → **View Details**, with Meta's own error code.
+
+| What you see | Cause | Fix |
+|---|---|---|
+| `#132001 Template name does not exist` | The template was never approved in the WABA, or the language does not match | Submit it for review; check **Sync Status** |
+| `#131005 Access denied` | Token expired, or it lacks messaging permission on this WABA | Use a **System User** token that does not expire |
+| `#100 Invalid parameter` on media upload | Header image over 5 MB / video over 16 MB | Compress and re-upload |
+| `#100 Content in this language already exists` | A template with that name and language is already in the WABA | The app links to the existing one automatically |
+| Campaign `FAILED`, 0 sent, 0 failed | Pre-flight stopped it before sending | Read the reason in the campaign log |
+| Status `SENT` but no message received | Meta accepted it but did not deliver — often a recipient who has received many marketing messages without engaging | Test with a number that has not been messaged recently |
+
+```bash
+# Campaign execution log
+curl -s http://localhost:8000/api/v1/whatsapp/campaigns/<campaign_id>/logs
+
+# What Meta actually has approved
+curl -s http://localhost:8000/api/v1/whatsapp/templates/meta
+```
+
+### Discovery returns names but no phone or website
+
+Check the per-job summary in the logs:
+
+```bash
+docker compose logs backend | grep "extraction summary"
+# in_range=18 out_of_range_discarded=2 no_contact_data=0 errors=0
+```
+
+- `out_of_range_discarded` high → Google is returning results far outside the
+  radius. Expected for sparse categories in rural pincodes; those listings are
+  dropped rather than stored empty.
+- `no_contact_data` high → the place panel is not rendering before extraction.
+  Raise `ELEMENT_TIMEOUT_MS`.
+
+### Stopping a running batch
+
+```bash
+curl -X POST http://localhost:8000/api/v1/discovery/stop
+```
+
+The batch finishes the job it is on and then stops, so nothing is lost and
+anything else sharing the process — a campaign mid-send, for instance — is
+unaffected. Restarting the backend is not required.
+
 ### Frontend can't connect to backend
 
 ```bash
@@ -470,8 +720,43 @@ Key endpoints:
 | POST | `/api/v1/jobs/generate` | Generate (location × category) job matrix |
 | POST | `/api/v1/jobs/maintenance` | Recover stale + auto-retry failed jobs |
 | POST | `/api/v1/discovery/batch` | Run a batch of discovery jobs |
+| POST | `/api/v1/discovery/stop` | Stop the running batch after its current job |
 | GET | `/api/v1/businesses` | Paginated business list |
 | GET | `/api/v1/export/businesses` | Export businesses (JSON or CSV) |
+
+`/discovery/batch` can be narrowed to a subset of the job queue — all filters
+combine with AND:
+
+```jsonc
+{
+  "batch_size": 25,
+  "delay_between_jobs_seconds": 5,
+  "states": ["Punjab"],              // or pincodes / anchor_names
+  "categories": ["Kiosk", "Print shop"]
+}
+```
+
+**WhatsApp**
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/v1/whatsapp/accounts/connect` | Verify Meta connectivity and register the sending number |
+| GET | `/api/v1/whatsapp/templates` | Local templates |
+| POST | `/api/v1/whatsapp/templates` | Create, and submit to Meta for review |
+| PATCH | `/api/v1/whatsapp/templates/{id}` | Edit, and push the change to Meta |
+| DELETE | `/api/v1/whatsapp/templates/{id}` | Delete locally, keeping campaign history |
+| GET | `/api/v1/whatsapp/templates/meta` | Templates as registered in the WABA |
+| POST | `/api/v1/whatsapp/templates/sync-status` | Refresh review status and category from Meta |
+| POST | `/api/v1/whatsapp/templates/{id}/submit` | Submit an existing draft for review |
+| POST | `/api/v1/whatsapp/media/upload` | Upload header media (validated against Meta's limits) |
+| POST | `/api/v1/whatsapp/contacts/validate` | Normalise and deduplicate phone numbers |
+| POST | `/api/v1/whatsapp/campaigns` | Create a campaign and start sending |
+| GET | `/api/v1/whatsapp/campaigns` | Campaign list with visit counters |
+| GET | `/api/v1/whatsapp/campaigns/{id}/recipients` | Per-recipient status and reason |
+| GET | `/api/v1/whatsapp/campaigns/{id}/logs` | Execution log with Meta error codes |
+| POST | `/api/v1/whatsapp/campaigns/{id}/resume` | Continue for recipients never reached |
+| POST | `/api/v1/whatsapp/campaigns/{id}/cancel` | Stop a running campaign |
+| GET | `/r/{token}` | Campaign link redirect — records the click |
 
 ---
 
@@ -529,3 +814,12 @@ python -m json.tool n8n/autonomous_google_maps_daily.json > /dev/null && echo "V
 - [ ] n8n Google Sheets credential configured
 - [ ] Daily backup of PostgreSQL configured
 - [ ] Log monitoring in place
+
+**WhatsApp campaigns**
+
+- [ ] `META_ACCESS_TOKEN` is a **System User** token (never expires)
+- [ ] `META_WABA_ID` set — templates cannot be read or submitted without it
+- [ ] At least one template shows `APPROVED` in the Templates view
+- [ ] Header media is within Meta's limits (5 MB image / 16 MB video)
+- [ ] A test campaign to a single number completed with `sent=1, failed=0`
+- [ ] `PUBLIC_BASE_URL` set if click tracking is wanted
