@@ -12,7 +12,6 @@ interface HeaderProps {
   onSyncBackend: () => void;
   isSyncing: boolean;
   onOpenSettings: () => void;
-  onNavigate: (tab: NavTab) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   theme: Theme;
@@ -26,7 +25,6 @@ export const Header: React.FC<HeaderProps> = ({
   onSyncBackend,
   isSyncing,
   onOpenSettings,
-  onNavigate,
   searchQuery,
   onSearchChange,
   theme,
@@ -80,37 +78,6 @@ export const Header: React.FC<HeaderProps> = ({
           />
         </div>
       </div>
-
-      {/* Genuine Navigation Shortcuts */}
-      <nav className="hidden xl:flex items-center gap-5">
-        <button
-          onClick={() => onNavigate('dashboard')}
-          className={`text-xs font-mono-code flex items-center gap-1.5 cursor-pointer transition-colors ${
-            activeTab === 'dashboard' ? 'text-sky-400 font-semibold' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <span className={`w-1.5 h-1.5 rounded-full ${activeTab === 'dashboard' ? 'bg-sky-400' : 'bg-slate-600'}`} />
-          Operations
-        </button>
-        <button
-          onClick={() => onNavigate('jobs')}
-          className={`text-xs font-mono-code flex items-center gap-1.5 cursor-pointer transition-colors ${
-            activeTab === 'jobs' ? 'text-sky-400 font-semibold' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <span className={`w-1.5 h-1.5 rounded-full ${activeTab === 'jobs' ? 'bg-sky-400' : 'bg-slate-600'}`} />
-          Jobs Queue
-        </button>
-        <button
-          onClick={() => onNavigate('businesses')}
-          className={`text-xs font-mono-code flex items-center gap-1.5 cursor-pointer transition-colors ${
-            activeTab === 'businesses' ? 'text-sky-400 font-semibold' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <span className={`w-1.5 h-1.5 rounded-full ${activeTab === 'businesses' ? 'bg-sky-400' : 'bg-slate-600'}`} />
-          Discovered Data
-        </button>
-      </nav>
 
       {/* Right Actions & Health Indicators */}
       <div className="flex items-center gap-2 sm:gap-3">

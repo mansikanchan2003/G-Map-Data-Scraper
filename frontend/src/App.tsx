@@ -125,7 +125,6 @@ export default function App() {
           onSyncBackend={syncBackend}
           isSyncing={isSyncing}
           onOpenSettings={() => setSettingsOpen(true)}
-          onNavigate={handleTabChange}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
