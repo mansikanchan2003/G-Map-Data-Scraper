@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { triggerCsvStream } from '../api';
+import React from 'react';
 import { ThemeToggle } from './ThemeToggle';
 import type { Theme } from '../hooks/useTheme';
 
@@ -30,16 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   theme,
   onToggleTheme,
 }) => {
-  const [downloading, setDownloading] = useState(false);
 
-  const handleExportCsv = () => {
-    setDownloading(true);
-    try {
-      triggerCsvStream();
-    } finally {
-      setTimeout(() => setDownloading(false), 2000);
-    }
-  };
 
   const breadcrumbs: Record<NavTab, { section: string; sub: string }> = {
     dashboard: { section: 'operations', sub: 'telemetry' },
@@ -106,58 +96,17 @@ export const Header: React.FC<HeaderProps> = ({
 
         <div className="h-4 w-px bg-slate-800" />
 
-        {/* Sync Backend Action */}
-        <button
-          onClick={onSyncBackend}
-          disabled={isSyncing}
-          className="h-8 px-2.5 text-xs font-mono-code bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 rounded flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-sm"
-          title="Manual sync with FastAPI backend"
-        >
-          <span
-            className={`material-symbols-outlined text-[15px] text-slate-400 ${
-              isSyncing ? 'animate-spin' : ''
-            }`}
-          >
-            sync
-          </span>
-          <span className="hidden sm:inline font-semibold">SYNC BACKEND</span>
-        </button>
-
-        {/* Export Stream / Download Data Action */}
-        <div className="relative group">
-          <button
-            onClick={handleExportCsv}
-            disabled={downloading}
-            className="h-8 px-3 text-xs font-mono-code bg-sky-600 hover:bg-sky-500 text-white rounded flex items-center gap-1.5 font-bold transition-colors shadow-sm cursor-pointer active:scale-95 disabled:opacity-50"
-            title="Download full business dataset via backend streaming endpoint"
-          >
-            <span className="material-symbols-outlined text-[15px]">
-              {downloading ? 'sync' : 'cloud_download'}
-            </span>
-            <span className="hidden sm:inline">DOWNLOAD DATA</span>
-            <span className="sm:hidden">CSV</span>
-          </button>
-          <div className="absolute right-0 top-full mt-1 hidden group-hover:flex flex-col z-50 w-72 p-2.5 bg-slate-900 border border-slate-700 rounded shadow-xl pointer-events-none text-left">
-            <span className="text-[10px] font-mono-code text-sky-400 font-bold uppercase">
-              Streaming CSV Endpoint
-            </span>
-            <span className="text-[11px] font-mono-code text-slate-200 mt-0.5 break-all font-semibold">
-              GET /api/v1/export/businesses?format=csv
-            </span>
-            <span className="text-[10px] text-slate-400 mt-1">
-              Streams full dataset directly from FastAPI backend with zero browser memory bloat.
-            </span>
-          </div>
-        </div>
-
         {/* Utility Icon Cluster */}
         <div className="flex items-center gap-1 pl-1">
           <button
             onClick={onSyncBackend}
-            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded transition-colors cursor-pointer"
-            title="Refresh Telemetry"
+            disabled={isSyncing}
+            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            title={isSyncing ? 'Syncing with backend...' : 'Refresh telemetry from the backend'}
           >
-            <span className="material-symbols-outlined text-[18px]">refresh</span>
+            <span className={`material-symbols-outlined text-[18px] ${isSyncing ? 'animate-spin' : ''}`}>
+              refresh
+            </span>
           </button>
           <button
             onClick={onOpenSettings}
