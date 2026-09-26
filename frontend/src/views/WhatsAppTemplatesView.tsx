@@ -66,6 +66,58 @@ const statusLabel = (t: WhatsAppTemplate) => {
   return s || 'PENDING';
 };
 
+// Meta keys a template by name + language, and the pair is fixed once the
+// template is approved. Picking the wrong one is therefore not a label you can
+// correct later — it is a template you have to replace.
+const LANGUAGES: { code: string; label: string }[] = [
+  { code: 'hi', label: 'Hindi' },
+  { code: 'pa', label: 'Punjabi' },
+  { code: 'en_US', label: 'English (US)' },
+  { code: 'en_GB', label: 'English (UK)' },
+  { code: 'en', label: 'English' },
+  { code: 'mr', label: 'Marathi' },
+  { code: 'gu', label: 'Gujarati' },
+  { code: 'bn', label: 'Bengali' },
+  { code: 'ta', label: 'Tamil' },
+  { code: 'te', label: 'Telugu' },
+  { code: 'kn', label: 'Kannada' },
+  { code: 'ml', label: 'Malayalam' },
+  { code: 'ur', label: 'Urdu' },
+];
+
+const languageLabel = (code?: string | null) =>
+  LANGUAGES.find(l => l.code === code)?.label || code || '\u2014';
+
+// Scripts are not languages, but a body written in Devanagari is certainly not
+// English — which is the mistake worth catching before submission, because
+// after approval the language can no longer be changed.
+const SCRIPTS: { name: string; test: RegExp; languages: string[] }[] = [
+  { name: 'Devanagari', test: /[\u0900-\u097F]/, languages: ['hi', 'mr'] },
+  { name: 'Gurmukhi', test: /[\u0A00-\u0A7F]/, languages: ['pa'] },
+  { name: 'Gujarati', test: /[\u0A80-\u0AFF]/, languages: ['gu'] },
+  { name: 'Bengali', test: /[\u0980-\u09FF]/, languages: ['bn'] },
+  { name: 'Tamil', test: /[\u0B80-\u0BFF]/, languages: ['ta'] },
+  { name: 'Telugu', test: /[\u0C00-\u0C7F]/, languages: ['te'] },
+  { name: 'Kannada', test: /[\u0C80-\u0CFF]/, languages: ['kn'] },
+  { name: 'Malayalam', test: /[\u0D00-\u0D7F]/, languages: ['ml'] },
+];
+
+/**
+ * Returns a warning when the body's script cannot belong to the chosen
+ * language, or null when it is consistent (or cannot be judged).
+ */
+const languageMismatch = (body: string, code?: string | null): string | null => {
+  if (!body || !code) return null;
+  const script = SCRIPTS.find(s => s.test.test(body));
+  if (!script) return null;
+  if (script.languages.includes(code)) return null;
+  return `This body is written in ${script.name}, but the language is set to ` +
+    `${languageLabel(code)}. Meta fixes a template's language at approval, so this ` +
+    `cannot be corrected afterwards — ${script.languages.map(languageLabel).join(' or ')} ` +
+    `is probably what you want.`;
+};
+
+
 type SortState = { col: 'name' | 'updated'; dir: 'asc' | 'desc' };
 
 /** A column header that sorts, and shows which way it is currently sorting. */
@@ -116,6 +168,10 @@ export const WhatsAppTemplatesView: React.FC = () => {
 
   const [newTemplate, setNewTemplate] = useState<Partial<WhatsAppTemplate>>({
     name: '',
+    // Hindi rather than English: every template this account sends is written
+    // in an Indian language, and the previous silent default to en_US is how
+    // ten Hindi and Punjabi templates came to be registered as English.
+    language_code: 'hi',
     header_type: 'NONE',
     header_content: '',
     body: '',
@@ -163,6 +219,7 @@ export const WhatsAppTemplatesView: React.FC = () => {
     setEditingId(t.template_id);
     setNewTemplate({
       name: t.name,
+      language_code: t.language_code || 'en_US',
       header_type: t.header_type || 'NONE',
       header_content: t.header_content || '',
       body: t.body,
@@ -285,6 +342,12 @@ export const WhatsAppTemplatesView: React.FC = () => {
   // cannot be renamed, so a template renamed from "TestRun1" to
   // "HaryanaCampaign1" still carries meta name "testrun1" -- matching that
   // made the old name keep surfacing in searches the user had moved on from.
+  // A template Meta has already accepted has its language fixed there; editing
+  // ours would only make the two disagree and break the send lookup.
+  const editingTemplate = editingId ? templates.find(t => t.template_id === editingId) : null;
+  const languageLocked = Boolean(editingTemplate?.meta_template_name);
+  const mismatchWarning = languageMismatch(newTemplate.body || '', newTemplate.language_code);
+
   const query = search.trim().toLowerCase();
 
   // Offered filters are derived from the templates that exist, so the list can
@@ -410,6 +473,38 @@ export const WhatsAppTemplatesView: React.FC = () => {
                 className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded px-3 py-2 text-sm text-slate-200 outline-none transition-colors"
                 placeholder="e.g., promotional_offer_v1"
               />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400 font-semibold flex items-center justify-between">
+                <span>Language</span>
+                {languageLocked && (
+                  <span className="text-[10px] font-normal text-slate-500">
+                    Fixed at approval
+                  </span>
+                )}
+              </label>
+              <select
+                value={newTemplate.language_code || 'hi'}
+                disabled={languageLocked}
+                onChange={e => setNewTemplate(prev => ({ ...prev, language_code: e.target.value }))}
+                className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded px-3 py-2 text-sm text-slate-200 outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {LANGUAGES.map(l => (
+                  <option key={l.code} value={l.code}>{l.label} ({l.code})</option>
+                ))}
+              </select>
+              {languageLocked ? (
+                <p className="text-[11px] text-slate-500">
+                  Meta keys this template by name and language, so it cannot be changed
+                  once approved. A different language needs a new template.
+                </p>
+              ) : mismatchWarning ? (
+                <p className="text-[11px] text-amber-400 flex items-start gap-1.5">
+                  <span className="material-symbols-outlined text-[14px] mt-px shrink-0">warning</span>
+                  {mismatchWarning}
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-1">
@@ -733,10 +828,10 @@ export const WhatsAppTemplatesView: React.FC = () => {
                                 state, the text the language it was approved in. */}
                             <span
                               className={`inline-flex items-center gap-1.5 text-[10px] px-1.5 py-0.5 rounded border font-semibold ${statusStyle(label)}`}
-                              title={`${label} · ${t.language_code}`}
+                              title={`${label} · ${languageLabel(t.language_code)} (${t.language_code})`}
                             >
                               <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-current" />
-                              {t.language_code}
+                              {languageLabel(t.language_code)}
                             </span>
                           </td>
                           <td className="px-3 py-2.5 text-xs text-slate-400 whitespace-nowrap">
