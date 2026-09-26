@@ -105,16 +105,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* Action / Endpoint Indicator */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={onRefresh}
-            disabled={loading}
-            className="h-8 px-3 rounded bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-200 text-xs font-mono-code font-medium flex items-center gap-2 active:scale-95 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
-          >
-            <span className={`material-symbols-outlined text-[15px] text-sky-400 ${loading ? 'animate-spin' : ''}`}>
-              refresh
-            </span>
-            <span>Refresh Data</span>
-          </button>
           <div className="px-2.5 h-8 flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded text-xs font-mono-code text-slate-400 shadow-sm">
             <span className="material-symbols-outlined text-[14px] text-emerald-400">cloud_done</span>
             <span>
