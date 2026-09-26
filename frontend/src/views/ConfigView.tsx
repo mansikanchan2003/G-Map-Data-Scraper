@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { LocationItem, CategoryItem, PaginatedResponse, ApiError } from '../types/api';
-import { fetchConfigLocations, fetchConfigCategories, syncConfiguration, generateJobQueue } from '../api';
+import { fetchConfigLocations, fetchConfigCategories, syncConfiguration, generateJobQueue, deleteLocation } from '../api';
+import { AddLocationForm } from '../components/AddLocationForm';
 
 export const ConfigView: React.FC = () => {
   const [locations, setLocations] = useState<LocationItem[]>([]);
@@ -15,6 +16,7 @@ export const ConfigView: React.FC = () => {
   const [catPages, setCatPages] = useState<number>(1);
   const [catLoading, setCatLoading] = useState<boolean>(true);
 
+  const [addLocationOpen, setAddLocationOpen] = useState<boolean>(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
@@ -79,6 +81,21 @@ export const ConfigView: React.FC = () => {
       setFeedback(`Job generation failed: ${err.message}`);
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  // A PIN with jobs against it is refused by the API rather than deleted, so
+  // the businesses already discovered there are never orphaned.
+  const handleDeleteLocation = async (loc: LocationItem) => {
+    const label = loc.anchor_name || loc.pincode;
+    if (!window.confirm(`Remove ${label} from the target list?`)) return;
+    setFeedback(null);
+    try {
+      await deleteLocation(loc.location_id);
+      setFeedback(`Removed ${label} from the target list.`);
+      loadLocations(locPage);
+    } catch (err: any) {
+      setFeedback(`Could not remove ${label}: ${err.message}`);
     }
   };
 
@@ -202,10 +219,27 @@ export const ConfigView: React.FC = () => {
                 Geographic Locations ({totalLocations.toLocaleString()})
               </h2>
             </div>
-            <span className="text-xs font-mono-code text-slate-500">
-              Page {locPage} of {locPages}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono-code text-slate-500">
+                Page {locPage} of {locPages}
+              </span>
+              <button
+                onClick={() => setAddLocationOpen(v => !v)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-mono-code
+                           font-bold uppercase border border-sky-800 bg-sky-950 text-sky-300
+                           hover:bg-sky-900 hover:text-slate-100 transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[14px]">add_location_alt</span>
+                Add PIN
+              </button>
+            </div>
           </div>
+
+          <AddLocationForm
+            open={addLocationOpen}
+            onClose={() => setAddLocationOpen(false)}
+            onCreated={() => loadLocations(1)}
+          />
 
           <div className="flex-1 overflow-auto max-h-[440px]">
             <table className="w-full text-left border-collapse select-text text-xs font-mono-code">
@@ -219,19 +253,22 @@ export const ConfigView: React.FC = () => {
                   <th className="px-3 border-r border-slate-800">Anchor Village/Town</th>
                   <th className="px-3 border-r border-slate-800">Latitude</th>
                   <th className="px-3 border-r border-slate-800">Longitude</th>
-                  <th className="px-3">Radius</th>
+                  <th className="px-3 border-r border-slate-800">Radius</th>
+                  {/* Pinned right: the panel is narrower than the table, and an
+                      action that scrolls out of reach is no action at all. */}
+                  <th className="px-3 w-10 sticky right-0 bg-slate-950" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
                 {locLoading ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-500">
+                    <td colSpan={10} className="py-12 text-center text-slate-500">
                       Loading configured locations...
                     </td>
                   </tr>
                 ) : locations.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-500">
+                    <td colSpan={10} className="py-12 text-center text-slate-500">
                       No locations found in dataset.
                     </td>
                   </tr>
@@ -253,8 +290,12 @@ export const ConfigView: React.FC = () => {
                       <td className="px-3 border-r border-slate-800 text-slate-300">
                         {loc.tehsil || '—'}
                       </td>
-                      <td className="px-3 border-r border-slate-800 text-slate-300">
-                        {loc.anchor_name || '—'}
+                      {/* The spreadsheet's anchor names carry long parentheticals;
+                          left to wrap they push the rest of the row out of view. */}
+                      <td className="px-3 border-r border-slate-800 text-slate-300 max-w-[150px]">
+                        <span className="block truncate" title={loc.anchor_name || undefined}>
+                          {loc.anchor_name || '—'}
+                        </span>
                       </td>
                       <td className="px-3 border-r border-slate-800 text-slate-300">
                         {loc.latitude?.toFixed(4)}
@@ -262,8 +303,17 @@ export const ConfigView: React.FC = () => {
                       <td className="px-3 border-r border-slate-800 text-slate-300">
                         {loc.longitude?.toFixed(4)}
                       </td>
-                      <td className="px-3 text-slate-400">
+                      <td className="px-3 border-r border-slate-800 text-slate-400">
                         {loc.radius_km} km
+                      </td>
+                      <td className="px-3 text-center sticky right-0 bg-slate-900 border-l border-slate-800">
+                        <button
+                          onClick={() => handleDeleteLocation(loc)}
+                          title="Remove this PIN"
+                          className="text-slate-600 hover:text-rose-400 transition-colors cursor-pointer align-middle"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">delete</span>
+                        </button>
                       </td>
                     </tr>
                   ))

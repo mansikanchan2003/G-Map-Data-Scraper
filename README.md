@@ -47,6 +47,20 @@ dashboard.
   shop discovered under several categories is stored once.
 - CAPTCHA is detected and the batch stops early rather than escalating.
 
+### Target locations
+- **The PIN list is editable.** The spreadsheets seed it, but new PIN codes and
+  towns are added from **Configuration → Add PIN** as the business expands into
+  new geography, without touching the source files.
+- **Look up** resolves a place through Google Maps and fills in the
+  coordinates, and the state and PIN where Maps names them.
+- **State and district are required.** Every business discovered at a location
+  copies its state, district and tehsil, so a PIN saved without them yields
+  rows that can never be filtered by geography. Maps states the state for a PIN
+  code search but never the district, so that one is always typed rather than
+  guessed.
+- A PIN with jobs against it cannot be deleted, so businesses already
+  discovered there are never orphaned.
+
 ### WhatsApp campaigns
 - **Template lifecycle against Meta.** Templates are composed in the UI with a
   live preview, submitted for review automatically, and their status and
@@ -717,6 +731,9 @@ Key endpoints:
 | GET | `/ready` | Readiness probe |
 | GET | `/api/v1/stats` | System statistics |
 | POST | `/api/v1/config/sync` | Load locations and categories from xlsx |
+| POST | `/api/v1/config/locations/resolve` | Look a place up on Maps without saving it |
+| POST | `/api/v1/config/locations` | Add a target PIN |
+| DELETE | `/api/v1/config/locations/{id}` | Remove a target PIN that has no jobs |
 | POST | `/api/v1/jobs/generate` | Generate (location × category) job matrix |
 | POST | `/api/v1/jobs/maintenance` | Recover stale + auto-retry failed jobs |
 | POST | `/api/v1/discovery/batch` | Run a batch of discovery jobs |

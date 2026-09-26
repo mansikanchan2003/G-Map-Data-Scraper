@@ -52,6 +52,12 @@ class CustomPlace(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     radius_km: Optional[float] = None
+    # Businesses inherit these from the location, so a place added without them
+    # produces rows that cannot be filtered by geography afterwards. Maps names
+    # the state for a PIN code but never the district.
+    state: Optional[str] = None
+    district: Optional[str] = None
+    tehsil: Optional[str] = None
 
 
 class CustomRunRequest(BaseModel):
@@ -94,7 +100,8 @@ def custom_discovery_run(
     try:
         for p in payload.places:
             result = ensure_location(
-                db, p.place, p.latitude, p.longitude, p.radius_km, engine=engine
+                db, p.place, p.latitude, p.longitude, p.radius_km, engine=engine,
+                state=p.state, district=p.district, tehsil=p.tehsil,
             )
             if "error" in result:
                 errors.append({"place": p.place, "error": result["error"]})
@@ -117,7 +124,8 @@ def custom_discovery_run(
         "status": "ready",
         "locations": [
             {"place": l.anchor_name, "pincode": l.pincode,
-             "latitude": l.latitude, "longitude": l.longitude, "radius_km": l.radius_km}
+             "latitude": l.latitude, "longitude": l.longitude, "radius_km": l.radius_km,
+             "state": l.state, "district": l.district, "tehsil": l.tehsil}
             for l in locations
         ],
         "categories": [c.category_name for c in categories],

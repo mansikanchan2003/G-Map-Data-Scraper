@@ -312,6 +312,47 @@ export async function fetchConfigCategories(page = 1, pageSize = 100): Promise<P
   return request<PaginatedResponse<CategoryItem>>(`/api/v1/config/categories?page=${page}&page_size=${pageSize}`);
 }
 
+export interface ResolvedPlace {
+  place: string;
+  latitude: number;
+  longitude: number;
+  resolved_name?: string | null;
+  /** Maps names the state for a PIN code; it never names the district. */
+  state?: string | null;
+  pincode?: string | null;
+  radius_km: number;
+}
+
+export interface LocationCreatePayload {
+  pincode: string;
+  state: string;
+  district: string;
+  tehsil?: string | null;
+  anchor_name?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  radius_km?: number | null;
+}
+
+/** Look a place up without saving it, so the add form can be filled in. */
+export async function resolveLocation(place: string): Promise<ResolvedPlace> {
+  return request<ResolvedPlace>('/api/v1/config/locations/resolve', {
+    method: 'POST',
+    body: JSON.stringify({ place }),
+  });
+}
+
+export async function createLocation(payload: LocationCreatePayload): Promise<LocationItem> {
+  return request<LocationItem>('/api/v1/config/locations', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteLocation(locationId: string): Promise<{ status: string }> {
+  return request(`/api/v1/config/locations/${locationId}`, { method: 'DELETE' });
+}
+
 export async function syncConfiguration(): Promise<ConfigSyncResult> {
   return request<ConfigSyncResult>('/api/v1/config/sync', { method: 'POST' });
 }

@@ -1,3 +1,4 @@
+import re
 import time
 import urllib.parse
 from typing import Dict, Any, List, Optional
@@ -30,6 +31,33 @@ class Selectors:
 
     # Zero results
     NO_RESULTS = 'div:has-text("Google Maps can\'t find"), div:has-text("No results found")'
+
+# Maps titles a PIN code search with the place, its state and the PIN itself —
+# "Bhali Anandpur, Haryana 124001". Nothing in that heading names the district,
+# so this deliberately returns only what is actually stated.
+PLACE_HEADING = re.compile(
+    r"^(?P<place>.+?),\s*(?P<state>[A-Za-z][A-Za-z .&-]*?)\s+(?P<pincode>\d{6})\s*$"
+)
+
+
+def parse_place_heading(heading: Optional[str]) -> Dict[str, Optional[str]]:
+    """Read the place, state and PIN out of a Maps heading, where it states them."""
+    result: Dict[str, Optional[str]] = {"place": None, "state": None, "pincode": None}
+    if not heading:
+        return result
+
+    heading = heading.strip()
+    match = PLACE_HEADING.match(heading)
+    if not match:
+        # A town search returns just the town, which is still worth keeping.
+        result["place"] = heading or None
+        return result
+
+    result["place"] = match.group("place").strip() or None
+    result["state"] = match.group("state").strip() or None
+    result["pincode"] = match.group("pincode")
+    return result
+
 
 def build_search_url(category: str, pincode: Optional[str], latitude: float, longitude: float) -> str:
     """
@@ -100,7 +128,13 @@ class GoogleMapsDiscoveryEngine:
         after searching for the place, which is the same surface discovery
         already uses.
 
-        Returns {"latitude", "longitude", "resolved_name"} or None.
+        Searching a PIN code also names the place it belongs to: Maps titles it
+        "Bhali Anandpur, Haryana 124001", so the state and the canonical PIN can
+        be read back off the heading. A town name yields only itself, so the
+        district — which Maps never states — is always the caller's to supply.
+
+        Returns {"latitude", "longitude", "resolved_name", "state", "pincode"}
+        or None.
         """
         if not query or not str(query).strip():
             return None
@@ -135,8 +169,18 @@ class GoogleMapsDiscoveryEngine:
                             name = (heading.inner_text() or "").strip() or None
                     except Exception:
                         pass
-                    logger.info(f"Resolved '{query}' to {lat},{lng}")
-                    return {"latitude": lat, "longitude": lng, "resolved_name": name}
+                    admin = parse_place_heading(name)
+                    logger.info(
+                        f"Resolved '{query}' to {lat},{lng} "
+                        f"state={admin.get('state') or '-'} pin={admin.get('pincode') or '-'}"
+                    )
+                    return {
+                        "latitude": lat,
+                        "longitude": lng,
+                        "resolved_name": admin.get("place") or name,
+                        "state": admin.get("state"),
+                        "pincode": admin.get("pincode"),
+                    }
 
             logger.warning(f"Could not resolve coordinates for '{query}'")
             return None
