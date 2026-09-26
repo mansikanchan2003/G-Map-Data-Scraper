@@ -1,6 +1,7 @@
 import { formatDateTime } from '../utils/datetime';
 import React, { useState } from 'react';
 import { DiscoveryRunner } from '../components/DiscoveryRunner';
+import { ScaleBars } from '../components/ScaleBars';
 import { JobDistributionDonut } from '../components/JobDistributionDonut';
 import type { NormalizedSystemStats, DiscoveryStatus, ApiError } from '../types/api';
 import type { NavTab } from '../components/Header';
@@ -163,97 +164,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       )}
 
-      {/* KPI Metric Tiles Grid (4 Bento Cards) */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {/* 1. Locations */}
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col justify-between relative overflow-hidden group hover:border-sky-500/50 transition-colors duration-150 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono-code text-slate-400 uppercase tracking-wider font-semibold">
-              Locations
-            </span>
-            <span className="material-symbols-outlined text-slate-500 text-[18px]">pin_drop</span>
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <div className="text-2xl font-mono-code text-slate-100 font-bold">
-              {totalLocations.toLocaleString()}
-            </div>
-            <div className="text-xs font-mono-code text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/80 flex items-center gap-0.5 font-semibold">
-              <span className="material-symbols-outlined text-[13px]">pin_drop</span>
-              <span>Source</span>
-            </div>
-          </div>
-          <div className="mt-1 text-xs font-mono-code text-slate-400 truncate">
-            Configured target PINs
-          </div>
-        </div>
-
-        {/* 2. Categories */}
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col justify-between relative overflow-hidden group hover:border-sky-500/50 transition-colors duration-150 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono-code text-slate-400 uppercase tracking-wider font-semibold">
-              Categories
-            </span>
-            <span className="material-symbols-outlined text-slate-500 text-[18px]">category</span>
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <div className="text-2xl font-mono-code text-slate-100 font-bold">
-              {totalCategories.toLocaleString()}
-            </div>
-            <div className="text-xs font-mono-code text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 font-medium">
-              Personas
-            </div>
-          </div>
-          <div className="mt-1 text-xs font-mono-code text-slate-400 truncate">
-            Persona search categories
-          </div>
-        </div>
-
-        {/* 3. Total Jobs Matrix */}
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col justify-between relative overflow-hidden group hover:border-sky-500/50 transition-colors duration-150 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono-code text-slate-400 uppercase tracking-wider font-semibold">
-              Total Jobs
-            </span>
-            <span className="material-symbols-outlined text-sky-400 text-[18px]">hub</span>
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <div className="text-2xl font-mono-code text-slate-100 font-bold">
-              {totalJobs.toLocaleString()}
-            </div>
-            <div className="text-xs font-mono-code text-sky-400 bg-sky-950/60 px-1.5 py-0.5 rounded border border-sky-800/80 flex items-center gap-0.5 font-semibold">
-              <span>MATRIX</span>
-            </div>
-          </div>
-          <div className="mt-1 text-xs font-mono-code text-slate-400 truncate">
-            {totalLocations} Loc × {totalCategories} Cat matrix
-          </div>
-        </div>
-
-        {/* 4. Businesses Discovered */}
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col justify-between relative overflow-hidden group hover:border-emerald-500/50 transition-colors duration-150 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono-code text-slate-400 uppercase tracking-wider font-semibold">
-              Businesses Discovered
-            </span>
-            <span className="material-symbols-outlined text-emerald-400 text-[18px]">corporate_fare</span>
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <div className="text-2xl font-mono-code text-emerald-400 font-bold">
-              {totalBusinesses.toLocaleString()}
-            </div>
-            <div className="text-xs font-mono-code text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/80 flex items-center gap-0.5 font-semibold">
-              <span className="material-symbols-outlined text-[13px]">database</span>
-              <span>{validBusinesses.toLocaleString()} Valid</span>
-            </div>
-          </div>
-          <div className="mt-1 text-xs font-mono-code text-slate-400 truncate">
-            Normalized & deduplicated in SQLite
-          </div>
-        </div>
-      </section>
-
-      {/* Operational status: the chart carries the numbers, so nothing repeats them above it */}
-      <section className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">
+      {/* Operational status beside the matrix it runs over. The chart carries
+          the numbers, so nothing repeats them above it. */}
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+      <div className="lg:col-span-8 bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-sky-400 text-[18px]">bar_chart</span>
@@ -283,6 +197,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             { key: 'BLOCKED',   label: 'Blocked',   value: blockedJobs,   colorVar: '--chart-blocked' },
           ]}
         />
+      </div>
+
+      {/* The headline figures, as bars rather than four tiles of prose. */}
+      <div className="lg:col-span-4 bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-sky-400 text-[18px]">stacked_bar_chart</span>
+          <h3 className="text-sm font-semibold text-slate-100">Scale of the Run</h3>
+        </div>
+        <ScaleBars
+          groups={[
+            {
+              title: 'Search grid',
+              bars: [
+                { key: 'categories', label: 'Categories', value: totalCategories, note: 'personas' },
+                { key: 'locations', label: 'Locations', value: totalLocations, note: 'target PINs' },
+              ],
+            },
+            {
+              title: 'Work & output',
+              bars: [
+                { key: 'jobs', label: 'Jobs allocated', value: totalJobs,
+                  note: `${totalLocations}×${totalCategories}` },
+                { key: 'businesses', label: 'Businesses found', value: totalBusinesses,
+                  note: `${validBusinesses.toLocaleString()} valid`,
+                  onClick: () => onNavigate('businesses') },
+              ],
+            },
+          ]}
+        />
+      </div>
       </section>
 
       {/* Split Layout: Latest Run Card (Left) & Operational Actions (Right) */}

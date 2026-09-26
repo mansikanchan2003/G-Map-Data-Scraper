@@ -235,6 +235,9 @@ body, aside, header, .bg-slate-900, .bg-slate-950, .bg-slate-800 {
   --chart-blocked: #9085e9;   /* violet, stepped for the dark surface */
   --chart-muted: #64748b;
   --chart-track: #1e293b;
+  /* Bar-chart fill. Cyan rather than blue: against the Blocked violet sitting
+     beside it on the same card, blue came out 1.2 dE apart under deuteranopia. */
+  --chart-accent: #0891b2;
 }
 
 :root[data-theme="light"] {
@@ -244,4 +247,5 @@ body, aside, header, .bg-slate-900, .bg-slate-950, .bg-slate-800 {
   --chart-blocked: #4a3aa7;   /* violet, stepped for the light surface */
   --chart-muted: #8096a6;
   --chart-track: #e2e8f0;
+  --chart-accent: #0e7490;   /* cyan, stepped for the light surface */
 }
