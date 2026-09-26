@@ -30,6 +30,7 @@ export default function App() {
   const [latencyMs, setLatencyMs] = useState<number | undefined>(undefined);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const { theme, toggleTheme } = useTheme();
 
   // Synchronize hash with activeTab
@@ -47,6 +48,8 @@ export default function App() {
 
   const handleTabChange = (tab: NavTab, filter = 'All') => {
     setActiveTab(tab);
+    // On a phone the drawer covers the page it just navigated to.
+    setSidebarOpen(false);
     window.location.hash = tab;
     if (tab === 'jobs' && filter) {
       setJobsFilter(filter);
@@ -111,10 +114,12 @@ export default function App() {
         isBackendConnected={isBackendConnected}
         latencyMs={latencyMs}
         onRefreshAll={syncBackend}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 pl-60 h-screen overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 lg:pl-60 h-screen overflow-hidden">
         {/* Sticky Header */}
         <Header
           theme={theme}
@@ -125,6 +130,7 @@ export default function App() {
           onSyncBackend={syncBackend}
           isSyncing={isSyncing}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenMenu={() => setSidebarOpen(true)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />

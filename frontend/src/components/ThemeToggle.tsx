@@ -28,7 +28,9 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, onToggle }) => 
         }`}
       >
         <span className="material-symbols-outlined text-[14px]">dark_mode</span>
-        Dark
+        {/* The labels are what makes the current mode readable, but on a phone
+            they cost more width than the header has to give. */}
+        <span className="hidden sm:inline">Dark</span>
       </span>
       <span
         className={`flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold transition-colors ${
@@ -38,7 +40,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, onToggle }) => 
         }`}
       >
         <span className="material-symbols-outlined text-[14px]">light_mode</span>
-        Light
+        <span className="hidden sm:inline">Light</span>
       </span>
     </button>
   );

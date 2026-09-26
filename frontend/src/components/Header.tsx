@@ -11,6 +11,8 @@ interface HeaderProps {
   onSyncBackend: () => void;
   isSyncing: boolean;
   onOpenSettings: () => void;
+  /** Opens the nav drawer; only rendered below lg, where it is hidden. */
+  onOpenMenu: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   theme: Theme;
@@ -24,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSyncBackend,
   isSyncing,
   onOpenSettings,
+  onOpenMenu,
   searchQuery,
   onSearchChange,
   theme,
@@ -46,8 +49,19 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between px-4 h-14 w-full bg-slate-900 border-b border-slate-800 shadow-sm select-none shrink-0">
       {/* Search and Breadcrumbs on Left */}
-      <div className="flex items-center gap-4 max-w-lg w-full">
-        <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-mono-code text-slate-400 shrink-0">
+      <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0 lg:max-w-lg">
+        {/* The sidebar is a drawer below lg, so it needs a way back. */}
+        <button
+          onClick={onOpenMenu}
+          className="lg:hidden w-9 h-9 -ml-1.5 flex items-center justify-center shrink-0 rounded
+                     text-slate-300 hover:text-slate-100 hover:bg-slate-800 transition-colors cursor-pointer"
+          title="Open navigation"
+          aria-label="Open navigation"
+        >
+          <span className="material-symbols-outlined text-[22px]">menu</span>
+        </button>
+
+        <div className="hidden xl:flex items-center gap-1.5 text-[11px] font-mono-code text-slate-400 shrink-0">
           <span className="text-sky-400 font-semibold uppercase">AutoGMap</span>
           <span>/</span>
           <span className="text-slate-200 font-medium">{section}</span>
@@ -55,7 +69,7 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="text-sky-400 font-semibold">{sub}</span>
         </div>
 
-        <div className="relative flex-1 flex items-center min-w-[180px]">
+        <div className="relative flex-1 flex items-center min-w-0">
           <span className="material-symbols-outlined absolute left-2.5 text-slate-500 text-[16px]">
             search
           </span>
@@ -63,14 +77,14 @@ export const Header: React.FC<HeaderProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search across coordinates, category or job..."
+            placeholder="Search..."
             className="w-full h-8 pl-8 pr-7 text-xs font-mono-code bg-slate-950 border border-slate-700 rounded text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all"
           />
         </div>
       </div>
 
       {/* Right Actions & Health Indicators */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         {/* Backend Connection Live Pill */}
         <button
           onClick={onOpenSettings}

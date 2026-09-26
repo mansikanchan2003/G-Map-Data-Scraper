@@ -222,20 +222,23 @@ export const WhatsAppCampaignView: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-950 text-slate-100 overflow-y-auto">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-800 bg-slate-900 shrink-0">
+      <div className="px-4 sm:px-6 py-4 border-b border-slate-800 bg-slate-900 shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight">WhatsApp Campaign Builder</h1>
         <p className="text-xs text-slate-400 mt-1">Configure and send targeted WhatsApp messages</p>
       </div>
 
       {/* Stepper */}
-      <div className="px-6 py-4 bg-slate-900/50 border-b border-slate-800 shrink-0 flex items-center gap-4">
+      {/* Four steps will not fit a phone; the row scrolls so the later ones
+          stay reachable instead of being cut off the side. */}
+      <div className="px-4 sm:px-6 py-4 bg-slate-900/50 border-b border-slate-800 shrink-0
+                      flex items-center gap-4 overflow-x-auto">
         {[
           { num: 1, title: 'Data & Account' },
           { num: 2, title: 'Template' },
           { num: 3, title: 'Review' },
           { num: 4, title: 'Confirm' }
         ].map(s => (
-          <div key={s.num} className={`flex items-center gap-2 ${step === s.num ? 'text-sky-400 font-semibold' : 'text-slate-500'}`}>
+          <div key={s.num} className={`flex items-center gap-2 shrink-0 ${step === s.num ? 'text-sky-400 font-semibold' : 'text-slate-500'}`}>
             <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border ${step === s.num ? 'border-sky-400 bg-sky-950/30' : 'border-slate-700 bg-slate-900'}`}>
               {s.num}
             </div>
@@ -306,13 +309,13 @@ export const WhatsAppCampaignView: React.FC = () => {
 
                 {dataSource === 'scraped' && (
                   <div className="space-y-4">
-                    <div className="flex gap-3 items-center">
+                    <div className="flex flex-wrap gap-3 items-center">
                       <input 
                         type="text"
                         placeholder="Search keyword..."
                         value={scrapedSearch}
                         onChange={e => setScrapedSearch(e.target.value)}
-                        className="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm outline-none text-slate-200"
+                        className="flex-1 min-w-[150px] bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm outline-none text-slate-200"
                       />
                       <select 
                         value={scrapedFilterState}

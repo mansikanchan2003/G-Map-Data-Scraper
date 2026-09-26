@@ -4,6 +4,9 @@ import type { NavTab } from './Header';
 
 interface SidebarProps {
   activeTab: NavTab;
+  /** Below lg the sidebar is a drawer, so it needs to be told when to show. */
+  isOpen?: boolean;
+  onClose?: () => void;
   onTabChange: (tab: NavTab) => void;
   isBackendConnected: boolean;
   latencyMs?: number;
@@ -12,6 +15,8 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
+  isOpen = false,
+  onClose,
   onTabChange,
   isBackendConnected,
   latencyMs,
@@ -48,7 +53,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 z-40 flex flex-col justify-between p-3 bg-slate-900 border-r border-slate-800 w-60 h-screen shadow-sm select-none">
+    <>
+      {/* Backdrop, drawer only. Tapping away is how a drawer is dismissed on a
+          phone, and without it the sidebar can trap the reader. */}
+      {isOpen && (
+        <div
+          onClick={onClose}
+          className="lg:hidden fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm"
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`fixed left-0 top-0 bottom-0 z-50 flex flex-col justify-between p-3
+                    bg-slate-900 border-r border-slate-800 w-60 h-screen shadow-sm select-none
+                    transition-transform duration-200
+                    ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}
+      >
       {/* Top Branding & Navigation */}
       <div className="flex flex-col gap-4">
         {/* Brand Cluster */}
@@ -158,6 +179,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </span>
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 };

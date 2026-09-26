@@ -103,7 +103,7 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
           </div>
 
           {/* Action Bar */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => loadData(page)}
               disabled={loading}

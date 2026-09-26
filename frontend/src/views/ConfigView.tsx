@@ -212,7 +212,7 @@ export const ConfigView: React.FC = () => {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 lg:p-6 min-h-0">
         {/* PANEL A: GEOGRAPHIC LOCATIONS (7 COLS) */}
         <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded flex flex-col shadow-sm overflow-hidden">
-          <div className="p-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+          <div className="p-3 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-sky-400 text-[18px]">location_on</span>
               <h2 className="text-xs font-mono-code font-bold uppercase text-slate-200">
@@ -345,7 +345,7 @@ export const ConfigView: React.FC = () => {
 
         {/* PANEL B: CATEGORY PERSONAS (5 COLS) */}
         <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded flex flex-col shadow-sm overflow-hidden">
-          <div className="p-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+          <div className="p-3 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-sky-400 text-[18px]">category</span>
               <h2 className="text-xs font-mono-code font-bold uppercase text-slate-200">
