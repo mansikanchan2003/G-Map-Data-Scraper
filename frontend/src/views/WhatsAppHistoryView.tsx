@@ -77,7 +77,7 @@ export const WhatsAppHistoryView: React.FC = () => {
         </button>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden shrink-0">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-950 border-b border-slate-800">
             <tr>
