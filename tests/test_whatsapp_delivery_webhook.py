@@ -48,7 +48,19 @@ def db():
     try:
         yield session
     finally:
+        # These rows are committed, so a rollback will not remove them. Left
+        # behind, the next test's lookup by MSG_ID finds this test's recipient.
         session.rollback()
+        session.query(WhatsAppButtonClick).filter(
+            WhatsAppButtonClick.campaign_id == campaign_id
+        ).delete(synchronize_session=False)
+        session.query(WhatsAppCampaignRecipient).filter(
+            WhatsAppCampaignRecipient.campaign_id == campaign_id
+        ).delete(synchronize_session=False)
+        session.query(WhatsAppCampaign).filter(
+            WhatsAppCampaign.campaign_id == campaign_id
+        ).delete(synchronize_session=False)
+        session.commit()
         session.close()
 
 
@@ -184,3 +196,114 @@ class TestButtonClicks:
         db.flush()
 
         assert db.query(WhatsAppButtonClick).count() == 0
+
+
+class TestWebhookEndpoint:
+    """
+    The HTTP surface Meta will actually call.
+
+    These run the real endpoint, so they prove the handshake and the signature
+    check work before the webhook is ever pointed at a public URL.
+    """
+
+    @pytest.fixture
+    def client(self, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        from src.database import get_db
+        from src.main import app
+
+        monkeypatch.setenv("META_APP_SECRET", "test_app_secret")
+        monkeypatch.setenv("META_WEBHOOK_VERIFY_TOKEN", "test_verify_token")
+
+        def override_db():
+            session = TestingSessionLocal()
+            try:
+                yield session
+            finally:
+                session.close()
+
+        app.dependency_overrides[get_db] = override_db
+        yield TestClient(app)
+        app.dependency_overrides.pop(get_db, None)
+
+    def signed(self, client, payload):
+        import hashlib
+        import hmac
+        import json as jsonlib
+
+        body = jsonlib.dumps(payload).encode()
+        digest = hmac.new(b"test_app_secret", body, hashlib.sha256).hexdigest()
+        return client.post(
+            "/api/v1/whatsapp/webhook",
+            content=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Hub-Signature-256": f"sha256={digest}",
+            },
+        )
+
+    def test_verification_handshake_echoes_the_challenge(self, client):
+        res = client.get(
+            "/api/v1/whatsapp/webhook",
+            params={
+                "hub.mode": "subscribe",
+                "hub.challenge": "31415",
+                "hub.verify_token": "test_verify_token",
+            },
+        )
+        assert res.status_code == 200
+        assert res.json() == 31415
+
+    def test_verification_rejects_a_wrong_token(self, client):
+        res = client.get(
+            "/api/v1/whatsapp/webhook",
+            params={
+                "hub.mode": "subscribe",
+                "hub.challenge": "31415",
+                "hub.verify_token": "not_the_token",
+            },
+        )
+        assert res.status_code == 403
+
+    def test_a_correctly_signed_event_is_applied(self, client, db):
+        res = self.signed(client, {
+            "entry": [{"changes": [{"value": {"statuses": [
+                {"id": MSG_ID, "status": "read", "timestamp": "1700000600"}
+            ]}}]}]
+        })
+        assert res.status_code == 200
+
+        db.expire_all()
+        r = recipient(db)
+        assert r.read_at is not None
+        assert r.delivered_at is not None
+
+    def test_an_unsigned_request_is_rejected(self, client):
+        res = client.post("/api/v1/whatsapp/webhook", json={"entry": []})
+        assert res.status_code == 403
+
+    def test_a_forged_signature_is_rejected(self, client, db):
+        import json as jsonlib
+
+        body = jsonlib.dumps({"entry": [{"changes": [{"value": {"statuses": [
+            {"id": MSG_ID, "status": "read", "timestamp": "1700000600"}
+        ]}}]}]}).encode()
+        res = client.post(
+            "/api/v1/whatsapp/webhook",
+            content=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Hub-Signature-256": "sha256=" + "0" * 64,
+            },
+        )
+        assert res.status_code == 403
+
+        db.expire_all()
+        assert recipient(db).read_at is None
+
+    def test_a_payload_that_cannot_be_applied_is_still_acknowledged(self, client):
+        # Meta redelivers anything it does not get a 200 for, so an unusable
+        # payload must not turn into a retry loop.
+        res = self.signed(client, {"entry": [{"changes": [{"value": {}}]}]})
+        assert res.status_code == 200

@@ -61,6 +61,30 @@ dashboard.
 - A PIN with jobs against it cannot be deleted, so businesses already
   discovered there are never orphaned.
 
+### Turning the webhook on
+
+Everything below the line is built and tested; these are the four steps that
+connect it to Meta.
+
+1. **Expose the backend over HTTPS** and set `PUBLIC_BASE_URL` to it (e.g.
+   `https://link.eko.in`). The same URL serves the click-tracking redirect, so
+   this one variable switches both on.
+2. **Set `META_APP_SECRET`** to the app secret from the Meta app dashboard.
+   Until it is set, `POST /api/v1/whatsapp/webhook` answers **403 to every
+   call**, including Meta's — the signature cannot be verified without it.
+3. **Register the callback** in Meta → WhatsApp → Configuration:
+   - Callback URL: `<PUBLIC_BASE_URL>/api/v1/whatsapp/webhook`
+   - Verify token: the value of `META_WEBHOOK_VERIFY_TOKEN`
+4. **Subscribe the fields** `messages` (delivery statuses *and* quick-reply
+   taps both arrive under it) and, optionally,
+   `message_template_status_update` for template approvals.
+
+Then send one message to your own number and confirm the row in **Campaign
+History → View Details** turns Delivered, then Read.
+
+Note that Meta does not replay events for messages already sent, so campaigns
+run before this is switched on will never show delivery data.
+
 ### Delivery & engagement tracking
 - **Campaign History** shows delivered, read and button clicks per campaign;
   **View Details** adds a Delivery & Engagement panel and per-recipient
