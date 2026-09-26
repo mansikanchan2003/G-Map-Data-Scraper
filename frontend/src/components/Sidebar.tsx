@@ -54,10 +54,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Brand Cluster */}
         <div className="flex items-center gap-3 px-2 py-1.5">
           <div
-            className="w-8 h-8 rounded bg-sky-950 border border-sky-800 flex items-center justify-center text-sky-400 shadow-sm"
+            className="w-8 h-8 rounded bg-white/95 border border-slate-700 flex items-center justify-center shadow-sm shrink-0"
             title="AutoGMap Autonomous Engine"
           >
-            <span className="material-symbols-outlined text-[20px]">deployed_code</span>
+            {/* The mark is gold on transparency, so it needs a light plate to
+                stay legible against the dark sidebar. */}
+            <img src="/eko-logo.png" alt="Eko" className="w-6 h-6 object-contain" />
           </div>
           <div className="flex flex-col min-w-0">
             <span className="text-[17px] font-bold tracking-tight text-slate-100 uppercase leading-none truncate">
