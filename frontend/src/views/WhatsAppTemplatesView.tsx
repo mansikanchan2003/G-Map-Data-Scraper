@@ -66,6 +66,34 @@ const statusLabel = (t: WhatsAppTemplate) => {
   return s || 'PENDING';
 };
 
+type SortState = { col: 'name' | 'updated'; dir: 'asc' | 'desc' };
+
+/** A column header that sorts, and shows which way it is currently sorting. */
+const SortHeader: React.FC<{
+  label: string;
+  col: SortState['col'];
+  sort: SortState;
+  onSort: (s: SortState) => void;
+}> = ({ label, col, sort, onSort }) => {
+  const active = sort.col === col;
+  return (
+    <th className="px-3 py-2.5 text-xs font-semibold text-slate-400">
+      <button
+        onClick={() => onSort({ col, dir: active && sort.dir === 'asc' ? 'desc' : 'asc' })}
+        className={`flex items-center gap-0.5 transition-colors cursor-pointer ${
+          active ? 'text-slate-100' : 'hover:text-slate-200'
+        }`}
+      >
+        {label}
+        <span className={`material-symbols-outlined text-[15px] ${active ? 'opacity-100' : 'opacity-30'}`}>
+          {active && sort.dir === 'desc' ? 'arrow_downward' : 'arrow_upward'}
+        </span>
+      </button>
+    </th>
+  );
+};
+
+
 export const WhatsAppTemplatesView: React.FC = () => {
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -74,6 +102,12 @@ export const WhatsAppTemplatesView: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [sort, setSort] = useState<SortState>({ col: 'updated', dir: 'desc' });
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [headerSourceType, setHeaderSourceType] = useState<'URL' | 'UPLOAD'>('URL');
@@ -252,9 +286,62 @@ export const WhatsAppTemplatesView: React.FC = () => {
   // "HaryanaCampaign1" still carries meta name "testrun1" -- matching that
   // made the old name keep surfacing in searches the user had moved on from.
   const query = search.trim().toLowerCase();
-  const visibleTemplates = query
-    ? templates.filter(t => (t.name || '').toLowerCase().includes(query))
-    : templates;
+
+  // Offered filters are derived from the templates that exist, so the list can
+  // never present a choice that matches nothing.
+  const categoryOptions = Array.from(
+    new Set(templates.map(t => (t.category || '').toUpperCase()).filter(Boolean))
+  ).sort();
+  const statusOptions = Array.from(new Set(templates.map(statusLabel))).sort();
+
+  const visibleTemplates = templates
+    .filter(t => !query || (t.name || '').toLowerCase().includes(query))
+    .filter(t => !categoryFilter || (t.category || '').toUpperCase() === categoryFilter)
+    .filter(t => !statusFilter || statusLabel(t) === statusFilter)
+    .slice()
+    .sort((a, b) => {
+      const dir = sort.dir === 'asc' ? 1 : -1;
+      if (sort.col === 'name') {
+        return dir * (a.name || '').localeCompare(b.name || '');
+      }
+      const at = new Date(a.updated_at || a.created_at).getTime();
+      const bt = new Date(b.updated_at || b.created_at).getTime();
+      return dir * (at - bt);
+    });
+
+  const visibleIds = visibleTemplates.map(t => t.template_id);
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id));
+
+  const toggleSelected = (id: string) =>
+    setSelectedIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+
+  // Select-all covers what is on screen, not the whole table: acting on rows a
+  // filter is hiding is how people delete things they never saw.
+  const toggleSelectAll = () =>
+    setSelectedIds(prev => (allVisibleSelected ? prev.filter(id => !visibleIds.includes(id)) : Array.from(new Set([...prev, ...visibleIds]))));
+
+  const handleBulkDelete = async () => {
+    if (!window.confirm(`Delete ${selectedIds.length} template(s)? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    const failures: string[] = [];
+    for (const id of selectedIds) {
+      try {
+        await deleteTemplate(id);
+      } catch (err: any) {
+        // A template still linked to a campaign is refused by the API. Report
+        // it by name rather than letting one refusal abandon the rest.
+        const name = templates.find(t => t.template_id === id)?.name || id;
+        failures.push(`${name}: ${err.message}`);
+      }
+    }
+    setBulkDeleting(false);
+    setSelectedIds([]);
+    await loadTemplates();
+    if (failures.length) {
+      alert(`${failures.length} of ${failures.length + (selectedIds.length - failures.length)} could not be deleted:\n\n${failures.join('\n')}`);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-950 text-slate-100 p-6 overflow-y-auto">
@@ -503,136 +590,293 @@ export const WhatsAppTemplatesView: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {loading ? (
-            <div className="text-slate-500 text-sm">Loading templates...</div>
-          ) : visibleTemplates.length === 0 ? (
-            <div className="col-span-full p-8 border border-slate-800 border-dashed rounded-lg flex flex-col items-center justify-center text-slate-500">
-              <span className="material-symbols-outlined text-4xl mb-2">dashboard_customize</span>
-              <p>{search ? `No templates match "${search}".` : 'No templates created yet.'}</p>
-            </div>
-          ) : (
-            visibleTemplates.map(t => (
-              <div key={t.template_id} className="bg-slate-900 border border-slate-800 rounded-lg p-5 flex flex-col hover:border-slate-700 transition-colors">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h3 className="font-semibold text-slate-200 truncate">{t.name}</h3>
-                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold border ${statusStyle(statusLabel(t))}`}>
-                        {statusLabel(t)}
-                      </span>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold border ${categoryStyle(t.category)}`}
-                        title="Meta billing category"
-                      >
-                        {categoryLabel(t.category)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {!t.meta_template_name && (
-                      <button
-                        onClick={() => handleSubmitForReview(t)}
-                        title="Submit to Meta for review"
-                        className="text-slate-500 hover:text-emerald-400 transition-colors"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">cloud_upload</span>
-                      </button>
-                    )}
-                    <button
-                      onClick={() => startEdit(t)}
-                      title="Edit template"
-                      className="text-slate-500 hover:text-sky-400 transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">edit</span>
-                    </button>
-                    <button
-                      onClick={() => handleDelete(t.template_id)}
-                      title="Delete template"
-                      className="text-slate-500 hover:text-rose-400 transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">delete</span>
-                    </button>
-                  </div>
-                </div>
-                {/* Header media / text */}
-                {t.header_type && t.header_type !== 'NONE' && (
-                  <div className="mb-3">
-                    <div className="text-[10px] uppercase text-slate-500 tracking-wider mb-1.5">
-                      Header · {t.header_type}
-                    </div>
-                    {t.header_type === 'IMAGE' && resolveMediaUrl(t.header_content) && (
-                      <img
-                        src={resolveMediaUrl(t.header_content) as string}
-                        alt="Template header"
-                        className="w-full h-36 object-cover rounded border border-slate-800"
-                      />
-                    )}
-                    {t.header_type === 'VIDEO' && resolveMediaUrl(t.header_content) && (
-                      <video
-                        src={resolveMediaUrl(t.header_content) as string}
-                        controls
-                        className="w-full h-36 object-cover rounded border border-slate-800 bg-slate-950"
-                      />
-                    )}
-                    {t.header_type === 'TEXT' && t.header_content && (
-                      <div className="text-sm font-semibold text-slate-200 bg-slate-950 border border-slate-800 rounded px-3 py-2">
-                        {t.header_content}
-                      </div>
-                    )}
-                  </div>
-                )}
+        <>
+        {/* Filter bar. Category and status are the two facets that change how a
+            template behaves — one decides its price, the other whether it can
+            send at all. */}
+        <div className="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-slate-800">
+          <span className="text-xs text-slate-500 font-medium mr-1">Filter By</span>
 
-                {/* Body - shown in full, preserving the template's line breaks */}
-                <div className="mb-3">
-                  <div className="text-[10px] uppercase text-slate-500 tracking-wider mb-1.5">Body</div>
-                  <div className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed bg-slate-950 border border-slate-800 rounded px-3 py-2">
-                    {t.body}
-                  </div>
-                </div>
+          <select
+            value={categoryFilter}
+            onChange={e => setCategoryFilter(e.target.value)}
+            className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 focus:border-sky-600 focus:outline-none cursor-pointer"
+          >
+            <option value="">Category</option>
+            {categoryOptions.map(c => (
+              <option key={c} value={c}>{categoryLabel(c)}</option>
+            ))}
+          </select>
 
-                {/* Footer */}
-                {t.footer && (
-                  <div className="mb-3">
-                    <div className="text-[10px] uppercase text-slate-500 tracking-wider mb-1.5">Footer</div>
-                    <div className="text-xs text-slate-500 italic bg-slate-950 border border-slate-800 rounded px-3 py-2">
-                      {t.footer}
-                    </div>
-                  </div>
-                )}
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 focus:border-sky-600 focus:outline-none cursor-pointer"
+          >
+            <option value="">Status</option>
+            {statusOptions.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
 
-                {/* Buttons */}
-                {Array.isArray(t.buttons) && t.buttons.length > 0 && (
-                  <div className="mb-3">
-                    <div className="text-[10px] uppercase text-slate-500 tracking-wider mb-1.5">Buttons</div>
-                    <div className="flex flex-col gap-1.5">
-                      {t.buttons.map((btn: any, idx: number) => (
-                        <div
-                          key={idx}
-                          className="text-xs text-sky-400 bg-slate-950 border border-slate-800 rounded px-3 py-1.5 flex items-center gap-1.5"
-                        >
-                          <span className="material-symbols-outlined text-[14px]">
-                            {btn.type === 'URL' ? 'open_in_new' : btn.type === 'PHONE_NUMBER' ? 'call' : 'reply'}
-                          </span>
-                          <span className="truncate">{btn.text}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-auto text-xs text-slate-500 border-t border-slate-800 pt-3 flex items-center justify-between gap-2">
-                  <span>Created: {new Date(t.created_at).toLocaleDateString()}</span>
-                  {t.meta_template_name && (
-                    <span className="font-mono-code text-slate-500 truncate">
-                      {t.meta_template_name} · {t.language_code}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))
+          {(categoryFilter || statusFilter || search) && (
+            <button
+              onClick={() => { setCategoryFilter(''); setStatusFilter(''); setSearch(''); }}
+              className="text-xs text-sky-400 hover:text-sky-300 transition-colors flex items-center gap-1"
+            >
+              <span className="material-symbols-outlined text-[14px]">filter_alt_off</span>
+              Clear filters
+            </button>
           )}
+
+          <span className="ml-auto text-xs text-slate-500">
+            {visibleTemplates.length} of {templates.length}
+          </span>
         </div>
+
+        {/* Bulk bar, shown only when a selection exists so it never takes space
+            it has not earned. */}
+        {selectedIds.length > 0 && (
+          <div className="flex items-center gap-3 mb-3 px-3 py-2 bg-slate-900 border border-slate-700 rounded">
+            <span className="text-xs text-slate-300 font-medium">
+              {selectedIds.length} selected
+            </span>
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+              className="text-xs text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined text-[15px]">delete</span>
+              {bulkDeleting ? 'Deleting...' : 'Delete selected'}
+            </button>
+            <button
+              onClick={() => setSelectedIds([])}
+              className="text-xs text-slate-400 hover:text-slate-200 transition-colors ml-auto"
+            >
+              Clear selection
+            </button>
+          </div>
+        )}
+
+        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead className="bg-slate-950 border-b border-slate-800">
+                <tr>
+                  <th className="px-3 py-2.5 w-10">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleSelectAll}
+                      aria-label="Select all templates"
+                      className="accent-sky-500 cursor-pointer"
+                    />
+                  </th>
+                  <SortHeader label="Template Name" col="name" sort={sort} onSort={setSort} />
+                  <th className="px-3 py-2.5 text-xs font-semibold text-slate-400">Meta Name</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-slate-400">Category</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-slate-400">Preview</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-slate-400">Language</th>
+                  <SortHeader label="Last Updated" col="updated" sort={sort} onSort={setSort} />
+                  <th className="px-3 py-2.5 text-xs font-semibold text-slate-400 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {loading ? (
+                  <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500">Loading templates...</td></tr>
+                ) : visibleTemplates.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
+                      <span className="material-symbols-outlined text-3xl block mb-1">dashboard_customize</span>
+                      {templates.length === 0
+                        ? 'No templates created yet.'
+                        : 'No templates match these filters.'}
+                    </td>
+                  </tr>
+                ) : (
+                  visibleTemplates.map(t => {
+                    const label = statusLabel(t);
+                    const expanded = expandedId === t.template_id;
+                    return (
+                      <React.Fragment key={t.template_id}>
+                        <tr className="hover:bg-slate-800/40 transition-colors">
+                          <td className="px-3 py-2.5">
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(t.template_id)}
+                              onChange={() => toggleSelected(t.template_id)}
+                              aria-label={`Select ${t.name}`}
+                              className="accent-sky-500 cursor-pointer"
+                            />
+                          </td>
+                          <td className="px-3 py-2.5 font-medium text-slate-200 max-w-[180px]">
+                            <span className="block truncate" title={t.name}>{t.name}</span>
+                          </td>
+                          <td className="px-3 py-2.5 font-mono-code text-xs text-slate-500 max-w-[150px]">
+                            <span className="block truncate" title={t.meta_template_name || undefined}>
+                              {t.meta_template_name || '—'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold border ${categoryStyle(t.category)}`}
+                              title="Meta billing category"
+                            >
+                              {categoryLabel(t.category)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-xs text-slate-400 max-w-[260px]">
+                            <span className="block truncate" title={t.body}>{t.body}</span>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            {/* One chip per template: the dot carries the review
+                                state, the text the language it was approved in. */}
+                            <span
+                              className={`inline-flex items-center gap-1.5 text-[10px] px-1.5 py-0.5 rounded border font-semibold ${statusStyle(label)}`}
+                              title={`${label} · ${t.language_code}`}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-current" />
+                              {t.language_code}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-xs text-slate-400 whitespace-nowrap">
+                            {new Date(t.updated_at || t.created_at).toLocaleDateString(undefined,
+                              { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {!t.meta_template_name && (
+                                <button
+                                  onClick={() => handleSubmitForReview(t)}
+                                  title="Submit to Meta for review"
+                                  className="text-slate-500 hover:text-emerald-400 transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-[17px]">cloud_upload</span>
+                                </button>
+                              )}
+                              <button
+                                onClick={() => startEdit(t)}
+                                title="Edit template"
+                                className="text-slate-500 hover:text-sky-400 transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-[17px]">edit_square</span>
+                              </button>
+                              <button
+                                onClick={() => setExpandedId(expanded ? null : t.template_id)}
+                                title={expanded ? 'Hide full template' : 'Show full template'}
+                                className={`transition-colors ${expanded ? 'text-sky-400' : 'text-slate-500 hover:text-sky-400'}`}
+                              >
+                                <span className="material-symbols-outlined text-[17px]">
+                                  {expanded ? 'expand_less' : 'list'}
+                                </span>
+                              </button>
+                              <button
+                                onClick={() => handleDelete(t.template_id)}
+                                title="Delete template"
+                                className="text-slate-500 hover:text-rose-400 transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-[17px]">delete</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* A table row cannot hold an image and four sections, so
+                            the full template opens underneath the row it belongs
+                            to rather than in a dialog that hides the list. */}
+                        {expanded && (
+                          <tr className="bg-slate-950/60">
+                            <td colSpan={8} className="px-4 py-4">
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div className="flex flex-col gap-3">
+                                  {t.header_type && t.header_type !== 'NONE' && (
+                                    <div>
+                                      <div className="text-[10px] uppercase text-slate-500 tracking-wider mb-1.5">
+                                        Header · {t.header_type}
+                                      </div>
+                                      {t.header_type === 'IMAGE' && resolveMediaUrl(t.header_content) && (
+                                        <img
+                                          src={resolveMediaUrl(t.header_content) as string}
+                                          alt="Template header"
+                                          className="w-full max-h-64 object-contain rounded border border-slate-800 bg-slate-950"
+                                        />
+                                      )}
+                                      {t.header_type === 'VIDEO' && resolveMediaUrl(t.header_content) && (
+                                        <video
+                                          src={resolveMediaUrl(t.header_content) as string}
+                                          controls
+                                          className="w-full max-h-64 object-contain rounded border border-slate-800 bg-slate-950"
+                                        />
+                                      )}
+                                      {t.header_type === 'TEXT' && t.header_content && (
+                                        <div className="text-sm font-semibold text-slate-200 bg-slate-900 border border-slate-800 rounded px-3 py-2">
+                                          {t.header_content}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  <div>
+                                    <div className="text-[10px] uppercase text-slate-500 tracking-wider mb-1.5">Body</div>
+                                    <div className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed bg-slate-900 border border-slate-800 rounded px-3 py-2">
+                                      {t.body}
+                                    </div>
+                                  </div>
+
+                                  {t.footer && (
+                                    <div>
+                                      <div className="text-[10px] uppercase text-slate-500 tracking-wider mb-1.5">Footer</div>
+                                      <div className="text-xs text-slate-500 italic bg-slate-900 border border-slate-800 rounded px-3 py-2">
+                                        {t.footer}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {Array.isArray(t.buttons) && t.buttons.length > 0 && (
+                                    <div>
+                                      <div className="text-[10px] uppercase text-slate-500 tracking-wider mb-1.5">Buttons</div>
+                                      <div className="flex flex-col gap-1.5">
+                                        {t.buttons.map((btn: any, idx: number) => (
+                                          <div
+                                            key={idx}
+                                            className="text-xs text-sky-400 bg-slate-900 border border-slate-800 rounded px-3 py-1.5 flex items-center gap-1.5"
+                                          >
+                                            <span className="material-symbols-outlined text-[14px]">
+                                              {btn.type === 'URL' ? 'open_in_new' : btn.type === 'PHONE_NUMBER' ? 'call' : 'reply'}
+                                            </span>
+                                            <span className="truncate">{btn.text}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="flex flex-col gap-2 text-xs text-slate-500">
+                                  <div className="flex items-center gap-2">
+                                    <span className="uppercase tracking-wider text-[10px]">Review status</span>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold border ${statusStyle(label)}`}>
+                                      {label}
+                                    </span>
+                                  </div>
+                                  <div>Created: {new Date(t.created_at).toLocaleString()}</div>
+                                  <div>Updated: {new Date(t.updated_at || t.created_at).toLocaleString()}</div>
+                                  {t.last_used_at && <div>Last used: {new Date(t.last_used_at).toLocaleString()}</div>}
+                                  <div className="font-mono-code break-all">Local id: {t.template_id}</div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </>
       )}
     </div>
   );
