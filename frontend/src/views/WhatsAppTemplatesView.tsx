@@ -3,6 +3,7 @@ import {
   fetchTemplates, createTemplate, updateTemplate, deleteTemplate, uploadMedia,
   syncTemplateStatuses, submitTemplate, type WhatsAppTemplate
 } from '../api/whatsapp';
+import { MessageBodyEditor } from '../components/MessageBodyEditor';
 import { WhatsAppPreview } from '../components/WhatsAppPreview';
 
 // Template media is stored as a JSON descriptor; older rows hold a bare URL.
@@ -91,16 +92,52 @@ const languageLabel = (code?: string | null) =>
 // Scripts are not languages, but a body written in Devanagari is certainly not
 // English — which is the mistake worth catching before submission, because
 // after approval the language can no longer be changed.
+// The Devanagari block is split around U+0964 and U+0965 — the danda and double
+// danda. Those are shared Indic punctuation rather than Devanagari letters, and
+// counting them made a wholly Punjabi body register as Devanagari.
 const SCRIPTS: { name: string; test: RegExp; languages: string[] }[] = [
-  { name: 'Devanagari', test: /[\u0900-\u097F]/, languages: ['hi', 'mr'] },
-  { name: 'Gurmukhi', test: /[\u0A00-\u0A7F]/, languages: ['pa'] },
-  { name: 'Gujarati', test: /[\u0A80-\u0AFF]/, languages: ['gu'] },
-  { name: 'Bengali', test: /[\u0980-\u09FF]/, languages: ['bn'] },
-  { name: 'Tamil', test: /[\u0B80-\u0BFF]/, languages: ['ta'] },
-  { name: 'Telugu', test: /[\u0C00-\u0C7F]/, languages: ['te'] },
-  { name: 'Kannada', test: /[\u0C80-\u0CFF]/, languages: ['kn'] },
-  { name: 'Malayalam', test: /[\u0D00-\u0D7F]/, languages: ['ml'] },
+  { name: 'Devanagari', test: /[\u0900-\u0963\u0966-\u097F]/g, languages: ['hi', 'mr'] },
+  { name: 'Gurmukhi', test: /[\u0A00-\u0A7F]/g, languages: ['pa'] },
+  { name: 'Gujarati', test: /[\u0A80-\u0AFF]/g, languages: ['gu'] },
+  { name: 'Bengali', test: /[\u0980-\u09FF]/g, languages: ['bn'] },
+  { name: 'Tamil', test: /[\u0B80-\u0BFF]/g, languages: ['ta'] },
+  { name: 'Telugu', test: /[\u0C00-\u0C7F]/g, languages: ['te'] },
+  { name: 'Kannada', test: /[\u0C80-\u0CFF]/g, languages: ['kn'] },
+  { name: 'Malayalam', test: /[\u0D00-\u0D7F]/g, languages: ['ml'] },
 ];
+
+/**
+ * The script most of the body is written in.
+ *
+ * Whichever script appears most wins, rather than whichever is listed first:
+ * a stray character from another block — a borrowed word, a shared mark — must
+ * not decide the language of a body that is otherwise entirely one script.
+ */
+const dominantScript = (body: string) => {
+  let best: { script: typeof SCRIPTS[number]; count: number } | null = null;
+  for (const script of SCRIPTS) {
+    const count = (body.match(script.test) || []).length;
+    if (count > 0 && (!best || count > best.count)) best = { script, count };
+  }
+  return best ? best.script : null;
+};
+
+/**
+ * The language a body is written in, judged by its script.
+ *
+ * This is what the list shows, because "what language is this template in?" is
+ * answered by the text, not by the code it happens to be registered under —
+ * and ten Hindi templates went out registered as English. Where the two
+ * disagree the row says so rather than quietly picking one.
+ *
+ * Returns null for Latin script, which could be any of several languages.
+ */
+const detectContentLanguage = (body?: string | null): string | null => {
+  if (!body) return null;
+  const script = dominantScript(body);
+  return script ? script.languages[0] : null;
+};
+
 
 /**
  * Returns a warning when the body's script cannot belong to the chosen
@@ -108,7 +145,7 @@ const SCRIPTS: { name: string; test: RegExp; languages: string[] }[] = [
  */
 const languageMismatch = (body: string, code?: string | null): string | null => {
   if (!body || !code) return null;
-  const script = SCRIPTS.find(s => s.test.test(body));
+  const script = dominantScript(body);
   if (!script) return null;
   if (script.languages.includes(code)) return null;
   return `This body is written in ${script.name}, but the language is set to ` +
@@ -595,12 +632,13 @@ export const WhatsAppTemplatesView: React.FC = () => {
             <div className="space-y-1">
               <label className="text-xs text-slate-400 font-semibold flex justify-between">
                 <span>Message Body</span>
-                <span className="text-slate-500">Use {'{{name}}'} for business name</span>
+                <span className="text-slate-500">
+                  *bold* _italic_ ~strike~ ```mono```
+                </span>
               </label>
-              <textarea
-                value={newTemplate.body}
-                onChange={e => setNewTemplate(prev => ({ ...prev, body: e.target.value }))}
-                className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded px-3 py-2 text-sm text-slate-200 outline-none transition-colors h-32"
+              <MessageBodyEditor
+                value={newTemplate.body || ''}
+                onChange={body => setNewTemplate(prev => ({ ...prev, body }))}
                 placeholder="Hello {{name}}, we have a special offer..."
               />
             </div>
@@ -824,14 +862,27 @@ export const WhatsAppTemplatesView: React.FC = () => {
                             <span className="block truncate" title={t.body}>{t.body}</span>
                           </td>
                           <td className="px-3 py-2.5">
-                            {/* One chip per template: the dot carries the review
-                                state, the text the language it was approved in. */}
-                            <span
-                              className={`inline-flex items-center gap-1.5 text-[10px] px-1.5 py-0.5 rounded border font-semibold ${statusStyle(label)}`}
-                              title={`${label} · ${languageLabel(t.language_code)} (${t.language_code})`}
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-current" />
-                              {languageLabel(t.language_code)}
+                            {/* The chip names the language the body is written
+                                in; the dot carries the review state. Where that
+                                disagrees with what Meta has registered, the row
+                                flags it instead of hiding one of the two. */}
+                            <span className="inline-flex items-center gap-1">
+                              <span
+                                className={`inline-flex items-center gap-1.5 text-[10px] px-1.5 py-0.5 rounded border font-semibold ${statusStyle(label)}`}
+                                title={`${label} · registered with Meta as ${languageLabel(t.language_code)} (${t.language_code})`}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-current" />
+                                {languageLabel(detectContentLanguage(t.body) || t.language_code)}
+                              </span>
+                              {detectContentLanguage(t.body) &&
+                                detectContentLanguage(t.body) !== t.language_code && (
+                                <span
+                                  className="material-symbols-outlined text-[14px] text-amber-400 cursor-help"
+                                  title={`Body is ${languageLabel(detectContentLanguage(t.body))}, but Meta has this template registered as ${languageLabel(t.language_code)} (${t.language_code}). Meta fixes the language at approval, so correcting it means replacing the template.`}
+                                >
+                                  warning
+                                </span>
+                              )}
                             </span>
                           </td>
                           <td className="px-3 py-2.5 text-xs text-slate-400 whitespace-nowrap">

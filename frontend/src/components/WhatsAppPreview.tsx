@@ -46,11 +46,13 @@ export const WhatsAppPreview: React.FC<WhatsAppPreviewProps> = ({
       {/* Phone Header */}
       <div className="bg-[#008069] text-white px-4 py-3 flex items-center gap-3 shrink-0">
         <span className="material-symbols-outlined text-[20px]">arrow_back</span>
-        <div className="w-8 h-8 bg-[#dfe5e7] rounded-full flex items-center justify-center text-[#54656f]">
-          <span className="material-symbols-outlined text-[18px]">business</span>
+        {/* The sender as the recipient sees it: this is the WhatsApp Business
+            profile the campaign goes out from, not the business being written to. */}
+        <div className="w-8 h-8 bg-[#1f5fa9] rounded-full flex items-center justify-center text-white">
+          <span className="material-symbols-outlined text-[18px]">person</span>
         </div>
         <div className="flex-1 overflow-hidden">
-          <div className="font-semibold text-sm truncate">Sharma Enterprises</div>
+          <div className="font-semibold text-sm truncate">Eko Bharat Ventures</div>
           <div className="text-[10px] text-white/80">+91 9911844469</div>
         </div>
       </div>
