@@ -48,6 +48,21 @@ export interface WhatsAppCampaign {
   unique_visits: number;
   repeated_visits: number;
   total_clicks: number;
+
+  /** Delivery as reported by Meta's webhook. These accumulate rather than
+   *  partition: every read message was also delivered. */
+  delivered_count: number;
+  read_count: number;
+  /** Only messages Meta actually reported a failure for — a message with no
+   *  webhook yet is unknown, not undelivered. */
+  undelivered_count: number;
+  /** Quick-reply taps. Meta reports nothing for call-to-action URL buttons,
+   *  which show up under unique_visits instead. */
+  button_click_count: number;
+  button_clickers: number;
+  /** False until Meta has reported anything, which separates "nobody read it"
+   *  from "no webhook is configured yet". */
+  has_delivery_data: boolean;
 }
 
 export interface WhatsAppCampaignRecipient {
@@ -59,6 +74,18 @@ export interface WhatsAppCampaignRecipient {
   reason: string | null;
   provider_message_id: string | null;
   updated_at: string;
+
+  /** Each stage keeps its own timestamp, so a read message still shows when
+   *  it was delivered. Null means no report has arrived — not a failure. */
+  sent_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
+  failed_at: string | null;
+  failure_code: string | null;
+
+  button_clicks: number;
+  last_button_text: string | null;
+  link_clicks: number;
 }
 
 export interface ValidationResponse {
@@ -233,6 +260,13 @@ export const fetchCampaignLogs = async (campaignId: string): Promise<CampaignLog
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Failed to fetch campaign logs');
   }
+  return res.json();
+};
+
+/** Re-reads one campaign, so delivery counts refresh as webhooks land. */
+export const fetchCampaign = async (campaignId: string): Promise<WhatsAppCampaign> => {
+  const res = await fetch(`${API_BASE}/campaigns/${campaignId}`);
+  if (!res.ok) throw new Error('Failed to fetch campaign');
   return res.json();
 };
 

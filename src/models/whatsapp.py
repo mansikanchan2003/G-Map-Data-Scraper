@@ -93,8 +93,18 @@ class WhatsAppCampaignRecipient(Base):
     
     status = Column(String(50), nullable=False, default="PENDING") # PENDING, SENDING, SENT, DELIVERED, READ, FAILED, SKIPPED
     reason = Column(Text, nullable=True) # E.g., "Invalid mobile number", "Provider 4xx"
-    
-    provider_message_id = Column(String(100), nullable=True) # WhatsApp Meta API Message ID
+
+    # The delivery stages are timestamps rather than one status, because they
+    # accumulate: a message that was read was also delivered. Collapsed into a
+    # single field, READ overwrites DELIVERED and the delivered count is lost.
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    failed_at = Column(DateTime(timezone=True), nullable=True)
+    # Meta's own error code for a failure, kept beside the human-readable reason.
+    failure_code = Column(String(50), nullable=True)
+
+    provider_message_id = Column(String(100), nullable=True, index=True) # WhatsApp Meta API Message ID
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -146,8 +156,29 @@ class WhatsAppLinkClick(Base):
 
     campaign = relationship("WhatsAppCampaign")
     recipient = relationship("WhatsAppCampaignRecipient")
-    ip_hash = Column(String(64), nullable=True)
-    user_agent = Column(String(500), nullable=True)
+
+
+class WhatsAppButtonClick(Base):
+    """
+    One row per quick-reply button tap on a campaign message.
+
+    Meta reports a quick-reply tap as an inbound message carrying the original
+    message's id in `context.id`, which is what attributes it back to a
+    recipient. It reports nothing at all when a call-to-action URL button is
+    tapped, so those clicks are only ever visible through the tracking-link
+    redirect — see WhatsAppLinkClick.
+    """
+    __tablename__ = "whatsapp_button_clicks"
+
+    click_id = Column(String(32), primary_key=True, index=True)
+    campaign_id = Column(String(32), ForeignKey("whatsapp_campaigns.campaign_id"), nullable=False, index=True)
+    recipient_id = Column(String(32), ForeignKey("whatsapp_campaign_recipients.recipient_id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # The label the recipient saw, and the payload the template attached to it.
+    button_text = Column(String(200), nullable=True)
+    button_payload = Column(String(500), nullable=True)
+    # Meta's id for the inbound tap, so a redelivered webhook is not counted twice.
+    provider_message_id = Column(String(100), nullable=True, unique=True, index=True)
 
     clicked_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 

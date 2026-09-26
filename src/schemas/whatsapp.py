@@ -137,6 +137,20 @@ class WhatsAppCampaignResponse(BaseModel):
     repeated_visits: int = 0
     total_clicks: int = 0
 
+    # Delivery, as reported by Meta's webhook. These accumulate rather than
+    # partition: every read message was also delivered, so read_count is a
+    # subset of delivered_count.
+    delivered_count: int = 0
+    read_count: int = 0
+    undelivered_count: int = 0
+    # Quick-reply button taps. Meta reports nothing when a call-to-action URL
+    # button is tapped, so those show up under unique_visits instead.
+    button_click_count: int = 0
+    button_clickers: int = 0
+    # False until Meta has reported on this campaign at all, which is how the
+    # UI tells "nobody read it" apart from "no webhook is configured yet".
+    has_delivery_data: bool = False
+
     model_config = {"from_attributes": True}
 
 class WhatsAppCampaignRecipientResponse(BaseModel):
@@ -148,6 +162,20 @@ class WhatsAppCampaignRecipientResponse(BaseModel):
     reason: Optional[str] = None
     provider_message_id: Optional[str] = None
     updated_at: datetime
+
+    # Each stage keeps its own timestamp, so a read message still shows when it
+    # was delivered.
+    sent_at: Optional[datetime] = None
+    delivered_at: Optional[datetime] = None
+    read_at: Optional[datetime] = None
+    failed_at: Optional[datetime] = None
+    failure_code: Optional[str] = None
+
+    # Quick-reply taps by this recipient, most recent label first.
+    button_clicks: int = 0
+    last_button_text: Optional[str] = None
+    # Genuine visits to this recipient's own tracking link.
+    link_clicks: int = 0
 
     model_config = {"from_attributes": True}
 

@@ -4,13 +4,15 @@ from typing import List, Optional
 from pydantic import BaseModel
 import uuid
 import logging
+from datetime import datetime, timezone
 import os
 import shutil
 from fastapi.responses import FileResponse
 from src.database import get_db
 from src.models.whatsapp import (
     WhatsAppAccount, WhatsAppTemplate, WhatsAppCampaign,
-    WhatsAppCampaignRecipient, WhatsAppCampaignLog, WhatsAppLinkClick
+    WhatsAppCampaignRecipient, WhatsAppCampaignLog, WhatsAppLinkClick,
+    WhatsAppButtonClick
 )
 from src.schemas.whatsapp import (
     WhatsAppAccountCreate, WhatsAppAccountUpdate, WhatsAppAccountResponse,
@@ -563,8 +565,68 @@ def _visit_counts(db: Session, campaign_ids: List[str]) -> dict:
     return counts
 
 
+def _delivery_counts(db: Session, campaign_ids: List[str]) -> dict:
+    """
+    Delivery and quick-reply totals per campaign, from recorded events only.
+
+    Delivered and read accumulate rather than partition: every read message was
+    also delivered, so read is a subset of delivered, not a separate bucket.
+
+    "Undelivered" counts only messages Meta actually reported a failure for.
+    A sent message with no webhook yet is unknown, not undelivered — calling it
+    undelivered would report a failure that never happened.
+    """
+    empty = {
+        "delivered": 0, "read": 0, "undelivered": 0,
+        "button_clicks": 0, "button_clickers": 0, "reported": 0,
+    }
+    if not campaign_ids:
+        return {}
+
+    from sqlalchemy import func as sa_func
+
+    counts = {cid: dict(empty) for cid in campaign_ids}
+
+    rows = (
+        db.query(
+            WhatsAppCampaignRecipient.campaign_id,
+            sa_func.count(WhatsAppCampaignRecipient.delivered_at).label("delivered"),
+            sa_func.count(WhatsAppCampaignRecipient.read_at).label("read"),
+            sa_func.count(WhatsAppCampaignRecipient.failed_at).label("failed"),
+        )
+        .filter(WhatsAppCampaignRecipient.campaign_id.in_(campaign_ids))
+        .group_by(WhatsAppCampaignRecipient.campaign_id)
+        .all()
+    )
+    for campaign_id, delivered, read, failed in rows:
+        entry = counts[campaign_id]
+        entry["delivered"] = delivered
+        entry["read"] = read
+        entry["undelivered"] = failed
+        # Anything Meta has told us about counts as delivery data existing.
+        entry["reported"] = delivered + read + failed
+
+    clicks = (
+        db.query(
+            WhatsAppButtonClick.campaign_id,
+            sa_func.count(WhatsAppButtonClick.click_id).label("taps"),
+            sa_func.count(sa_func.distinct(WhatsAppButtonClick.recipient_id)).label("people"),
+        )
+        .filter(WhatsAppButtonClick.campaign_id.in_(campaign_ids))
+        .group_by(WhatsAppButtonClick.campaign_id)
+        .all()
+    )
+    for campaign_id, taps, people in clicks:
+        counts[campaign_id]["button_clicks"] = taps
+        counts[campaign_id]["button_clickers"] = people
+
+    return counts
+
+
 def _with_visits(db: Session, campaigns: list) -> List[WhatsAppCampaignResponse]:
-    counts = _visit_counts(db, [c.campaign_id for c in campaigns])
+    ids = [c.campaign_id for c in campaigns]
+    counts = _visit_counts(db, ids)
+    delivery = _delivery_counts(db, ids)
     out = []
     for c in campaigns:
         item = WhatsAppCampaignResponse.model_validate(c)
@@ -572,6 +634,14 @@ def _with_visits(db: Session, campaigns: list) -> List[WhatsAppCampaignResponse]
         item.unique_visits = stat.get("unique", 0)
         item.repeated_visits = stat.get("repeated", 0)
         item.total_clicks = stat.get("total", 0)
+
+        d = delivery.get(c.campaign_id, {})
+        item.delivered_count = d.get("delivered", 0)
+        item.read_count = d.get("read", 0)
+        item.undelivered_count = d.get("undelivered", 0)
+        item.button_click_count = d.get("button_clicks", 0)
+        item.button_clickers = d.get("button_clickers", 0)
+        item.has_delivery_data = d.get("reported", 0) > 0
         out.append(item)
     return out
 
@@ -601,12 +671,51 @@ def get_campaign_recipients(
     page_size: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db)
 ):
+    from sqlalchemy import func as sa_func
+
     query = db.query(WhatsAppCampaignRecipient).filter(WhatsAppCampaignRecipient.campaign_id == campaign_id)
     total = query.count()
     items = query.order_by(WhatsAppCampaignRecipient.created_at.asc()).offset((page - 1) * page_size).limit(page_size).all()
 
+    # Clicks are counted for this page's recipients only, rather than per row,
+    # so a 500-row page stays two queries instead of a thousand.
+    ids = [i.recipient_id for i in items]
+    taps, links = {}, {}
+    if ids:
+        for rid, count, last_text in (
+            db.query(
+                WhatsAppButtonClick.recipient_id,
+                sa_func.count(WhatsAppButtonClick.click_id),
+                sa_func.max(WhatsAppButtonClick.button_text),
+            )
+            .filter(WhatsAppButtonClick.recipient_id.in_(ids))
+            .group_by(WhatsAppButtonClick.recipient_id)
+            .all()
+        ):
+            taps[rid] = (count, last_text)
+
+        for rid, count in (
+            db.query(
+                WhatsAppLinkClick.recipient_id,
+                sa_func.count(WhatsAppLinkClick.click_id),
+            )
+            .filter(WhatsAppLinkClick.recipient_id.in_(ids))
+            .group_by(WhatsAppLinkClick.recipient_id)
+            .all()
+        ):
+            links[rid] = count
+
+    out = []
+    for i in items:
+        item = WhatsAppCampaignRecipientResponse.model_validate(i)
+        tap_count, last_text = taps.get(i.recipient_id, (0, None))
+        item.button_clicks = tap_count
+        item.last_button_text = last_text
+        item.link_clicks = links.get(i.recipient_id, 0)
+        out.append(item)
+
     return PaginatedRecipients(
-        items=[WhatsAppCampaignRecipientResponse.model_validate(i) for i in items],
+        items=out,
         total=total,
         page=page,
         page_size=page_size
@@ -705,6 +814,118 @@ def cancel_campaign(campaign_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "success", "message": "Campaign cancellation requested."}
 
+# --- Webhook event handling -------------------------------------------------
+
+def _parse_ts(raw) -> datetime:
+    """Meta stamps events with unix seconds; fall back to arrival time."""
+    try:
+        return datetime.fromtimestamp(int(raw), tz=timezone.utc)
+    except (TypeError, ValueError):
+        return datetime.now(timezone.utc)
+
+
+def _apply_status_event(db: Session, status: dict) -> None:
+    """
+    Record one delivery status against the recipient it belongs to.
+
+    Each stage is written to its own timestamp and never cleared. Meta delivers
+    these out of order and repeats them, so an event only fills a blank: a
+    redelivered "delivered" after "read" must not move the delivered time, and
+    must not drag the status backwards either.
+    """
+    msg_id = status.get("id")
+    stage = (status.get("status") or "").upper()
+    if not msg_id or not stage:
+        return
+
+    recipient = db.query(WhatsAppCampaignRecipient).filter(
+        WhatsAppCampaignRecipient.provider_message_id == msg_id
+    ).first()
+    if not recipient:
+        return
+
+    at = _parse_ts(status.get("timestamp"))
+    # How far along the lifecycle each stage sits, so a late-arriving earlier
+    # event cannot overwrite a later one.
+    RANK = {"PENDING": 0, "SENDING": 1, "SENT": 2, "DELIVERED": 3, "READ": 4}
+
+    if stage == "FAILED":
+        if recipient.failed_at is None:
+            recipient.failed_at = at
+        errors = status.get("errors") or []
+        if errors:
+            err = errors[0]
+            recipient.failure_code = str(err.get("code")) if err.get("code") is not None else None
+            details = (err.get("error_data") or {}).get("details") or ""
+            recipient.reason = f"[{err.get('code')}] {err.get('title', '')} {details}".strip()
+        elif not recipient.reason:
+            recipient.reason = "Delivery failed (reported by Meta)"
+        # A failure is terminal whatever arrived before it.
+        recipient.status = "FAILED"
+    elif stage in ("SENT", "DELIVERED", "READ"):
+        field = {"SENT": "sent_at", "DELIVERED": "delivered_at", "READ": "read_at"}[stage]
+        if getattr(recipient, field) is None:
+            setattr(recipient, field, at)
+        # A read message was delivered even if that event never arrived, and
+        # leaving the earlier stamp blank would undercount deliveries.
+        if stage == "READ" and recipient.delivered_at is None:
+            recipient.delivered_at = at
+        if recipient.status != "FAILED" and RANK.get(stage, 0) > RANK.get(recipient.status, 0):
+            recipient.status = stage
+    else:
+        return
+
+    db.add(WhatsAppCampaignLog(
+        log_id=uuid.uuid4().hex,
+        campaign_id=recipient.campaign_id,
+        recipient_id=recipient.recipient_id,
+        status="ERROR" if stage == "FAILED" else "SUCCESS",
+        provider_status=stage,
+        provider_code=recipient.failure_code if stage == "FAILED" else None,
+        error_reason=recipient.reason if stage == "FAILED" else None,
+    ))
+
+
+def _apply_inbound_message(db: Session, message: dict) -> None:
+    """
+    Record a quick-reply button tap.
+
+    Meta sends a tap as an inbound message whose `context.id` is the campaign
+    message it answers, which is what ties it back to a recipient. A tap on a
+    call-to-action URL button produces no webhook at all — those are only ever
+    visible through the tracking-link redirect.
+    """
+    if (message.get("type") or "") != "button":
+        return
+
+    origin_id = (message.get("context") or {}).get("id")
+    if not origin_id:
+        return
+
+    recipient = db.query(WhatsAppCampaignRecipient).filter(
+        WhatsAppCampaignRecipient.provider_message_id == origin_id
+    ).first()
+    if not recipient:
+        return
+
+    inbound_id = message.get("id")
+    if inbound_id and db.query(WhatsAppButtonClick).filter(
+        WhatsAppButtonClick.provider_message_id == inbound_id
+    ).first():
+        return  # already recorded; Meta repeats until acknowledged
+
+    button = message.get("button") or {}
+    db.add(WhatsAppButtonClick(
+        click_id=uuid.uuid4().hex,
+        campaign_id=recipient.campaign_id,
+        recipient_id=recipient.recipient_id,
+        button_text=(button.get("text") or None),
+        button_payload=(button.get("payload") or None),
+        provider_message_id=inbound_id,
+        clicked_at=_parse_ts(message.get("timestamp")),
+    ))
+
+
 # --- Webhooks (Phase 18) ---
 
 @router.get("/webhook")
@@ -761,66 +982,19 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.json()
 
     try:
-        entries = payload.get("entry", [])
-        for entry in entries:
-            changes = entry.get("changes", [])
-            for change in changes:
+        for entry in payload.get("entry", []):
+            for change in entry.get("changes", []):
                 value = change.get("value", {})
-                statuses = value.get("statuses", [])
-                
-                for status in statuses:
-                    msg_id = status.get("id")
-                    status_val = status.get("status") # sent, delivered, read, failed
-                    
-                    if not msg_id or not status_val:
-                        continue
-                        
-                    # Find recipient by provider_message_id
-                    recipient = db.query(WhatsAppCampaignRecipient).filter(
-                        WhatsAppCampaignRecipient.provider_message_id == msg_id
-                    ).first()
-                    
-                    if recipient:
-                        current_status = recipient.status
-                        
-                        # Only update if the status is a progression or a failure
-                        # Meta sometimes sends them out of order.
-                        should_update = False
-                        
-                        if status_val.upper() == "FAILED":
-                            should_update = True
-                            recipient.status = "FAILED"
-                            errors = status.get("errors", [])
-                            if errors:
-                                err = errors[0]
-                                recipient.reason = f"[{err.get('code')}] {err.get('title', '')} - {err.get('error_data', {}).get('details', '')}"
-                            else:
-                                recipient.reason = "Delivery failed (webhook)"
-                        elif status_val.upper() == "DELIVERED" and current_status in ["SENT", "PENDING"]:
-                            should_update = True
-                            recipient.status = "DELIVERED"
-                        elif status_val.upper() == "READ" and current_status in ["SENT", "DELIVERED", "PENDING"]:
-                            should_update = True
-                            recipient.status = "READ"
-                        elif status_val.upper() == "SENT" and current_status == "PENDING":
-                            should_update = True
-                            recipient.status = "SENT"
-                            
-                        if should_update:
-                            # Log this event
-                            db.add(WhatsAppCampaignLog(
-                                log_id=uuid.uuid4().hex,
-                                campaign_id=recipient.campaign_id,
-                                recipient_id=recipient.recipient_id,
-                                status="SUCCESS" if status_val.upper() != "FAILED" else "ERROR",
-                                event_type="WEBHOOK_STATUS_UPDATE",
-                                message=f"Meta reported status: {status_val.upper()}",
-                                error_reason=recipient.reason if status_val.upper() == "FAILED" else None
-                            ))
-                            db.commit()
+                for status in value.get("statuses", []):
+                    _apply_status_event(db, status)
+                for message in value.get("messages", []):
+                    _apply_inbound_message(db, message)
+        db.commit()
 
     except Exception as e:
         logger.error(f"Error processing webhook payload: {str(e)}")
         db.rollback()
 
+    # Meta redelivers anything it does not get a 200 for, so this acknowledges
+    # even a payload that could not be applied; the error is in the logs.
     return {"status": "ok"}

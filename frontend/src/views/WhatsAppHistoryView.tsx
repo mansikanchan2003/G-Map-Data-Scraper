@@ -87,6 +87,9 @@ export const WhatsAppHistoryView: React.FC = () => {
               <th className="px-4 py-3 font-semibold text-slate-400 text-xs">Sent</th>
               <th className="px-4 py-3 font-semibold text-slate-400 text-xs">Failed</th>
               <th className="px-4 py-3 font-semibold text-slate-400 text-xs">Skipped</th>
+              <th className="px-4 py-3 font-semibold text-slate-400 text-xs" title="Reached the handset, as reported by Meta. A dash means Meta has not reported on this campaign.">Delivered</th>
+              <th className="px-4 py-3 font-semibold text-slate-400 text-xs" title="Opened the message. Every read message was also delivered.">Read</th>
+              <th className="px-4 py-3 font-semibold text-slate-400 text-xs" title="Quick-reply button taps. Meta sends no event for call-to-action URL buttons.">Clicks</th>
               <th className="px-4 py-3 font-semibold text-slate-400 text-xs" title="Recipients who opened the campaign link at least once">Unique Visits</th>
               <th className="px-4 py-3 font-semibold text-slate-400 text-xs" title="Extra opens beyond each recipient's first">Repeated Visits</th>
               <th className="px-4 py-3 font-semibold text-slate-400 text-xs">Created At</th>
@@ -113,6 +116,15 @@ export const WhatsAppHistoryView: React.FC = () => {
                   <td className="px-4 py-3 text-emerald-400 font-mono-code font-semibold">{camp.successful_count}</td>
                   <td className="px-4 py-3 text-rose-400 font-mono-code">{camp.failed_count}</td>
                   <td className="px-4 py-3 text-slate-400 font-mono-code">{camp.skipped_count}</td>
+                  {/* A dash, not a zero: with no webhook yet, "0 delivered"
+                      would read as a failure that never happened. */}
+                  <td className="px-4 py-3 font-mono-code text-emerald-400 font-semibold">
+                    {camp.has_delivery_data ? camp.delivered_count : <span className="text-slate-600">—</span>}
+                  </td>
+                  <td className="px-4 py-3 font-mono-code text-sky-400 font-semibold">
+                    {camp.has_delivery_data ? camp.read_count : <span className="text-slate-600">—</span>}
+                  </td>
+                  <td className="px-4 py-3 font-mono-code text-purple-400">{camp.button_click_count ?? 0}</td>
                   <td className="px-4 py-3 font-mono-code text-sky-400 font-semibold">{camp.unique_visits ?? 0}</td>
                   <td className="px-4 py-3 font-mono-code text-purple-400">{camp.repeated_visits ?? 0}</td>
                   <td className="px-4 py-3 text-slate-400 text-xs">{new Date(camp.created_at).toLocaleString()}</td>

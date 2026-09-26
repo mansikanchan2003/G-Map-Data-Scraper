@@ -61,6 +61,26 @@ dashboard.
 - A PIN with jobs against it cannot be deleted, so businesses already
   discovered there are never orphaned.
 
+### Delivery & engagement tracking
+- **Campaign History** shows delivered, read and button clicks per campaign;
+  **View Details** adds a Delivery & Engagement panel and per-recipient
+  Delivered / Read / Clicked columns.
+- **Stages are timestamps, not one status.** A message that was read was also
+  delivered, so the stages accumulate. Collapsed into a single status field,
+  READ overwrites DELIVERED and the delivered count is lost for good.
+- **A dash is not a zero.** A sent message Meta has not reported on is unknown,
+  not undelivered — only messages Meta actually failed are counted as such.
+- **Quick-reply taps are attributed** through the `context.id` on the inbound
+  message. Meta sends **no event at all** when a call-to-action URL button is
+  tapped, so those are measured by the tracking link instead.
+- Events arrive out of order and are repeated until acknowledged, so handling
+  is monotonic and idempotent: a late "delivered" never undoes a "read", and a
+  redelivered tap is never counted twice.
+- **Requires the webhook.** Data only flows once `/api/v1/whatsapp/webhook` is
+  reachable at a public HTTPS URL and subscribed to `messages` in the Meta app.
+  Meta does not replay events for messages already sent, so campaigns run
+  before that show no delivery data.
+
 ### WhatsApp campaigns
 - **Template lifecycle against Meta.** Templates are composed in the UI with a
   live preview, submitted for review automatically, and their status and

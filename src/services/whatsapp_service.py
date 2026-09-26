@@ -630,11 +630,17 @@ class WhatsAppCampaignService:
                     if success:
                         rec.status = "SENT"
                         rec.provider_message_id = msg_id
+                        # Meta's own "sent" webhook will confirm this, but the
+                        # send itself is the first evidence and should not wait
+                        # on a webhook that may never be configured.
+                        rec.sent_at = datetime.now(timezone.utc)
                         campaign.successful_count += 1
                         campaign.pending_count -= 1
                     else:
                         rec.status = "FAILED"
                         rec.reason = error_reason
+                        rec.failed_at = datetime.now(timezone.utc)
+                        rec.failure_code = str(provider_code) if provider_code is not None else None
                         campaign.failed_count += 1
                         campaign.pending_count -= 1
 
@@ -666,6 +672,7 @@ class WhatsAppCampaignService:
                     )
                     rec.status = "FAILED"
                     rec.reason = f"Unexpected error while sending: {rec_err}"
+                    rec.failed_at = datetime.now(timezone.utc)
                     campaign.failed_count += 1
                     campaign.pending_count -= 1
                     db.add(WhatsAppCampaignLog(

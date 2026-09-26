@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  fetchCampaign,
   fetchCampaignLogs,
   fetchCampaignRecipients,
   fetchTemplate,
@@ -25,6 +26,9 @@ const statusChip = (status: string) => {
   }
 };
 
+const formatStamp = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleString() : '';
+
 const formatDuration = (seconds: number | null) => {
   if (seconds === null || seconds === undefined) return '—';
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
@@ -34,6 +38,9 @@ const formatDuration = (seconds: number | null) => {
 
 export const WhatsAppCampaignDetailView: React.FC<Props> = ({ campaign, onBack }) => {
   const [logs, setLogs] = useState<CampaignLogsResponse | null>(null);
+  // Re-read rather than trusting the row the list handed over: delivery
+  // counts keep moving after a campaign finishes, as webhooks land.
+  const [live, setLive] = useState<WhatsAppCampaign>(campaign);
   const [recipients, setRecipients] = useState<WhatsAppCampaignRecipient[]>([]);
   const [template, setTemplate] = useState<WhatsAppTemplate | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,6 +61,12 @@ export const WhatsAppCampaignDetailView: React.FC<Props> = ({ campaign, onBack }
         setLogs(logsRes);
         setRecipients(recipientsRes.items);
         setError(null);
+
+        // A stale count here is cosmetic, so a failure must not hide the logs.
+        try {
+          const fresh = await fetchCampaign(campaign.campaign_id);
+          if (!cancelled) setLive(fresh);
+        } catch { /* keep the row we were handed */ }
 
         if (campaign.template_id) {
           try {
@@ -145,6 +158,50 @@ export const WhatsAppCampaignDetailView: React.FC<Props> = ({ campaign, onBack }
                 </div>
                 <div className="text-[10px] uppercase text-slate-500 tracking-wider">Success Rate</div>
               </div>
+            </div>
+
+            {/* What happened after the send.
+                "Sent" above means Meta accepted the message; everything here
+                is Meta reporting back what the handset did with it. */}
+            <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+              <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-slate-200">Delivery &amp; Engagement</h3>
+                {!live.has_delivery_data && (
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded border
+                                   text-amber-400 border-amber-800 bg-amber-950/50">
+                    Awaiting webhook
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-5 divide-x divide-slate-800 border-b border-slate-800">
+                {[
+                  { label: 'Delivered', value: live.delivered_count, cls: 'text-emerald-400',
+                    hint: 'Reached the handset' },
+                  { label: 'Read', value: live.read_count, cls: 'text-sky-400',
+                    hint: 'Blue ticks' },
+                  { label: 'Not delivered', value: live.undelivered_count, cls: 'text-rose-400',
+                    hint: 'Meta reported a failure' },
+                  { label: 'Button clicks', value: live.button_click_count, cls: 'text-purple-300',
+                    hint: `${live.button_clickers} recipient${live.button_clickers === 1 ? '' : 's'}` },
+                  { label: 'Link visits', value: live.unique_visits, cls: 'text-amber-300',
+                    hint: `${live.repeated_visits} repeat` },
+                ].map(c => (
+                  <div key={c.label} className="py-3 px-4 text-center">
+                    <div className={`text-2xl font-bold ${c.cls}`}>{c.value}</div>
+                    <div className="text-[10px] uppercase text-slate-500 tracking-wider">{c.label}</div>
+                    <div className="text-[10px] text-slate-600 mt-0.5">{c.hint}</div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="px-5 py-2.5 text-[11px] text-slate-500 leading-relaxed">
+                {live.has_delivery_data
+                  ? 'Delivered and read accumulate — every message that was read was also delivered. A sent message with no report yet counts as neither delivered nor failed.'
+                  : 'Meta has not reported on this campaign. Delivery, read and button data only arrive once the webhook is reachable at a public URL and subscribed in the Meta app; Meta does not replay events for messages already sent.'}
+                {' '}Button clicks count quick-reply taps only — Meta sends no event when a
+                call-to-action URL button is tapped, so those are measured by the tracking link instead.
+              </p>
             </div>
 
             {/* Timing */}
@@ -247,12 +304,15 @@ export const WhatsAppCampaignDetailView: React.FC<Props> = ({ campaign, onBack }
                         <th className="px-4 py-2 font-semibold text-slate-400 text-xs">Phone</th>
                         <th className="px-4 py-2 font-semibold text-slate-400 text-xs">Name</th>
                         <th className="px-4 py-2 font-semibold text-slate-400 text-xs">Status</th>
+                        <th className="px-4 py-2 font-semibold text-slate-400 text-xs">Delivered</th>
+                        <th className="px-4 py-2 font-semibold text-slate-400 text-xs">Read</th>
+                        <th className="px-4 py-2 font-semibold text-slate-400 text-xs">Clicked</th>
                         <th className="px-4 py-2 font-semibold text-slate-400 text-xs">Detail</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800">
                       {recipients.length === 0 ? (
-                        <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">No recipients.</td></tr>
+                        <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">No recipients.</td></tr>
                       ) : (
                         recipients.map(r => (
                           <tr key={r.recipient_id} className="hover:bg-slate-800/40 transition-colors">
@@ -267,6 +327,47 @@ export const WhatsAppCampaignDetailView: React.FC<Props> = ({ campaign, onBack }
                               }`}>
                                 {r.status}
                               </span>
+                            </td>
+                            {/* A blank cell here means no report has arrived,
+                                which is not the same as "not delivered" — the
+                                failure case is the dash under a FAILED row. */}
+                            <td className="px-4 py-2 text-xs whitespace-nowrap">
+                              {r.delivered_at
+                                ? <span className="text-emerald-400" title={formatStamp(r.delivered_at)}>
+                                    <span className="material-symbols-outlined text-[15px] align-middle">done_all</span>
+                                  </span>
+                                : <span className="text-slate-700">—</span>}
+                            </td>
+                            <td className="px-4 py-2 text-xs whitespace-nowrap">
+                              {r.read_at
+                                ? <span className="text-sky-400" title={formatStamp(r.read_at)}>
+                                    <span className="material-symbols-outlined text-[15px] align-middle">done_all</span>
+                                  </span>
+                                : <span className="text-slate-700">—</span>}
+                            </td>
+                            <td className="px-4 py-2 text-xs whitespace-nowrap">
+                              {r.button_clicks > 0 || r.link_clicks > 0 ? (
+                                <span className="flex items-center gap-1.5">
+                                  {r.button_clicks > 0 && (
+                                    <span
+                                      className="text-[10px] font-bold px-1.5 py-0.5 rounded border
+                                                 text-purple-300 border-purple-800 bg-purple-950/50"
+                                      title={r.last_button_text || 'Quick-reply button'}
+                                    >
+                                      {r.last_button_text || `${r.button_clicks}x`}
+                                    </span>
+                                  )}
+                                  {r.link_clicks > 0 && (
+                                    <span
+                                      className="text-[10px] font-bold px-1.5 py-0.5 rounded border
+                                                 text-amber-300 border-amber-800 bg-amber-950/50"
+                                      title="Visits to this recipient's tracking link"
+                                    >
+                                      link {r.link_clicks}
+                                    </span>
+                                  )}
+                                </span>
+                              ) : <span className="text-slate-700">—</span>}
                             </td>
                             <td className="px-4 py-2 text-xs text-slate-400 max-w-[320px]">
                               {r.reason
