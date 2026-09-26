@@ -1,5 +1,6 @@
 import { formatDateTime } from '../utils/datetime';
 import React, { useState } from 'react';
+import { DiscoveryRunner } from '../components/DiscoveryRunner';
 import type { NormalizedSystemStats, DiscoveryStatus, ApiError } from '../types/api';
 import type { NavTab } from '../components/Header';
 import { retryAllFailedJobs, triggerBatchDiscovery, stopDiscovery } from '../api';
@@ -21,6 +22,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onRefresh,
   onNavigate,
 }) => {
+  const [runnerOpen, setRunnerOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
 
@@ -577,6 +579,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <span>Run Batch (25)</span>
               </button>
 
+              <button
+                onClick={() => setRunnerOpen(true)}
+                className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-emerald-500 text-slate-100 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
+                title="Pick locations and categories, or search somewhere new"
+              >
+                <span className="material-symbols-outlined text-[16px] text-emerald-400">travel_explore</span>
+                <span>Choose Targets</span>
+              </button>
+
               {isDiscoveryRunning ? (
                 <button
                   onClick={handleStopDiscovery}
@@ -619,6 +630,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </section>
+      <DiscoveryRunner
+        isOpen={runnerOpen}
+        onClose={() => setRunnerOpen(false)}
+        onStarted={onRefresh}
+      />
     </div>
   );
 };

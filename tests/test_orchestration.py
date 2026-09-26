@@ -94,7 +94,8 @@ def test_batch_checks_for_cancellation_between_jobs():
     import inspect
     from src.routers import discovery
 
-    source = inspect.getsource(discovery.run_batch_discovery)
+    # run_batch_discovery only dispatches; the batch itself is _run_batch
+    source = inspect.getsource(discovery._run_batch)
     loop_at = source.index("for job in pending_jobs:")
     execute_at = source.index("job_manager.execute_single_job")
     check_at = source.index('run_log.status == "CANCELLING"')
@@ -113,7 +114,8 @@ def test_run_status_ignores_per_job_advisories():
     import inspect
     from src.routers import discovery
 
-    source = inspect.getsource(discovery.run_batch_discovery)
+    # run_batch_discovery only dispatches; the batch itself is _run_batch
+    source = inspect.getsource(discovery._run_batch)
     status_block = source[source.index("batch_error = any("):]
     status_block = status_block[:status_block.index("run_log.jobs_attempted")]
 

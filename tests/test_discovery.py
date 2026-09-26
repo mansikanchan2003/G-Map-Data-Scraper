@@ -637,3 +637,62 @@ def test_job_tracks_business_ids_queued_within_itself():
     assert loop_at < guard_at < add_at, (
         "an id already queued by this job must be skipped before another row is built"
     )
+
+
+# 16. Discovery must not be limited to the spreadsheets.
+# A place typed by the user has no coordinates, and a job cannot be built
+# without them, so the place is resolved through Google Maps rather than
+# requiring a geocoding API and a key to manage.
+
+def test_custom_location_reuses_an_existing_one():
+    """Running the same target twice must not fragment the dataset."""
+    from src.services.custom_target import ensure_location
+    from unittest.mock import MagicMock
+
+    existing = MagicMock()
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = existing
+
+    result = ensure_location(db, "Rohtak")
+    assert result["location"] is existing
+    assert result["reused"] is True
+    db.add.assert_not_called()
+
+
+def test_custom_location_needs_resolvable_coordinates():
+    """An unresolvable place is reported, not stored without coordinates."""
+    from src.services.custom_target import ensure_location
+    from unittest.mock import MagicMock
+
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    engine = MagicMock()
+    engine.resolve_place.return_value = None
+
+    result = ensure_location(db, "qwertyuiop nowhere", engine=engine)
+    assert "error" in result
+    db.add.assert_not_called()
+
+
+def test_custom_category_matches_case_insensitively():
+    from src.services.custom_target import ensure_category
+    from unittest.mock import MagicMock
+
+    existing = MagicMock()
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = existing
+
+    assert ensure_category(db, "print shop") is existing
+    db.add.assert_not_called()
+
+
+def test_generate_jobs_skips_ones_that_exist():
+    """
+    Recreating a job would either duplicate finished work or reset one that is
+    mid-flight, so existing jobs are left alone whatever their state.
+    """
+    import inspect
+    from src.services import custom_target
+
+    source = inspect.getsource(custom_target.generate_jobs_for)
+    assert "existing += 1" in source and "continue" in source

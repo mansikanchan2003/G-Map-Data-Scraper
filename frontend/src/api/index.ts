@@ -319,3 +319,64 @@ export async function syncConfiguration(): Promise<ConfigSyncResult> {
 export async function generateJobQueue(): Promise<JobGenerateResult> {
   return request<JobGenerateResult>('/api/v1/jobs/generate', { method: 'POST' });
 }
+
+// --- On-demand discovery ----------------------------------------------------
+
+export interface DiscoveryTarget {
+  value: string;
+  label: string;
+  pending: number;
+  done: number;
+}
+
+export interface DiscoveryTargets {
+  states: string[];
+  locations: DiscoveryTarget[];
+  categories: DiscoveryTarget[];
+}
+
+export const fetchDiscoveryTargets = async (state?: string): Promise<DiscoveryTargets> => {
+  const qs = state ? `?state=${encodeURIComponent(state)}` : '';
+  const res = await fetch(`/api/v1/discovery/targets${qs}`);
+  if (!res.ok) throw new Error('Failed to load discovery targets');
+  return res.json();
+};
+
+/** Runs existing queued jobs for the chosen locations and categories. */
+export const runTargetedDiscovery = async (body: {
+  anchor_names?: string[];
+  categories?: string[];
+  states?: string[];
+  batch_size: number;
+  delay_between_jobs_seconds: number;
+}): Promise<any> => {
+  const res = await fetch('/api/v1/discovery/batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, trigger_source: 'dashboard', run_in_background: true }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.detail || 'Failed to start discovery');
+  return json;
+};
+
+/** Adds places and categories that are not in the spreadsheets, then runs them. */
+export const runCustomDiscovery = async (body: {
+  places: { place: string; latitude?: number | null; longitude?: number | null; radius_km?: number | null }[];
+  categories: string[];
+  batch_size: number;
+  delay_between_jobs_seconds: number;
+  run_now: boolean;
+}): Promise<any> => {
+  const res = await fetch('/api/v1/discovery/custom-run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    const d = json.detail;
+    throw new Error(typeof d === 'string' ? d : d?.message || 'Failed to start discovery');
+  }
+  return json;
+};

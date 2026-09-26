@@ -761,21 +761,66 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.json()
 
     try:
-        # Example processing of message status updates
-        # entries = payload.get("entry", [])
-        # for entry in entries:
-        #     changes = entry.get("changes", [])
-        #     for change in changes:
-        #         value = change.get("value", {})
-        #         statuses = value.get("statuses", [])
-        #         for status in statuses:
-        #             msg_id = status.get("id")
-        #             status_val = status.get("status") # sent, delivered, read, failed
-        #
-        #             # Find the log and recipient based on provider_message_id
-        #             # Update their status accordingly
-        pass
+        entries = payload.get("entry", [])
+        for entry in entries:
+            changes = entry.get("changes", [])
+            for change in changes:
+                value = change.get("value", {})
+                statuses = value.get("statuses", [])
+                
+                for status in statuses:
+                    msg_id = status.get("id")
+                    status_val = status.get("status") # sent, delivered, read, failed
+                    
+                    if not msg_id or not status_val:
+                        continue
+                        
+                    # Find recipient by provider_message_id
+                    recipient = db.query(WhatsAppCampaignRecipient).filter(
+                        WhatsAppCampaignRecipient.provider_message_id == msg_id
+                    ).first()
+                    
+                    if recipient:
+                        current_status = recipient.status
+                        
+                        # Only update if the status is a progression or a failure
+                        # Meta sometimes sends them out of order.
+                        should_update = False
+                        
+                        if status_val.upper() == "FAILED":
+                            should_update = True
+                            recipient.status = "FAILED"
+                            errors = status.get("errors", [])
+                            if errors:
+                                err = errors[0]
+                                recipient.reason = f"[{err.get('code')}] {err.get('title', '')} - {err.get('error_data', {}).get('details', '')}"
+                            else:
+                                recipient.reason = "Delivery failed (webhook)"
+                        elif status_val.upper() == "DELIVERED" and current_status in ["SENT", "PENDING"]:
+                            should_update = True
+                            recipient.status = "DELIVERED"
+                        elif status_val.upper() == "READ" and current_status in ["SENT", "DELIVERED", "PENDING"]:
+                            should_update = True
+                            recipient.status = "READ"
+                        elif status_val.upper() == "SENT" and current_status == "PENDING":
+                            should_update = True
+                            recipient.status = "SENT"
+                            
+                        if should_update:
+                            # Log this event
+                            db.add(WhatsAppCampaignLog(
+                                log_id=uuid.uuid4().hex,
+                                campaign_id=recipient.campaign_id,
+                                recipient_id=recipient.recipient_id,
+                                status="SUCCESS" if status_val.upper() != "FAILED" else "ERROR",
+                                event_type="WEBHOOK_STATUS_UPDATE",
+                                message=f"Meta reported status: {status_val.upper()}",
+                                error_reason=recipient.reason if status_val.upper() == "FAILED" else None
+                            ))
+                            db.commit()
+
     except Exception as e:
-        pass
+        logger.error(f"Error processing webhook payload: {str(e)}")
+        db.rollback()
 
     return {"status": "ok"}

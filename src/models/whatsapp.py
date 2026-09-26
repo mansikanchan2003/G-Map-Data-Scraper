@@ -146,3 +146,10 @@ class WhatsAppLinkClick(Base):
 
     campaign = relationship("WhatsAppCampaign")
     recipient = relationship("WhatsAppCampaignRecipient")
+    ip_hash = Column(String(64), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+
+    clicked_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    campaign = relationship("WhatsAppCampaign")
+    recipient = relationship("WhatsAppCampaignRecipient")

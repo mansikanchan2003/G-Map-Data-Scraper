@@ -89,6 +89,73 @@ class GoogleMapsDiscoveryEngine:
                 pass
             self._playwright = None
 
+    def resolve_place(self, query: str, page_override=None) -> Optional[Dict[str, Any]]:
+        """
+        Turns a typed place — a pincode, town or address — into coordinates.
+
+        A discovery job needs a latitude and longitude to build its search URL.
+        Locations loaded from the geocoded spreadsheet already carry them; a
+        place the user types does not. Rather than add a geocoding API and a
+        key to manage, the coordinates are read back out of the Google Maps URL
+        after searching for the place, which is the same surface discovery
+        already uses.
+
+        Returns {"latitude", "longitude", "resolved_name"} or None.
+        """
+        if not query or not str(query).strip():
+            return None
+
+        search = urllib.parse.quote(str(query).strip())
+        url = f"https://www.google.com/maps/search/{search}"
+
+        context = None
+        page = page_override
+        should_close = False
+        if page is None:
+            self._ensure_browser()
+            context = self._browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            )
+            page = context.new_page()
+            should_close = True
+
+        try:
+            page.goto(url, timeout=self.navigation_timeout_ms, wait_until="domcontentloaded")
+            # Maps rewrites the URL with the resolved coordinates once it settles.
+            for _ in range(6):
+                page.wait_for_timeout(1000)
+                lat, lng = extract_coords_from_url(page.url)
+                if lat is not None and lng is not None:
+                    name = None
+                    try:
+                        heading = page.locator("h1").first
+                        if heading.count() > 0:
+                            name = (heading.inner_text() or "").strip() or None
+                    except Exception:
+                        pass
+                    logger.info(f"Resolved '{query}' to {lat},{lng}")
+                    return {"latitude": lat, "longitude": lng, "resolved_name": name}
+
+            logger.warning(f"Could not resolve coordinates for '{query}'")
+            return None
+
+        except Exception as e:
+            logger.error(f"Place resolution failed for '{query}': {e}")
+            return None
+        finally:
+            if should_close and page:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+            if context:
+                try:
+                    context.close()
+                except Exception:
+                    pass
+
     def execute_discovery(self, job_data: Dict[str, Any], page_override = None) -> Dict[str, Any]:
         """
         Execute discovery for a single job payload.
