@@ -1,6 +1,7 @@
 import { formatDateTime } from '../utils/datetime';
 import React, { useState } from 'react';
 import { DiscoveryRunner } from '../components/DiscoveryRunner';
+import { JobDistributionDonut } from '../components/JobDistributionDonut';
 import type { NormalizedSystemStats, DiscoveryStatus, ApiError } from '../types/api';
 import type { NavTab } from '../components/Header';
 import { retryAllFailedJobs, triggerBatchDiscovery, stopDiscovery } from '../api';
@@ -84,10 +85,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const totalCalculated = totalJobs || (pendingJobs + runningJobs + completedJobs + partialJobs + failedJobs + blockedJobs) || 1;
   const pctCompleted = ((completedJobs / totalCalculated) * 100).toFixed(1);
-  const pctPending = ((pendingJobs / totalCalculated) * 100).toFixed(1);
-  const pctPartial = ((partialJobs / totalCalculated) * 100).toFixed(1);
-  const pctFailed = ((failedJobs / totalCalculated) * 100).toFixed(1);
-  const pctBlocked = ((blockedJobs / totalCalculated) * 100).toFixed(1);
 
   const isDiscoveryRunning = discoveryStatus?.is_running || runningJobs > 0;
 
@@ -255,164 +252,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </section>
 
-      {/* Operational Status Breakdown (6 States) */}
-      <section className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm text-slate-200 uppercase tracking-wider flex items-center gap-2 font-bold font-mono-code">
-            <span className="w-2 h-2 rounded-full bg-sky-400" />
-            Operational Status Breakdown
-          </h2>
-          <span className="text-xs font-mono-code text-slate-400 font-medium">
-            Total: {totalCalculated.toLocaleString()} allocated jobs
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-          {/* PENDING */}
-          <div className="bg-slate-900 border border-slate-800 p-3 rounded flex flex-col justify-between hover:border-slate-700 transition-colors shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-mono-code text-slate-400 font-bold uppercase">PENDING</span>
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono-code border border-slate-700 bg-slate-800 text-slate-300 font-semibold">
-                QUEUED
-              </span>
-            </div>
-            <div className="text-xl font-mono-code text-slate-100 font-bold">{pendingJobs.toLocaleString()}</div>
-            <div className="text-[11px] font-mono-code text-slate-400 mt-1">{pctPending}% of total</div>
-          </div>
-
-          {/* RUNNING */}
-          <div className="bg-sky-950/40 border border-sky-800 p-3 rounded flex flex-col justify-between relative shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-mono-code text-sky-400 font-bold uppercase">RUNNING</span>
-              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono-code border border-sky-800 bg-sky-950 text-sky-300 font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 pulse-glow" />
-                ACTIVE
-              </span>
-            </div>
-            <div className="text-xl font-mono-code text-sky-300 font-bold">{runningJobs.toLocaleString()}</div>
-            <div className="text-[11px] font-mono-code text-sky-400 mt-1">Playwright active</div>
-          </div>
-
-          {/* COMPLETED */}
-          <div className="bg-slate-900 border border-slate-800 p-3 rounded flex flex-col justify-between hover:border-emerald-800 transition-colors shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-mono-code text-emerald-400 font-bold uppercase">COMPLETED</span>
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono-code border border-emerald-800 bg-emerald-950/60 text-emerald-300 font-semibold">
-                DONE
-              </span>
-            </div>
-            <div className="text-xl font-mono-code text-slate-100 font-bold">{completedJobs.toLocaleString()}</div>
-            <div className="text-[11px] font-mono-code text-emerald-400 font-medium mt-1">{pctCompleted}% finished</div>
-          </div>
-
-          {/* PARTIAL */}
-          <div className="bg-slate-900 border border-slate-800 p-3 rounded flex flex-col justify-between hover:border-amber-800 transition-colors shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-mono-code text-amber-400 font-bold uppercase">PARTIAL</span>
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono-code border border-amber-800 bg-amber-950/60 text-amber-300 font-semibold">
-                CAPPED
-              </span>
-            </div>
-            <div className="text-xl font-mono-code text-slate-100 font-bold">{partialJobs.toLocaleString()}</div>
-            <div className="text-[11px] font-mono-code text-amber-400 font-medium mt-1">{pctPartial}% limit hit</div>
-          </div>
-
-          {/* FAILED */}
-          <div className="bg-slate-900 border border-rose-900/60 p-3 rounded flex flex-col justify-between shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-mono-code text-rose-400 font-bold uppercase">FAILED</span>
-              <button
-                onClick={() => onNavigate('jobs', 'FAILED')}
-                className="px-1.5 py-0.5 rounded text-[9px] font-mono-code border border-rose-800 bg-rose-950/80 text-rose-300 hover:bg-rose-900 hover:text-slate-100 transition-all uppercase font-semibold cursor-pointer"
-              >
-                Inspect
-              </button>
-            </div>
-            <div className="text-xl font-mono-code text-rose-400 font-bold">{failedJobs.toLocaleString()}</div>
-            <div className="text-[11px] font-mono-code text-rose-400 mt-1">{pctFailed}% timeout/err</div>
-          </div>
-
-          {/* BLOCKED */}
-          <div className="bg-slate-900 border border-slate-800 p-3 rounded flex flex-col justify-between hover:border-purple-800 transition-colors shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-mono-code text-purple-400 font-bold uppercase">BLOCKED</span>
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono-code border border-purple-800 bg-purple-950/60 text-purple-300 font-semibold">
-                RATE LIMIT
-              </span>
-            </div>
-            <div className="text-xl font-mono-code text-slate-100 font-bold">{blockedJobs.toLocaleString()}</div>
-            <div className="text-[11px] font-mono-code text-purple-400 font-medium mt-1">{pctBlocked}% throttled</div>
-          </div>
-        </div>
-      </section>
-
-      {/* Segmented Stacked Progress Track */}
+      {/* Operational status: the chart carries the numbers, so nothing repeats them above it */}
       <section className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-sky-400 text-[18px]">bar_chart</span>
-            <h3 className="text-sm font-semibold text-slate-100">Job Distribution Across Matrix</h3>
+            <h3 className="text-sm font-semibold text-slate-100">Operational Status Breakdown</h3>
+            {/* Running is the one state the donut cannot hold: it is work in flight,
+                not a settled share of the total. */}
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono-code border border-sky-800 bg-sky-950 text-sky-300 font-semibold uppercase">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 pulse-glow" />
+              {runningJobs.toLocaleString()} Running
+            </span>
           </div>
           <span className="text-xs font-mono-code text-slate-400 font-medium">
             {totalCalculated.toLocaleString()} Total Jobs ({pctCompleted}% Completed)
           </span>
         </div>
 
-        <div className="w-full h-3 bg-slate-950 rounded-sm overflow-hidden flex gap-0.5 p-0.5 border border-slate-800">
-          <div
-            className="h-full bg-emerald-500 rounded-xs transition-all duration-500"
-            style={{ width: `${Math.max(0, Number(pctCompleted))}%` }}
-            title={`Completed: ${pctCompleted}%`}
-          />
-          <div
-            className="h-full bg-slate-600 rounded-xs transition-all duration-500"
-            style={{ width: `${Math.max(0, Number(pctPending))}%` }}
-            title={`Pending: ${pctPending}%`}
-          />
-          <div
-            className="h-full bg-amber-500 rounded-xs transition-all duration-500"
-            style={{ width: `${Math.max(0, Number(pctPartial))}%` }}
-            title={`Partial: ${pctPartial}%`}
-          />
-          <div
-            className="h-full bg-rose-500 rounded-xs transition-all duration-500"
-            style={{ width: `${Math.max(0, Number(pctFailed))}%` }}
-            title={`Failed: ${pctFailed}%`}
-          />
-          <div
-            className="h-full bg-purple-500 rounded-xs transition-all duration-500"
-            style={{ width: `${Math.max(0, Number(pctBlocked))}%` }}
-            title={`Blocked: ${pctBlocked}%`}
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-y-2 gap-x-4 pt-1 text-xs font-mono-code">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded bg-emerald-500" />
-            <span className="text-slate-200 font-medium">Completed:</span>
-            <span className="text-slate-400 font-semibold">{completedJobs.toLocaleString()} ({pctCompleted}%)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded bg-slate-500" />
-            <span className="text-slate-200 font-medium">Pending:</span>
-            <span className="text-slate-400 font-semibold">{pendingJobs.toLocaleString()} ({pctPending}%)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded bg-amber-500" />
-            <span className="text-slate-200 font-medium">Partial:</span>
-            <span className="text-slate-400 font-semibold">{partialJobs.toLocaleString()} ({pctPartial}%)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded bg-rose-500" />
-            <span className="text-slate-200 font-medium">Failed:</span>
-            <span className="text-slate-400 font-semibold">{failedJobs.toLocaleString()} ({pctFailed}%)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded bg-purple-500" />
-            <span className="text-slate-200 font-medium">Blocked:</span>
-            <span className="text-slate-400 font-semibold">{blockedJobs.toLocaleString()} ({pctBlocked}%)</span>
-          </div>
-        </div>
+        <JobDistributionDonut
+          total={totalCalculated}
+          heroValue={`${pctCompleted}%`}
+          heroLabel="Completed"
+          onSliceClick={(key) => onNavigate('jobs', key)}
+          slices={[
+            { key: 'COMPLETED', label: 'Completed', value: completedJobs, colorVar: '--chart-good' },
+            { key: 'PENDING',   label: 'Pending',   value: pendingJobs,   colorVar: '--chart-muted' },
+            { key: 'PARTIAL',   label: 'Partial',   value: partialJobs,   colorVar: '--chart-warning' },
+            { key: 'FAILED',    label: 'Failed',    value: failedJobs,    colorVar: '--chart-critical' },
+            { key: 'BLOCKED',   label: 'Blocked',   value: blockedJobs,   colorVar: '--chart-blocked' },
+          ]}
+        />
       </section>
 
       {/* Split Layout: Latest Run Card (Left) & Operational Actions (Right) */}

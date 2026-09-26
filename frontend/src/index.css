@@ -210,3 +210,38 @@
 body, aside, header, .bg-slate-900, .bg-slate-950, .bg-slate-800 {
   transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
 }
+
+/* ===========================================================================
+   Chart colours
+
+   Slices name pipeline states, so they use the reserved status steps —
+   good / warning / critical — rather than arbitrary series hues. "Blocked" is
+   not one of those states; pairing it with the warning amber put two hues
+   13.6 ΔE apart on the normal-vision scale, under the 15 floor where
+   full-colour readers stop separating them, so it takes a categorical violet
+   instead (27.6 ΔE light, 26.9 dark).
+
+   Pending is deliberately the recessive grey: it is the work still to come,
+   not a condition.
+
+   The dark steps are selected for the dark surface, not an automatic flip of
+   the light ones. Amber sits below 3:1 on white by design; the count and
+   share printed next to every slice are the required relief.
+   =========================================================================== */
+:root {
+  --chart-good: #0ca30c;
+  --chart-warning: #fab219;
+  --chart-critical: #d03b3b;
+  --chart-blocked: #9085e9;   /* violet, stepped for the dark surface */
+  --chart-muted: #64748b;
+  --chart-track: #1e293b;
+}
+
+:root[data-theme="light"] {
+  --chart-good: #0ca30c;
+  --chart-warning: #fab219;
+  --chart-critical: #d03b3b;
+  --chart-blocked: #4a3aa7;   /* violet, stepped for the light surface */
+  --chart-muted: #8096a6;
+  --chart-track: #e2e8f0;
+}
