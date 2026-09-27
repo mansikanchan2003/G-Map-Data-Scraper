@@ -105,7 +105,11 @@ export const Header: React.FC<HeaderProps> = ({
               ? `Backend Connected ${latencyMs ? `(${latencyMs}ms)` : ''}`
               : 'Backend Offline'}
           </span>
-          <span className="md:hidden">{isBackendConnected ? 'Online' : 'Offline'}</span>
+          {/* On the narrowest screens the dot is the whole message: its colour
+              says connected or not, and the button's title spells it out. */}
+          <span className="hidden sm:inline md:hidden">
+            {isBackendConnected ? 'Online' : 'Offline'}
+          </span>
         </button>
 
         <div className="h-4 w-px bg-slate-800" />

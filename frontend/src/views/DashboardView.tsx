@@ -1,6 +1,7 @@
 import { formatDateTime } from '../utils/datetime';
 import React, { useState } from 'react';
 import { DiscoveryRunner } from '../components/DiscoveryRunner';
+import { CollapsiblePanel } from '../components/CollapsiblePanel';
 import { ScaleBars } from '../components/ScaleBars';
 import { JobDistributionDonut } from '../components/JobDistributionDonut';
 import type { NormalizedSystemStats, DiscoveryStatus, ApiError } from '../types/api';
@@ -222,21 +223,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Split Layout: Latest Run Card (Left) & Operational Actions (Right) */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* Left: Latest Orchestration Run Card */}
-        <div className="lg:col-span-7 bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-4 shadow-sm">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-emerald-400 text-[20px]">alt_route</span>
-              <h3 className="text-sm font-semibold text-slate-100">Latest Orchestration Run</h3>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded text-xs font-mono-code border border-emerald-800 bg-emerald-950/60 text-emerald-300 font-semibold">
-                {isDiscoveryRunning ? 'RUNNING' : (stats?.last_run?.status || 'IDLE')}
-              </span>
-              <span className="text-xs font-mono-code text-slate-400 font-medium">
-                {stats?.last_run?.run_id ? `Run #${stats.last_run.run_id.slice(0, 8)}` : 'Engine Ready'}
-              </span>
-            </div>
-          </div>
+        <div className="lg:col-span-7">
+          <CollapsiblePanel
+            icon="alt_route"
+            iconClass="text-emerald-400"
+            title="Latest Orchestration Run"
+            badge={
+              <>
+                <span className="px-2 py-0.5 rounded text-xs font-mono-code border border-emerald-800 bg-emerald-950/60 text-emerald-300 font-semibold">
+                  {isDiscoveryRunning ? 'RUNNING' : (stats?.last_run?.status || 'IDLE')}
+                </span>
+                <span className="hidden sm:inline text-xs font-mono-code text-slate-400 font-medium">
+                  {stats?.last_run?.run_id ? `Run #${stats.last_run.run_id.slice(0, 8)}` : 'Engine Ready'}
+                </span>
+              </>
+            }
+          >
 
           {/* Real Run Metadata Bento */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
@@ -318,21 +320,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span className="text-slate-300">Deterministic deduplication active: name + pincode + coordinates.</span>
             </div>
           </div>
+          </CollapsiblePanel>
         </div>
 
         {/* Right: Operational Actions & Engine Health */}
         <div className="lg:col-span-5 flex flex-col gap-4">
           {/* Engine Health Matrix */}
-          <div className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-sky-400 text-[18px]">memory</span>
-                <h3 className="text-sm font-semibold text-slate-100">Engine Architecture</h3>
-              </div>
+          <CollapsiblePanel
+            icon="memory"
+            iconClass="text-sky-400"
+            title="Engine Architecture"
+            badge={
               <span className="text-[10px] font-mono-code text-emerald-400 font-bold uppercase bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800">
                 HEALTHY
               </span>
-            </div>
+            }
+          >
 
             <div className="flex flex-col gap-2 text-xs font-mono-code">
               <div className="flex items-center justify-between p-2 bg-slate-950 rounded border border-slate-800">
@@ -361,16 +364,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <span className="text-emerald-400 font-semibold">GET /export/businesses</span>
               </div>
             </div>
-          </div>
+          </CollapsiblePanel>
 
           {/* Quick Real Operational Actions */}
+          {/* Left open: these are the buttons someone came to the dashboard to
+              press, so hiding them behind a heading costs a click every time. */}
           <div className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-slate-400 text-[18px]">bolt</span>
-                <h3 className="text-sm font-semibold text-slate-100">Operational Controls</h3>
+                <span className="material-symbols-outlined text-slate-400 text-[20px]">bolt</span>
+                <h3 className="text-base font-semibold text-slate-100">Operational Controls</h3>
               </div>
-              <span className="text-xs font-mono-code text-slate-400 font-medium">Direct API</span>
+              <span className="hidden sm:inline text-xs font-mono-code text-slate-400 font-medium">Direct API</span>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs font-mono-code">
               <button

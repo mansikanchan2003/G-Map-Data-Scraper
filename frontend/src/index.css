@@ -1,6 +1,14 @@
 @import "tailwindcss";
 
 @layer base {
+  /* Tailwind sizes and spacing are in rem, so one step here lifts the whole
+     interface proportionally rather than leaving text large inside boxes
+     built for smaller text. The dashboard is read by people of every age and
+     16px was tight for a lot of them. */
+  html {
+    font-size: 17px;
+  }
+
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background-color: #020617;
