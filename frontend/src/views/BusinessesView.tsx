@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { BusinessItem, PaginatedResponse, ApiError } from '../types/api';
-import { fetchBusinesses, triggerCsvStream, triggerExcelStream, exportToGoogleSheets } from '../api';
+import { fetchBusinesses, triggerCsvStream, triggerExcelStream,
+         fetchLiveSheet, syncLiveSheet, type LiveSheetInfo } from '../api';
+import { DownloadMenu } from '../components/DownloadMenu';
 import { AudienceSelector } from '../components/AudienceSelector';
 
 interface BusinessesViewProps {
@@ -66,14 +68,22 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
     }
   };
 
-  const handleGoogleSheetsExport = async () => {
+  const [liveSheet, setLiveSheet] = useState<LiveSheetInfo | null>(null);
+
+  // Asked for on load so the menu can offer the link straight away. It only
+  // reads — a sheet is never created as a side effect of opening the page.
+  useEffect(() => {
+    fetchLiveSheet().then(setLiveSheet).catch(() => setLiveSheet(null));
+  }, []);
+
+  const handleSheetSync = async () => {
     setGoogleSheetsLoading(true);
     setGoogleSheetsSuccess(null);
     setError(null);
     try {
-      const filters = { search, state: selectedState !== 'All' ? selectedState : undefined };
-      const res = await exportToGoogleSheets(filters, [], true); // exportAll = true for current filters
-      setGoogleSheetsSuccess(res.spreadsheet_url);
+      const res = await syncLiveSheet();
+      setLiveSheet(res);
+      setGoogleSheetsSuccess(res.url);
     } catch (err: any) {
       setError(err);
     } finally {
@@ -115,54 +125,14 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
               <span>Refresh</span>
             </button>
 
-            {/* Primary Action: Download CSV */}
-            <div className="relative group">
-              <button
-                onClick={() => triggerCsvStream()}
-                className="h-8 px-3.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-100 font-mono-code text-xs font-semibold rounded flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
-                title="Download CSV"
-              >
-                <span className="material-symbols-outlined text-[17px] text-slate-100">description</span>
-                <span>CSV</span>
-              </button>
-            </div>
-
-            {/* Primary Action: Download Excel */}
-            <div className="relative group">
-              <button
-                onClick={() => triggerExcelStream()}
-                className="h-8 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-mono-code text-xs font-semibold rounded flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
-                title="Download full business dataset as Excel (XLSX)"
-              >
-                <span className="material-symbols-outlined text-[17px] text-white">table</span>
-                <span>Download Excel</span>
-              </button>
-
-              <div className="absolute right-0 top-full mt-1.5 hidden group-hover:flex flex-col z-50 w-72 p-2.5 bg-slate-900 border border-slate-700 text-slate-200 rounded shadow-xl pointer-events-none text-left">
-                <span className="text-[10px] font-mono-code text-emerald-400 uppercase font-bold">STREAM ENDPOINT</span>
-                <span className="text-xs font-mono-code text-slate-100 mt-0.5 break-all font-semibold">
-                  GET /api/v1/export/businesses?format=excel
-                </span>
-                <span className="text-xs text-slate-400 mt-1">
-                  Streams full dataset directly from FastAPI backend in native Excel format with optimized columns.
-                </span>
-              </div>
-            </div>
-
-            {/* Primary Action: Export to Google Sheets */}
-            <button
-              onClick={handleGoogleSheetsExport}
-              disabled={googleSheetsLoading || loading}
-              className="h-8 px-3.5 bg-sky-700 hover:bg-sky-600 disabled:bg-slate-700 disabled:opacity-70 border border-sky-600 disabled:border-slate-600 text-white font-mono-code text-xs font-semibold rounded flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
-              title="Export all matching records to a new Google Sheet"
-            >
-              {googleSheetsLoading ? (
-                <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <span className="material-symbols-outlined text-[17px] text-white">post_add</span>
-              )}
-              <span>{googleSheetsLoading ? 'Exporting...' : 'Google Sheets'}</span>
-            </button>
+            <DownloadMenu
+              onCsv={() => triggerCsvStream()}
+              onExcel={() => triggerExcelStream()}
+              sheetUrl={liveSheet?.url ?? null}
+              onSheetSync={handleSheetSync}
+              sheetBusy={googleSheetsLoading}
+              sheetUnavailable={liveSheet?.reason ?? null}
+            />
             
             {/* WhatsApp Campaign Button */}
             <button

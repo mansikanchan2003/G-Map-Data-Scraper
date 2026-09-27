@@ -97,3 +97,80 @@ class GoogleSheetsService:
             total_rows += len(batch)
             
         return total_rows
+
+
+# --- The one live sheet -----------------------------------------------------
+
+LIVE_SHEET_KEY = "google_live_sheet_id"
+LIVE_SHEET_TITLE = "All Scraped Data from AutoGMap"
+
+
+def live_sheet_owner_email() -> str:
+    """The account the sheet is shared with, and therefore readable by."""
+    return os.environ.get("GOOGLE_SHEET_OWNER_EMAIL", "").strip()
+
+
+def live_sheet_url(sheet_id: str) -> str:
+    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
+
+
+class LiveSheetService(GoogleSheetsService):
+    """
+    Keeps a single named spreadsheet in step with the database.
+
+    A service account creates the sheet, which means the service account owns
+    it and no human can see it until it is shared. So the owner's address is
+    granted access at creation. Everyone else gets Google's own request-access
+    page, which is the access control here — this app never sees who opens the
+    link.
+    """
+
+    def _open_existing(self, sheet_id: str):
+        try:
+            return self._client.open_by_key(sheet_id)
+        except Exception as e:
+            # Deleted, or the service account lost access. Either way the id is
+            # no longer usable and a new sheet has to be made.
+            logger.warning(f"Stored sheet {sheet_id} could not be opened: {e}")
+            return None
+
+    def ensure_sheet(self, stored_id):
+        """
+        Returns (spreadsheet, sheet_id, created). Reuses the stored sheet when
+        it still opens, so the link a user has bookmarked keeps working.
+        """
+        if stored_id:
+            existing = self._open_existing(stored_id)
+            if existing is not None:
+                return existing, existing.id, False
+
+        spreadsheet = self._client.create(LIVE_SHEET_TITLE)
+
+        owner = live_sheet_owner_email()
+        if owner:
+            # Without this the sheet exists but belongs to the service account
+            # alone, and the link would open a permission error for everyone.
+            spreadsheet.share(owner, perm_type="user", role="writer",
+                              notify=False)
+            logger.info(f"google_sheets event=SHEET_SHARED with={owner}")
+        else:
+            logger.warning(
+                "google_sheets event=SHEET_UNSHARED "
+                "GOOGLE_SHEET_OWNER_EMAIL is not set, so nobody can open the sheet"
+            )
+
+        logger.info(f"google_sheets event=SHEET_CREATED id={spreadsheet.id}")
+        return spreadsheet, spreadsheet.id, True
+
+    def replace_contents(self, spreadsheet, row_generator) -> int:
+        """
+        Rewrites the sheet from scratch.
+
+        Appending would duplicate every business on each sync, and matching
+        rows to update in place would need a key the sheet does not carry. The
+        sheet is a mirror of the table, so it is rebuilt rather than merged.
+        """
+        worksheet = spreadsheet.sheet1
+        worksheet.clear()
+        self.write_headers(worksheet)
+        return self.stream_rows_to_sheet(worksheet, row_generator)

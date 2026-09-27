@@ -248,6 +248,30 @@ export function triggerExcelStream(): void {
 /**
  * Creates a new Google Sheet on the server side using FastAPI and returns the URL.
  */
+export interface LiveSheetInfo {
+  configured: boolean;
+  url: string | null;
+  title: string;
+  shared_with: string | null;
+  /** Why there is no sheet yet, when configured is false. */
+  reason: string | null;
+}
+
+export interface LiveSheetSyncResult extends LiveSheetInfo {
+  created: boolean;
+  rows: number;
+}
+
+/** Where the live sheet is. Never creates one. */
+export async function fetchLiveSheet(): Promise<LiveSheetInfo> {
+  return request<LiveSheetInfo>('/api/v1/export/google-sheets/link');
+}
+
+/** Creates the sheet if needed, then rewrites it from the database. */
+export async function syncLiveSheet(): Promise<LiveSheetSyncResult> {
+  return request<LiveSheetSyncResult>('/api/v1/export/google-sheets/sync', { method: 'POST' });
+}
+
 export async function exportToGoogleSheets(
   filters: Record<string, any> = {},
   selectedIds: string[] = [],

@@ -85,6 +85,32 @@ History → View Details** turns Delivered, then Read.
 Note that Meta does not replay events for messages already sent, so campaigns
 run before this is switched on will never show delivery data.
 
+### The live Google Sheet
+
+**Business Data → Export** holds CSV, Excel and one shared spreadsheet named
+**All Scraped Data from AutoGMap**.
+
+Unlike the downloads, the sheet is a single document that is reused and
+rewritten rather than a new export each time, so a bookmarked link keeps
+working. "Update the sheet now" replaces its contents with the current table —
+appending would duplicate every row, and there is no key in the sheet to merge
+against.
+
+Two settings are needed before it can exist:
+
+| Variable | Why |
+|---|---|
+| `GOOGLE_CREDENTIALS_BASE64` | Service account JSON, base64-encoded. It creates and writes the sheet. |
+| `GOOGLE_SHEET_OWNER_EMAIL` | Who the sheet is shared with. |
+
+The second is not optional in practice: a service account owns what it creates,
+so without an explicit share the sheet exists and nobody — including you — can
+open it. The sync endpoint refuses to run until it is set.
+
+**Access is Google's, not this app's.** The sheet is shared with that one
+address; anyone else following the link gets Google's request-access page. This
+app never sees who opens it and cannot grant or revoke anything.
+
 ### Delivery & engagement tracking
 - **Campaign History** shows delivered, read and button clicks per campaign;
   **View Details** adds a Delivery & Engagement panel and per-recipient

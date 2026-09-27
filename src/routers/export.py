@@ -215,3 +215,107 @@ def export_businesses(
             "valid_only": is_valid
         }
     }
+
+
+# --- The one live sheet -----------------------------------------------------
+
+def _get_setting(db: Session, key: str):
+    from src.models import AppSetting
+    row = db.query(AppSetting).filter(AppSetting.key == key).first()
+    return row.value if row else None
+
+
+def _set_setting(db: Session, key: str, value: str):
+    from src.models import AppSetting
+    row = db.query(AppSetting).filter(AppSetting.key == key).first()
+    if row:
+        row.value = value
+    else:
+        db.add(AppSetting(key=key, value=value))
+    db.commit()
+
+
+@router.get("/google-sheets/link")
+def google_sheet_link(db: Session = Depends(get_db)):
+    """
+    Where the live sheet is, and if there isn't one yet, what is missing.
+
+    This never creates anything: the page calls it on load, and creating a
+    spreadsheet as a side effect of rendering a button would be a surprise.
+    """
+    from src.services.google_sheets import (
+        LIVE_SHEET_KEY, LIVE_SHEET_TITLE, live_sheet_owner_email, live_sheet_url,
+    )
+
+    sheet_id = _get_setting(db, LIVE_SHEET_KEY)
+    if sheet_id:
+        return {
+            "configured": True,
+            "url": live_sheet_url(sheet_id),
+            "title": LIVE_SHEET_TITLE,
+            "shared_with": live_sheet_owner_email() or None,
+            "reason": None,
+        }
+
+    if not os.environ.get("GOOGLE_CREDENTIALS_BASE64"):
+        reason = ("No Google service account is configured. Set "
+                  "GOOGLE_CREDENTIALS_BASE64 to create the sheet.")
+    elif not live_sheet_owner_email():
+        reason = ("Set GOOGLE_SHEET_OWNER_EMAIL first, otherwise the sheet is "
+                  "created but nobody can open it.")
+    else:
+        reason = "No sheet yet — choose \u201cCreate the Google Sheet\u201d to make it."
+
+    return {"configured": False, "url": None, "title": LIVE_SHEET_TITLE,
+            "shared_with": live_sheet_owner_email() or None, "reason": reason}
+
+
+@router.post("/google-sheets/sync")
+def sync_google_sheet(db: Session = Depends(get_db)):
+    """
+    Creates the sheet if it does not exist, then rewrites it from the database.
+
+    The same call does both so the button has one meaning: make the sheet match
+    what is in the table right now.
+    """
+    from src.services.google_sheets import (
+        LIVE_SHEET_KEY, LIVE_SHEET_TITLE, LiveSheetService,
+        live_sheet_owner_email, live_sheet_url,
+    )
+
+    if not live_sheet_owner_email():
+        raise HTTPException(
+            status_code=400,
+            detail="GOOGLE_SHEET_OWNER_EMAIL is not set. Without it the sheet "
+                   "would be created under the service account and nobody "
+                   "could open it.",
+        )
+
+    try:
+        service = LiveSheetService()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Google Sheets service error: {str(e)}")
+
+    stored_id = _get_setting(db, LIVE_SHEET_KEY)
+    try:
+        spreadsheet, sheet_id, created = service.ensure_sheet(stored_id)
+        if sheet_id != stored_id:
+            _set_setting(db, LIVE_SHEET_KEY, sheet_id)
+
+        query = (
+            db.query(Business)
+            .order_by(Business.discovered_at.desc())
+            .execution_options(stream_results=True)
+        )
+        rows = service.replace_contents(spreadsheet, query.yield_per(1000))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not update the sheet: {str(e)}")
+
+    return {
+        "status": "ok",
+        "created": created,
+        "rows": rows,
+        "url": live_sheet_url(sheet_id),
+        "title": LIVE_SHEET_TITLE,
+        "shared_with": live_sheet_owner_email(),
+    }
