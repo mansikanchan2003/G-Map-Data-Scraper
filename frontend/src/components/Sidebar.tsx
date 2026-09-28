@@ -77,7 +77,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* The wordmark is gold throughout, so it reads on both the dark
               sidebar and the teal one the light theme uses -- no plate needed. */}
           <img
-            src="/eko-wordmark.svg"
+            src={`${import.meta.env.BASE_URL}eko-wordmark.svg`}
             alt="Eko"
             title="AutoGMap Autonomous Engine"
             className="h-7 w-auto shrink-0"
