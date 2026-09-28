@@ -1,4 +1,5 @@
 import React from 'react';
+import { getApiBaseUrl } from '../api';
 
 interface WhatsAppPreviewProps {
   businessName: string;
@@ -27,7 +28,7 @@ export const WhatsAppPreview: React.FC<WhatsAppPreviewProps> = ({
     try {
       const data = JSON.parse(headerContent);
       if (data.source_type === 'upload' && data.media_id) {
-        return `/api/v1/whatsapp/media/${data.media_id}`;
+        return `${getApiBaseUrl()}/api/v1/whatsapp/media/${data.media_id}`;
       }
       if (data.source_type === 'url' && data.url) {
         return data.url;

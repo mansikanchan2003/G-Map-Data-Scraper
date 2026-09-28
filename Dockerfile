@@ -4,6 +4,27 @@
 # Runs as non-root user (appuser) for security.
 # =============================================================================
 
+# ---------------------------------------------------------------------------
+# Stage 1 — build the frontend
+# ---------------------------------------------------------------------------
+# The bundle is baked into the image rather than built on the server, so the
+# deployed UI is exactly the one that was tested. VITE_BASE_PATH sets the
+# public sub-path the assets are requested from.
+FROM node:20-slim AS frontend
+
+ARG VITE_BASE_PATH=/
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
+
+WORKDIR /build
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+
+# ---------------------------------------------------------------------------
+# Stage 2 — the application
+# ---------------------------------------------------------------------------
 FROM python:3.12-slim AS base
 
 # ---------------------------------------------------------------------------
@@ -82,6 +103,9 @@ COPY alembic.ini .
 # These can alternatively be mounted as a volume at runtime.
 COPY ["Geocoded_Ad_Targeting_Locations_FINAL.xlsx", "."]
 COPY ["G-Map Scraper Categories.xlsx", "."]
+
+# The built UI, served by FastAPI so the deployment has one upstream port.
+COPY --from=frontend /build/dist ./frontend_dist
 
 # ---------------------------------------------------------------------------
 # Runtime configuration

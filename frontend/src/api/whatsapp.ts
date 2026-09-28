@@ -1,6 +1,10 @@
 import type { PaginatedResponse } from '../types/api';
 
-const API_BASE = '/api/v1/whatsapp';
+import { getApiBaseUrl } from './index';
+
+// Resolved from the shared base so this module follows the public path — and
+// the backend-URL override in Settings — instead of assuming the root.
+const API_BASE = `${getApiBaseUrl()}/api/v1/whatsapp`;
 
 export interface WhatsAppAccount {
   account_id: string;

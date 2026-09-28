@@ -25,7 +25,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      # Localhost only. A database on 0.0.0.0 is reachable from
+      # anywhere the host is.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gmap_user} -d ${POSTGRES_DB:-gmap_scraper}" ]
       interval: 10s
@@ -40,6 +42,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # The public sub-path the UI is served under. Baked in at build time
+        # because Vite rewrites every asset URL with it.
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-/}
     restart: unless-stopped
     environment:
       # Database — point to the postgres service above
@@ -102,7 +108,9 @@ services:
       # Playwright browser path (must match Dockerfile ENV)
       PLAYWRIGHT_BROWSERS_PATH: /app/.playwright
     ports:
-      - "8000:8000"
+      # The reverse proxy is the only thing that should reach this.
+      # BACKEND_HOST_PORT is chosen per server, never hardcoded.
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8000}:8000"
     volumes:
       # Mount data files if you want to update them without rebuilding
       - ./data:/app/data
@@ -134,7 +142,7 @@ services:
       N8N_PROTOCOL: "http"
       GENERIC_TIMEZONE: "Asia/Kolkata"
     ports:
-      - "5678:5678"
+      - "127.0.0.1:${N8N_HOST_PORT:-5678}:5678"
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:

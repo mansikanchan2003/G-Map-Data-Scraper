@@ -3,6 +3,7 @@ import {
   fetchTemplates, createTemplate, updateTemplate, deleteTemplate, uploadMedia,
   syncTemplateStatuses, submitTemplate, type WhatsAppTemplate
 } from '../api/whatsapp';
+import { getApiBaseUrl } from '../api';
 import { MessageBodyEditor } from '../components/MessageBodyEditor';
 import { WhatsAppPreview } from '../components/WhatsAppPreview';
 
@@ -12,7 +13,7 @@ const resolveMediaUrl = (headerContent?: string | null): string | null => {
   try {
     const data = JSON.parse(headerContent);
     if (data.source_type === 'upload' && data.media_id) {
-      return `/api/v1/whatsapp/media/${data.media_id}`;
+      return `${getApiBaseUrl()}/api/v1/whatsapp/media/${data.media_id}`;
     }
     if (data.source_type === 'url' && data.url) return data.url;
     return null;

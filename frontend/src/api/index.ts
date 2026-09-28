@@ -19,7 +19,13 @@ import type {
   GoogleSheetsExportResult,
 } from '../types/api';
 
-const DEFAULT_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+// In production the backend serves this bundle, so the API is same-origin
+// under whatever public path the app was built for. In development the Vite
+// server is separate and the backend is addressed directly.
+const SAME_ORIGIN_BASE = import.meta.env.BASE_URL.replace(/\/+$/, '');
+const DEFAULT_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.PROD ? SAME_ORIGIN_BASE : 'http://127.0.0.1:8000');
 const STORAGE_KEY_API_URL = 'autogmap_api_base_url';
 
 export function getApiBaseUrl(): string {

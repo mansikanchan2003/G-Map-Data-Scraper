@@ -7,6 +7,7 @@ from src.utils.logging import setup_logging
 from src.config import settings
 from contextlib import asynccontextmanager
 import logging
+import os
 
 logger = logging.getLogger("gmap_scraper")
 
@@ -152,3 +153,52 @@ def get_stats(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Stats endpoint error: {e}")
         return {"error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Built frontend
+# ---------------------------------------------------------------------------
+# Serving the bundle from the API keeps the deployment to a single upstream
+# port, which is what the reverse proxy in front of this expects: one
+# location, one proxy_pass. It also makes the API same-origin, so there are no
+# CORS rules to keep in step with the public URL.
+#
+# Mounted last so every API route above wins; the SPA only ever answers for
+# paths nothing else claimed.
+_FRONTEND_DIR = os.environ.get("FRONTEND_DIST_DIR", "/app/frontend_dist")
+
+if os.path.isdir(_FRONTEND_DIR):
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount(
+        "/assets",
+        StaticFiles(directory=os.path.join(_FRONTEND_DIR, "assets")),
+        name="assets",
+    )
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def serve_spa(full_path: str):
+        """
+        Hands back a real file when one exists, and index.html otherwise.
+
+        The app routes on the URL hash, so deep links never reach the server as
+        paths — but a favicon or a logo does, and those must not be answered
+        with the HTML page.
+        """
+        candidate = os.path.normpath(os.path.join(_FRONTEND_DIR, full_path))
+        # normpath collapses "..", so this rejects traversal out of the bundle.
+        if (
+            full_path
+            and candidate.startswith(os.path.abspath(_FRONTEND_DIR))
+            and os.path.isfile(candidate)
+        ):
+            return FileResponse(candidate)
+        return FileResponse(os.path.join(_FRONTEND_DIR, "index.html"))
+
+    logger.info(f"Serving frontend bundle from {_FRONTEND_DIR}")
+else:
+    logger.info(
+        f"No frontend bundle at {_FRONTEND_DIR}; API-only mode "
+        "(the Vite dev server serves the UI in development)"
+    )
