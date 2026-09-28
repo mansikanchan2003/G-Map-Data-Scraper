@@ -93,3 +93,4 @@ AI_Studio_UI/
 data/backups/
 *.csv
 !G-Map*.csv
+.env.bak.*

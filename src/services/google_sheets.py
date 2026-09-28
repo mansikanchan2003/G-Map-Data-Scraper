@@ -110,6 +110,43 @@ def live_sheet_owner_email() -> str:
     return os.environ.get("GOOGLE_SHEET_OWNER_EMAIL", "").strip()
 
 
+def configured_sheet_id() -> str:
+    """
+    An existing spreadsheet to use instead of creating one.
+
+    Set when the sheet was made by a person rather than by this app, which is
+    the better arrangement: they own it, and the service account is only a
+    guest with edit rights.
+    """
+    raw = os.environ.get("GOOGLE_SHEET_ID", "").strip()
+    if not raw:
+        return ""
+    # A pasted browser URL is the obvious thing to reach for, so accept it.
+    if "/spreadsheets/d/" in raw:
+        raw = raw.split("/spreadsheets/d/", 1)[1].split("/", 1)[0]
+    return raw.strip()
+
+
+def service_account_email() -> str:
+    """
+    The identity that has to be invited to a sheet it did not create.
+
+    Read straight from the credentials so the UI can name it; without it the
+    instruction "share the sheet" has no one to share with.
+    """
+    b64 = os.environ.get("GOOGLE_CREDENTIALS_BASE64")
+    if not b64:
+        return ""
+    try:
+        return json.loads(base64.b64decode(b64).decode("utf-8")).get("client_email", "")
+    except Exception:
+        return ""
+
+
+class SheetAccessError(RuntimeError):
+    """The sheet exists but the service account cannot reach it."""
+
+
 def live_sheet_url(sheet_id: str) -> str:
     return f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
 
@@ -136,9 +173,27 @@ class LiveSheetService(GoogleSheetsService):
 
     def ensure_sheet(self, stored_id):
         """
-        Returns (spreadsheet, sheet_id, created). Reuses the stored sheet when
-        it still opens, so the link a user has bookmarked keeps working.
+        Returns (spreadsheet, sheet_id, created).
+
+        A sheet named by GOOGLE_SHEET_ID is required, not preferred: if it
+        cannot be opened, that is a missing invitation to fix, and quietly
+        creating a different sheet would leave the user watching a document
+        this app never writes to.
+
+        A merely remembered id is treated more softly — it can legitimately
+        have been deleted — so that case falls through to creating a new one.
         """
+        target = configured_sheet_id()
+        if target:
+            existing = self._open_existing(target)
+            if existing is None:
+                account = service_account_email() or "the service account"
+                raise SheetAccessError(
+                    f"The sheet {target} could not be opened. Share it with "
+                    f"{account} as an Editor, then try again."
+                )
+            return existing, existing.id, False
+
         if stored_id:
             existing = self._open_existing(stored_id)
             if existing is not None:

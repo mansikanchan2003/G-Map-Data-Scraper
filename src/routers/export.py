@@ -244,16 +244,20 @@ def google_sheet_link(db: Session = Depends(get_db)):
     spreadsheet as a side effect of rendering a button would be a surprise.
     """
     from src.services.google_sheets import (
-        LIVE_SHEET_KEY, LIVE_SHEET_TITLE, live_sheet_owner_email, live_sheet_url,
+        LIVE_SHEET_KEY, LIVE_SHEET_TITLE, configured_sheet_id,
+        live_sheet_owner_email, live_sheet_url, service_account_email,
     )
 
-    sheet_id = _get_setting(db, LIVE_SHEET_KEY)
+    # A configured sheet wins over a remembered one: it is what the user
+    # pointed at, and the remembered id may predate that choice.
+    sheet_id = configured_sheet_id() or _get_setting(db, LIVE_SHEET_KEY)
     if sheet_id:
         return {
             "configured": True,
             "url": live_sheet_url(sheet_id),
             "title": LIVE_SHEET_TITLE,
             "shared_with": live_sheet_owner_email() or None,
+            "service_account": service_account_email() or None,
             "reason": None,
         }
 
@@ -267,7 +271,9 @@ def google_sheet_link(db: Session = Depends(get_db)):
         reason = "No sheet yet — choose \u201cCreate the Google Sheet\u201d to make it."
 
     return {"configured": False, "url": None, "title": LIVE_SHEET_TITLE,
-            "shared_with": live_sheet_owner_email() or None, "reason": reason}
+            "shared_with": live_sheet_owner_email() or None,
+            "service_account": service_account_email() or None,
+            "reason": reason}
 
 
 @router.post("/google-sheets/sync")
@@ -279,22 +285,34 @@ def sync_google_sheet(db: Session = Depends(get_db)):
     what is in the table right now.
     """
     from src.services.google_sheets import (
-        LIVE_SHEET_KEY, LIVE_SHEET_TITLE, LiveSheetService,
-        live_sheet_owner_email, live_sheet_url,
+        LIVE_SHEET_KEY, LIVE_SHEET_TITLE, LiveSheetService, SheetAccessError,
+        configured_sheet_id, live_sheet_owner_email, live_sheet_url,
     )
 
-    if not live_sheet_owner_email():
+    # Only matters when this app has to create the sheet. A sheet the user
+    # already owns needs no share from us.
+    if not configured_sheet_id() and not live_sheet_owner_email():
         raise HTTPException(
             status_code=400,
-            detail="GOOGLE_SHEET_OWNER_EMAIL is not set. Without it the sheet "
-                   "would be created under the service account and nobody "
-                   "could open it.",
+            detail="Set GOOGLE_SHEET_ID to an existing sheet, or "
+                   "GOOGLE_SHEET_OWNER_EMAIL so a new one can be shared with "
+                   "you. Without either, the sheet would belong to the service "
+                   "account alone and nobody could open it.",
+        )
+
+    if not os.environ.get("GOOGLE_CREDENTIALS_BASE64"):
+        # Missing configuration is the caller's to fix, not a server fault.
+        raise HTTPException(
+            status_code=400,
+            detail="No Google service account is configured. Set "
+                   "GOOGLE_CREDENTIALS_BASE64 to the base64 of its JSON key, "
+                   "then share the sheet with that account as an Editor.",
         )
 
     try:
         service = LiveSheetService()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Google Sheets service error: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Google credentials could not be read: {str(e)}")
 
     stored_id = _get_setting(db, LIVE_SHEET_KEY)
     try:
@@ -308,6 +326,9 @@ def sync_google_sheet(db: Session = Depends(get_db)):
             .execution_options(stream_results=True)
         )
         rows = service.replace_contents(spreadsheet, query.yield_per(1000))
+    except SheetAccessError as e:
+        # Actionable, and the user's to fix, so it is not a 500.
+        raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not update the sheet: {str(e)}")
 

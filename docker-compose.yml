@@ -86,6 +86,12 @@ services:
       META_APP_SECRET: ${META_APP_SECRET:-}
       META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-gmap_scraper_verify_token}
 
+      # Google Sheets. GOOGLE_SHEET_ID names a sheet the user owns; the
+      # service account only needs Editor access to it.
+      GOOGLE_CREDENTIALS_BASE64: ${GOOGLE_CREDENTIALS_BASE64:-}
+      GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID:-}
+      GOOGLE_SHEET_OWNER_EMAIL: ${GOOGLE_SHEET_OWNER_EMAIL:-}
+
       # Campaign link tracking. PUBLIC_BASE_URL must be an address a phone can
       # reach over the internet, otherwise the tracking links will not open.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
