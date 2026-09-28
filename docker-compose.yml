@@ -92,6 +92,18 @@ services:
       META_APP_SECRET: ${META_APP_SECRET:-}
       META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-gmap_scraper_verify_token}
 
+      # Discovery tuning. These were in .env but never listed here, so the
+      # container fell back to the code defaults and editing .env appeared to
+      # do nothing.
+      LOCATIONS_FILE: ${LOCATIONS_FILE:-Geocoded_Ad_Targeting_Locations_FINAL.xlsx}
+      CATEGORIES_FILE: ${CATEGORIES_FILE:-G-Map Scraper Categories.xlsx}
+      BROWSER_TIMEOUT_MS: ${BROWSER_TIMEOUT_MS:-60000}
+      SEARCH_DELAY_SECONDS: ${SEARCH_DELAY_SECONDS:-2}
+      MAX_RESULTS_PER_JOB: ${MAX_RESULTS_PER_JOB:-200}
+      STALE_JOB_AGE_MINUTES: ${STALE_JOB_AGE_MINUTES:-30}
+      EMAIL_MAX_PAGES_PER_SITE: ${EMAIL_MAX_PAGES_PER_SITE:-5}
+      EMAIL_NAVIGATION_TIMEOUT_MS: ${EMAIL_NAVIGATION_TIMEOUT_MS:-15000}
+
       # Sessions and approval emails. Without AUTH_JWT_SECRET the app signs
       # sessions with the database password, which works but ties the two
       # together. SMTP is optional: approvals still appear in the queue.
