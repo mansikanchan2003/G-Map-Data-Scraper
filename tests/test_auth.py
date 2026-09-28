@@ -1,0 +1,217 @@
+"""
+Who can ask for access, and who actually gets it.
+
+The two gates are deliberately separate — the email domain decides who may
+request, an admin decides who gets in — so both are pinned down here, along
+with the rule that everything else stays closed until then.
+"""
+import uuid
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from src.database import Base, get_db
+from src.main import app
+from src.models import User  # noqa: F401  (registers the tables)
+from src.services import auth_service as auth
+
+engine = create_engine(
+    "sqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base.metadata.create_all(bind=engine)
+
+GOOD_PASSWORD = "correct-horse-7"
+
+
+def override_db():
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@pytest.fixture
+def client(monkeypatch):
+    # Set per test, not at import: dependency_overrides is global, other
+    # suites point it at their own database from module scope, and whichever
+    # imported last would otherwise win for the whole run.
+    app.dependency_overrides[get_db] = override_db
+    # The middleware opens its own session, so it has to be pointed at the
+    # test database too or every request would 401 against an empty one.
+    monkeypatch.setattr("src.database.SessionLocal", TestingSessionLocal)
+    monkeypatch.setenv("AUTH_JWT_SECRET", "test-secret-long-enough-for-hs256")
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.pop(get_db, None)
+    db = TestingSessionLocal()
+    db.query(User).delete()
+    db.commit()
+    db.close()
+
+
+def make_admin(email="admin@eko.co.in"):
+    db = TestingSessionLocal()
+    db.add(User(user_id=uuid.uuid4().hex, email=email,
+                password_hash=auth.hash_password(GOOD_PASSWORD),
+                role="admin", status="APPROVED"))
+    db.commit()
+    db.close()
+    return email
+
+
+class TestEmailDomain:
+    @pytest.mark.parametrize("email", [
+        "someone@gmail.com",
+        "someone@eko.com",
+        "someone@notek.co.in",
+        # The domain has to terminate the address, not merely appear in it.
+        "someone@eko.co.in.attacker.com",
+        "eko.co.in@gmail.com",
+        "not-an-email",
+    ])
+    def test_rejected(self, email):
+        assert auth.email_is_allowed(email) is False
+
+    @pytest.mark.parametrize("email", [
+        "mansi.kanchan.intern@eko.co.in",
+        "A.Person@EKO.CO.IN",
+    ])
+    def test_allowed(self, email):
+        assert auth.email_is_allowed(email) is True
+
+
+class TestSignup:
+    def test_outside_domain_is_refused(self, client):
+        r = client.post("/api/v1/auth/signup",
+                        json={"email": "outsider@gmail.com", "password": GOOD_PASSWORD})
+        assert r.status_code == 400
+        assert "eko.co.in" in r.json()["detail"]
+
+    def test_signup_does_not_grant_access(self, client):
+        r = client.post("/api/v1/auth/signup",
+                        json={"email": "new@eko.co.in", "password": GOOD_PASSWORD})
+        assert r.status_code == 201
+        assert r.json()["status"] == "PENDING"
+
+        # The whole point: a recorded request is not an account that works.
+        login = client.post("/api/v1/auth/login",
+                            json={"email": "new@eko.co.in", "password": GOOD_PASSWORD})
+        assert login.status_code == 403
+        assert "approval" in login.json()["detail"].lower()
+
+    def test_weak_password_is_refused(self, client):
+        r = client.post("/api/v1/auth/signup",
+                        json={"email": "weak@eko.co.in", "password": "1234567890"})
+        assert r.status_code == 400
+
+    def test_duplicate_request_is_refused(self, client):
+        client.post("/api/v1/auth/signup",
+                    json={"email": "dupe@eko.co.in", "password": GOOD_PASSWORD})
+        again = client.post("/api/v1/auth/signup",
+                            json={"email": "dupe@eko.co.in", "password": GOOD_PASSWORD})
+        assert again.status_code == 409
+
+
+class TestLogin:
+    def test_unknown_and_wrong_password_are_indistinguishable(self, client):
+        make_admin("real@eko.co.in")
+        missing = client.post("/api/v1/auth/login",
+                              json={"email": "ghost@eko.co.in", "password": GOOD_PASSWORD})
+        wrong = client.post("/api/v1/auth/login",
+                            json={"email": "real@eko.co.in", "password": "wrong-password-9"})
+        # Otherwise the form tells an attacker which addresses exist.
+        assert missing.status_code == wrong.status_code == 401
+        assert missing.json()["detail"] == wrong.json()["detail"]
+
+    def test_approved_user_can_sign_in(self, client):
+        email = make_admin()
+        r = client.post("/api/v1/auth/login",
+                        json={"email": email, "password": GOOD_PASSWORD})
+        assert r.status_code == 200
+        assert r.json()["role"] == "admin"
+        assert auth.COOKIE_NAME in r.cookies
+
+
+class TestApprovalFlow:
+    def test_admin_approves_and_the_user_can_then_sign_in(self, client):
+        client.post("/api/v1/auth/signup",
+                    json={"email": "wants-in@eko.co.in", "password": GOOD_PASSWORD})
+        admin = make_admin()
+        client.post("/api/v1/auth/login", json={"email": admin, "password": GOOD_PASSWORD})
+
+        pending = client.get("/api/v1/auth/users?status=PENDING").json()
+        assert [u["email"] for u in pending] == ["wants-in@eko.co.in"]
+
+        approved = client.post(f"/api/v1/auth/users/{pending[0]['user_id']}/approve")
+        assert approved.status_code == 200
+        assert approved.json()["status"] == "APPROVED"
+        assert approved.json()["decided_by"] == admin
+
+        client.post("/api/v1/auth/logout")
+        r = client.post("/api/v1/auth/login",
+                        json={"email": "wants-in@eko.co.in", "password": GOOD_PASSWORD})
+        assert r.status_code == 200
+
+    def test_members_cannot_reach_the_queue(self, client):
+        client.post("/api/v1/auth/signup",
+                    json={"email": "member@eko.co.in", "password": GOOD_PASSWORD})
+        admin = make_admin()
+        client.post("/api/v1/auth/login", json={"email": admin, "password": GOOD_PASSWORD})
+        uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+        client.post(f"/api/v1/auth/users/{uid}/approve")
+        client.post("/api/v1/auth/logout")
+
+        client.post("/api/v1/auth/login",
+                    json={"email": "member@eko.co.in", "password": GOOD_PASSWORD})
+        assert client.get("/api/v1/auth/users").status_code == 403
+        assert client.post(f"/api/v1/auth/users/{uid}/reject", json={}).status_code == 403
+
+    def test_rejected_user_cannot_sign_in(self, client):
+        client.post("/api/v1/auth/signup",
+                    json={"email": "nope@eko.co.in", "password": GOOD_PASSWORD})
+        admin = make_admin()
+        client.post("/api/v1/auth/login", json={"email": admin, "password": GOOD_PASSWORD})
+        uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+        client.post(f"/api/v1/auth/users/{uid}/reject", json={"reason": "not on this project"})
+        client.post("/api/v1/auth/logout")
+
+        r = client.post("/api/v1/auth/login",
+                        json={"email": "nope@eko.co.in", "password": GOOD_PASSWORD})
+        assert r.status_code == 403
+
+
+class TestEverythingElseIsClosed:
+    @pytest.mark.parametrize("path", [
+        "/api/v1/stats",
+        "/api/v1/businesses",
+        "/api/v1/whatsapp/campaigns",
+        "/api/v1/config/locations",
+        "/openapi.json",
+    ])
+    def test_api_requires_a_session(self, client, path):
+        assert client.get(path).status_code == 401
+
+    @pytest.mark.parametrize("path", ["/health", "/ready"])
+    def test_probes_stay_open(self, client, path):
+        # Docker's healthcheck and any monitoring carry no cookie.
+        assert client.get(path).status_code in (200, 503)
+
+    def test_the_meta_webhook_stays_open(self, client):
+        # Meta cannot present a session cookie; that endpoint is guarded by
+        # its own signature check instead.
+        r = client.get("/api/v1/whatsapp/webhook",
+                       params={"hub.mode": "subscribe", "hub.challenge": "1",
+                               "hub.verify_token": "wrong"})
+        assert r.status_code == 403  # reached the handler, not the gate
+
+    def test_signing_in_opens_the_rest(self, client):
+        email = make_admin()
+        client.post("/api/v1/auth/login", json={"email": email, "password": GOOD_PASSWORD})
+        assert client.get("/api/v1/stats").status_code == 200

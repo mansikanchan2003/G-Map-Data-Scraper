@@ -3,6 +3,9 @@ import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { useTheme } from './hooks/useTheme';
 import type { NavTab } from './components/Header';
+import { useAuth } from './hooks/useAuth';
+import { LoginView } from './views/LoginView';
+import { ApprovalsView } from './views/ApprovalsView';
 import { BackendSettingsModal } from './components/BackendSettingsModal';
 import { DashboardView } from './views/DashboardView';
 import { BusinessesView } from './views/BusinessesView';
@@ -29,6 +32,7 @@ export default function App() {
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
   const [latencyMs, setLatencyMs] = useState<number | undefined>(undefined);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const { user, loading: authLoading, login, logout, signup } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const { theme, toggleTheme } = useTheme();
@@ -105,11 +109,27 @@ export default function App() {
     return () => clearInterval(interval);
   }, [syncBackend]);
 
+  // Until the session check answers, "signed out" and "not asked yet" look
+  // the same, and showing the login screen in that gap would flash it at
+  // someone who is already signed in.
+  if (authLoading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-slate-950">
+        <div className="w-8 h-8 border-3 border-sky-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginView onLogin={login} onSignup={signup} />;
+  }
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans antialiased select-none">
       {/* Docked Navigation Sidebar (Fixed left, width 240px) */}
       <Sidebar
         activeTab={activeTab}
+        isAdmin={user?.role === 'admin'}
         onTabChange={(tab) => handleTabChange(tab)}
         isBackendConnected={isBackendConnected}
         latencyMs={latencyMs}
@@ -131,6 +151,8 @@ export default function App() {
           isSyncing={isSyncing}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenMenu={() => setSidebarOpen(true)}
+          user={user}
+          onSignOut={logout}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
@@ -163,6 +185,7 @@ export default function App() {
           )}
 
           {activeTab === 'config' && <ConfigView />}
+          {activeTab === 'approvals' && user?.role === 'admin' && <ApprovalsView />}
 
           {activeTab === 'whatsapp-campaign' && <WhatsAppCampaignView />}
 

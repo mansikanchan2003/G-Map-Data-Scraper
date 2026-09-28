@@ -119,6 +119,7 @@ export const uploadMedia = async (file: File, mediaType: 'image' | 'video'): Pro
   formData.append('media_type', mediaType);
 
   const res = await fetch(`${API_BASE}/media/upload`, {
+    credentials: 'include',
     method: 'POST',
     body: formData,
   });
@@ -131,13 +132,14 @@ export const uploadMedia = async (file: File, mediaType: 'image' | 'video'): Pro
 };
 
 export const fetchAccounts = async (): Promise<WhatsAppAccount[]> => {
-  const res = await fetch(`${API_BASE}/accounts`);
+  const res = await fetch(`${API_BASE}/accounts`, { credentials: 'include' });
   if (!res.ok) throw new Error('Failed to fetch WhatsApp accounts');
   return res.json();
 };
 
 export const createAccount = async (data: Partial<WhatsAppAccount>): Promise<WhatsAppAccount> => {
   const res = await fetch(`${API_BASE}/accounts`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -148,6 +150,7 @@ export const createAccount = async (data: Partial<WhatsAppAccount>): Promise<Wha
 
 export const connectAccount = async (): Promise<WhatsAppAccount> => {
   const res = await fetch(`${API_BASE}/accounts/connect`, {
+    credentials: 'include',
     method: 'POST',
   });
   if (!res.ok) {
@@ -158,13 +161,14 @@ export const connectAccount = async (): Promise<WhatsAppAccount> => {
 };
 
 export const fetchTemplates = async (): Promise<WhatsAppTemplate[]> => {
-  const res = await fetch(`${API_BASE}/templates`);
+  const res = await fetch(`${API_BASE}/templates`, { credentials: 'include' });
   if (!res.ok) throw new Error('Failed to fetch templates');
   return res.json();
 };
 
 export const createTemplate = async (data: Partial<WhatsAppTemplate>): Promise<WhatsAppTemplate> => {
   const res = await fetch(`${API_BASE}/templates`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -175,6 +179,7 @@ export const createTemplate = async (data: Partial<WhatsAppTemplate>): Promise<W
 
 export const deleteTemplate = async (templateId: string): Promise<void> => {
   const res = await fetch(`${API_BASE}/templates/${templateId}`, {
+    credentials: 'include',
     method: 'DELETE',
   });
   if (!res.ok) throw new Error('Failed to delete template');
@@ -182,6 +187,7 @@ export const deleteTemplate = async (templateId: string): Promise<void> => {
 
 export const validateContacts = async (contacts: any[]): Promise<ValidationResponse> => {
   const res = await fetch(`${API_BASE}/contacts/validate`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ contacts }),
@@ -192,6 +198,7 @@ export const validateContacts = async (contacts: any[]): Promise<ValidationRespo
 
 export const createCampaign = async (data: any): Promise<WhatsAppCampaign> => {
   const res = await fetch(`${API_BASE}/campaigns`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -202,19 +209,20 @@ export const createCampaign = async (data: any): Promise<WhatsAppCampaign> => {
 };
 
 export const fetchCampaigns = async (): Promise<WhatsAppCampaign[]> => {
-  const res = await fetch(`${API_BASE}/campaigns`);
+  const res = await fetch(`${API_BASE}/campaigns`, { credentials: 'include' });
   if (!res.ok) throw new Error('Failed to fetch campaigns');
   return res.json();
 };
 
 export const fetchCampaignRecipients = async (campaignId: string, page = 1, pageSize = 50): Promise<PaginatedResponse<WhatsAppCampaignRecipient>> => {
-  const res = await fetch(`${API_BASE}/campaigns/${campaignId}/recipients?page=${page}&page_size=${pageSize}`);
+  const res = await fetch(`${API_BASE}/campaigns/${campaignId}/recipients?page=${page}&page_size=${pageSize}`, { credentials: 'include' });
   if (!res.ok) throw new Error('Failed to fetch campaign recipients');
   return res.json();
 };
 
 export const cancelCampaign = async (campaignId: string): Promise<void> => {
   const res = await fetch(`${API_BASE}/campaigns/${campaignId}/cancel`, {
+    credentials: 'include',
     method: 'POST',
   });
   if (!res.ok) throw new Error('Failed to cancel campaign');
@@ -259,7 +267,7 @@ export interface CampaignLogsResponse {
 }
 
 export const fetchCampaignLogs = async (campaignId: string): Promise<CampaignLogsResponse> => {
-  const res = await fetch(`${API_BASE}/campaigns/${campaignId}/logs`);
+  const res = await fetch(`${API_BASE}/campaigns/${campaignId}/logs`, { credentials: 'include' });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Failed to fetch campaign logs');
@@ -269,13 +277,13 @@ export const fetchCampaignLogs = async (campaignId: string): Promise<CampaignLog
 
 /** Re-reads one campaign, so delivery counts refresh as webhooks land. */
 export const fetchCampaign = async (campaignId: string): Promise<WhatsAppCampaign> => {
-  const res = await fetch(`${API_BASE}/campaigns/${campaignId}`);
+  const res = await fetch(`${API_BASE}/campaigns/${campaignId}`, { credentials: 'include' });
   if (!res.ok) throw new Error('Failed to fetch campaign');
   return res.json();
 };
 
 export const fetchTemplate = async (templateId: string): Promise<WhatsAppTemplate> => {
-  const res = await fetch(`${API_BASE}/templates/${templateId}`);
+  const res = await fetch(`${API_BASE}/templates/${templateId}`, { credentials: 'include' });
   if (!res.ok) throw new Error('Failed to fetch template');
   return res.json();
 };
@@ -289,7 +297,7 @@ export interface TemplateSyncResult {
 
 /** Reconciles every submitted local template against the Meta WABA. */
 export const syncTemplateStatuses = async (): Promise<TemplateSyncResult> => {
-  const res = await fetch(`${API_BASE}/templates/sync-status`, { method: 'POST' });
+  const res = await fetch(`${API_BASE}/templates/sync-status`, { method: 'POST', credentials: 'include' });
   if (!res.ok) throw new Error('Failed to sync template statuses');
   return res.json();
 };
@@ -299,6 +307,7 @@ export const updateTemplate = async (
   data: Partial<WhatsAppTemplate>
 ): Promise<WhatsAppTemplate> => {
   const res = await fetch(`${API_BASE}/templates/${templateId}`, {
+    credentials: 'include',
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -325,6 +334,7 @@ export const submitTemplate = async (
   category = 'MARKETING'
 ): Promise<TemplateSubmitResult> => {
   const res = await fetch(`${API_BASE}/templates/${templateId}/submit`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ category }),
@@ -375,13 +385,14 @@ export const fetchAudienceOptions = async (
   district = 'All'
 ): Promise<AudienceOptions> => {
   const params = new URLSearchParams({ state, district });
-  const res = await fetch(`${API_BASE}/audience/options?${params}`);
+  const res = await fetch(`${API_BASE}/audience/options?${params}`, { credentials: 'include' });
   if (!res.ok) throw new Error('Failed to load audience options');
   return res.json();
 };
 
 export const fetchAudienceSummary = async (f: AudienceFilters): Promise<AudienceSummary> => {
   const res = await fetch(`${API_BASE}/audience/summary`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(f),
@@ -392,6 +403,7 @@ export const fetchAudienceSummary = async (f: AudienceFilters): Promise<Audience
 
 export const fetchAudiencePreview = async (f: AudienceFilters): Promise<AudiencePreview> => {
   const res = await fetch(`${API_BASE}/audience/preview`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(f),

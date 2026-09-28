@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
-from src.routers import config, jobs, businesses, discovery, export, runs, whatsapp, tracking, audience
+from src.routers import (config, jobs, businesses, discovery, export, runs,
+                         whatsapp, tracking, audience, auth as auth_router)
 from src.database import init_db, get_db
 from src.utils.logging import setup_logging
 
@@ -21,6 +22,19 @@ async def lifespan(app: FastAPI):
         f"env={settings.environment} | db_backend={'postgresql' if settings.is_postgresql else 'sqlite'}"
     )
     init_db()
+
+    # Someone has to be able to read the approvals queue before anyone can be
+    # approved, so the first admin is seeded rather than requested.
+    try:
+        from src.database import SessionLocal
+        from src.services.auth_service import ensure_bootstrap_admin
+        db = SessionLocal()
+        try:
+            ensure_bootstrap_admin(db)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Could not seed the bootstrap admin: {e}")
     logger.info("Database schema initialized")
     yield
     # --- Shutdown ---
@@ -50,6 +64,55 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---------------------------------------------------------------------------
+# Authentication gate
+# ---------------------------------------------------------------------------
+# Applied as middleware rather than a dependency on each router: a route added
+# later is then protected by default, which is the safer direction to fail.
+#
+# The exemptions are the endpoints that cannot carry a session cookie:
+#   /health, /ready              - probes, called by Docker and by monitoring
+#   /api/v1/auth/*               - signing up and signing in
+#   /r/{token}                   - campaign links, opened by recipients
+#   /api/v1/whatsapp/webhook     - called by Meta, verified by signature
+# Everything under / that is not an API path falls through to the SPA shell,
+# which has to load for the login page to exist at all.
+PUBLIC_API_PREFIXES = (
+    "/health",
+    "/ready",
+    "/api/v1/auth/",
+    "/r/",
+    "/api/v1/whatsapp/webhook",
+)
+
+
+@app.middleware("http")
+async def require_session(request, call_next):
+    from starlette.responses import JSONResponse
+
+    path = request.url.path
+    is_api = path.startswith("/api/") or path in ("/docs", "/redoc", "/openapi.json")
+
+    if is_api and not any(path.startswith(p) for p in PUBLIC_API_PREFIXES):
+        from src.database import SessionLocal
+        from src.services import auth_service
+
+        token = request.cookies.get(auth_service.COOKIE_NAME, "")
+        db = SessionLocal()
+        try:
+            # Called even for an empty token: the lookup rejects it anyway,
+            # and short-circuiting here would put the decision in two places.
+            user = auth_service.user_from_token(db, token)
+        finally:
+            db.close()
+
+        if not user:
+            return JSONResponse({"detail": "Not signed in"}, status_code=401)
+
+    return await call_next(request)
+
+
+app.include_router(auth_router.router)
 app.include_router(config.router)
 app.include_router(jobs.router)
 app.include_router(businesses.router)

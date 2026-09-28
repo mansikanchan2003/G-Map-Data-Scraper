@@ -4,6 +4,7 @@ from .job import Job
 from .business import Business
 from .run_log import RunLog
 from .app_setting import AppSetting
+from .user import User
 from .whatsapp import WhatsAppAccount, WhatsAppTemplate, WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppCampaignLog, WhatsAppLinkClick, WhatsAppButtonClick
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "WhatsAppCampaignLog",
     "WhatsAppLinkClick",
     "WhatsAppButtonClick",
-    "AppSetting"
+    "AppSetting",
+    "User"
 ]

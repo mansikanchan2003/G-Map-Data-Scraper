@@ -66,6 +66,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     const response = await fetch(url, {
       ...options,
       headers,
+      // The session is an httpOnly cookie, so it only travels when asked for.
+      // In development the API is a different origin to the page, which is
+      // why this is "include" rather than "same-origin".
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -451,3 +455,69 @@ export const runCustomDiscovery = async (body: {
   }
   return json;
 };
+
+// ---------------------------------------------------------
+// 9. AUTHENTICATION
+// ---------------------------------------------------------
+
+export interface AuthUser {
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  role: 'admin' | 'member';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED';
+  created_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  last_login_at: string | null;
+}
+
+export interface SignupResult {
+  status: string;
+  email: string;
+  message: string;
+}
+
+/** Records a request for access. Never signs anyone in. */
+export async function signup(email: string, password: string, fullName?: string): Promise<SignupResult> {
+  return request<SignupResult>('/api/v1/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify({ email, password, full_name: fullName || null }),
+  });
+}
+
+export async function login(email: string, password: string): Promise<AuthUser> {
+  return request<AuthUser>('/api/v1/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function logout(): Promise<void> {
+  await request('/api/v1/auth/logout', { method: 'POST' });
+}
+
+/** The signed-in user, or null when there is no valid session. */
+export async function fetchMe(): Promise<AuthUser | null> {
+  try {
+    return await request<AuthUser>('/api/v1/auth/me');
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchUsers(status?: string): Promise<AuthUser[]> {
+  const q = status ? `?status=${encodeURIComponent(status)}` : '';
+  return request<AuthUser[]>(`/api/v1/auth/users${q}`);
+}
+
+export async function approveUser(userId: string): Promise<AuthUser> {
+  return request<AuthUser>(`/api/v1/auth/users/${userId}/approve`, { method: 'POST' });
+}
+
+export async function rejectUser(userId: string, reason?: string): Promise<AuthUser> {
+  return request<AuthUser>(`/api/v1/auth/users/${userId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason || null }),
+  });
+}

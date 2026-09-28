@@ -12,3 +12,7 @@ psycopg[binary]
 alembic
 gspread==6.1.2
 google-auth==2.35.0
+
+# Authentication: signed session tokens and password hashing
+PyJWT==2.10.1
+bcrypt==4.2.1

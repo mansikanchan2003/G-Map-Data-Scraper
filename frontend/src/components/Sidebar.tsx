@@ -4,6 +4,8 @@ import type { NavTab } from './Header';
 
 interface SidebarProps {
   activeTab: NavTab;
+  /** Admins get the approvals queue; members never see it. */
+  isAdmin?: boolean;
   /** Below lg the sidebar is a drawer, so it needs to be told when to show. */
   isOpen?: boolean;
   onClose?: () => void;
@@ -15,6 +17,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
+  isAdmin = false,
   isOpen = false,
   onClose,
   onTabChange,
@@ -50,6 +53,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'whatsapp-campaign', label: 'WhatsApp Campaign', icon: 'campaign' },
     { id: 'whatsapp-templates', label: 'Templates', icon: 'chat' },
     { id: 'whatsapp-history', label: 'Campaign History', icon: 'history' },
+    // Hidden for members: the API refuses them anyway, and an item that
+    // only ever errors is worse than no item.
+    ...(isAdmin
+      ? [{ id: 'approvals' as NavTab, label: 'Access Requests', icon: 'group_add' }]
+      : []),
   ];
 
   return (

@@ -61,6 +61,35 @@ dashboard.
 - A PIN with jobs against it cannot be deleted, so businesses already
   discovered there are never orphaned.
 
+### Who can sign in
+
+Access is two gates, not one.
+
+1. **The domain decides who may ask.** Only `@eko.co.in` addresses can submit
+   a signup request; anything else is refused at the API.
+2. **An admin decides who gets in.** A signup creates a `PENDING` account that
+   cannot sign in. It works only once an admin approves it.
+
+The second gate is the point: the address proves the person is a colleague,
+not that this particular colleague should see campaign data and send messages
+from the company's WhatsApp number.
+
+`mansi.kanchan.intern@eko.co.in` is seeded as the first admin at startup —
+otherwise the approvals queue would have nobody able to read it. That account
+has no password until its owner sets one through the signup form, which
+promotes rather than duplicates it.
+
+Admins see **Access Requests** in the sidebar: approve, decline with a reason,
+or reinstate someone previously declined. Every decision records who made it.
+Requests also go out by email when SMTP is configured; when it is not, the
+queue is still the source of truth and signup is unaffected.
+
+Everything under `/api/` requires a session, enforced as middleware so a route
+added later is protected by default. The exceptions are the endpoints that
+cannot carry a cookie: `/health`, `/ready`, `/api/v1/auth/*`, the campaign
+redirect `/r/{token}`, and the Meta webhook — which is guarded by its
+signature instead.
+
 ### Deploying behind a reverse proxy
 
 Set `VITE_BASE_PATH` (with trailing slash) to the public sub-path before

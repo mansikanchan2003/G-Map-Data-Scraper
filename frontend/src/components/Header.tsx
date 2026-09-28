@@ -2,7 +2,7 @@ import React from 'react';
 import { ThemeToggle } from './ThemeToggle';
 import type { Theme } from '../hooks/useTheme';
 
-export type NavTab = 'dashboard' | 'businesses' | 'jobs' | 'config' | 'whatsapp-campaign' | 'whatsapp-templates' | 'whatsapp-history';
+export type NavTab = 'dashboard' | 'businesses' | 'jobs' | 'config' | 'whatsapp-campaign' | 'whatsapp-templates' | 'whatsapp-history' | 'approvals';
 
 interface HeaderProps {
   activeTab: NavTab;
@@ -13,6 +13,9 @@ interface HeaderProps {
   onOpenSettings: () => void;
   /** Opens the nav drawer; only rendered below lg, where it is hidden. */
   onOpenMenu: () => void;
+  /** Null only while signed out, which the app never renders this with. */
+  user?: { email: string; full_name: string | null; role: string } | null;
+  onSignOut?: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   theme: Theme;
@@ -27,6 +30,8 @@ export const Header: React.FC<HeaderProps> = ({
   isSyncing,
   onOpenSettings,
   onOpenMenu,
+  user,
+  onSignOut,
   searchQuery,
   onSearchChange,
   theme,
@@ -42,6 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
     'whatsapp-campaign': { section: 'whatsapp', sub: 'campaign-builder' },
     'whatsapp-templates': { section: 'whatsapp', sub: 'templates' },
     'whatsapp-history': { section: 'whatsapp', sub: 'history' },
+    'approvals': { section: 'admin', sub: 'access-requests' },
   };
 
   const { section, sub } = breadcrumbs[activeTab] || breadcrumbs['dashboard'];
@@ -136,12 +142,47 @@ export const Header: React.FC<HeaderProps> = ({
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
 
-        {/* Operator Badge */}
-        <div
-          className="w-7 h-7 rounded border border-slate-700 bg-sky-950 flex items-center justify-center text-sky-400 font-mono-code text-xs font-bold ml-1"
-          title="Operator Node Active"
-        >
-          OP
+        {/* Who is signed in, and the way out */}
+        <div className="relative ml-1 group">
+          <button
+            className="w-8 h-8 rounded-full border border-slate-700 bg-sky-950 flex items-center
+                       justify-center text-sky-400 font-mono-code text-xs font-bold cursor-pointer
+                       hover:border-sky-600 transition-colors"
+            title={user ? `${user.email} (${user.role})` : 'Account'}
+            aria-label="Account"
+          >
+            {(user?.full_name || user?.email || 'OP').slice(0, 2).toUpperCase()}
+          </button>
+
+          {/* Opens on hover and on keyboard focus, so it is reachable without
+              a pointer as well. */}
+          <div className="absolute right-0 top-full mt-1 z-50 w-56 p-1.5 bg-slate-900 border
+                          border-slate-700 rounded shadow-xl hidden
+                          group-hover:block group-focus-within:block">
+            <div className="px-2.5 py-2 border-b border-slate-800">
+              <div className="text-xs font-semibold text-slate-200 truncate">
+                {user?.full_name || user?.email?.split('@')[0] || 'Signed in'}
+              </div>
+              <div className="text-[11px] font-mono-code text-slate-500 truncate" title={user?.email}>
+                {user?.email}
+              </div>
+              {user?.role === 'admin' && (
+                <span className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded uppercase
+                                 font-semibold border text-sky-400 border-sky-800 bg-sky-950/50">
+                  admin
+                </span>
+              )}
+            </div>
+            <button
+              onClick={onSignOut}
+              className="w-full mt-1 flex items-center gap-2 px-2.5 py-2 rounded text-left text-xs
+                         text-slate-300 hover:bg-slate-800 hover:text-slate-100
+                         transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px]">logout</span>
+              Sign out
+            </button>
+          </div>
         </div>
       </div>
     </header>
