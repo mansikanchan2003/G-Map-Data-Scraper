@@ -61,6 +61,25 @@ dashboard.
 - A PIN with jobs against it cannot be deleted, so businesses already
   discovered there are never orphaned.
 
+### Deploying behind a reverse proxy
+
+Set `VITE_BASE_PATH` (with trailing slash) to the public sub-path before
+building — Vite rewrites every asset URL with it, so it cannot be changed
+afterwards. `PUBLIC_BASE_URL`, `BACKEND_HOST_PORT` and `POSTGRES_HOST_PORT`
+are runtime settings; the two ports bind to `127.0.0.1` only.
+
+**The media directory needs the container's uid.** `./data` is bind-mounted,
+so the host's ownership wins over the image's. The app runs as `appuser`
+(uid 996) and cannot write into a directory owned by whoever cloned the repo,
+which surfaces as "Failed to upload media" when saving a template with an
+image header:
+
+```bash
+sudo chown -R 996:996 data
+```
+
+Run it once after cloning, before starting the stack.
+
 ### Turning the webhook on
 
 Everything below the line is built and tested; these are the four steps that
