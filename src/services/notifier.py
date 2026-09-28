@@ -26,7 +26,10 @@ def _send(to: str, subject: str, body: str) -> bool:
     host = os.environ["SMTP_HOST"]
     port = int(os.environ.get("SMTP_PORT", "587"))
     user = os.environ.get("SMTP_USER")
-    password = os.environ.get("SMTP_PASSWORD")
+    # Google displays an app password as four groups of four. Pasting it with
+    # those spaces is the obvious thing to do and some servers reject it, so
+    # they are stripped rather than left to fail at login time.
+    password = (os.environ.get("SMTP_PASSWORD") or "").replace(" ", "") or None
     sender = os.environ["SMTP_FROM"]
 
     msg = EmailMessage()

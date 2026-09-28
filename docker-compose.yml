@@ -92,6 +92,16 @@ services:
       META_APP_SECRET: ${META_APP_SECRET:-}
       META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-gmap_scraper_verify_token}
 
+      # Sessions and approval emails. Without AUTH_JWT_SECRET the app signs
+      # sessions with the database password, which works but ties the two
+      # together. SMTP is optional: approvals still appear in the queue.
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+
       # Google Sheets. GOOGLE_SHEET_ID names a sheet the user owns; the
       # service account only needs Editor access to it.
       GOOGLE_CREDENTIALS_BASE64: ${GOOGLE_CREDENTIALS_BASE64:-}
