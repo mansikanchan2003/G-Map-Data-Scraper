@@ -38,3 +38,39 @@ def test_whatsapp_normalizer_invalid_formats():
         canonical, error = WhatsAppNormalizer.normalize_phone(raw)
         assert canonical is None
         assert expected_error in error
+
+
+class TestRejectedEditsDoNotDiverge:
+    """
+    Meta renders a message from its own approved copy, so a local edit it
+    refuses changes nothing for recipients — but the send path builds its
+    parameters from the local row. A button retyped here while still a Call
+    at Meta made every send fail with "#132018 ... does not support
+    parameters", which is why a refused edit is rolled back.
+    """
+
+    def test_the_route_snapshots_content_before_applying(self):
+        import inspect
+
+        from src.routers import whatsapp
+        source = inspect.getsource(whatsapp.update_template)
+        assert "previous = {k: getattr(db_tmpl, k) for k in CONTENT_FIELDS}" in source
+
+    def test_a_refused_push_restores_the_previous_content(self):
+        import inspect
+
+        from src.routers import whatsapp
+        source = inspect.getsource(whatsapp.update_template)
+        idx = source.index('result["status"] != "success"')
+        after = source[idx:idx + 600]
+        assert "for key, value in previous.items()" in after
+        assert "setattr(db_tmpl, key, value)" in after
+
+    def test_the_message_says_a_new_template_is_needed(self):
+        import inspect
+
+        from src.routers import whatsapp
+        source = inspect.getsource(whatsapp.update_template)
+        # Telling someone the edit "did not apply" without saying what to do
+        # instead leaves them retrying the same thing.
+        assert "needs a new template" in source

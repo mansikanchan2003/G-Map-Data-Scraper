@@ -262,6 +262,15 @@ def update_template(template_id: str, updates: WhatsAppTemplateUpdate, db: Sessi
         raise HTTPException(status_code=404, detail="Template not found")
 
     update_data = updates.dict(exclude_unset=True)
+
+    # Kept so a change Meta refuses can be undone. What we send is built from
+    # this row, so a local copy that has drifted from the approved template
+    # makes every later send fail — a button retyped here but still a Call at
+    # Meta produced "#132018 Button at index 1 ... does not support
+    # parameters" on every recipient.
+    CONTENT_FIELDS = ("body", "footer", "header_type", "header_content", "buttons")
+    previous = {k: getattr(db_tmpl, k) for k in CONTENT_FIELDS}
+
     for key, value in update_data.items():
         setattr(db_tmpl, key, value)
 
@@ -274,9 +283,7 @@ def update_template(template_id: str, updates: WhatsAppTemplateUpdate, db: Sessi
     # so the edit is pushed to Meta rather than left to diverge silently.
     from src.services.whatsapp_service import WhatsAppTemplateEditService
 
-    content_changed = any(
-        k in update_data for k in ("body", "footer", "header_type", "header_content", "buttons")
-    )
+    content_changed = any(k in update_data for k in CONTENT_FIELDS)
     response = WhatsAppTemplateResponse.model_validate(db_tmpl)
 
     if content_changed and db_tmpl.meta_template_name:
@@ -284,9 +291,19 @@ def update_template(template_id: str, updates: WhatsAppTemplateUpdate, db: Sessi
         db.refresh(db_tmpl)
         response = WhatsAppTemplateResponse.model_validate(db_tmpl)
         if result["status"] != "success":
+            # Rolled back rather than left to diverge: Meta renders from its
+            # own copy, so keeping the rejected version here would change
+            # nothing for recipients while breaking every send.
+            for key, value in previous.items():
+                setattr(db_tmpl, key, value)
+            db.commit()
+            db.refresh(db_tmpl)
+            response = WhatsAppTemplateResponse.model_validate(db_tmpl)
             response.submission_error = (
-                f"Saved locally, but Meta did not accept the change: {result['error']} "
-                f"Campaigns will keep sending the previously approved text until this succeeds."
+                f"Meta did not accept the change: {result['error']} "
+                f"The template has been left as Meta approved it — an approved "
+                f"template's buttons and header cannot be changed, so a "
+                f"different layout needs a new template."
             )
     elif content_changed and not db_tmpl.meta_template_name:
         response.submission_error = (
