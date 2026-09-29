@@ -171,6 +171,10 @@ class WhatsAppCampaignRecipientResponse(BaseModel):
     failed_at: Optional[datetime] = None
     failure_code: Optional[str] = None
 
+    # The business category this recipient was discovered under. Null for
+    # rows uploaded from a file, which carry no link back to a business.
+    category: Optional[str] = None
+
     # Quick-reply taps by this recipient, most recent label first.
     button_clicks: int = 0
     last_button_text: Optional[str] = None

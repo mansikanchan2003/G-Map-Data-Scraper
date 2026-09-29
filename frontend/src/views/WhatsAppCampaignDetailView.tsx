@@ -303,6 +303,7 @@ export const WhatsAppCampaignDetailView: React.FC<Props> = ({ campaign, onBack }
                       <tr>
                         <th className="px-4 py-2 font-semibold text-slate-400 text-xs">Phone</th>
                         <th className="px-4 py-2 font-semibold text-slate-400 text-xs">Name</th>
+                        <th className="px-4 py-2 font-semibold text-slate-400 text-xs">Category</th>
                         <th className="px-4 py-2 font-semibold text-slate-400 text-xs">Status</th>
                         <th className="px-4 py-2 font-semibold text-slate-400 text-xs">Delivered</th>
                         <th className="px-4 py-2 font-semibold text-slate-400 text-xs">Read</th>
@@ -312,12 +313,22 @@ export const WhatsAppCampaignDetailView: React.FC<Props> = ({ campaign, onBack }
                     </thead>
                     <tbody className="divide-y divide-slate-800">
                       {recipients.length === 0 ? (
-                        <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">No recipients.</td></tr>
+                        <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500">No recipients.</td></tr>
                       ) : (
                         recipients.map(r => (
                           <tr key={r.recipient_id} className="hover:bg-slate-800/40 transition-colors">
                             <td className="px-4 py-2 font-mono-code text-slate-300 whitespace-nowrap">{r.phone}</td>
                             <td className="px-4 py-2 text-slate-400 max-w-[160px] truncate">{r.name || '—'}</td>
+                            <td className="px-4 py-2 max-w-[160px]">
+                              {r.category ? (
+                                <span className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded
+                                                 border border-slate-700 bg-slate-800 text-slate-300
+                                                 inline-block truncate max-w-full"
+                                      title={r.category}>
+                                  {r.category}
+                                </span>
+                              ) : <span className="text-slate-700">—</span>}
+                            </td>
                             <td className="px-4 py-2">
                               <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${
                                 r.status === 'SENT' ? 'text-emerald-400 border-emerald-800 bg-emerald-950/50'

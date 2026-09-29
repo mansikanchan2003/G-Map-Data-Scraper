@@ -681,6 +681,19 @@ def get_campaign_recipients(
     # so a 500-row page stays two queries instead of a thousand.
     ids = [i.recipient_id for i in items]
     taps, links = {}, {}
+
+    # Categories for this page in one query, keyed by business. Recipients
+    # uploaded from a file have no business and simply get nothing.
+    from src.models import Business
+    business_ids = [i.business_id for i in items if i.business_id]
+    categories = {}
+    if business_ids:
+        categories = dict(
+            db.query(Business.business_id, Business.category)
+            .filter(Business.business_id.in_(business_ids))
+            .all()
+        )
+
     if ids:
         for rid, count, last_text in (
             db.query(
@@ -712,6 +725,7 @@ def get_campaign_recipients(
         item.button_clicks = tap_count
         item.last_button_text = last_text
         item.link_clicks = links.get(i.recipient_id, 0)
+        item.category = categories.get(i.business_id) if i.business_id else None
         out.append(item)
 
     return PaginatedRecipients(

@@ -87,6 +87,9 @@ export interface WhatsAppCampaignRecipient {
   failed_at: string | null;
   failure_code: string | null;
 
+  /** The category this recipient was discovered under; null for uploads. */
+  category: string | null;
+
   button_clicks: number;
   last_button_text: string | null;
   link_clicks: number;
