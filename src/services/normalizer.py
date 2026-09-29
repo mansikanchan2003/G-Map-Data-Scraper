@@ -1,3 +1,4 @@
+import logging
 import re
 import urllib.parse
 from typing import Optional, Dict, Any
@@ -8,6 +9,9 @@ def normalize_text(text: Optional[str]) -> Optional[str]:
         return None
     cleaned = re.sub(r'\s+', ' ', str(text)).strip()
     return cleaned if cleaned else None
+
+logger = logging.getLogger("gmap_scraper.normalizer")
+
 
 def normalize_phone(phone: Optional[str]) -> Optional[str]:
     """
@@ -38,8 +42,16 @@ def normalize_phone(phone: Optional[str]) -> Optional[str]:
     elif len(digits) == 10 and digits[0] in '6789':
         return f"+91{digits}"
     elif has_plus:
+        # This targets India. Border districts sit inside the search radius of
+        # another country — a Gurdaspur search returned businesses in Narowal,
+        # Pakistan, with +92 numbers. They are real listings but not ones this
+        # project can contact, so the number is dropped rather than stored as
+        # if it were reachable.
+        if not digits.startswith('91'):
+            logger.debug(f"normalizer event=FOREIGN_NUMBER_DROPPED prefix={digits[:3]}")
+            return None
         return f"+{digits}"
-    
+
     return digits
 
 def normalize_url(url: Optional[str]) -> Optional[str]:

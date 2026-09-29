@@ -54,3 +54,27 @@ def test_idempotent_jobs():
     data = response.json()
     assert data["jobs_created"] == 0
     assert data["jobs_existing"] > 0
+
+
+class TestForeignNumbersAreNotStored:
+    """
+    This project targets India, and a border district's search radius reaches
+    into another country — a Gurdaspur search returned Narowal, Pakistan.
+    Those listings are real but not contactable here, and storing their
+    numbers makes the dataset look reachable when it is not.
+    """
+
+    def test_a_pakistani_number_is_dropped(self):
+        from src.services.normalizer import normalize_phone
+        assert normalize_phone("+923121483981") is None
+
+    def test_any_foreign_code_is_dropped(self):
+        from src.services.normalizer import normalize_phone
+        for number in ("+18005551234", "+442071234567", "+8613800138000"):
+            assert normalize_phone(number) is None, number
+
+    def test_indian_numbers_are_kept_in_every_form(self):
+        from src.services.normalizer import normalize_phone
+        for raw in ("+919896555891", "919896555891", "9896555891",
+                    "09896555891", "+91 98965 55891"):
+            assert normalize_phone(raw) == "+919896555891", raw
