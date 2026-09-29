@@ -1,17 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { fetchCampaigns, cancelCampaign, type WhatsAppCampaign } from '../api/whatsapp';
+import { fetchCampaigns, fetchSpend, cancelCampaign,
+  type WhatsAppCampaign, type Spend } from '../api/whatsapp';
 import { WhatsAppCampaignDetailView } from './WhatsAppCampaignDetailView';
 
 export const WhatsAppHistoryView: React.FC = () => {
   const [campaigns, setCampaigns] = useState<WhatsAppCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCampaign, setSelectedCampaign] = useState<WhatsAppCampaign | null>(null);
+  const [spend, setSpend] = useState<Spend | null>(null);
+
+  /** Amounts are shown whole: paise on a four-figure bill is noise. */
+  const money = (n: number) =>
+    `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 
   const loadData = async () => {
     setLoading(true);
     try {
       const data = await fetchCampaigns();
       setCampaigns(data);
+      // Separately, because a Meta outage should cost the page its spend
+      // figure and nothing else.
+      try {
+        setSpend(await fetchSpend(30));
+      } catch {
+        setSpend(null);
+      }
     } catch (err: any) {
       alert("Error loading history: " + err.message);
     } finally {
@@ -77,11 +90,77 @@ export const WhatsAppHistoryView: React.FC = () => {
         </button>
       </div>
 
+      {spend && spend.billable_messages > 0 && (
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 mb-4 shrink-0">
+          <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">
+                Spent on delivered messages
+              </div>
+              <div className="text-3xl font-semibold text-slate-100 mt-1 tabular-nums">
+                {money(spend.total)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">
+                {money(spend.net)} + {money(spend.gst)} GST ·{' '}
+                {spend.billable_messages.toLocaleString('en-IN')} messages
+              </div>
+            </div>
+
+            {spend.by_category.map(c => (
+              <div key={c.category}>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">
+                  {c.category}
+                </div>
+                <div className="text-xl font-semibold text-slate-200 mt-1 tabular-nums">
+                  {money(c.total)}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  {c.billable_messages.toLocaleString('en-IN')} messages
+                </div>
+              </div>
+            ))}
+
+            {/* Meta's figure sits beside ours rather than replacing it: ours
+                is the only one that can be split per campaign, and a gap
+                between the two is itself worth seeing. */}
+            {spend.meta_total !== null && (
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">
+                  Meta billed · last {spend.meta_days}d
+                </div>
+                <div className="text-xl font-semibold text-emerald-400 mt-1 tabular-nums">
+                  {money(spend.meta_total)}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">before GST</div>
+              </div>
+            )}
+          </div>
+
+          {spend.estimated_from_sends > 0 && (
+            <p className="text-[11px] text-amber-400 mt-3 flex items-start gap-1.5 leading-relaxed">
+              <span className="material-symbols-outlined text-[14px] mt-px shrink-0">info</span>
+              <span>
+                {spend.estimated_from_sends} campaign
+                {spend.estimated_from_sends === 1 ? '' : 's'} ran before delivery
+                reporting was switched on, so {spend.estimated_from_sends === 1 ? 'its' : 'their'}{' '}
+                cost is counted from accepted sends — an upper bound, not a
+                measurement. Meta's figure is the one to trust.
+              </span>
+            </p>
+          )}
+          {spend.meta_error && (
+            <p className="text-[11px] text-slate-500 mt-2">
+              Meta's own figure is unavailable: {spend.meta_error}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden shrink-0">
         {/* Thirteen columns do not fit most screens. Without this the ones
             past the edge were simply clipped, with no way to reach them. */}
         <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm min-w-[1100px]">
+        <table className="w-full text-left text-sm min-w-[1220px]">
           {/* Sticky, so the numbers still have headings once the page is
               scrolled down past them. */}
           <thead className="bg-slate-950 border-b border-slate-800 sticky top-0 z-10">
@@ -97,6 +176,7 @@ export const WhatsAppHistoryView: React.FC = () => {
               <th className="px-4 py-3 font-semibold text-slate-400 text-xs" title="Quick-reply button taps. Meta sends no event for call-to-action URL buttons.">Clicks</th>
               <th className="px-4 py-3 font-semibold text-slate-400 text-xs" title="Recipients who opened the campaign link at least once">Unique Visits</th>
               <th className="px-4 py-3 font-semibold text-slate-400 text-xs" title="Extra opens beyond each recipient's first">Repeated Visits</th>
+              <th className="px-4 py-3 font-semibold text-slate-400 text-xs text-right" title="Meta bills per delivered message, at a rate set by the template's category. Includes GST.">Cost</th>
               <th className="px-4 py-3 font-semibold text-slate-400 text-xs">Created At</th>
               <th className="px-4 py-3 font-semibold text-slate-400 text-xs text-right">Actions</th>
             </tr>
@@ -104,7 +184,7 @@ export const WhatsAppHistoryView: React.FC = () => {
           <tbody className="divide-y divide-slate-800">
             {campaigns.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={14} className="px-4 py-8 text-center text-slate-500">
                   No campaigns found.
                 </td>
               </tr>
@@ -132,6 +212,26 @@ export const WhatsAppHistoryView: React.FC = () => {
                   <td className="px-4 py-3 font-mono-code text-purple-400">{camp.button_click_count ?? 0}</td>
                   <td className="px-4 py-3 font-mono-code text-sky-400 font-semibold">{camp.unique_visits ?? 0}</td>
                   <td className="px-4 py-3 font-mono-code text-purple-400">{camp.repeated_visits ?? 0}</td>
+                  <td
+                    className="px-4 py-3 font-mono-code text-right whitespace-nowrap"
+                    title={camp.billable_messages
+                      ? `${camp.billable_messages} ${camp.cost_basis} × ₹${camp.rate_per_message}`
+                        + ` (${camp.billing_category}) = ₹${camp.cost_net} + ₹${camp.cost_gst} GST`
+                        + (camp.cost_basis === 'sent'
+                            ? ' — no delivery reports for this campaign, so accepted'
+                              + ' sends stand in. This is a ceiling, not a measurement.'
+                            : '')
+                      : 'Nothing billable yet'}
+                  >
+                    {camp.billable_messages ? (
+                      <span className={camp.cost_basis === 'sent' ? 'text-amber-400' : 'text-slate-200'}>
+                        {money(camp.cost_total)}
+                        {camp.cost_basis === 'sent' && <span className="text-amber-600">*</span>}
+                      </span>
+                    ) : (
+                      <span className="text-slate-600">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-slate-400 text-xs">{new Date(camp.created_at).toLocaleString()}</td>
                   <td className="px-4 py-3 text-right">
                     {camp.status === 'RUNNING' || camp.status === 'PENDING' ? (

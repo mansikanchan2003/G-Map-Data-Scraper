@@ -67,6 +67,43 @@ export interface WhatsAppCampaign {
   /** False until Meta has reported anything, which separates "nobody read it"
    *  from "no webhook is configured yet". */
   has_delivery_data: boolean;
+
+  /** What this campaign cost. Meta bills per delivered template message at a
+   *  rate set by the template's category. */
+  currency: string;
+  billing_category: string | null;
+  rate_per_message: number;
+  billable_messages: number;
+  cost_net: number;
+  cost_gst: number;
+  cost_total: number;
+  /** "delivered" when Meta reported on this campaign; "sent" for campaigns
+   *  that ran before the webhook existed, where accepted sends stand in and
+   *  the figure is therefore a ceiling. */
+  cost_basis: 'delivered' | 'sent';
+}
+
+export interface SpendBreakdown {
+  category: string;
+  billable_messages: number;
+  net: number;
+  gst: number;
+  total: number;
+}
+
+export interface Spend {
+  currency: string;
+  billable_messages: number;
+  net: number;
+  gst: number;
+  total: number;
+  by_category: SpendBreakdown[];
+  /** Campaigns priced off accepted sends rather than delivery reports. */
+  estimated_from_sends: number;
+  /** Meta's own billed figure — authoritative where it is available. */
+  meta_total: number | null;
+  meta_days: number | null;
+  meta_error: string | null;
 }
 
 export interface WhatsAppCampaignRecipient {
@@ -214,6 +251,13 @@ export const createCampaign = async (data: any): Promise<WhatsAppCampaign> => {
 export const fetchCampaigns = async (): Promise<WhatsAppCampaign[]> => {
   const res = await fetch(`${API_BASE}/campaigns`, { credentials: 'include' });
   if (!res.ok) throw new Error('Failed to fetch campaigns');
+  return res.json();
+};
+
+/** Total outreach spend, by category, plus Meta's own billed figure. */
+export const fetchSpend = async (metaDays = 30): Promise<Spend> => {
+  const res = await fetch(`${API_BASE}/spend?meta_days=${metaDays}`, { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to fetch spend');
   return res.json();
 };
 

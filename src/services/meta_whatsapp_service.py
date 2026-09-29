@@ -183,6 +183,57 @@ class MetaWhatsAppService:
             logger.exception("Failed to send WhatsApp text message")
             return False, None, None, f"Provider error: {self._redact(str(e))}", None
 
+    def billed_total(self, days: int = 30) -> Dict[str, Any]:
+        """
+        What Meta says this account has been billed over the last `days`.
+
+        This is the authoritative figure: it already accounts for free
+        service windows, free entry points and anything Meta re-categorised
+        during review, none of which a local rate card can know about.
+
+        Daily granularity is deliberate — monthly buckets come back wrong
+        from this endpoint, reporting a handful of messages against days that
+        carried thousands.
+
+        Returns {"total": float|None, "by_category": {...}, "error": str|None}.
+        """
+        import time
+
+        if not self.is_configured() or not self.waba_id:
+            return {"total": None, "by_category": {}, "error": "Meta API is not configured"}
+
+        end = int(time.time())
+        start = end - days * 86400
+        url = (
+            f"https://graph.facebook.com/{self.api_version}/{self.waba_id}"
+            f"?fields=pricing_analytics.start({start}).end({end})"
+            f".granularity(DAILY).dimensions(['PRICING_CATEGORY'])"
+        )
+        try:
+            response = requests.get(
+                url, headers={"Authorization": f"Bearer {self.access_token}"}, timeout=20
+            )
+            data = response.json()
+            if response.status_code not in (200, 201):
+                err = (data.get("error") or {}).get("message", "Unknown Meta API error")
+                return {"total": None, "by_category": {}, "error": self._redact(err)}
+
+            by_category: Dict[str, float] = {}
+            total = 0.0
+            for series in (data.get("pricing_analytics") or {}).get("data", []):
+                for point in series.get("data_points", []):
+                    cost = point.get("cost") or 0
+                    category = point.get("pricing_category") or "UNKNOWN"
+                    by_category[category] = round(by_category.get(category, 0.0) + cost, 2)
+                    total += cost
+            return {"total": round(total, 2), "by_category": by_category, "error": None}
+
+        except requests.exceptions.Timeout:
+            return {"total": None, "by_category": {}, "error": "Network timeout"}
+        except Exception as e:
+            logger.exception("Failed to read Meta billing")
+            return {"total": None, "by_category": {}, "error": self._redact(str(e))}
+
     def upload_media(self, file_path: str, media_type: str) -> Optional[str]:
         """
         Uploads media to Meta and returns the Meta media ID.

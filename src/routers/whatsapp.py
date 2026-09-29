@@ -26,7 +26,7 @@ from src.schemas.whatsapp import (
 )
 from src.models.user import User
 from src.routers.auth import current_user
-from src.services import auth_service, notifier
+from src.services import auth_service, notifier, pricing
 from src.services.whatsapp_normalizer import WhatsAppNormalizer
 from src.services.meta_whatsapp_service import MetaWhatsAppService
 # We will import whatsapp_service here later for campaign execution.
@@ -647,6 +647,19 @@ def _with_visits(db: Session, campaigns: list) -> List[WhatsAppCampaignResponse]
     ids = [c.campaign_id for c in campaigns]
     counts = _visit_counts(db, ids)
     delivery = _delivery_counts(db, ids)
+
+    # The rate follows the template's category, so it is read once per page
+    # rather than per campaign.
+    template_ids = [c.template_id for c in campaigns if c.template_id]
+    categories = {}
+    if template_ids:
+        categories = {
+            t.template_id: (t.category or pricing.DEFAULT_CATEGORY).upper()
+            for t in db.query(WhatsAppTemplate).filter(
+                WhatsAppTemplate.template_id.in_(template_ids)
+            ).all()
+        }
+
     out = []
     for c in campaigns:
         item = WhatsAppCampaignResponse.model_validate(c)
@@ -662,6 +675,25 @@ def _with_visits(db: Session, campaigns: list) -> List[WhatsAppCampaignResponse]
         item.button_click_count = d.get("button_clicks", 0)
         item.button_clickers = d.get("button_clickers", 0)
         item.has_delivery_data = d.get("reported", 0) > 0
+
+        # Meta bills on delivery. Campaigns that ran before the webhook was
+        # live have no delivery reports at all, so their accepted sends stand
+        # in — marked as such, because it is an upper bound, not a reading.
+        category = categories.get(c.template_id) or pricing.DEFAULT_CATEGORY
+        if item.has_delivery_data:
+            billable, basis = item.delivered_count, "delivered"
+        else:
+            billable, basis = (c.successful_count or 0), "sent"
+        cost = pricing.estimate(category, billable)
+        item.currency = cost["currency"]
+        item.billing_category = category
+        item.rate_per_message = cost["rate"]
+        item.billable_messages = cost["billable_messages"]
+        item.cost_net = cost["net"]
+        item.cost_gst = cost["gst"]
+        item.cost_total = cost["total"]
+        item.cost_basis = basis
+
         out.append(item)
     return out
 
@@ -1123,6 +1155,90 @@ class ReplyResponse(BaseModel):
     error_reason: Optional[str] = None
     sent_by: Optional[str] = None
     sent_at: datetime
+
+
+class SpendBreakdown(BaseModel):
+    category: str
+    billable_messages: int
+    net: float
+    gst: float
+    total: float
+
+
+class SpendResponse(BaseModel):
+    """What outreach has cost, ours and Meta's."""
+    currency: str = "INR"
+    # Summed from our own campaign records.
+    billable_messages: int = 0
+    net: float = 0.0
+    gst: float = 0.0
+    total: float = 0.0
+    by_category: List[SpendBreakdown] = []
+    # Campaigns priced off accepted sends because Meta never reported on
+    # them. Their share of the total is a ceiling, and saying so is the
+    # difference between a figure that can be trusted and one that cannot.
+    estimated_from_sends: int = 0
+    # Meta's own billed figure for the window, when it can be reached. This
+    # is the authoritative number; ours exists to break it down per campaign.
+    meta_total: Optional[float] = None
+    meta_days: Optional[int] = None
+    meta_error: Optional[str] = None
+
+
+@router.get("/spend", response_model=SpendResponse)
+def get_spend(
+    meta_days: int = Query(30, ge=1, le=90),
+    db: Session = Depends(get_db),
+):
+    """
+    Total outreach spend, by category, plus Meta's own billed figure.
+
+    Meta reports cost by day and category but not by campaign, so the
+    per-campaign split has to come from our delivery records. Both are
+    returned rather than one: a gap between them means our records are
+    incomplete, which is worth seeing rather than hiding behind one number.
+    """
+    campaigns = _with_visits(
+        db, db.query(WhatsAppCampaign).order_by(WhatsAppCampaign.created_at.desc()).all()
+    )
+
+    out = SpendResponse()
+    per_category: dict = {}
+    for c in campaigns:
+        if not c.billable_messages:
+            continue
+        out.billable_messages += c.billable_messages
+        out.net = round(out.net + c.cost_net, 2)
+        out.gst = round(out.gst + c.cost_gst, 2)
+        out.total = round(out.total + c.cost_total, 2)
+        if c.cost_basis == "sent":
+            out.estimated_from_sends += 1
+
+        key = c.billing_category or pricing.DEFAULT_CATEGORY
+        agg = per_category.setdefault(key, {"m": 0, "n": 0.0, "g": 0.0, "t": 0.0})
+        agg["m"] += c.billable_messages
+        agg["n"] = round(agg["n"] + c.cost_net, 2)
+        agg["g"] = round(agg["g"] + c.cost_gst, 2)
+        agg["t"] = round(agg["t"] + c.cost_total, 2)
+
+    out.by_category = [
+        SpendBreakdown(category=k, billable_messages=v["m"],
+                       net=v["n"], gst=v["g"], total=v["t"])
+        for k, v in sorted(per_category.items(), key=lambda kv: -kv[1]["t"])
+    ]
+
+    out.meta_days = meta_days
+    try:
+        service = MetaWhatsAppService()
+        billed = service.billed_total(days=meta_days)
+        out.meta_total = billed.get("total")
+        if billed.get("error"):
+            out.meta_error = billed["error"]
+    except Exception as exc:  # a missing figure must not fail the page
+        logger.warning(f"spend: could not read Meta billing: {exc}")
+        out.meta_error = "Could not reach Meta for the billed total"
+
+    return out
 
 
 class LeadResponse(BaseModel):

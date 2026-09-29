@@ -61,6 +61,34 @@ const categoryLabel = (category?: string | null) => {
   return c === 'MARKETING_LITE' ? 'MARKETING LITE' : c;
 };
 
+/**
+ * The two categories a template can be submitted under.
+ *
+ * The rate gap is the whole reason this is a choice and not a default:
+ * utility is a fraction of marketing, so a transactional template filed as
+ * marketing costs several times what it should. Meta reviews the content
+ * against the category and re-files anything that does not match, which is
+ * why the wrong pick is not a way to pay less.
+ */
+const CATEGORIES = [
+  {
+    value: 'UTILITY',
+    label: 'Utility',
+    price: '₹0.115',
+    blurb: 'Follows up on something the customer did — an order, an account, '
+      + 'an appointment, a payment, a request they made.',
+    examples: 'Order shipped · Payment received · Appointment reminder · Application status',
+  },
+  {
+    value: 'MARKETING',
+    label: 'Marketing',
+    price: '₹0.863',
+    blurb: 'Anything promotional — offers, new products, invitations, '
+      + 'or a re-engagement message to someone who did not ask.',
+    examples: 'Discount offer · New service launch · Festive greeting · Cold outreach',
+  },
+];
+
 const statusLabel = (t: WhatsAppTemplate) => {
   const s = (t.status || '').toUpperCase();
   // A template Meta has never seen is a local draft, whatever the row says.
@@ -210,6 +238,10 @@ export const WhatsAppTemplatesView: React.FC = () => {
     // in an Indian language, and the previous silent default to en_US is how
     // ten Hindi and Punjabi templates came to be registered as English.
     language_code: 'hi',
+    // Marketing by default because that is what cold outreach is, and
+    // because guessing utility on a promotional template only gets it
+    // re-filed by Meta at the higher rate anyway.
+    category: 'MARKETING',
     header_type: 'NONE',
     header_content: '',
     body: '',
@@ -258,6 +290,7 @@ export const WhatsAppTemplatesView: React.FC = () => {
     setNewTemplate({
       name: t.name,
       language_code: t.language_code || 'en_US',
+      category: (t.category || 'MARKETING').toUpperCase(),
       header_type: t.header_type || 'NONE',
       header_content: t.header_content || '',
       body: t.body,
@@ -274,7 +307,8 @@ export const WhatsAppTemplatesView: React.FC = () => {
   const resetForm = () => {
     setIsCreating(false);
     setEditingId(null);
-    setNewTemplate({ name: '', header_type: 'NONE', header_content: '', body: '', footer: '', buttons: [] });
+    setNewTemplate({ name: '', language_code: 'hi', category: 'MARKETING',
+      header_type: 'NONE', header_content: '', body: '', footer: '', buttons: [] });
     setSelectedFile(null);
     setPreviewMediaUrl(null);
     setHeaderSourceType('URL');
@@ -390,6 +424,9 @@ export const WhatsAppTemplatesView: React.FC = () => {
   // ours would only make the two disagree and break the send lookup.
   const editingTemplate = editingId ? templates.find(t => t.template_id === editingId) : null;
   const languageLocked = Boolean(editingTemplate?.meta_template_name);
+  // Meta decides the category at review and will not take a new one
+  // through an edit, so it stops being a choice once submitted.
+  const categoryLocked = Boolean(editingTemplate?.meta_template_name);
   const mismatchWarning = languageMismatch(newTemplate.body || '', newTemplate.language_code);
 
   const query = search.trim().toLowerCase();
@@ -549,6 +586,61 @@ export const WhatsAppTemplatesView: React.FC = () => {
                   {mismatchWarning}
                 </p>
               ) : null}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400 font-semibold flex items-center justify-between">
+                <span>Category</span>
+                {categoryLocked && (
+                  <span className="text-[10px] font-normal text-slate-500">
+                    Set at approval
+                  </span>
+                )}
+              </label>
+
+              {/* Two cards rather than a dropdown: the price is the decision,
+                  and a dropdown hides it until after the choice is made. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {CATEGORIES.map(c => {
+                  const active = (newTemplate.category || 'MARKETING') === c.value;
+                  return (
+                    <button
+                      key={c.value}
+                      type="button"
+                      disabled={categoryLocked}
+                      onClick={() => setNewTemplate(prev => ({ ...prev, category: c.value }))}
+                      className={`text-left p-3 rounded border transition-colors disabled:opacity-50
+                                  disabled:cursor-not-allowed cursor-pointer ${
+                        active
+                          ? 'border-emerald-600 bg-emerald-950/40'
+                          : 'border-slate-700 bg-slate-950 hover:border-slate-600'
+                      }`}
+                    >
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-sm font-semibold text-slate-100">{c.label}</span>
+                        <span className="text-[11px] font-mono-code text-slate-400 whitespace-nowrap">
+                          {c.price}/msg
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">{c.blurb}</p>
+                      <p className="text-[10px] text-slate-600 mt-1.5 leading-relaxed">{c.examples}</p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {categoryLocked ? (
+                <p className="text-[11px] text-slate-500">
+                  Meta fixed this template's category at approval. Changing it means
+                  submitting a new template.
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Meta reviews the wording against the category and re-files anything
+                  that does not match, so a promotional message sent as utility still
+                  bills as marketing. Rates are India, before GST.
+                </p>
+              )}
             </div>
 
             <div className="space-y-1">
