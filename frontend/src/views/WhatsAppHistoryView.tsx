@@ -95,7 +95,7 @@ export const WhatsAppHistoryView: React.FC = () => {
           <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
             <div>
               <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">
-                Spent on delivered messages
+                This app's campaigns
               </div>
               <div className="text-3xl font-semibold text-slate-100 mt-1 tabular-nums">
                 {money(spend.total)}
@@ -124,14 +124,21 @@ export const WhatsAppHistoryView: React.FC = () => {
                 is the only one that can be split per campaign, and a gap
                 between the two is itself worth seeing. */}
             {spend.meta_total !== null && (
-              <div>
+              <div
+                title={`Everything billed on this WhatsApp number in the last ${spend.meta_days} days, `
+                  + 'whoever sent it. The number was in use before this app existed, so any '
+                  + 'other tool sending on it lands here too. Nothing older than the window is '
+                  + 'included.'}
+              >
                 <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">
-                  Meta billed · last {spend.meta_days}d
+                  Whole number · last {spend.meta_days}d
                 </div>
                 <div className="text-xl font-semibold text-emerald-400 mt-1 tabular-nums">
                   {money(spend.meta_total)}
                 </div>
-                <div className="text-[11px] text-slate-500 mt-0.5">before GST</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  all tools, before GST
+                </div>
               </div>
             )}
           </div>
