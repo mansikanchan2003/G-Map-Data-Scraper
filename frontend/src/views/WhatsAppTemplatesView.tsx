@@ -316,8 +316,14 @@ export const WhatsAppTemplatesView: React.FC = () => {
           setIsUploading(false);
         }
       } else if (newTemplate.header_type !== 'NONE') {
-        // Fallback to JSON payload for explicitly saving URL type, although raw URL still works for backward compatibility
-        finalHeaderContent = JSON.stringify({ source_type: 'url', url: newTemplate.header_content });
+        // Editing a template whose image is already uploaded, without picking
+        // a new file, lands here. Wrapping again would bury the real value
+        // inside a second envelope — {"source_type":"url","url":"{...}"} —
+        // and the image would stop resolving. Only a plain URL needs wrapping.
+        const alreadyStructured = (newTemplate.header_content || '').trim().startsWith('{');
+        finalHeaderContent = alreadyStructured
+          ? newTemplate.header_content
+          : JSON.stringify({ source_type: 'url', url: newTemplate.header_content });
       }
 
       const payload = { ...newTemplate, header_content: finalHeaderContent };
