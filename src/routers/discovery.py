@@ -309,9 +309,32 @@ def _run_batch(payload: "BatchRequest", db: Session):
     start_time = time.time()
 
 
-    # Check pending jobs
-    pending_query = apply_target_filters(db.query(Job).filter(Job.status == "PENDING"), payload)
-    pending_jobs = pending_query.limit(payload.batch_size).all()
+    # Check pending jobs.
+    #
+    # Spread across locations rather than taking whatever the table returns
+    # first. Jobs are generated location by location, so an unordered LIMIT
+    # drains one town's whole category list before reaching the next — a
+    # 25-job batch covered two locations out of thirteen. Ranking within each
+    # location and ordering by that rank takes one job per location, then the
+    # second from each, and so on.
+    from sqlalchemy import func as sa_func
+
+    ranked = (
+        apply_target_filters(db.query(Job).filter(Job.status == "PENDING"), payload)
+        .add_columns(
+            sa_func.row_number()
+            .over(partition_by=Job.location_id, order_by=Job.job_id)
+            .label("rank_in_location")
+        )
+        .subquery()
+    )
+    pending_jobs = (
+        db.query(Job)
+        .join(ranked, Job.job_id == ranked.c.job_id)
+        .order_by(ranked.c.rank_in_location, Job.location_id)
+        .limit(payload.batch_size)
+        .all()
+    )
 
     if not pending_jobs:
         return {
