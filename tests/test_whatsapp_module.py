@@ -249,8 +249,11 @@ def test_template_payload_buttons(mock_session_local, mock_sleep, mock_db_sessio
 
     template = mock_db.query.side_effect(WhatsAppTemplate).filter().first()
     template.header_type = "NONE"
+    # A URL carrying a placeholder is the dynamic case: Meta left a blank in
+    # the approved template and expects it filled. A static URL is already in
+    # the template and must not be sent again — see the test below.
     template.buttons = [
-        {"type": "URL", "text": "Visit", "url": "dynamic1"},
+        {"type": "URL", "text": "Visit", "url": "https://kiosk.eko.in/{{1}}"},
         {"type": "QUICK_REPLY", "text": "ReplyMe"}
     ]
 
@@ -266,7 +269,8 @@ def test_template_payload_buttons(mock_session_local, mock_sleep, mock_db_sessio
         url_btn = components[1]
         assert url_btn["type"] == "button"
         assert url_btn["sub_type"] == "url"
-        assert url_btn["parameters"][0]["text"] == "dynamic1"
+        # The recipient's own link, so a click can be attributed to them.
+        assert url_btn["parameters"][0]["text"].startswith("http")
 
         qr_btn = components[2]
         assert qr_btn["sub_type"] == "quick_reply"
@@ -633,3 +637,38 @@ class TestTemplateButtons:
             [{"type": "QUICK_REPLY", "text": "Tell me more"}]))
         assert self._buttons_component(comps)["buttons"][0] == {
             "type": "QUICK_REPLY", "text": "Tell me more"}
+
+
+class TestSendTimeButtonComponents:
+    """
+    Meta wants parameters only where the approved template left a blank.
+    A static URL and a phone number are already in the template; sending
+    values for them is a parameter-count mismatch, not extra detail.
+    """
+
+    def test_phone_buttons_are_allowed_by_validation(self):
+        import inspect
+
+        from src.services import whatsapp_service
+        source = inspect.getsource(whatsapp_service)
+        # The guard used to list only QUICK_REPLY and URL, which stopped any
+        # campaign whose template had a Call button before a message was sent.
+        assert '["QUICK_REPLY", "URL", "PHONE_NUMBER"]' in source
+
+    def test_a_static_url_button_sends_no_parameters(self):
+        import inspect
+
+        from src.services import whatsapp_service
+        source = inspect.getsource(whatsapp_service)
+        # Only a URL carrying a placeholder gets a parameter.
+        assert 'btn_type == "URL" and "{{" in (btn.get("url") or "")' in source
+
+    def test_a_dynamic_url_button_receives_the_tracking_link(self):
+        import inspect
+
+        from src.services import whatsapp_service
+        source = inspect.getsource(whatsapp_service)
+        idx = source.index('sub_type": "url"')
+        # The per-recipient link, not the template's own literal URL, which
+        # would make every recipient's click indistinguishable.
+        assert "tracking_link_for(rec.tracking_token)" in source[idx:idx + 500]

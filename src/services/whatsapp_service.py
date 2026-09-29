@@ -410,7 +410,7 @@ class WhatsAppCampaignService:
 
             if template.buttons:
                 for btn in template.buttons:
-                    if btn.get("type") not in ["QUICK_REPLY", "URL"]:
+                    if btn.get("type") not in ["QUICK_REPLY", "URL", "PHONE_NUMBER"]:
                         fail_campaign(f"Unsupported button type: {btn.get('type')}.")
                         return
 
@@ -581,7 +581,12 @@ class WhatsAppCampaignService:
                     if template.buttons:
                         for idx, btn in enumerate(template.buttons):
                             btn_type = btn.get("type")
-                            if btn_type == "URL":
+                            # Meta wants parameters only where the approved
+                            # template left a blank to fill. A static URL and a
+                            # phone number are already baked into it, and
+                            # supplying values for them is a parameter-count
+                            # mismatch, not extra detail.
+                            if btn_type == "URL" and "{{" in (btn.get("url") or ""):
                                 components.append({
                                     "type": "button",
                                     "sub_type": "url",
@@ -589,7 +594,7 @@ class WhatsAppCampaignService:
                                     "parameters": [
                                         {
                                             "type": "text",
-                                            "text": btn.get("url") or "url" # If dynamic url variable
+                                            "text": tracking_link_for(rec.tracking_token),
                                         }
                                     ]
                                 })
