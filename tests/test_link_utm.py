@@ -67,3 +67,16 @@ def test_the_host_and_path_are_never_altered(url):
     out = _with_campaign_source(url, "Camp")
 
     assert out.startswith(url.split("?")[0].split("#")[0])
+
+
+def test_an_unknown_token_still_reaches_the_apply_page_with_its_source():
+    """
+    A token that no longer resolves — a deleted recipient, an old link, or
+    the template's own "{{1}}" opened by hand — used to land on a bare home
+    page: no anchor, no source. Only the campaign name is genuinely unknown.
+    """
+    out = _with_campaign_source("https://kiosk.eko.in/?utm_source=WhatsApp+Campaign#apply-now")
+
+    assert out.endswith("#apply-now")
+    assert "utm_source=WhatsApp+Campaign" in out
+    assert "utm_campaign=" not in out

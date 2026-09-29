@@ -104,13 +104,19 @@ def follow_campaign_link(token: str, request: Request, db: Session = Depends(get
         .first()
     )
 
-    if not recipient:
-        logger.warning(f"link_tracking event=UNKNOWN_TOKEN token={token[:8]}...")
-        return RedirectResponse(FALLBACK_URL, status_code=302)
-
     target = os.environ.get("CAMPAIGN_LINK_TARGET_URL") or FALLBACK_URL
     if not _is_safe_target(target):
         target = FALLBACK_URL
+
+    if not recipient:
+        # An unknown token still belongs to someone who tapped a campaign
+        # button: a deleted recipient, an old link, or the template's own
+        # "{{1}}" opened by hand. Sending them to a bare home page loses both
+        # the page they were promised and the fact that they came from
+        # WhatsApp. Only the campaign name is unknown, so only that is left
+        # out.
+        logger.warning(f"link_tracking event=UNKNOWN_TOKEN token={token[:8]}...")
+        return RedirectResponse(_with_campaign_source(target), status_code=302)
 
     campaign = recipient.campaign
     target = _with_campaign_source(target, campaign.name if campaign else "")
