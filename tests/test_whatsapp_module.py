@@ -574,3 +574,62 @@ def test_only_sent_recipients_count_as_contacted():
     source = inspect.getsource(audience._contacted_phones)
     assert '"SENT"' in source
     assert "FAILED" not in source and "SKIPPED" not in source
+
+
+class TestTemplateButtons:
+    """
+    A button Meta cannot act on is worse than no button: it rejects the whole
+    template, with a message that does not say which button was at fault.
+    """
+
+    def _template(self, buttons):
+        class T:
+            header_type = None
+            header_content = None
+            footer = None
+            body = "Hello {{name}}"
+        T.buttons = buttons
+        return T()
+
+    def _buttons_component(self, components):
+        return next((c for c in components if c["type"] == "BUTTONS"), None)
+
+    def test_a_url_button_carries_its_url(self):
+        from src.services.whatsapp_service import build_meta_components
+        comps = build_meta_components(self._template(
+            [{"type": "URL", "text": "Apply now", "url": "https://kiosk.eko.in/"}]))
+        btn = self._buttons_component(comps)["buttons"][0]
+        assert btn == {"type": "URL", "text": "Apply now",
+                       "url": "https://kiosk.eko.in/"}
+
+    def test_a_phone_button_reaches_meta(self):
+        # It used to be dropped silently, so a Call button composed in the UI
+        # never appeared in the approved template.
+        from src.services.whatsapp_service import build_meta_components
+        comps = build_meta_components(self._template(
+            [{"type": "PHONE_NUMBER", "text": "Call us",
+              "phone_number": "+919911844469"}]))
+        btn = self._buttons_component(comps)["buttons"][0]
+        assert btn["type"] == "PHONE_NUMBER"
+        assert btn["phone_number"] == "+919911844469"
+
+    def test_a_url_button_without_a_url_is_refused_by_name(self):
+        import pytest
+        from src.services.whatsapp_service import build_meta_components
+        with pytest.raises(ValueError, match="Apply now"):
+            build_meta_components(self._template(
+                [{"type": "URL", "text": "Apply now"}]))
+
+    def test_a_phone_button_without_a_number_is_refused_by_name(self):
+        import pytest
+        from src.services.whatsapp_service import build_meta_components
+        with pytest.raises(ValueError, match="Call us"):
+            build_meta_components(self._template(
+                [{"type": "PHONE_NUMBER", "text": "Call us"}]))
+
+    def test_quick_replies_need_nothing_extra(self):
+        from src.services.whatsapp_service import build_meta_components
+        comps = build_meta_components(self._template(
+            [{"type": "QUICK_REPLY", "text": "Tell me more"}]))
+        assert self._buttons_component(comps)["buttons"][0] == {
+            "type": "QUICK_REPLY", "text": "Tell me more"}

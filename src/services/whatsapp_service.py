@@ -98,8 +98,24 @@ def build_meta_components(template, header_handle: str = None) -> list:
         if btn_type == "QUICK_REPLY":
             buttons.append({"type": "QUICK_REPLY", "text": btn.get("text")})
         elif btn_type == "URL":
-            buttons.append({"type": "URL", "text": btn.get("text"),
-                            "url": btn.get("url")})
+            url = (btn.get("url") or "").strip()
+            if not url:
+                # Sending it anyway means Meta rejects the whole template with
+                # a message that does not name the button.
+                raise ValueError(
+                    f"The “{btn.get('text') or 'Visit Website'}” button has no URL."
+                )
+            buttons.append({"type": "URL", "text": btn.get("text"), "url": url})
+        elif btn_type == "PHONE_NUMBER":
+            # Previously dropped here without a word, so a Call button composed
+            # in the UI simply never reached the template Meta approved.
+            phone = (btn.get("phone_number") or "").strip()
+            if not phone:
+                raise ValueError(
+                    f"The “{btn.get('text') or 'Call Phone'}” button has no number."
+                )
+            buttons.append({"type": "PHONE_NUMBER", "text": btn.get("text"),
+                            "phone_number": phone})
     if buttons:
         components.append({"type": "BUTTONS", "buttons": buttons})
 

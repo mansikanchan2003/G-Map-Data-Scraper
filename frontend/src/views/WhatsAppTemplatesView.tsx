@@ -667,7 +667,7 @@ export const WhatsAppTemplatesView: React.FC = () => {
               </div>
 
               {newTemplate.buttons?.map((btn: any, idx: number) => (
-                <div key={idx} className="flex gap-2 items-center bg-slate-950 p-2 rounded border border-slate-800">
+                <div key={idx} className="flex flex-wrap gap-2 items-center bg-slate-950 p-2 rounded border border-slate-800">
                   <select
                     value={btn.type}
                     onChange={e => handleButtonChange(idx, 'type', e.target.value)}
@@ -681,14 +681,47 @@ export const WhatsAppTemplatesView: React.FC = () => {
                     type="text"
                     value={btn.text}
                     onChange={e => handleButtonChange(idx, 'text', e.target.value)}
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded text-xs p-1.5 outline-none text-slate-200"
-                    placeholder="Button Text"
+                    className="flex-1 min-w-[140px] bg-slate-900 border border-slate-700 rounded text-xs p-1.5 outline-none text-slate-200"
+                    placeholder="Button label"
                   />
-                  <button onClick={() => handleRemoveButton(idx)} className="text-rose-400 hover:text-rose-300">
+                  {/* A URL button needs somewhere to go and a Call button needs
+                      a number; without these Meta receives the button with a
+                      null destination and rejects the template. */}
+                  {btn.type === 'URL' && (
+                    <input
+                      type="url"
+                      value={btn.url || ''}
+                      onChange={e => handleButtonChange(idx, 'url', e.target.value)}
+                      className="flex-1 min-w-[200px] bg-slate-900 border border-slate-700 rounded text-xs p-1.5 outline-none text-slate-200 font-mono-code"
+                      placeholder="https://kiosk.eko.in/..."
+                    />
+                  )}
+                  {btn.type === 'PHONE_NUMBER' && (
+                    <input
+                      type="tel"
+                      value={btn.phone_number || ''}
+                      onChange={e => handleButtonChange(idx, 'phone_number', e.target.value)}
+                      className="flex-1 min-w-[160px] bg-slate-900 border border-slate-700 rounded text-xs p-1.5 outline-none text-slate-200 font-mono-code"
+                      placeholder="+919911844469"
+                    />
+                  )}
+                  <button onClick={() => handleRemoveButton(idx)} className="text-rose-400 hover:text-rose-300 shrink-0">
                     <span className="material-symbols-outlined text-[16px]">close</span>
                   </button>
                 </div>
               ))}
+              {newTemplate.buttons?.some((b: any) => b.type === 'URL' && !b.url) && (
+                <p className="text-[11px] text-amber-400 flex items-start gap-1.5">
+                  <span className="material-symbols-outlined text-[14px] mt-px">warning</span>
+                  A "Visit Website" button needs a URL, or Meta will reject the template.
+                </p>
+              )}
+              {newTemplate.buttons?.some((b: any) => b.type === 'PHONE_NUMBER' && !b.phone_number) && (
+                <p className="text-[11px] text-amber-400 flex items-start gap-1.5">
+                  <span className="material-symbols-outlined text-[14px] mt-px">warning</span>
+                  A "Call Phone" button needs a number in international format.
+                </p>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
