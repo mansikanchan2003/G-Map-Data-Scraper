@@ -127,6 +127,10 @@ services:
       CAMPAIGN_LINK_TARGET_URL: ${CAMPAIGN_LINK_TARGET_URL:-https://kiosk.eko.in/?utm_source=WhatsApp+Campaign#apply-now}
       CAMPAIGN_LINK_FALLBACK_URL: ${CAMPAIGN_LINK_FALLBACK_URL:-https://kiosk.eko.in/}
       CAMPAIGN_LINK_HASH_SALT: ${CAMPAIGN_LINK_HASH_SALT:-gmap-campaign}
+      # Tags added to the destination so analytics can attribute the visit.
+      # utm_campaign is the campaign's own name and is not set here.
+      CAMPAIGN_UTM_SOURCE: ${CAMPAIGN_UTM_SOURCE:-WhatsApp Campaign}
+      CAMPAIGN_UTM_MEDIUM: ${CAMPAIGN_UTM_MEDIUM:-whatsapp}
 
       # Playwright browser path (must match Dockerfile ENV)
       PLAYWRIGHT_BROWSERS_PATH: /app/.playwright

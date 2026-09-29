@@ -12,7 +12,7 @@ import hashlib
 import logging
 import os
 import uuid
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
@@ -56,6 +56,40 @@ def _is_safe_target(url: str) -> bool:
         return False
 
 
+def _with_campaign_source(url: str, campaign_name: str = "") -> str:
+    """
+    Tag the destination so analytics can say the visit came from WhatsApp.
+
+    The parameters go into the query, never the fragment: everything after
+    "#" stays in the browser and is not sent to the destination's server, so
+    a utm written there would be invisible to analytics and would also break
+    the anchor it was appended to.
+
+    Anything the configured URL already sets is left alone — a target that
+    names its own source means it on purpose.
+    """
+    parts = urlsplit(url)
+    existing = dict(parse_qsl(parts.query, keep_blank_values=True))
+
+    defaults = {
+        "utm_source": os.environ.get("CAMPAIGN_UTM_SOURCE", "WhatsApp Campaign"),
+        "utm_medium": os.environ.get("CAMPAIGN_UTM_MEDIUM", "whatsapp"),
+    }
+    # The campaign's own name, so two campaigns to the same page stay apart.
+    if campaign_name:
+        defaults["utm_campaign"] = campaign_name
+
+    for key, value in defaults.items():
+        if value and key not in existing:
+            existing[key] = value
+
+    # quote_via leaves the fragment untouched, which is what carries #apply-now.
+    return urlunsplit((
+        parts.scheme, parts.netloc, parts.path,
+        urlencode(existing), parts.fragment,
+    ))
+
+
 @router.get("/r/{token}")
 def follow_campaign_link(token: str, request: Request, db: Session = Depends(get_db)):
     """
@@ -77,6 +111,9 @@ def follow_campaign_link(token: str, request: Request, db: Session = Depends(get
     target = os.environ.get("CAMPAIGN_LINK_TARGET_URL") or FALLBACK_URL
     if not _is_safe_target(target):
         target = FALLBACK_URL
+
+    campaign = recipient.campaign
+    target = _with_campaign_source(target, campaign.name if campaign else "")
 
     try:
         db.add(WhatsAppLinkClick(
