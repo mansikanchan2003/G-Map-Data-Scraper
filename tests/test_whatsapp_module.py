@@ -672,3 +672,38 @@ class TestSendTimeButtonComponents:
         idx = source.index('sub_type": "url"')
         # The token, which Meta appends to the approved base URL.
         assert "rec.tracking_token" in source[idx:idx + 500]
+
+
+class TestDynamicUrlButtonSubmission:
+    """
+    Meta reviews the address people will land on, not the template, so a URL
+    with a placeholder has to arrive with a worked example. Without one it
+    refuses the whole submission: "component of type BUTTONS is missing
+    expected field(s) (example)".
+    """
+
+    def _components(self, buttons):
+        from src.services.whatsapp_service import build_meta_components
+
+        class T:
+            header_type = None
+            header_content = None
+            footer = None
+            body = "Hello"
+        T.buttons = buttons
+        comps = build_meta_components(T())
+        return next(c for c in comps if c["type"] == "BUTTONS")["buttons"]
+
+    def test_a_dynamic_url_carries_an_example(self):
+        btn = self._components(
+            [{"type": "URL", "text": "Apply",
+              "url": "https://indev.eko.in/autogmap/r/{{1}}"}])[0]
+        assert "example" in btn
+        assert "{{1}}" not in btn["example"][0]
+        assert btn["example"][0].startswith("https://indev.eko.in/autogmap/r/")
+
+    def test_a_static_url_needs_no_example(self):
+        # Sending one would describe a placeholder the template does not have.
+        btn = self._components(
+            [{"type": "URL", "text": "Apply", "url": "https://kiosk.eko.in/"}])[0]
+        assert "example" not in btn

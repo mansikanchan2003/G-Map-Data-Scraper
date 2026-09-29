@@ -105,7 +105,13 @@ def build_meta_components(template, header_handle: str = None) -> list:
                 raise ValueError(
                     f"The “{btn.get('text') or 'Visit Website'}” button has no URL."
                 )
-            buttons.append({"type": "URL", "text": btn.get("text"), "url": url})
+            entry = {"type": "URL", "text": btn.get("text"), "url": url}
+            if "{{" in url:
+                # Meta refuses a dynamic URL without a worked example of what
+                # the placeholder will be filled with — it reviews the address
+                # people will actually land on, not the template.
+                entry["example"] = [url.replace("{{1}}", "0123456789abcdef")]
+            buttons.append(entry)
         elif btn_type == "PHONE_NUMBER":
             # Previously dropped here without a word, so a Call button composed
             # in the UI simply never reached the template Meta approved.
