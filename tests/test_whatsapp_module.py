@@ -269,8 +269,9 @@ def test_template_payload_buttons(mock_session_local, mock_sleep, mock_db_sessio
         url_btn = components[1]
         assert url_btn["type"] == "button"
         assert url_btn["sub_type"] == "url"
-        # The recipient's own link, so a click can be attributed to them.
-        assert url_btn["parameters"][0]["text"].startswith("http")
+        # The suffix alone: Meta appends it to the base URL the template was
+        # approved with, so the recipient's token is what belongs here.
+        assert url_btn["parameters"][0]["text"] == rec.tracking_token
 
         qr_btn = components[2]
         assert qr_btn["sub_type"] == "quick_reply"
@@ -669,6 +670,5 @@ class TestSendTimeButtonComponents:
         from src.services import whatsapp_service
         source = inspect.getsource(whatsapp_service)
         idx = source.index('sub_type": "url"')
-        # The per-recipient link, not the template's own literal URL, which
-        # would make every recipient's click indistinguishable.
-        assert "tracking_link_for(rec.tracking_token)" in source[idx:idx + 500]
+        # The token, which Meta appends to the approved base URL.
+        assert "rec.tracking_token" in source[idx:idx + 500]

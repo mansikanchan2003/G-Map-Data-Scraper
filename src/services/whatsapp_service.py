@@ -587,6 +587,16 @@ class WhatsAppCampaignService:
                             # supplying values for them is a parameter-count
                             # mismatch, not extra detail.
                             if btn_type == "URL" and "{{" in (btn.get("url") or ""):
+                                # Meta appends this to the base URL the
+                                # template was approved with, so it is the
+                                # suffix alone — sending the whole link would
+                                # produce ".../r/https://.../r/<token>".
+                                #
+                                # A template pointed at PUBLIC_BASE_URL/r/{{1}}
+                                # therefore gets each recipient's own token,
+                                # which is what makes a tap on a call-to-action
+                                # button countable at all: Meta reports nothing
+                                # when one is pressed.
                                 components.append({
                                     "type": "button",
                                     "sub_type": "url",
@@ -594,7 +604,7 @@ class WhatsAppCampaignService:
                                     "parameters": [
                                         {
                                             "type": "text",
-                                            "text": tracking_link_for(rec.tracking_token),
+                                            "text": rec.tracking_token or "",
                                         }
                                     ]
                                 })
