@@ -129,6 +129,10 @@ def create_location(payload: LocationCreateRequest, db: Session = Depends(get_db
 
     place = (payload.anchor_name or payload.pincode).strip()
 
+    existing_before = db.query(Location).filter(
+        Location.pincode == payload.pincode.strip()
+    ).first() is not None
+
     engine = None
     if payload.latitude is None or payload.longitude is None:
         engine = GoogleMapsDiscoveryEngine(headless=settings.browser_headless)
@@ -147,6 +151,24 @@ def create_location(payload: LocationCreateRequest, db: Session = Depends(get_db
         raise HTTPException(status_code=400, detail=result["error"])
 
     location = result["location"]
+
+    # Only a looked-up point is doubted; coordinates the caller typed are
+    # their own to get right. A PIN code alone is ambiguous to Maps, and a
+    # row that lands in the wrong state is invisible afterwards — the
+    # district and state beside it still read correctly.
+    if payload.latitude is None or payload.longitude is None:
+        from src.services import geo_bounds
+
+        problem = geo_bounds.check(
+            payload.state or location.state, location.latitude, location.longitude
+        )
+        if problem:
+            # Created by ensure_location a moment ago, so it is removed
+            # rather than left behind pointing somewhere wrong.
+            if not existing_before:
+                db.delete(location)
+                db.commit()
+            raise HTTPException(status_code=422, detail=problem)
 
     # Reusing a row must not silently keep stale geography, and a PIN the user
     # typed is better evidence than one Maps guessed.
