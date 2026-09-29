@@ -117,6 +117,72 @@ class MetaWhatsAppService:
             logger.exception("Failed to send WhatsApp message")
             return False, None, None, f"Provider error: {self._redact(str(e))}", None
 
+    def send_text_message(
+        self,
+        to_phone: str,
+        body: str
+    ) -> Tuple[bool, Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """
+        Sends a plain message, outside any template.
+
+        Meta only accepts this inside the 24 hours after the recipient last
+        messaged us; past that it rejects with code 131047 and a template is
+        the only way through. The caller checks the window first so the person
+        typing is told before the message is written, not after.
+
+        Returns the same tuple as send_template_message.
+        """
+        if os.environ.get("MOCK_WHATSAPP_API", "false").lower() == "true":
+            import uuid
+            if "500" in to_phone:
+                return False, None, "500", "Simulated 500 error", None
+            return True, f"mock_wamid.{uuid.uuid4().hex}", "200", None, None
+
+        if not self.is_configured():
+            return False, None, None, "Configuration missing: WhatsApp Meta API is not configured.", None
+
+        url = f"https://graph.facebook.com/{self.api_version}/{self.phone_number_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to_phone.lstrip('+'),
+            "type": "text",
+            # Left off so a bare link does not turn the message into a
+            # link preview card, which is not what someone typing a reply means.
+            "text": {"preview_url": False, "body": body},
+        }
+
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=10)
+            response_data = response.json()
+
+            if response.status_code in (200, 201):
+                message_id = response_data.get("messages", [{}])[0].get("id")
+                return True, message_id, str(response.status_code), None, None
+
+            err = response_data.get("error", {}) or {}
+            error_msg = self._redact(err.get("message", "Unknown Meta API Error"))
+            error_code = err.get("code")
+            details = (err.get("error_data") or {}).get("details")
+            if details:
+                error_msg = f"{error_msg} ({self._redact(str(details))})"
+            error_code = str(error_code) if error_code is not None else None
+
+            logger.error(
+                f"Meta text send failed status={response.status_code} code={error_code} msg={error_msg}"
+            )
+            return False, None, str(response.status_code), f"Meta API rejection: {error_msg}", error_code
+
+        except requests.exceptions.Timeout:
+            return False, None, None, "Network timeout", None
+        except Exception as e:
+            logger.exception("Failed to send WhatsApp text message")
+            return False, None, None, f"Provider error: {self._redact(str(e))}", None
+
     def upload_media(self, file_path: str, media_type: str) -> Optional[str]:
         """
         Uploads media to Meta and returns the Meta media ID.

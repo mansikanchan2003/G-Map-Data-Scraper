@@ -526,6 +526,15 @@ export async function rejectUser(userId: string, reason?: string): Promise<AuthU
 // 10. LEADS (quick-reply taps)
 // ---------------------------------------------------------
 
+export interface Reply {
+  reply_id: string;
+  body: string;
+  status: string;
+  error_reason: string | null;
+  sent_by: string | null;
+  sent_at: string;
+}
+
 export interface Lead {
   click_id: string;
   name: string | null;
@@ -536,9 +545,25 @@ export interface Lead {
   campaign: string | null;
   button_text: string | null;
   clicked_at: string;
+  /** After this, only an approved template can reach the number. */
+  window_expires_at: string;
+  replies: Reply[];
 }
 
 /** People who asked to be called back, newest first. */
 export async function fetchLeads(limit = 20): Promise<Lead[]> {
   return request<Lead[]>(`/api/v1/whatsapp/leads?limit=${limit}`);
+}
+
+/**
+ * Answer a callback request from the business number.
+ *
+ * Only works inside Meta's 24-hour window; outside it the server refuses with
+ * a message explaining why, which is worth showing verbatim.
+ */
+export async function replyToLead(clickId: string, message: string): Promise<Reply> {
+  return request<Reply>(`/api/v1/whatsapp/leads/${clickId}/reply`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  });
 }

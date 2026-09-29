@@ -97,7 +97,9 @@ def test_batch_checks_for_cancellation_between_jobs():
     # run_batch_discovery only dispatches; the batch itself is _run_batch
     source = inspect.getsource(discovery._run_batch)
     loop_at = source.index("for job in pending_jobs:")
-    execute_at = source.index("job_manager.execute_single_job")
+    # The job is started through the watchdog wrapper rather than called
+    # directly, so that a wedged browser cannot hold the batch open forever.
+    execute_at = source.index("_run_job_with_timeout")
     check_at = source.index('run_log.status == "CANCELLING"')
 
     assert loop_at < check_at < execute_at, (

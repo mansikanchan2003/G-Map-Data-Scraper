@@ -184,3 +184,28 @@ class WhatsAppButtonClick(Base):
 
     campaign = relationship("WhatsAppCampaign")
     recipient = relationship("WhatsAppCampaignRecipient")
+
+
+class WhatsAppReply(Base):
+    """
+    One row per free-form message sent back to someone who tapped a button.
+
+    Kept so the panel can show what was already said: without it a reply
+    vanishes on the next refresh and the same person gets messaged twice.
+    Failures are kept too, with their reason, because a reply that Meta
+    refused is the one worth seeing.
+    """
+    __tablename__ = "whatsapp_replies"
+
+    reply_id = Column(String(32), primary_key=True, index=True)
+    click_id = Column(String(32), ForeignKey("whatsapp_button_clicks.click_id", ondelete="CASCADE"), nullable=True, index=True)
+    phone = Column(String(20), nullable=False, index=True)
+
+    body = Column(Text, nullable=False)
+    status = Column(String(20), nullable=False, default="SENT")
+    provider_message_id = Column(String(100), nullable=True, index=True)
+    error_reason = Column(String(500), nullable=True)
+
+    # Who typed it, so a shared console still says who answered.
+    sent_by = Column(String(200), nullable=True)
+    sent_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)

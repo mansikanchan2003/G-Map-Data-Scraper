@@ -4,7 +4,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 import uuid
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import os
 import shutil
 from fastapi.responses import FileResponse
@@ -12,7 +12,7 @@ from src.database import get_db
 from src.models.whatsapp import (
     WhatsAppAccount, WhatsAppTemplate, WhatsAppCampaign,
     WhatsAppCampaignRecipient, WhatsAppCampaignLog, WhatsAppLinkClick,
-    WhatsAppButtonClick
+    WhatsAppButtonClick, WhatsAppReply
 )
 from src.schemas.whatsapp import (
     WhatsAppAccountCreate, WhatsAppAccountUpdate, WhatsAppAccountResponse,
@@ -24,6 +24,8 @@ from src.schemas.whatsapp import (
     WhatsAppTemplateSubmitRequest, WhatsAppTemplateSubmitResponse,
     WhatsAppTemplateSyncResponse
 )
+from src.models.user import User
+from src.routers.auth import current_user
 from src.services import auth_service, notifier
 from src.services.whatsapp_normalizer import WhatsAppNormalizer
 from src.services.meta_whatsapp_service import MetaWhatsAppService
@@ -1103,6 +1105,26 @@ async def receive_webhook(request: Request, background: BackgroundTasks,
     return {"status": "ok"}
 
 
+# Meta accepts a free-form message only within 24 hours of the recipient's
+# last message to us. A tap is a message, so the tap starts the clock.
+REPLY_WINDOW = timedelta(hours=24)
+
+
+def _aware(value: datetime) -> datetime:
+    """Read a stored timestamp as UTC. SQLite hands back a naive one."""
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+class ReplyResponse(BaseModel):
+    """A free-form message already sent back to this person."""
+    reply_id: str
+    body: str
+    status: str
+    error_reason: Optional[str] = None
+    sent_by: Optional[str] = None
+    sent_at: datetime
+
+
 class LeadResponse(BaseModel):
     """Someone who tapped a quick-reply button, and what is needed to call them."""
     click_id: str
@@ -1114,6 +1136,14 @@ class LeadResponse(BaseModel):
     campaign: Optional[str] = None
     button_text: Optional[str] = None
     clicked_at: datetime
+    # When a typed reply stops being possible. Sent so the panel can say so
+    # before someone writes a message that cannot go out.
+    window_expires_at: datetime
+    replies: List[ReplyResponse] = []
+
+
+class ReplyRequest(BaseModel):
+    message: str
 
 
 @router.get("/leads", response_model=List[LeadResponse])
@@ -1161,6 +1191,15 @@ def list_leads(limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_d
         for b in db.query(Business).filter(Business.phone.in_(phones)).all():
             businesses.setdefault(b.phone, b)
 
+    replies = {}
+    for rep in db.query(WhatsAppReply).filter(
+        WhatsAppReply.click_id.in_([c.click_id for c in clicks])
+    ).order_by(WhatsAppReply.sent_at.asc()).all():
+        replies.setdefault(rep.click_id, []).append(ReplyResponse(
+            reply_id=rep.reply_id, body=rep.body, status=rep.status,
+            error_reason=rep.error_reason, sent_by=rep.sent_by, sent_at=rep.sent_at,
+        ))
+
     out = []
     for c in clicks:
         r = recipients.get(c.recipient_id)
@@ -1175,5 +1214,79 @@ def list_leads(limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_d
             campaign=campaigns.get(c.campaign_id),
             button_text=c.button_text,
             clicked_at=c.clicked_at,
+            window_expires_at=_aware(c.clicked_at) + REPLY_WINDOW,
+            replies=replies.get(c.click_id, []),
         ))
     return out
+
+
+@router.post("/leads/{click_id}/reply", response_model=ReplyResponse)
+def reply_to_lead(
+    click_id: str,
+    payload: ReplyRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """
+    Answers a quick-reply tap with a typed message, from the business number.
+
+    This is a plain message rather than a template, which Meta allows only
+    inside the 24 hours after the tap. The window is checked here so the
+    caller is refused with a reason it can show, instead of Meta's 131047.
+
+    A send that Meta refuses is still recorded, with its reason: a reply that
+    silently failed is worse than one visibly marked failed.
+    """
+    body = (payload.message or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="Message is empty")
+    # Meta's own ceiling for a text message body.
+    if len(body) > 4096:
+        raise HTTPException(status_code=400, detail="Message is longer than 4096 characters")
+
+    click = db.query(WhatsAppButtonClick).filter(
+        WhatsAppButtonClick.click_id == click_id
+    ).first()
+    if not click:
+        raise HTTPException(status_code=404, detail="No such callback request")
+
+    recipient = db.query(WhatsAppCampaignRecipient).filter(
+        WhatsAppCampaignRecipient.recipient_id == click.recipient_id
+    ).first()
+    phone = recipient.phone if recipient else None
+    if not phone:
+        raise HTTPException(status_code=409, detail="This request has no phone number to reply to")
+
+    expires = _aware(click.clicked_at) + REPLY_WINDOW
+    if datetime.now(timezone.utc) >= expires:
+        raise HTTPException(
+            status_code=409,
+            detail=("The 24-hour reply window closed at "
+                    f"{expires.strftime('%d %b, %H:%M UTC')}. "
+                    "Only an approved template can reach this number now."),
+        )
+
+    meta = MetaWhatsAppService()
+    ok, provider_id, _status, error, _code = meta.send_text_message(phone, body)
+
+    reply = WhatsAppReply(
+        reply_id=uuid.uuid4().hex,
+        click_id=click.click_id,
+        phone=phone,
+        body=body,
+        status="SENT" if ok else "FAILED",
+        provider_message_id=provider_id,
+        error_reason=None if ok else (error or "Unknown error")[:500],
+        sent_by=user.email,
+    )
+    db.add(reply)
+    db.commit()
+    db.refresh(reply)
+
+    if not ok:
+        raise HTTPException(status_code=502, detail=reply.error_reason)
+
+    return ReplyResponse(
+        reply_id=reply.reply_id, body=reply.body, status=reply.status,
+        error_reason=reply.error_reason, sent_by=reply.sent_by, sent_at=reply.sent_at,
+    )

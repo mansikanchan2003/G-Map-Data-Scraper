@@ -366,84 +366,84 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             </div>
           </CollapsiblePanel>
+        </div>
+      </section>
 
-          {/* Quick Real Operational Actions */}
-          {/* People waiting on a call back, above the controls: it is the one
-              thing here that goes stale if nobody looks. */}
-          <LeadsPanel />
+      {/* Side by side: the callbacks are read while the controls are used, and
+          stacking them pushed one below the fold on a laptop. */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <LeadsPanel />
 
-          {/* Left open: these are the buttons someone came to the dashboard to
-              press, so hiding them behind a heading costs a click every time. */}
-          <div className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-slate-400 text-[20px]">bolt</span>
-                <h3 className="text-base font-semibold text-slate-100">Operational Controls</h3>
-              </div>
-              <span className="hidden sm:inline text-xs font-mono-code text-slate-400 font-medium">Direct API</span>
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-slate-400 text-[20px]">bolt</span>
+              <h3 className="text-base font-semibold text-slate-100">Operational Controls</h3>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs font-mono-code">
-              <button
-                onClick={handleTriggerPipeline}
-                disabled={actionLoading !== null || isDiscoveryRunning}
-                className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-sky-500 text-slate-100 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
-                title="Run batch of 25 pending discovery jobs"
-              >
-                <span className="material-symbols-outlined text-[16px] text-sky-400">play_circle</span>
-                <span>Run Batch (25)</span>
-              </button>
+            <span className="hidden sm:inline text-xs font-mono-code text-slate-400 font-medium">Direct API</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs font-mono-code">
+            <button
+              onClick={handleTriggerPipeline}
+              disabled={actionLoading !== null || isDiscoveryRunning}
+              className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-sky-500 text-slate-100 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+              title="Run batch of 25 pending discovery jobs"
+            >
+              <span className="material-symbols-outlined text-[16px] text-sky-400">play_circle</span>
+              <span>Run Batch (25)</span>
+            </button>
 
-              <button
-                onClick={() => setRunnerOpen(true)}
-                className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-emerald-500 text-slate-100 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
-                title="Pick locations and categories, or search somewhere new"
-              >
-                <span className="material-symbols-outlined text-[16px] text-emerald-400">travel_explore</span>
-                <span>Choose Targets</span>
-              </button>
+            <button
+              onClick={() => setRunnerOpen(true)}
+              className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-emerald-500 text-slate-100 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
+              title="Pick locations and categories, or search somewhere new"
+            >
+              <span className="material-symbols-outlined text-[16px] text-emerald-400">travel_explore</span>
+              <span>Choose Targets</span>
+            </button>
 
-              {isDiscoveryRunning ? (
-                <button
-                  onClick={handleStopDiscovery}
-                  disabled={actionLoading !== null}
-                  className="h-9 px-3 bg-rose-950/70 hover:bg-rose-900/80 border border-rose-800 text-rose-300 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
-                  title="Gracefully stop active batch"
-                >
-                  <span className="material-symbols-outlined text-[16px] text-rose-400">stop_circle</span>
-                  <span>Stop Discovery</span>
-                </button>
-              ) : (
-                <button
-                  onClick={onRefresh}
-                  className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-amber-500 text-slate-200 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
-                  title="Poll latest discovery status"
-                >
-                  <span className="material-symbols-outlined text-[16px] text-amber-400">sync</span>
-                  <span>Poll Status</span>
-                </button>
-              )}
-
+            {isDiscoveryRunning ? (
               <button
-                onClick={handleRetryFailed}
-                disabled={actionLoading !== null || failedJobs === 0}
-                className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-sky-500 text-slate-200 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
-                title="Reset all FAILED jobs to PENDING"
+                onClick={handleStopDiscovery}
+                disabled={actionLoading !== null}
+                className="h-9 px-3 bg-rose-950/70 hover:bg-rose-900/80 border border-rose-800 text-rose-300 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
+                title="Gracefully stop active batch"
               >
-                <span className="material-symbols-outlined text-[16px] text-sky-400">restart_alt</span>
-                <span>Re-queue Failed</span>
+                <span className="material-symbols-outlined text-[16px] text-rose-400">stop_circle</span>
+                <span>Stop Discovery</span>
               </button>
-
+            ) : (
               <button
-                onClick={() => onNavigate('jobs')}
-                className="h-9 px-3 bg-sky-950/40 hover:bg-sky-950/70 border border-sky-800 text-sky-300 rounded font-semibold flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
+                onClick={onRefresh}
+                className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-amber-500 text-slate-200 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
+                title="Poll latest discovery status"
               >
-                <span className="material-symbols-outlined text-[16px]">manage_search</span>
-                <span>Jobs Monitor</span>
+                <span className="material-symbols-outlined text-[16px] text-amber-400">sync</span>
+                <span>Poll Status</span>
               </button>
-            </div>
+            )}
+
+            <button
+              onClick={handleRetryFailed}
+              disabled={actionLoading !== null || failedJobs === 0}
+              className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-sky-500 text-slate-200 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+              title="Reset all FAILED jobs to PENDING"
+            >
+              <span className="material-symbols-outlined text-[16px] text-sky-400">restart_alt</span>
+              <span>Re-queue Failed</span>
+            </button>
+
+            <button
+              onClick={() => onNavigate('jobs')}
+              className="h-9 px-3 bg-sky-950/40 hover:bg-sky-950/70 border border-sky-800 text-sky-300 rounded font-semibold flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px]">manage_search</span>
+              <span>Jobs Monitor</span>
+            </button>
           </div>
         </div>
       </section>
+
       <DiscoveryRunner
         isOpen={runnerOpen}
         onClose={() => setRunnerOpen(false)}
