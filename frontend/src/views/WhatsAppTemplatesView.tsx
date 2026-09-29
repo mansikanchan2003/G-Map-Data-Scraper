@@ -795,7 +795,7 @@ export const WhatsAppTemplatesView: React.FC = () => {
         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden shrink-0">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm">
-              <thead className="bg-slate-950 border-b border-slate-800">
+              <thead className="bg-slate-950 border-b border-slate-800 sticky top-0 z-10">
                 <tr>
                   <th className="px-3 py-2.5 w-10">
                     <input

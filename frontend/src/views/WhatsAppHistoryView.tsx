@@ -78,8 +78,13 @@ export const WhatsAppHistoryView: React.FC = () => {
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden shrink-0">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-950 border-b border-slate-800">
+        {/* Thirteen columns do not fit most screens. Without this the ones
+            past the edge were simply clipped, with no way to reach them. */}
+        <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm min-w-[1100px]">
+          {/* Sticky, so the numbers still have headings once the page is
+              scrolled down past them. */}
+          <thead className="bg-slate-950 border-b border-slate-800 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 font-semibold text-slate-400 text-xs">Campaign Name</th>
               <th className="px-4 py-3 font-semibold text-slate-400 text-xs">Status</th>
@@ -150,6 +155,7 @@ export const WhatsAppHistoryView: React.FC = () => {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

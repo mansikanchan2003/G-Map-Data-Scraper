@@ -297,7 +297,7 @@ export const WhatsAppCampaignDetailView: React.FC<Props> = ({ campaign, onBack }
                     {failedRecipients.length} failed · {skippedRecipients.length} skipped
                   </div>
                 </div>
-                <div className="max-h-[520px] overflow-y-auto">
+                <div className="max-h-[520px] overflow-auto">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-slate-950 border-b border-slate-800 sticky top-0">
                       <tr>
