@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     search_delay_seconds: float = 2.0        # delay between jobs in a batch
     listing_delay_seconds: float = 1.0       # pause after each detail page
     max_results_per_job: int = 200           # safety cap on listings per job
+    # Wall-clock ceiling for one job. Every Playwright call already has its
+    # own timeout, but a wedged browser process does not always let them
+    # fire — one job sat RUNNING for fifty minutes and held up the batch
+    # behind it. This is the backstop that does not depend on Playwright.
+    job_timeout_seconds: int = 600
 
     # -----------------------------------------------------------------------
     # Job management

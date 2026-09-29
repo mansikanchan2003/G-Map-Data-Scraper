@@ -305,6 +305,54 @@ def _run_batch_detached(payload: "BatchRequest"):
         db.close()
 
 
+def _run_job_with_timeout(job_id: str, db: Session, run_id: str) -> dict:
+    """
+    Runs one job, giving up on it after job_timeout_seconds.
+
+    The work is blocking and synchronous, so it goes on its own thread with
+    its own database session — a Session is not safe to share across threads.
+    A thread that overruns cannot be killed, so it is abandoned: the job goes
+    back to PENDING to be picked up again, and the batch moves on instead of
+    stopping dead.
+    """
+    import threading
+
+    from src.database import SessionLocal
+
+    result: dict = {}
+
+    def work():
+        own_db = SessionLocal()
+        try:
+            result.update(job_manager.execute_single_job(job_id, own_db))
+        except Exception as e:
+            logger.exception(f"discovery run_id={run_id} job_id={job_id} event=JOB_ERROR")
+            result.update({"job_status": "FAILED", "error": str(e)})
+        finally:
+            own_db.close()
+
+    worker = threading.Thread(target=work, daemon=True, name=f"job-{job_id[:8]}")
+    worker.start()
+    worker.join(timeout=settings.job_timeout_seconds)
+
+    if worker.is_alive():
+        logger.error(
+            f"discovery run_id={run_id} job_id={job_id} event=JOB_TIMEOUT "
+            f"after={settings.job_timeout_seconds}s — abandoning and continuing"
+        )
+        # Left RUNNING it would block the retry sweep too, so it is handed
+        # back for another attempt rather than marked failed.
+        db.query(Job).filter(Job.job_id == job_id).update(
+            {"status": "PENDING",
+             "error_message": f"Abandoned after {settings.job_timeout_seconds}s"},
+            synchronize_session=False,
+        )
+        db.commit()
+        return {"job_status": "TIMEOUT", "listings_found": 0, "businesses_saved": 0}
+
+    return result
+
+
 def _run_batch(payload: "BatchRequest", db: Session):
     start_time = time.time()
 
@@ -385,7 +433,7 @@ def _run_batch(payload: "BatchRequest", db: Session):
                 )
                 break
 
-            res = job_manager.execute_single_job(job.job_id, db)
+            res = _run_job_with_timeout(job.job_id, db, run_id)
             attempted += 1
 
             status = res.get("job_status")
