@@ -141,10 +141,10 @@ export const WhatsAppHistoryView: React.FC = () => {
               <span className="material-symbols-outlined text-[14px] mt-px shrink-0">info</span>
               <span>
                 {spend.estimated_from_sends} campaign
-                {spend.estimated_from_sends === 1 ? '' : 's'} ran before delivery
-                reporting was switched on, so {spend.estimated_from_sends === 1 ? 'its' : 'their'}{' '}
-                cost is counted from accepted sends — an upper bound, not a
-                measurement. Meta's figure is the one to trust.
+                {spend.estimated_from_sends === 1 ? '' : 's'} include sends Meta
+                never reported back on — mostly from before delivery reporting
+                was switched on. Those are counted as delivered, so the figure
+                is an upper bound. Meta's own total is the one to trust.
               </span>
             </p>
           )}
@@ -218,8 +218,8 @@ export const WhatsAppHistoryView: React.FC = () => {
                       ? `${camp.billable_messages} ${camp.cost_basis} × ₹${camp.rate_per_message}`
                         + ` (${camp.billing_category}) = ₹${camp.cost_net} + ₹${camp.cost_gst} GST`
                         + (camp.cost_basis === 'sent'
-                            ? ' — no delivery reports for this campaign, so accepted'
-                              + ' sends stand in. This is a ceiling, not a measurement.'
+                            ? ' — includes sends Meta never reported back on,'
+                              + ' counted as delivered. A ceiling, not a measurement.'
                             : '')
                       : 'Nothing billable yet'}
                   >

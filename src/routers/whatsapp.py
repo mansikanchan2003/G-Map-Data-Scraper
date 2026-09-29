@@ -599,6 +599,7 @@ def _delivery_counts(db: Session, campaign_ids: List[str]) -> dict:
     empty = {
         "delivered": 0, "read": 0, "undelivered": 0,
         "button_clicks": 0, "button_clickers": 0, "reported": 0,
+        "with_report": 0,
     }
     if not campaign_ids:
         return {}
@@ -613,16 +614,25 @@ def _delivery_counts(db: Session, campaign_ids: List[str]) -> dict:
             sa_func.count(WhatsAppCampaignRecipient.delivered_at).label("delivered"),
             sa_func.count(WhatsAppCampaignRecipient.read_at).label("read"),
             sa_func.count(WhatsAppCampaignRecipient.failed_at).label("failed"),
+            # Recipients Meta has said anything terminal about. Unlike
+            # `reported` below this counts each recipient once, which is what
+            # pricing needs: read is a subset of delivered, so adding the two
+            # would bill the same message twice.
+            sa_func.count(sa_func.coalesce(
+                WhatsAppCampaignRecipient.delivered_at,
+                WhatsAppCampaignRecipient.failed_at,
+            )).label("with_report"),
         )
         .filter(WhatsAppCampaignRecipient.campaign_id.in_(campaign_ids))
         .group_by(WhatsAppCampaignRecipient.campaign_id)
         .all()
     )
-    for campaign_id, delivered, read, failed in rows:
+    for campaign_id, delivered, read, failed, with_report in rows:
         entry = counts[campaign_id]
         entry["delivered"] = delivered
         entry["read"] = read
         entry["undelivered"] = failed
+        entry["with_report"] = with_report
         # Anything Meta has told us about counts as delivery data existing.
         entry["reported"] = delivered + read + failed
 
@@ -676,14 +686,17 @@ def _with_visits(db: Session, campaigns: list) -> List[WhatsAppCampaignResponse]
         item.button_clickers = d.get("button_clickers", 0)
         item.has_delivery_data = d.get("reported", 0) > 0
 
-        # Meta bills on delivery. Campaigns that ran before the webhook was
-        # live have no delivery reports at all, so their accepted sends stand
-        # in — marked as such, because it is an upper bound, not a reading.
+        # Meta bills on delivery, and the webhook went live part-way through
+        # this account's history. Counting only confirmed deliveries priced a
+        # 621-recipient campaign at three messages; counting every send
+        # ignores the failures Meta did report. So each recipient is counted
+        # the way we know it: confirmed deliveries as delivered, and sends we
+        # never heard back about as delivered too, which is the ceiling.
         category = categories.get(c.template_id) or pricing.DEFAULT_CATEGORY
-        if item.has_delivery_data:
-            billable, basis = item.delivered_count, "delivered"
-        else:
-            billable, basis = (c.successful_count or 0), "sent"
+        sent = c.successful_count or 0
+        unreported = max(0, sent - d.get("with_report", 0))
+        billable = item.delivered_count + unreported
+        basis = "delivered" if unreported == 0 else "sent"
         cost = pricing.estimate(category, billable)
         item.currency = cost["currency"]
         item.billing_category = category

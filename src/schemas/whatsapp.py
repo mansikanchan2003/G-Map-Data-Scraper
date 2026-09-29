@@ -160,9 +160,9 @@ class WhatsAppCampaignResponse(BaseModel):
     cost_net: float = 0.0
     cost_gst: float = 0.0
     cost_total: float = 0.0
-    # "delivered" when Meta reported on this campaign, "sent" for the
-    # campaigns that ran before the webhook existed — there the accepted
-    # sends stand in, so the figure is a ceiling rather than a measurement.
+    # "delivered" when Meta reported back on every send, "sent" when some
+    # sends were never reported on and are counted as delivered — there the
+    # figure is a ceiling rather than a measurement.
     cost_basis: str = "delivered"
 
     model_config = {"from_attributes": True}
