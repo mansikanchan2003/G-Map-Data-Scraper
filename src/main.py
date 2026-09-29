@@ -257,7 +257,19 @@ if os.path.isdir(_FRONTEND_DIR):
             and os.path.isfile(candidate)
         ):
             return FileResponse(candidate)
-        return FileResponse(os.path.join(_FRONTEND_DIR, "index.html"))
+
+        # index.html names the hashed bundle, so a cached copy pins the browser
+        # to whichever build it was fetched with — a deploy then changes
+        # nothing until someone thinks to hard-refresh. The assets it points at
+        # are content-hashed and safe to cache; this file never is.
+        return FileResponse(
+            os.path.join(_FRONTEND_DIR, "index.html"),
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
     logger.info(f"Serving frontend bundle from {_FRONTEND_DIR}")
 else:
