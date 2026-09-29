@@ -25,6 +25,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
 
   // Filters & Selected Job
   const [statusFilter, setStatusFilter] = useState<string>(initialFilter);
+  const [inspectorOpen, setInspectorOpen] = useState<boolean>(false);
   const [selectedJob, setSelectedJob] = useState<JobItem | null>(null);
   const [actionProcessingId, setActionProcessingId] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
@@ -361,7 +362,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                     <td className="px-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1.5">
                         <button
-                          onClick={() => setSelectedJob(job)}
+                          onClick={() => { setSelectedJob(job); setInspectorOpen(true); }}
                           className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded text-[10px] uppercase font-semibold cursor-pointer"
                           title="Inspect job details"
                         >
@@ -395,17 +396,37 @@ export const JobsView: React.FC<JobsViewProps> = ({
         </table>
       </div>
 
-      {/* BOTTOM CONSOLE DRAWER: REAL JOB INSPECTOR */}
-      <div className="h-36 bg-slate-950 border-t border-slate-800 text-slate-300 p-3 font-mono-code text-xs flex flex-col shrink-0">
-        <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 text-[10px] uppercase">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span className="font-bold text-slate-200">
+      {/* BOTTOM CONSOLE DRAWER: REAL JOB INSPECTOR
+          Closed by default. It is read after picking a row, not watched, and
+          the fixed height was taking rows off the table to say "no job
+          selected". Which job is loaded stays on the closed header. */}
+      <div className={`bg-slate-950 border-t border-slate-800 text-slate-300 px-3 font-mono-code text-xs flex flex-col shrink-0 ${
+        inspectorOpen ? 'h-36 py-3' : 'py-2'
+      }`}>
+        <button
+          onClick={() => setInspectorOpen(v => !v)}
+          aria-expanded={inspectorOpen}
+          className={`flex items-center justify-between gap-3 text-[10px] uppercase text-left
+                      cursor-pointer hover:text-slate-100 transition-colors ${
+                        inspectorOpen ? 'pb-1.5 border-b border-slate-800' : ''
+                      }`}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+            <span className="font-bold text-slate-200 truncate">
               Job Inspector — {selectedJob ? `Job #${selectedJob.job_id.slice(0, 8)} (${selectedJob.category?.category_name || selectedJob.search_query})` : 'No job selected'}
             </span>
           </div>
-          <span className="text-slate-500">FastAPI Playwright Task</span>
-        </div>
+          <span className="flex items-center gap-2 shrink-0">
+            <span className="text-slate-500 hidden sm:inline">FastAPI Playwright Task</span>
+            <span className={`material-symbols-outlined text-[16px] text-slate-500 transition-transform ${
+              inspectorOpen ? 'rotate-180' : ''
+            }`}>
+              expand_more
+            </span>
+          </span>
+        </button>
+        {inspectorOpen && (
         <div className="flex-1 overflow-y-auto pt-1.5 space-y-1 text-[11px]">
           {selectedJob ? (
             <>
@@ -432,6 +453,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
             <div className="text-slate-500">Select any job from the table above to view real task parameters and status.</div>
           )}
         </div>
+        )}
       </div>
 
       {/* SERVER-SIDE PAGINATION FOOTER */}
