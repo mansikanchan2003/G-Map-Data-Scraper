@@ -682,17 +682,35 @@ def get_campaign_recipients(
     ids = [i.recipient_id for i in items]
     taps, links = {}, {}
 
-    # Categories for this page in one query, keyed by business. Recipients
-    # uploaded from a file have no business and simply get nothing.
+    # Categories for this page, in two queries rather than one per row.
+    #
+    # business_id is the precise link, but every recipient created before it
+    # was plumbed through carries none — 2,204 of them — so the phone number
+    # is used as a fallback. That is what the audience was selected by in the
+    # first place, and both sides store it in the same canonical form.
     from src.models import Business
-    business_ids = [i.business_id for i in items if i.business_id]
+
     categories = {}
+    phone_categories = {}
+
+    business_ids = [i.business_id for i in items if i.business_id]
     if business_ids:
         categories = dict(
             db.query(Business.business_id, Business.category)
             .filter(Business.business_id.in_(business_ids))
             .all()
         )
+
+    unlinked_phones = [i.phone for i in items if not i.business_id and i.phone]
+    if unlinked_phones:
+        # A number can belong to more than one listing; the first is taken
+        # rather than pretending the choice is meaningful.
+        for phone, category in (
+            db.query(Business.phone, Business.category)
+            .filter(Business.phone.in_(unlinked_phones))
+            .all()
+        ):
+            phone_categories.setdefault(phone, category)
 
     if ids:
         for rid, count, last_text in (
@@ -725,7 +743,8 @@ def get_campaign_recipients(
         item.button_clicks = tap_count
         item.last_button_text = last_text
         item.link_clicks = links.get(i.recipient_id, 0)
-        item.category = categories.get(i.business_id) if i.business_id else None
+        item.category = (categories.get(i.business_id) if i.business_id
+                         else phone_categories.get(i.phone))
         out.append(item)
 
     return PaginatedRecipients(
