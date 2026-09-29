@@ -24,6 +24,7 @@ from src.schemas.whatsapp import (
     WhatsAppTemplateSubmitRequest, WhatsAppTemplateSubmitResponse,
     WhatsAppTemplateSyncResponse
 )
+from src.services import auth_service, notifier
 from src.services.whatsapp_normalizer import WhatsAppNormalizer
 from src.services.meta_whatsapp_service import MetaWhatsAppService
 # We will import whatsapp_service here later for campaign execution.
@@ -936,7 +937,41 @@ def _apply_status_event(db: Session, status: dict) -> None:
     ))
 
 
-def _apply_inbound_message(db: Session, message: dict) -> None:
+def _lead_details(db: Session, recipient, button_text, clicked_at) -> dict:
+    """
+    What someone needs in order to call this person back.
+
+    The business behind a recipient is matched by phone where the link was
+    never stored, which is the case for every campaign sent before that field
+    was carried through.
+    """
+    from src.models import Business, WhatsAppCampaign
+
+    business = None
+    if recipient.business_id:
+        business = db.query(Business).filter(
+            Business.business_id == recipient.business_id
+        ).first()
+    if business is None and recipient.phone:
+        business = db.query(Business).filter(Business.phone == recipient.phone).first()
+
+    campaign = db.query(WhatsAppCampaign).filter(
+        WhatsAppCampaign.campaign_id == recipient.campaign_id
+    ).first()
+
+    return {
+        "name": recipient.name or (business.name if business else None),
+        "phone": recipient.phone,
+        "category": business.category if business else None,
+        "district": business.district if business else None,
+        "state": business.state if business else None,
+        "campaign": campaign.name if campaign else None,
+        "button_text": button_text,
+        "clicked_at": clicked_at.strftime("%d %b %Y, %H:%M UTC") if clicked_at else None,
+    }
+
+
+def _apply_inbound_message(db: Session, message: dict):
     """
     Record a quick-reply button tap.
 
@@ -946,25 +981,26 @@ def _apply_inbound_message(db: Session, message: dict) -> None:
     visible through the tracking-link redirect.
     """
     if (message.get("type") or "") != "button":
-        return
+        return None
 
     origin_id = (message.get("context") or {}).get("id")
     if not origin_id:
-        return
+        return None
 
     recipient = db.query(WhatsAppCampaignRecipient).filter(
         WhatsAppCampaignRecipient.provider_message_id == origin_id
     ).first()
     if not recipient:
-        return
+        return None
 
     inbound_id = message.get("id")
     if inbound_id and db.query(WhatsAppButtonClick).filter(
         WhatsAppButtonClick.provider_message_id == inbound_id
     ).first():
-        return  # already recorded; Meta repeats until acknowledged
+        return None  # already recorded; Meta repeats until acknowledged
 
     button = message.get("button") or {}
+    clicked_at = _parse_ts(message.get("timestamp"))
     db.add(WhatsAppButtonClick(
         click_id=uuid.uuid4().hex,
         campaign_id=recipient.campaign_id,
@@ -972,8 +1008,14 @@ def _apply_inbound_message(db: Session, message: dict) -> None:
         button_text=(button.get("text") or None),
         button_payload=(button.get("payload") or None),
         provider_message_id=inbound_id,
-        clicked_at=_parse_ts(message.get("timestamp")),
+        clicked_at=clicked_at,
     ))
+
+    # Somebody has just asked to be contacted, so the details needed to act on
+    # that are gathered here rather than left for whoever opens the dashboard
+    # next. Returned to the caller, which sends the alert outside the request:
+    # Meta redelivers a webhook it does not get a prompt 200 for.
+    return _lead_details(db, recipient, button.get("text"), clicked_at)
 
 
 # --- Webhooks (Phase 18) ---
@@ -996,7 +1038,8 @@ def verify_webhook(
     raise HTTPException(status_code=403, detail="Verification failed")
 
 @router.post("/webhook")
-async def receive_webhook(request: Request, db: Session = Depends(get_db)):
+async def receive_webhook(request: Request, background: BackgroundTasks,
+                          db: Session = Depends(get_db)):
     """
     Receives incoming webhooks from Meta (e.g. message delivery status).
     """
@@ -1030,6 +1073,7 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Invalid signature")
 
     payload = await request.json()
+    leads: list = []
 
     try:
         for entry in payload.get("entry", []):
@@ -1038,8 +1082,17 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
                 for status in value.get("statuses", []):
                     _apply_status_event(db, status)
                 for message in value.get("messages", []):
-                    _apply_inbound_message(db, message)
+                    lead = _apply_inbound_message(db, message)
+                    if lead:
+                        leads.append(lead)
         db.commit()
+
+        # After the commit and outside the response: a slow mail server must
+        # not delay the 200 Meta is waiting for, or it redelivers the event.
+        for lead in leads:
+            background.add_task(
+                notifier.notify_button_click, auth_service.BOOTSTRAP_ADMIN, lead
+            )
 
     except Exception as e:
         logger.error(f"Error processing webhook payload: {str(e)}")
@@ -1048,3 +1101,79 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
     # Meta redelivers anything it does not get a 200 for, so this acknowledges
     # even a payload that could not be applied; the error is in the logs.
     return {"status": "ok"}
+
+
+class LeadResponse(BaseModel):
+    """Someone who tapped a quick-reply button, and what is needed to call them."""
+    click_id: str
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    category: Optional[str] = None
+    district: Optional[str] = None
+    state: Optional[str] = None
+    campaign: Optional[str] = None
+    button_text: Optional[str] = None
+    clicked_at: datetime
+
+
+@router.get("/leads", response_model=List[LeadResponse])
+def list_leads(limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_db)):
+    """
+    Recent quick-reply taps, newest first.
+
+    These are people who asked to be contacted, so the row carries everything
+    needed to act on it rather than an id to go and look up.
+
+    Meta reports nothing when a call-to-action URL button is tapped, so only
+    quick replies appear here; URL taps are counted as link visits instead.
+    """
+    from src.models import Business
+
+    clicks = (
+        db.query(WhatsAppButtonClick)
+        .order_by(WhatsAppButtonClick.clicked_at.desc())
+        .limit(limit)
+        .all()
+    )
+    if not clicks:
+        return []
+
+    recipients = {
+        r.recipient_id: r
+        for r in db.query(WhatsAppCampaignRecipient).filter(
+            WhatsAppCampaignRecipient.recipient_id.in_(
+                [c.recipient_id for c in clicks if c.recipient_id]
+            )
+        ).all()
+    }
+    campaigns = {
+        c.campaign_id: c.name
+        for c in db.query(WhatsAppCampaign).filter(
+            WhatsAppCampaign.campaign_id.in_([c.campaign_id for c in clicks])
+        ).all()
+    }
+
+    # Matched on phone as well: recipients created before business_id was
+    # carried through have no link, which is every campaign so far.
+    phones = [r.phone for r in recipients.values() if r.phone]
+    businesses = {}
+    if phones:
+        for b in db.query(Business).filter(Business.phone.in_(phones)).all():
+            businesses.setdefault(b.phone, b)
+
+    out = []
+    for c in clicks:
+        r = recipients.get(c.recipient_id)
+        b = businesses.get(r.phone) if r else None
+        out.append(LeadResponse(
+            click_id=c.click_id,
+            name=(r.name if r else None) or (b.name if b else None),
+            phone=r.phone if r else None,
+            category=b.category if b else None,
+            district=b.district if b else None,
+            state=b.state if b else None,
+            campaign=campaigns.get(c.campaign_id),
+            button_text=c.button_text,
+            clicked_at=c.clicked_at,
+        ))
+    return out

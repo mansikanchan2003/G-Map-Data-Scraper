@@ -2,6 +2,7 @@ import { formatDateTime } from '../utils/datetime';
 import React, { useState } from 'react';
 import { DiscoveryRunner } from '../components/DiscoveryRunner';
 import { CollapsiblePanel } from '../components/CollapsiblePanel';
+import { LeadsPanel } from '../components/LeadsPanel';
 import { ScaleBars } from '../components/ScaleBars';
 import { JobDistributionDonut } from '../components/JobDistributionDonut';
 import type { NormalizedSystemStats, DiscoveryStatus, ApiError } from '../types/api';
@@ -367,6 +368,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </CollapsiblePanel>
 
           {/* Quick Real Operational Actions */}
+          {/* People waiting on a call back, above the controls: it is the one
+              thing here that goes stale if nobody looks. */}
+          <LeadsPanel />
+
           {/* Left open: these are the buttons someone came to the dashboard to
               press, so hiding them behind a heading costs a click every time. */}
           <div className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">

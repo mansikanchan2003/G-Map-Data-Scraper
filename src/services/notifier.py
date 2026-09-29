@@ -83,3 +83,37 @@ def notify_decision(applicant_email: str, approved: bool, app_url: str,
         "Your request for AutoGMap access was declined."
         + (f"\n\nReason: {reason}\n" if reason else "\n"),
     )
+
+
+def notify_button_click(admin_email: str, lead: dict) -> bool:
+    """
+    Tell the admin someone asked to be contacted.
+
+    Sent per tap rather than batched: the point of a "Call me back" button is
+    that somebody is interested right now, and a digest tomorrow is a lead
+    gone cold.
+    """
+    def line(label, value):
+        return f"{label:12} {value}" if value else None
+
+    details = [
+        line("Name", lead.get("name")),
+        line("Phone", lead.get("phone")),
+        line("Category", lead.get("category")),
+        line("District", lead.get("district")),
+        line("State", lead.get("state")),
+        line("Campaign", lead.get("campaign")),
+        line("Button", lead.get("button_text")),
+        line("Tapped at", lead.get("clicked_at")),
+    ]
+    body = "\n".join(d for d in details if d)
+
+    phone = (lead.get("phone") or "").lstrip("+")
+    return _send(
+        admin_email,
+        f"AutoGMap: {lead.get('name') or lead.get('phone')} tapped "
+        f"\u201c{lead.get('button_text') or 'a button'}\u201d",
+        f"{lead.get('name') or 'A recipient'} responded to a WhatsApp campaign.\n\n"
+        f"{body}\n\n"
+        f"Reply on WhatsApp: https://wa.me/{phone}\n",
+    )

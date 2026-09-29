@@ -521,3 +521,24 @@ export async function rejectUser(userId: string, reason?: string): Promise<AuthU
     body: JSON.stringify({ reason: reason || null }),
   });
 }
+
+// ---------------------------------------------------------
+// 10. LEADS (quick-reply taps)
+// ---------------------------------------------------------
+
+export interface Lead {
+  click_id: string;
+  name: string | null;
+  phone: string | null;
+  category: string | null;
+  district: string | null;
+  state: string | null;
+  campaign: string | null;
+  button_text: string | null;
+  clicked_at: string;
+}
+
+/** People who asked to be called back, newest first. */
+export async function fetchLeads(limit = 20): Promise<Lead[]> {
+  return request<Lead[]>(`/api/v1/whatsapp/leads?limit=${limit}`);
+}
