@@ -9,6 +9,18 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   base: process.env.VITE_BASE_PATH || '/',
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Split heavy vendor libraries into dedicated, long-lived chunks so
+        // browsers can cache them independently of the application code.
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-router': ['react-router-dom'],
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {
@@ -22,4 +34,5 @@ export default defineConfig({
     },
   },
 })
+
 

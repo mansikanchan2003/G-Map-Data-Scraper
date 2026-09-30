@@ -13,7 +13,9 @@ import {
 } from '../api/whatsapp';
 import { fetchBusinesses } from '../api';
 import { WhatsAppPreview } from '../components/WhatsAppPreview';
-import * as XLSX from 'xlsx';
+// xlsx is loaded dynamically in handleFileUpload to keep it out of the
+// initial bundle (~300 KB minified).  The import only runs when the user
+// actually uploads a spreadsheet.
 
 // The sending number campaigns should default to, matched on its last digits
 // so formatting differences in the stored value do not matter.
@@ -106,6 +108,7 @@ export const WhatsAppCampaignView: React.FC = () => {
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
+        const XLSX = await import('xlsx');
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];

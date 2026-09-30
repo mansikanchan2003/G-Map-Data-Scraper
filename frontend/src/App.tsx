@@ -1,21 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { useTheme } from './hooks/useTheme';
 import type { NavTab } from './components/Header';
 import { useAuth } from './hooks/useAuth';
 import { LoginView } from './views/LoginView';
-import { ApprovalsView } from './views/ApprovalsView';
 import { BackendSettingsModal } from './components/BackendSettingsModal';
-import { DashboardView } from './views/DashboardView';
-import { BusinessesView } from './views/BusinessesView';
-import { JobsView } from './views/JobsView';
-import { ConfigView } from './views/ConfigView';
-import { WhatsAppCampaignView } from './views/WhatsAppCampaignView';
-import { WhatsAppTemplatesView } from './views/WhatsAppTemplatesView';
-import { WhatsAppHistoryView } from './views/WhatsAppHistoryView';
 import { fetchStats, fetchDiscoveryStatus, checkBackendHealth } from './api';
 import type { NormalizedSystemStats, DiscoveryStatus, ApiError } from './types/api';
+
+// ---------------------------------------------------------------------------
+// Lazy-loaded views — each becomes its own chunk so the initial bundle only
+// carries the dashboard. The remaining views are fetched on first navigation.
+// ---------------------------------------------------------------------------
+const DashboardView = lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
+const BusinessesView = lazy(() => import('./views/BusinessesView').then(m => ({ default: m.BusinessesView })));
+const JobsView = lazy(() => import('./views/JobsView').then(m => ({ default: m.JobsView })));
+const ConfigView = lazy(() => import('./views/ConfigView').then(m => ({ default: m.ConfigView })));
+const ApprovalsView = lazy(() => import('./views/ApprovalsView').then(m => ({ default: m.ApprovalsView })));
+const WhatsAppCampaignView = lazy(() => import('./views/WhatsAppCampaignView').then(m => ({ default: m.WhatsAppCampaignView })));
+const WhatsAppTemplatesView = lazy(() => import('./views/WhatsAppTemplatesView').then(m => ({ default: m.WhatsAppTemplatesView })));
+const WhatsAppHistoryView = lazy(() => import('./views/WhatsAppHistoryView').then(m => ({ default: m.WhatsAppHistoryView })));
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
@@ -159,6 +164,11 @@ export default function App() {
 
         {/* Dynamic Workspace Views */}
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+          <Suspense fallback={
+            <div className="flex-1 flex items-center justify-center">
+              <div className="w-7 h-7 border-3 border-sky-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          }>
           {activeTab === 'dashboard' && (
             <DashboardView
               stats={stats}
@@ -192,6 +202,7 @@ export default function App() {
           {activeTab === 'whatsapp-templates' && <WhatsAppTemplatesView />}
 
           {activeTab === 'whatsapp-history' && <WhatsAppHistoryView />}
+          </Suspense>
         </main>
       </div>
 

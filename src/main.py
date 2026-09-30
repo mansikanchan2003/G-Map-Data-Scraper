@@ -42,12 +42,19 @@ async def lifespan(app: FastAPI):
 
 
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 app = FastAPI(
     title="Autonomous Google Maps Business Discovery Agent",
     version="1.0.0",
     lifespan=lifespan
 )
+
+# ---------------------------------------------------------------------------
+# GZip — compresses responses above 500 bytes. The JS bundle drops from
+# ~775 KB to ~230 KB, and JSON API responses compress well too.
+# ---------------------------------------------------------------------------
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # ---------------------------------------------------------------------------
 # CORS — configurable via CORS_ORIGINS env var (comma-separated).

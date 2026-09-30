@@ -412,9 +412,7 @@ export interface DiscoveryTargets {
 
 export const fetchDiscoveryTargets = async (state?: string): Promise<DiscoveryTargets> => {
   const qs = state ? `?state=${encodeURIComponent(state)}` : '';
-  const res = await fetch(`/api/v1/discovery/targets${qs}`);
-  if (!res.ok) throw new Error('Failed to load discovery targets');
-  return res.json();
+  return request<DiscoveryTargets>(`/api/v1/discovery/targets${qs}`);
 };
 
 /** Runs existing queued jobs for the chosen locations and categories. */
@@ -425,14 +423,10 @@ export const runTargetedDiscovery = async (body: {
   batch_size: number;
   delay_between_jobs_seconds: number;
 }): Promise<any> => {
-  const res = await fetch('/api/v1/discovery/batch', {
+  return request('/api/v1/discovery/batch', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...body, trigger_source: 'dashboard', run_in_background: true }),
   });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.detail || 'Failed to start discovery');
-  return json;
 };
 
 /** Adds places and categories that are not in the spreadsheets, then runs them. */
@@ -443,17 +437,10 @@ export const runCustomDiscovery = async (body: {
   delay_between_jobs_seconds: number;
   run_now: boolean;
 }): Promise<any> => {
-  const res = await fetch('/api/v1/discovery/custom-run', {
+  return request('/api/v1/discovery/custom-run', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const json = await res.json();
-  if (!res.ok) {
-    const d = json.detail;
-    throw new Error(typeof d === 'string' ? d : d?.message || 'Failed to start discovery');
-  }
-  return json;
 };
 
 // ---------------------------------------------------------
