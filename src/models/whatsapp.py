@@ -39,7 +39,21 @@ class WhatsAppTemplate(Base):
     footer = Column(String(500), nullable=True)
     
     buttons = Column(JSON, nullable=True) # JSON array of buttons configurations
-    
+
+    # "manual" for templates composed by hand, "agent" for ones the Template
+    # Studio generated. An agent template is never sent to Meta until someone
+    # approves it; until then it lives only in the Studio.
+    origin = Column(String(20), nullable=False, default="manual", server_default="manual")
+    # The state the template was written for, which fixed its language.
+    target_state = Column(String(100), nullable=True, index=True)
+    # How the agent made it: the angle it tests, poster copy, photo prompt and
+    # check, models used. Kept so results can be traced back to the idea.
+    generation = Column(JSON, nullable=True)
+    # The reviewer's decision. A rejection's reason is fed back to the agent.
+    review_note = Column(Text, nullable=True)
+    reviewed_by = Column(String(200), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_used_at = Column(DateTime(timezone=True), nullable=True)
@@ -152,10 +166,20 @@ class WhatsAppLinkClick(Base):
     ip_hash = Column(String(64), nullable=True)
     user_agent = Column(String(500), nullable=True)
 
+    # Why this hit was judged not to be a person — a link-preview fetcher, a
+    # scanner, a script — or NULL for a real visit. Automated hits are kept,
+    # so nothing is silently discarded, but never counted as clicks: six of
+    # the first seven recorded "clicks" were curl, urllib and headless Chrome.
+    automated_reason = Column(String(80), nullable=True, index=True)
+
     clicked_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
     campaign = relationship("WhatsAppCampaign")
     recipient = relationship("WhatsAppCampaignRecipient")
+
+
+# The filter every click count uses, so none of them can forget it.
+HUMAN_LINK_CLICK = WhatsAppLinkClick.automated_reason.is_(None)
 
 
 class WhatsAppButtonClick(Base):

@@ -18,7 +18,7 @@ def test_the_anchor_survives_and_the_utm_lands_in_the_query():
     assert out.endswith("#apply-now")
     # ...and the tags are where a server can actually read them.
     query = out.split("#")[0]
-    assert "utm_source=WhatsApp+Campaign" in query
+    assert "utm_source=AutoGMap" in query
     assert "utm_medium=whatsapp" in query
     assert "utm_campaign=Punjab+Campaign5" in query
 
@@ -48,7 +48,7 @@ def test_a_source_already_set_is_not_overwritten():
     out = _with_campaign_source("https://kiosk.eko.in/?utm_source=Billboard", "X")
 
     assert "utm_source=Billboard" in out
-    assert "utm_source=WhatsApp" not in out
+    assert "utm_source=AutoGMap" not in out
 
 
 def test_a_campaign_without_a_name_gets_no_empty_tag():
@@ -75,8 +75,33 @@ def test_an_unknown_token_still_reaches_the_apply_page_with_its_source():
     the template's own "{{1}}" opened by hand — used to land on a bare home
     page: no anchor, no source. Only the campaign name is genuinely unknown.
     """
-    out = _with_campaign_source("https://kiosk.eko.in/?utm_source=WhatsApp+Campaign#apply-now")
+    out = _with_campaign_source("https://kiosk.eko.in/signup?utm_source=AutoGMap")
 
-    assert out.endswith("#apply-now")
-    assert "utm_source=WhatsApp+Campaign" in out
+    assert out.startswith("https://kiosk.eko.in/signup?")
+    assert "utm_source=AutoGMap" in out
     assert "utm_campaign=" not in out
+
+
+def test_the_default_destination_is_the_signup_page_with_the_autogmap_source(monkeypatch):
+    """
+    Signups from these links must be recorded by the kiosk site as AutoGMap.
+
+    /signup rather than /#apply-now: the home page grows after loading, so the
+    jump to #apply-now stopped short of the form on both desktop and phone.
+    """
+    import importlib
+    import src.routers.tracking as tracking
+    from src.services.whatsapp_service import tracking_link_for
+
+    monkeypatch.delenv("CAMPAIGN_LINK_TARGET_URL", raising=False)
+    monkeypatch.delenv("CAMPAIGN_LINK_FALLBACK_URL", raising=False)
+    monkeypatch.delenv("CAMPAIGN_UTM_SOURCE", raising=False)
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    importlib.reload(tracking)
+
+    assert tracking_link_for("abc") == "https://kiosk.eko.in/signup?utm_source=AutoGMap"
+    out = tracking._with_campaign_source(tracking.FALLBACK_URL, "Punjab Campaign5")
+    assert out.startswith("https://kiosk.eko.in/signup?utm_source=AutoGMap&")
+    assert "utm_campaign=Punjab+Campaign5" in out
+    # A bare destination gets AutoGMap as its source too.
+    assert "utm_source=AutoGMap" in tracking._with_campaign_source("https://kiosk.eko.in/signup", "X")

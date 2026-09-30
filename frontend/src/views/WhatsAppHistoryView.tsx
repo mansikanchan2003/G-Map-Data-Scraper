@@ -217,7 +217,10 @@ export const WhatsAppHistoryView: React.FC = () => {
                     {camp.has_delivery_data ? camp.read_count : <span className="text-slate-600">—</span>}
                   </td>
                   <td className="px-4 py-3 font-mono-code text-purple-400">{camp.button_click_count ?? 0}</td>
-                  <td className="px-4 py-3 font-mono-code text-sky-400 font-semibold">{camp.unique_visits ?? 0}</td>
+                  <td className="px-4 py-3 font-mono-code text-sky-400 font-semibold"
+                    title={camp.automated_hits ? `${camp.automated_hits} automated hit(s) — link previews, scanners or scripts — not counted` : undefined}>
+                    {camp.unique_visits ?? 0}
+                  </td>
                   <td className="px-4 py-3 font-mono-code text-purple-400">{camp.repeated_visits ?? 0}</td>
                   <td
                     className="px-4 py-3 font-mono-code text-right whitespace-nowrap"

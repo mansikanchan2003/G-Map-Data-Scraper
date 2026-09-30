@@ -20,13 +20,14 @@ from sqlalchemy.orm import Session
 
 from src.database import get_db
 from src.models.whatsapp import WhatsAppCampaignRecipient, WhatsAppLinkClick
+from src.services.click_filter import automated_reason
 
 router = APIRouter(tags=["Link Tracking"])
 logger = logging.getLogger("gmap_scraper.link_tracking")
 
 # Where an unknown or expired token goes, so a stale link is never a dead end.
 FALLBACK_URL = os.environ.get(
-    "CAMPAIGN_LINK_FALLBACK_URL", "https://kiosk.eko.in/"
+    "CAMPAIGN_LINK_FALLBACK_URL", "https://kiosk.eko.in/signup?utm_source=AutoGMap"
 )
 
 
@@ -72,7 +73,9 @@ def _with_campaign_source(url: str, campaign_name: str = "") -> str:
     existing = dict(parse_qsl(parts.query, keep_blank_values=True))
 
     defaults = {
-        "utm_source": os.environ.get("CAMPAIGN_UTM_SOURCE", "WhatsApp Campaign"),
+        # The kiosk site stores utm_source against the signup, so this is the
+        # source the lead is recorded under.
+        "utm_source": os.environ.get("CAMPAIGN_UTM_SOURCE", "AutoGMap"),
         "utm_medium": os.environ.get("CAMPAIGN_UTM_MEDIUM", "whatsapp"),
     }
     # The campaign's own name, so two campaigns to the same page stay apart.
@@ -121,6 +124,11 @@ def follow_campaign_link(token: str, request: Request, db: Session = Depends(get
     campaign = recipient.campaign
     target = _with_campaign_source(target, campaign.name if campaign else "")
 
+    user_agent = (request.headers.get("user-agent") or "")[:500]
+    # Recorded either way, but a preview fetcher or a script is never counted
+    # as the recipient tapping the link.
+    automated = automated_reason(user_agent, request.method)
+
     try:
         db.add(WhatsAppLinkClick(
             click_id=uuid.uuid4().hex,
@@ -128,12 +136,14 @@ def follow_campaign_link(token: str, request: Request, db: Session = Depends(get
             recipient_id=recipient.recipient_id,
             target_url=target,
             ip_hash=_hash_ip(request),
-            user_agent=(request.headers.get("user-agent") or "")[:500],
+            user_agent=user_agent,
+            automated_reason=automated,
         ))
         db.commit()
         logger.info(
-            f"link_tracking event=LINK_CLICKED campaign_id={recipient.campaign_id} "
-            f"recipient_id={recipient.recipient_id}"
+            f"link_tracking event={'AUTOMATED_HIT' if automated else 'LINK_CLICKED'} "
+            f"campaign_id={recipient.campaign_id} recipient_id={recipient.recipient_id}"
+            + (f" reason={automated}" if automated else "")
         )
     except Exception:
         db.rollback()

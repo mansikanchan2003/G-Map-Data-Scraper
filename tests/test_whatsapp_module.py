@@ -419,9 +419,11 @@ def test_unique_and_repeated_visits_are_counted_per_recipient():
     rows = [("c1", "r1", 3), ("c1", "r2", 1), ("c1", "r3", 2)]
 
     db = MagicMock()
-    db.query.return_value.filter.return_value.group_by.return_value.all.return_value = rows
+    # First the human clicks per recipient, then the automated hits per campaign.
+    db.query.return_value.filter.return_value.group_by.return_value.all.side_effect = [rows, [("c1", 4)]]
 
     counts = _visit_counts(db, ["c1"])
+    assert counts["c1"]["automated"] == 4, "machine hits are reported apart"
     assert counts["c1"]["unique"] == 3, "three distinct recipients opened the link"
     assert counts["c1"]["repeated"] == 3, "3x + 1x + 2x leaves 2 + 0 + 1 repeats"
     assert counts["c1"]["total"] == 6
@@ -434,7 +436,7 @@ def test_campaign_with_no_clicks_reports_zero():
     db.query.return_value.filter.return_value.group_by.return_value.all.return_value = []
 
     counts = _visit_counts(db, ["c1"])
-    assert counts["c1"] == {"unique": 0, "repeated": 0, "total": 0}
+    assert counts["c1"] == {"unique": 0, "repeated": 0, "total": 0, "automated": 0}
 
 
 def test_unknown_token_redirects_without_recording():

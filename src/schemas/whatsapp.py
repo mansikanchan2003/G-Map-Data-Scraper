@@ -60,6 +60,9 @@ class WhatsAppTemplateResponse(WhatsAppTemplateBase):
     # Populated when creation auto-submitted and Meta rejected the submission,
     # so the UI can explain why a template is still a local draft.
     submission_error: Optional[str] = None
+    # "agent" when the Template Studio made it, and the state it was written for.
+    origin: Optional[str] = "manual"
+    target_state: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     last_used_at: Optional[datetime] = None
@@ -136,6 +139,9 @@ class WhatsAppCampaignResponse(BaseModel):
     unique_visits: int = 0
     repeated_visits: int = 0
     total_clicks: int = 0
+    # Hits on the tracked link from preview fetchers, scanners and scripts.
+    # Recorded, never counted in the three above.
+    automated_hits: int = 0
 
     # Delivery, as reported by Meta's webhook. These accumulate rather than
     # partition: every read message was also delivered, so read_count is a

@@ -52,7 +52,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'config', label: 'Configuration', icon: 'tune' },
     { id: 'whatsapp-campaign', label: 'WhatsApp Campaign', icon: 'campaign' },
     { id: 'whatsapp-templates', label: 'Templates', icon: 'chat' },
+    { id: 'whatsapp-studio', label: 'Template Studio', icon: 'auto_awesome' },
     { id: 'whatsapp-history', label: 'Campaign History', icon: 'history' },
+    { id: 'whatsapp-insights', label: 'Campaign Insights', icon: 'insights' },
     // Hidden for members: the API refuses them anyway, and an item that
     // only ever errors is worse than no item.
     ...(isAdmin

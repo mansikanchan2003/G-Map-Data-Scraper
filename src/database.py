@@ -76,6 +76,37 @@ def _migrate_db(eng) -> None:
                 conn.execute(text("ALTER TABLE run_log ADD COLUMN errors_count INTEGER NOT NULL DEFAULT 0"))
             conn.commit()
 
+    if "whatsapp_templates" in inspector.get_table_names():
+        columns = [c["name"] for c in inspector.get_columns("whatsapp_templates")]
+        studio_columns = {
+            "origin": "VARCHAR(20) NOT NULL DEFAULT 'manual'",
+            "target_state": "VARCHAR(100)",
+            "generation": "JSON",
+            "review_note": "TEXT",
+            "reviewed_by": "VARCHAR(200)",
+            "reviewed_at": "DATETIME",
+        }
+        with eng.connect() as conn:
+            for name, ddl in studio_columns.items():
+                if name not in columns:
+                    conn.execute(text(f"ALTER TABLE whatsapp_templates ADD COLUMN {name} {ddl}"))
+            conn.commit()
+
+    if "whatsapp_link_clicks" in inspector.get_table_names():
+        columns = [c["name"] for c in inspector.get_columns("whatsapp_link_clicks")]
+        if "automated_reason" not in columns:
+            from src.services.click_filter import automated_reason
+
+            with eng.connect() as conn:
+                conn.execute(text("ALTER TABLE whatsapp_link_clicks ADD COLUMN automated_reason VARCHAR(80)"))
+                # Past hits are judged by the same rules as new ones.
+                for click_id, ua in conn.execute(text("SELECT click_id, user_agent FROM whatsapp_link_clicks")).fetchall():
+                    reason = automated_reason(ua)
+                    if reason:
+                        conn.execute(text("UPDATE whatsapp_link_clicks SET automated_reason = :r WHERE click_id = :c"),
+                                     {"r": reason, "c": click_id})
+                conn.commit()
+
 
 def init_db() -> None:
     """

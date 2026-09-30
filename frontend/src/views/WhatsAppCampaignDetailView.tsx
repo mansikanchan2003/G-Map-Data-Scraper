@@ -185,7 +185,8 @@ export const WhatsAppCampaignDetailView: React.FC<Props> = ({ campaign, onBack }
                   { label: 'Button clicks', value: live.button_click_count, cls: 'text-purple-300',
                     hint: `${live.button_clickers} recipient${live.button_clickers === 1 ? '' : 's'}` },
                   { label: 'Link visits', value: live.unique_visits, cls: 'text-amber-300',
-                    hint: `${live.repeated_visits} repeat` },
+                    hint: `${live.repeated_visits} repeat` + (live.automated_hits
+                      ? ` · ${live.automated_hits} automated ignored` : '') },
                 ].map(c => (
                   <div key={c.label} className="py-3 px-4 text-center">
                     <div className={`text-2xl font-bold ${c.cls}`}>{c.value}</div>

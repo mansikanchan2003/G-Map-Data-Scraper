@@ -12,7 +12,7 @@ from src.database import get_db
 from src.models.whatsapp import (
     WhatsAppAccount, WhatsAppTemplate, WhatsAppCampaign,
     WhatsAppCampaignRecipient, WhatsAppCampaignLog, WhatsAppLinkClick,
-    WhatsAppButtonClick, WhatsAppReply
+    WhatsAppButtonClick, WhatsAppReply, HUMAN_LINK_CLICK
 )
 from src.schemas.whatsapp import (
     WhatsAppAccountCreate, WhatsAppAccountUpdate, WhatsAppAccountResponse,
@@ -197,7 +197,16 @@ def get_media(media_id: str):
 
 @router.get("/templates", response_model=List[WhatsAppTemplateResponse])
 def list_templates(db: Session = Depends(get_db)):
-    return db.query(WhatsAppTemplate).order_by(WhatsAppTemplate.created_at.desc()).all()
+    # Agent drafts nobody has approved live only in the Template Studio: they
+    # are unknown to Meta, so offering them for a campaign would only fail.
+    from src.services.template_studio import DRAFT_STATUSES
+
+    return (
+        db.query(WhatsAppTemplate)
+        .filter(~((WhatsAppTemplate.origin == "agent") & WhatsAppTemplate.status.in_(DRAFT_STATUSES)))
+        .order_by(WhatsAppTemplate.created_at.desc())
+        .all()
+    )
 
 @router.get("/templates/meta", response_model=MetaTemplateListResponse)
 def list_meta_templates():
@@ -388,6 +397,11 @@ def submit_template(template_id: str, req: WhatsAppTemplateSubmitRequest = None,
     if not db_tmpl:
         raise HTTPException(status_code=404, detail="Template not found")
 
+    from src.services.template_studio import DRAFT_STATUSES
+    if db_tmpl.origin == "agent" and db_tmpl.status in DRAFT_STATUSES:
+        # The agent's work reaches Meta only through a person's approval.
+        raise HTTPException(status_code=409, detail="Approve this template in the Template Studio to submit it.")
+
     category = (req.category if req else None) or "MARKETING"
     service = WhatsAppTemplateSubmissionService(db)
     result = service.submit(db_tmpl, category=category)
@@ -559,6 +573,10 @@ def _visit_counts(db: Session, campaign_ids: List[str]) -> dict:
 
     A recipient who opened the link five times counts as one unique visit and
     four repeated ones, so the two columns never double-count the same person.
+
+    Hits from preview fetchers, scanners and scripts are left out of all three
+    and reported on their own as "automated", so they are visible without
+    ever passing for a recipient.
     """
     if not campaign_ids:
         return {}
@@ -571,12 +589,19 @@ def _visit_counts(db: Session, campaign_ids: List[str]) -> dict:
             WhatsAppLinkClick.recipient_id,
             sa_func.count(WhatsAppLinkClick.click_id).label("clicks"),
         )
-        .filter(WhatsAppLinkClick.campaign_id.in_(campaign_ids))
+        .filter(WhatsAppLinkClick.campaign_id.in_(campaign_ids), HUMAN_LINK_CLICK)
         .group_by(WhatsAppLinkClick.campaign_id, WhatsAppLinkClick.recipient_id)
         .all()
     )
 
-    counts = {cid: {"unique": 0, "repeated": 0, "total": 0} for cid in campaign_ids}
+    counts = {cid: {"unique": 0, "repeated": 0, "total": 0, "automated": 0} for cid in campaign_ids}
+    for campaign_id, hits in (
+        db.query(WhatsAppLinkClick.campaign_id, sa_func.count(WhatsAppLinkClick.click_id))
+        .filter(WhatsAppLinkClick.campaign_id.in_(campaign_ids), ~HUMAN_LINK_CLICK)
+        .group_by(WhatsAppLinkClick.campaign_id)
+        .all()
+    ):
+        counts[campaign_id]["automated"] = hits
     for campaign_id, _recipient_id, clicks in rows:
         entry = counts[campaign_id]
         entry["unique"] += 1
@@ -677,6 +702,7 @@ def _with_visits(db: Session, campaigns: list) -> List[WhatsAppCampaignResponse]
         item.unique_visits = stat.get("unique", 0)
         item.repeated_visits = stat.get("repeated", 0)
         item.total_clicks = stat.get("total", 0)
+        item.automated_hits = stat.get("automated", 0)
 
         d = delivery.get(c.campaign_id, {})
         item.delivered_count = d.get("delivered", 0)
@@ -795,7 +821,7 @@ def get_campaign_recipients(
                 WhatsAppLinkClick.recipient_id,
                 sa_func.count(WhatsAppLinkClick.click_id),
             )
-            .filter(WhatsAppLinkClick.recipient_id.in_(ids))
+            .filter(WhatsAppLinkClick.recipient_id.in_(ids), HUMAN_LINK_CLICK)
             .group_by(WhatsAppLinkClick.recipient_id)
             .all()
         ):

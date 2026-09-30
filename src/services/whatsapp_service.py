@@ -37,7 +37,7 @@ def tracking_link_for(token: str) -> str:
     """
     base = (os.environ.get("PUBLIC_BASE_URL") or "").rstrip("/")
     target = os.environ.get(
-        "CAMPAIGN_LINK_TARGET_URL", "https://kiosk.eko.in/?utm_source=WhatsApp+Campaign"
+        "CAMPAIGN_LINK_TARGET_URL", "https://kiosk.eko.in/signup?utm_source=AutoGMap"
     )
     if not base or not token:
         return target
@@ -732,6 +732,12 @@ class WhatsAppCampaignService:
 
             campaign.completed_at = datetime.now(timezone.utc)
             db.commit()
+
+            # The campaign's own report, and a new entry in the record of what
+            # has been learned. It cannot fail the campaign: it catches its own
+            # errors, and the sends are already committed.
+            from src.services.campaign_insights import on_campaign_finished
+            on_campaign_finished(campaign_id)
 
         except Exception as e:
             # `campaign` may never have been bound if the failure happened during

@@ -51,6 +51,9 @@ export interface WhatsAppCampaign {
   completed_at: string | null;
   unique_visits: number;
   repeated_visits: number;
+  /** Hits from link-preview fetchers, scanners and scripts: recorded, but
+   *  never counted as a recipient visiting. */
+  automated_hits: number;
   total_clicks: number;
 
   /** Delivery as reported by Meta's webhook. These accumulate rather than
@@ -485,3 +488,155 @@ export const takeAudience = (): { contacts: any[]; label: string } | null => {
     return null;
   }
 };
+
+// ---------------------------------------------------------
+// Template Studio — the agent drafts, a person approves.
+// ---------------------------------------------------------
+
+const STUDIO = `${API_BASE}/studio`;
+
+export interface StudioPoster {
+  headline_line1: string;
+  headline_line2: string;
+  headline_highlight: string;
+  subline: string;
+  callout: string;
+  callout_highlight: string;
+  benefits_title: string;
+  benefits: { icon: string; text: string }[];
+  cta: string;
+  opportunity_title: string;
+  opportunity_text: string;
+  sign_title: string;
+  bank_name: string;
+  phone_label: string;
+  web_label: string;
+}
+
+export interface StudioPhotoCheck {
+  passed?: boolean;
+  attempt?: number;
+  has_text?: boolean;
+  photorealistic?: boolean;
+  operator_serving_customer?: boolean;
+  anatomy_problems?: boolean;
+  issues?: string[];
+}
+
+export interface StudioDraft {
+  template_id: string;
+  name: string;
+  /** GENERATING, AWAITING_APPROVAL, GENERATION_FAILED, REJECTED_BY_REVIEWER,
+   *  or Meta's review state once approved and submitted. */
+  status: string;
+  target_state: string | null;
+  language_code: string | null;
+  category: string | null;
+  header_type: string | null;
+  header_content: string | null;
+  body: string;
+  footer: string | null;
+  buttons: any[] | null;
+  meta_template_name: string | null;
+  generation: {
+    /** Which idea from the agent's angle menu this draft tests. */
+    angle_key?: string;
+    angle?: string;
+    brief?: string | null;
+    poster?: StudioPoster;
+    photo_check?: StudioPhotoCheck;
+    copy_warnings?: string[];
+    models?: { text?: string; image?: string };
+    error?: string;
+  } | null;
+  review_note: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface StudioState {
+  state: string;
+  language_code: string | null;
+  language: string | null;
+  locations: number;
+  businesses: number;
+}
+
+export interface StudioRules {
+  facts: string[];
+  copy_rules: string[];
+  image_rules: string[];
+  state_languages: Record<string, string>;
+}
+
+export interface StudioStateStats {
+  state: string;
+  sent: number;
+  delivered: number;
+  read: number;
+  visitors: number;
+  tappers: number;
+}
+
+export interface StudioPerformance extends Omit<StudioStateStats, 'state'> {
+  template_id: string;
+  name: string;
+  origin: string;
+  target_state: string | null;
+  language: string | null;
+  angle_key: string | null;
+  angle: string | null;
+  /** False when Meta never reported delivery for this template, so reads
+   *  and taps are unknown rather than zero. */
+  tracked: boolean;
+  read_rate: number | null;
+  response_rate: number | null;
+  by_state: StudioStateStats[];
+}
+
+const studioCall = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  const res = await fetch(`${STUDIO}${path}`, {
+    credentials: 'include',
+    headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
+    ...init,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.detail || `Request failed (${res.status})`);
+  return json as T;
+};
+
+export const fetchStudioStatus = () => studioCall<{ ready: boolean; error: string | null }>('/status');
+export const fetchStudioRules = () => studioCall<StudioRules>('/rules');
+export const fetchStudioStates = () => studioCall<StudioState[]>('/states');
+export const fetchStudioDrafts = () => studioCall<StudioDraft[]>('/drafts');
+export const fetchStudioPerformance = () => studioCall<StudioPerformance[]>('/performance');
+
+export const generateStudioDrafts = (state: string, count: number, brief: string) =>
+  studioCall<StudioDraft[]>('/generate', {
+    method: 'POST',
+    body: JSON.stringify({ state, count, brief: brief.trim() || null }),
+  });
+
+export const requestNewPhoto = (id: string) =>
+  studioCall<StudioDraft>(`/drafts/${id}/new-photo`, { method: 'POST' });
+
+export const editStudioDraft = (
+  id: string,
+  edit: { body?: string; footer?: string; apply_button?: string; callback_button?: string; poster?: Partial<StudioPoster> },
+) => studioCall<{ draft: StudioDraft; warnings: string[] }>(`/drafts/${id}`, {
+  method: 'PATCH',
+  body: JSON.stringify(edit),
+});
+
+export const approveStudioDraft = (id: string, category = 'MARKETING') =>
+  studioCall<{ status: string; error: string | null; draft: StudioDraft }>(`/drafts/${id}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ category }),
+  });
+
+export const rejectStudioDraft = (id: string, reason: string) =>
+  studioCall<StudioDraft>(`/drafts/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });

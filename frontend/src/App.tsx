@@ -20,6 +20,8 @@ const ConfigView = lazy(() => import('./views/ConfigView').then(m => ({ default:
 const ApprovalsView = lazy(() => import('./views/ApprovalsView').then(m => ({ default: m.ApprovalsView })));
 const WhatsAppCampaignView = lazy(() => import('./views/WhatsAppCampaignView').then(m => ({ default: m.WhatsAppCampaignView })));
 const WhatsAppTemplatesView = lazy(() => import('./views/WhatsAppTemplatesView').then(m => ({ default: m.WhatsAppTemplatesView })));
+const TemplateStudioView = lazy(() => import('./views/TemplateStudioView').then(m => ({ default: m.TemplateStudioView })));
+const CampaignInsightsView = lazy(() => import('./views/CampaignInsightsView').then(m => ({ default: m.CampaignInsightsView })));
 const WhatsAppHistoryView = lazy(() => import('./views/WhatsAppHistoryView').then(m => ({ default: m.WhatsAppHistoryView })));
 
 export default function App() {
@@ -46,7 +48,7 @@ export default function App() {
   useEffect(() => {
     const handleHash = () => {
       const hash = window.location.hash.replace('#', '');
-      if (['businesses', 'jobs', 'config', 'dashboard', 'whatsapp-campaign', 'whatsapp-templates', 'whatsapp-history'].includes(hash)) {
+      if (['businesses', 'jobs', 'config', 'dashboard', 'whatsapp-campaign', 'whatsapp-templates', 'whatsapp-studio', 'whatsapp-history', 'whatsapp-insights'].includes(hash)) {
         setActiveTab(hash as NavTab);
       }
     };
@@ -201,7 +203,11 @@ export default function App() {
 
           {activeTab === 'whatsapp-templates' && <WhatsAppTemplatesView />}
 
+          {activeTab === 'whatsapp-studio' && <TemplateStudioView />}
+
           {activeTab === 'whatsapp-history' && <WhatsAppHistoryView />}
+
+          {activeTab === 'whatsapp-insights' && <CampaignInsightsView />}
           </Suspense>
         </main>
       </div>

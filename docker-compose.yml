@@ -92,6 +92,12 @@ services:
       META_APP_SECRET: ${META_APP_SECRET:-}
       META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-gmap_scraper_verify_token}
 
+      # Template Studio. The agent writes copy, makes and checks photos with
+      # Gemini. Model overrides are optional; the best available is picked.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL:-}
+      GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL:-}
+
       # Discovery tuning. These were in .env but never listed here, so the
       # container fell back to the code defaults and editing .env appeared to
       # do nothing.
@@ -124,12 +130,12 @@ services:
       # Campaign link tracking. PUBLIC_BASE_URL must be an address a phone can
       # reach over the internet, otherwise the tracking links will not open.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
-      CAMPAIGN_LINK_TARGET_URL: ${CAMPAIGN_LINK_TARGET_URL:-https://kiosk.eko.in/?utm_source=WhatsApp+Campaign#apply-now}
-      CAMPAIGN_LINK_FALLBACK_URL: ${CAMPAIGN_LINK_FALLBACK_URL:-https://kiosk.eko.in/}
+      CAMPAIGN_LINK_TARGET_URL: ${CAMPAIGN_LINK_TARGET_URL:-https://kiosk.eko.in/signup?utm_source=AutoGMap}
+      CAMPAIGN_LINK_FALLBACK_URL: ${CAMPAIGN_LINK_FALLBACK_URL:-https://kiosk.eko.in/signup?utm_source=AutoGMap}
       CAMPAIGN_LINK_HASH_SALT: ${CAMPAIGN_LINK_HASH_SALT:-gmap-campaign}
       # Tags added to the destination so analytics can attribute the visit.
       # utm_campaign is the campaign's own name and is not set here.
-      CAMPAIGN_UTM_SOURCE: ${CAMPAIGN_UTM_SOURCE:-WhatsApp Campaign}
+      CAMPAIGN_UTM_SOURCE: ${CAMPAIGN_UTM_SOURCE:-AutoGMap}
       CAMPAIGN_UTM_MEDIUM: ${CAMPAIGN_UTM_MEDIUM:-whatsapp}
 
       # Playwright browser path (must match Dockerfile ENV)

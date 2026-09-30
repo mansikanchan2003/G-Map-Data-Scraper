@@ -315,8 +315,9 @@ to trim.
 | Variable | Description |
 |---|---|
 | `PUBLIC_BASE_URL` | A URL a phone can reach over the internet, e.g. `https://link.example.com`. Without it, messages carry the plain destination and no clicks are recorded. |
-| `CAMPAIGN_LINK_TARGET_URL` | Where a tracked link forwards to |
-| `CAMPAIGN_LINK_FALLBACK_URL` | Destination for an unknown or expired token |
+| `CAMPAIGN_LINK_TARGET_URL` | Where a tracked link forwards to. Default `https://kiosk.eko.in/signup?utm_source=AutoGMap`: the signup page opens on the form (the home page's `#apply-now` jump stops short of it), and the kiosk site records `utm_source` against the signup, so leads show AutoGMap as their source. |
+| `CAMPAIGN_LINK_FALLBACK_URL` | Destination for an unknown or expired token (same default) |
+| `CAMPAIGN_UTM_SOURCE` | Source added when the destination names none. Default `AutoGMap` |
 | `CAMPAIGN_LINK_HASH_SALT` | Salt for hashing visitor IPs |
 
 **Never commit your `.env` file. It is excluded by `.gitignore`.**
@@ -434,6 +435,42 @@ Compose in UI  →  auto-submitted to Meta  →  PENDING  →  APPROVED  →  se
   category shown is the one Meta assigned, not the one requested.
 - Deleting a template keeps past campaign history; the campaign's link to it is
   cleared. The copy registered with Meta is left untouched.
+
+### Template Studio (AI-drafted templates)
+
+**WhatsApp → Template Studio** has an agent draft templates for a state and
+hold them for a person to approve. **Nothing reaches Meta until someone clicks
+Approve**; unapproved drafts are kept out of the Templates list and the
+campaign picker, and the generic submit endpoint refuses them.
+
+Each round:
+
+1. Pick a state. Its language is fixed by `STATE_LANGUAGES` in
+   `src/services/creative_brief.py` (Punjab → Punjabi, Gujarat → Gujarati,
+   Maharashtra → Marathi, Uttar Pradesh/Haryana/Rajasthan → Hindi). A new
+   state needs a line there before it can be generated for.
+2. Gemini writes 1–4 variants at once, each testing a different angle, from
+   the standing brief, the templates already sent, how each has performed per
+   state, and the reasons given for earlier rejections.
+3. Every variant is checked: all text in the state's script, only the allowed
+   facts, the contact number present, no URL in the body, Meta's length limits.
+4. A photograph of an SBI Customer Service Point with an operator is generated
+   **with no text in it**, checked for stray lettering and an artificial look,
+   and regenerated if it fails.
+5. The poster is rendered in Chromium around the photo: Eko logo, SBI
+   signboard, headline, benefits and contact footer, all set in real fonts.
+   Image models misspell Indic scripts; a renderer does not.
+
+Approving submits the draft to Meta (it then follows the usual review above).
+Rejecting asks for a reason, which the agent reads next time for that state.
+**Edit text** re-renders the poster; **New photo** keeps the copy.
+
+The table at the bottom — sent, delivered, read, link visits and button taps per
+template and recipient state — is what the agent learns from. It only means
+something once the webhook is live: campaigns sent before it show "not tracked".
+
+Needs `GEMINI_API_KEY`, and internet access from the backend to Google Fonts
+at render time.
 
 ### Media limits
 
@@ -563,6 +600,7 @@ alembic history --verbose
 | `2b9f4c7d1e88` | Per-recipient tracking token and link-click records |
 | `3c1a8e5f7b22` | Template billing category as reported by Meta |
 | `4d2b7a9c3e51` | Template delete clears the campaign link instead of blocking |
+| `a1d8e6f3c2b4` | Template Studio: origin, target state, generation record, reviewer decision |
 
 ---
 
