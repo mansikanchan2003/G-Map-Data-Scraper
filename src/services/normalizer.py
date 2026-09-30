@@ -15,44 +15,76 @@ logger = logging.getLogger("gmap_scraper.normalizer")
 
 def normalize_phone(phone: Optional[str]) -> Optional[str]:
     """
-    Normalize phone number safely.
-    Handles standard Indian phone formats without corrupting non-standard formats.
+    Return an Indian number as +91 followed by its ten national digits, or None.
+
+    Anything that cannot be expressed that way is dropped rather than stored
+    in whatever shape it arrived in. Storing it meant campaigns carried
+    numbers nobody could be reached on:
+
+      * Toll-free helplines — 1800…, 1860… — are eleven digits and belong to
+        the bank whose branch was listed, not to the business. The same
+        handful repeated across hundreds of listings.
+      * Border searches return listings from across it. A Gurdaspur radius
+        reaches Narowal, Pakistan; those are real businesses but not ones
+        this project can contact.
+      * Fragments too short or too long to dial at all.
+
+    A valid national number is ten digits and does not begin with 0. Mobiles
+    start 6-9; landlines carry an STD code, and plenty of those begin with 1 —
+    0181 Jalandhar, 0183 Amritsar, 0172 Chandigarh, 011 Delhi — so a rule that
+    barred a leading 1 would have thrown away the landlines of exactly the
+    districts being scraped. The toll-free ranges are excluded by length
+    instead: 1800… and 1860… are eleven digits, not ten.
     """
     if not phone:
         return None
-    
-    # Strip basic noise like labels
+
     raw = re.sub(r'^(?:Phone|Tel|Mobile|Call)[:\s]*', '', str(phone), flags=re.IGNORECASE).strip()
     if not raw:
         return None
-    
-    # Extract digits and leading plus
-    has_plus = raw.startswith('+')
+
     digits = re.sub(r'\D', '', raw)
-    
     if not digits:
         return None
 
-    # Handle Indian 10-digit mobile/landline numbers
-    # If 12 digits starting with 91, extract the 10 digits
+    # Reduce to the ten national digits, whatever the caller wrote around them.
     if len(digits) == 12 and digits.startswith('91'):
-        return f"+91{digits[2:]}"
+        national = digits[2:]
+    elif len(digits) == 13 and digits.startswith('091'):
+        national = digits[3:]
     elif len(digits) == 11 and digits.startswith('0'):
-        return f"+91{digits[1:]}"
-    elif len(digits) == 10 and digits[0] in '6789':
-        return f"+91{digits}"
-    elif has_plus:
-        # This targets India. Border districts sit inside the search radius of
-        # another country — a Gurdaspur search returned businesses in Narowal,
-        # Pakistan, with +92 numbers. They are real listings but not ones this
-        # project can contact, so the number is dropped rather than stored as
-        # if it were reachable.
-        if not digits.startswith('91'):
-            logger.debug(f"normalizer event=FOREIGN_NUMBER_DROPPED prefix={digits[:3]}")
-            return None
-        return f"+{digits}"
+        national = digits[1:]
+    elif len(digits) == 10:
+        national = digits
+    elif digits.startswith('91') and len(digits) > 12:
+        # Two numbers run together, or a number with an extension. Neither is
+        # safe to guess at.
+        logger.debug("normalizer event=PHONE_TOO_LONG")
+        return None
+    elif not digits.startswith('91') and (raw.startswith('+') or len(digits) > 12):
+        logger.debug(f"normalizer event=FOREIGN_NUMBER_DROPPED prefix={digits[:3]}")
+        return None
+    else:
+        # Eight-digit toll-free stubs, truncated fragments, anything else.
+        logger.debug(f"normalizer event=PHONE_UNUSABLE len={len(digits)}")
+        return None
 
-    return digits
+    if len(national) != 10 or national[0] == '0':
+        logger.debug(f"normalizer event=PHONE_NOT_INDIAN first={national[:1]} len={len(national)}")
+        return None
+
+    return f"+91{national}"
+
+
+def is_mobile(phone: Optional[str]) -> bool:
+    """
+    True for a number that can receive WhatsApp or SMS.
+
+    Indian mobile numbers begin 6-9; a landline reaches nobody on either
+    channel, so a campaign audience is built from these.
+    """
+    return bool(phone and re.fullmatch(r'\+91[6-9]\d{9}', phone))
+
 
 def normalize_url(url: Optional[str]) -> Optional[str]:
     """

@@ -34,7 +34,7 @@ def test_email_enrichment_integration(mock_enrich_batch, mock_discovery, test_db
         "results": [
             {
                 "name": "Plumber 1",
-                "phone": "123",
+                "phone": "+919876543210",
                 "website": "http://plumber1.com",
                 "google_maps_url": "http://maps/1",
                 "latitude": 10.0,
@@ -43,7 +43,7 @@ def test_email_enrichment_integration(mock_enrich_batch, mock_discovery, test_db
             },
             {
                 "name": "Plumber 2",
-                "phone": "456",
+                "phone": "+919876500001",
                 "website": "http://plumber2.com", # Needs enrichment
                 "google_maps_url": "http://maps/2",
                 "latitude": 10.0,

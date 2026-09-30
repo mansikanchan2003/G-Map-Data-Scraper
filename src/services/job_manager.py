@@ -175,6 +175,7 @@ def execute_single_job(
         updated_count_biz = 0
         duplicate_count = 0
         unidentifiable_count = 0
+        uncontactable_count = 0
         detail_extraction_failed_count = 0
         persisted_results = []
 
@@ -192,6 +193,21 @@ def execute_single_job(
                     detail_extraction_failed_count += 1
 
                 normalized = normalize_business_record(item)
+
+                # A listing with no phone, no email and no website can never
+                # be reached, so it is discarded now rather than stored. One
+                # with a website is kept for the moment: enrichment runs
+                # after this loop and reads an address off the site, and
+                # dropping it here would throw away the lead before the only
+                # step that could find its contact. Those that come out of
+                # enrichment still uncontactable are removed below.
+                #
+                # Normalization has already run, so a toll-free helpline or a
+                # foreign number is None by this point: the listing survives
+                # only on a number that can actually be dialled.
+                if not normalized["phone"] and not normalized["email"]                         and not normalized["website"]:
+                    uncontactable_count += 1
+                    continue
 
                 # Geo distance validation
                 is_valid, distance_km, geo_notes = validate_geo_distance(
@@ -392,6 +408,27 @@ def execute_single_job(
                 db.commit()
             else:
                 db.commit() # commit the skipped statuses
+
+            # Enrichment has had its turn. Anything still carrying neither a
+            # phone nor an email is a row no campaign can ever use, so it
+            # goes rather than sitting in the table inflating the count.
+            stranded = db.query(Business).filter(
+                Business.job_id == job.job_id,
+                (Business.phone.is_(None)) | (Business.phone == ""),
+            ).filter(
+                (Business.email.is_(None)) | (Business.email == ""),
+            ).all()
+            for row in stranded:
+                db.delete(row)
+                uncontactable_count += 1
+                saved_count -= 1
+            if stranded:
+                job.businesses_saved = max(0, saved_count)
+                db.commit()
+                logger.info(
+                    f"job_manager job_id={job_id} event=UNCONTACTABLE_DROPPED "
+                    f"count={len(stranded)}"
+                )
         except Exception as enrich_err:
             logger.error(f"Email enrichment failed for Job {job_id}: {enrich_err}")
             if job.status == "COMPLETED":
@@ -412,6 +449,7 @@ def execute_single_job(
             "businesses_updated": updated_count_biz,
             "businesses_duplicate": duplicate_count,
             "unidentifiable_count": unidentifiable_count,
+            "uncontactable_count": uncontactable_count,
             "detail_extraction_failed_count": detail_extraction_failed_count,
             "emails_found": emails_found,
             "emails_not_found": emails_not_found,
@@ -437,6 +475,7 @@ def execute_single_job(
             "businesses_updated": 0,
             "businesses_duplicate": 0,
             "unidentifiable_count": 0,
+            "uncontactable_count": 0,
             "detail_extraction_failed_count": 0,
             "emails_found": 0,
             "emails_not_found": 0,
