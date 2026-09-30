@@ -28,6 +28,12 @@ class BatchRequest(BaseModel):
     pincodes: Optional[List[str]] = None
     anchor_names: Optional[List[str]] = None
     categories: Optional[List[str]] = None
+    # An exact list of jobs, which is how the autopilot runs the batch it
+    # planned. Combined with the other filters like any of them.
+    job_ids: Optional[List[str]] = None
+    # Up to this many extra seconds, chosen at random, after each job. A fixed
+    # gap between searches is a machine's rhythm; a varying one is not.
+    delay_jitter_seconds: float = Field(0.0, ge=0.0, le=120.0)
     # A batch takes tens of minutes. n8n waits for the result, but a browser
     # cannot hold the request open that long, so the dashboard starts it in
     # the background and follows the run instead.
@@ -249,6 +255,9 @@ def apply_target_filters(query, payload: "BatchRequest"):
         query = query.join(Category, Category.category_id == Job.category_id)
         query = query.filter(func.lower(Category.category_name).in_(categories))
 
+    if payload.job_ids:
+        query = query.filter(Job.job_id.in_(payload.job_ids))
+
     return query
 
 
@@ -460,7 +469,9 @@ def _run_batch(payload: "BatchRequest", db: Session):
             if blocked > 0:
                 break
 
-            time.sleep(payload.delay_between_jobs_seconds)
+            import random
+            time.sleep(payload.delay_between_jobs_seconds
+                       + random.uniform(0, payload.delay_jitter_seconds))
 
     except Exception as e:
         errors.append({"batch_error": str(e)})
@@ -553,3 +564,49 @@ def stop_discovery(db: Session = Depends(get_db)):
         "run_id": active.run_id,
         "message": "Stop requested. The batch will finish the job it is on and then stop.",
     }
+
+
+# --- Autopilot ---------------------------------------------------------------
+# Rounds of batches, one state at a time, run on their own. See
+# src/services/discovery_autopilot.py for how a round is planned and paced.
+
+class AutopilotSettings(BaseModel):
+    enabled: Optional[bool] = None
+    batch_size: Optional[int] = None
+    batches_per_round: Optional[int] = None
+    gap_between_rounds_minutes: Optional[float] = None
+    gap_between_batches_seconds: Optional[List[float]] = None
+    job_delay_seconds: Optional[float] = None
+    job_delay_jitter_seconds: Optional[float] = None
+    daily_batch_target: Optional[int] = None
+    continue_after_target: Optional[bool] = None
+    states: Optional[List[str]] = None
+
+
+@router.get("/autopilot")
+def autopilot_status(db: Session = Depends(get_db)):
+    from src.services import discovery_autopilot
+    return discovery_autopilot.status(db)
+
+
+@router.put("/autopilot")
+def autopilot_update(payload: AutopilotSettings, db: Session = Depends(get_db)):
+    """Switches the autopilot on or off, or changes how it paces itself."""
+    from src.services import discovery_autopilot
+    try:
+        discovery_autopilot.save_settings(db, payload.model_dump(exclude_none=True))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info(f"discovery event=AUTOPILOT_SETTINGS {payload.model_dump(exclude_none=True)}")
+    return discovery_autopilot.status(db)
+
+
+@router.post("/autopilot/clear-cooldown")
+def autopilot_clear_cooldown(db: Session = Depends(get_db)):
+    """Ends a CAPTCHA cool-down early. The slower pace after it stays."""
+    from src.services import discovery_autopilot as ap
+    state = ap.get_state(db)
+    state["cooldown_until"] = None
+    ap._event(state, "COOLDOWN_CLEARED", "CAPTCHA pause ended by hand.")
+    ap._write(db, ap.STATE_KEY, state)
+    return ap.status(db)

@@ -5,6 +5,7 @@ from .business import Business
 from .run_log import RunLog
 from .app_setting import AppSetting
 from .user import User
+from .autopilot import DiscoveryRound
 from .insights import CampaignInsight, InsightSnapshot
 from .whatsapp import WhatsAppAccount, WhatsAppTemplate, WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppCampaignLog, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppReply
 
@@ -24,6 +25,7 @@ __all__ = [
     "WhatsAppReply",
     "AppSetting",
     "CampaignInsight",
+    "DiscoveryRound",
     "InsightSnapshot",
     "User"
 ]

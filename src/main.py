@@ -37,8 +37,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Could not seed the bootstrap admin: {e}")
     logger.info("Database schema initialized")
+
+    # The scraping autopilot. It idles until switched on from the dashboard,
+    # and runs in this process so it shares the one browser-capable worker.
+    # Off under pytest, where a background thread would race the tests' own
+    # databases.
+    import sys
+    if os.environ.get("DISCOVERY_AUTOPILOT_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
+        from src.services import discovery_autopilot
+        discovery_autopilot.start()
     yield
     # --- Shutdown ---
+    try:
+        from src.services import discovery_autopilot
+        discovery_autopilot.stop()
+    except Exception:
+        pass
     logger.info("Shutdown complete")
 
 

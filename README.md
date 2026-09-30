@@ -47,6 +47,33 @@ dashboard.
   shop discovered under several categories is stored once.
 - CAPTCHA is detected and the batch stops early rather than escalating.
 
+### Scraping autopilot
+
+**Dashboard → Scraping autopilot** runs discovery on its own. Switch it on and
+it works in **rounds**:
+
+- A round is **one state** and **5 batches of 25 jobs**, run one after another.
+  Each batch is a different tehsil — in a different district while the state
+  has unused ones — and no category is repeated within the round.
+- When a round finishes, it waits **5 minutes** and starts the next round in a
+  **different state**, the one visited longest ago.
+- It stops for the day at **30 batches** (IST), finishing the round it is in,
+  and carries on after midnight. A 25-job batch takes 15–20 minutes, so 30
+  batches take about 10–11 hours.
+- Before each round it runs job generation, so newly added PINs join the queue.
+
+To stay clear of Google's CAPTCHA it paces itself like a person, not a
+machine: randomised pauses between jobs, batches and rounds; a browser that
+reports its real version with an Indian locale. If a CAPTCHA appears anyway,
+everything stops for a cool-down that grows each time it recurs (30 min, 1 h,
+2 h, 4 h), the pace slows afterwards, and the blocked job goes back in the
+queue. Three clean batches reset it. It never tries to solve a CAPTCHA.
+
+Every setting — batches per day, batch size, gaps, which states — is under
+**Pacing**. **Stop** on a running batch also switches the autopilot off. It
+never runs alongside a batch started by hand, and after a restart it resumes
+the round it was in.
+
 ### Target locations
 - **The PIN list is editable.** The spreadsheets seed it, but new PIN codes and
   towns are added from **Configuration → Add PIN** as the business expands into
@@ -601,6 +628,9 @@ alembic history --verbose
 | `3c1a8e5f7b22` | Template billing category as reported by Meta |
 | `4d2b7a9c3e51` | Template delete clears the campaign link instead of blocking |
 | `a1d8e6f3c2b4` | Template Studio: origin, target state, generation record, reviewer decision |
+| `b2e9f7a4d3c5` | Campaign insights and playbook snapshots |
+| `c4a7e2d9b8f1` | Automated link hits flagged, never counted as clicks |
+| `d5b8f3a1c6e2` | Scraping autopilot rounds |
 
 ---
 

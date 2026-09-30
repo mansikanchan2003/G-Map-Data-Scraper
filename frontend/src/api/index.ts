@@ -554,3 +554,88 @@ export async function replyToLead(clickId: string, message: string): Promise<Rep
     body: JSON.stringify({ message }),
   });
 }
+
+// ---------------------------------------------------------
+// Scraping autopilot — rounds of batches, one state at a time.
+// ---------------------------------------------------------
+
+export interface AutopilotSettings {
+  enabled: boolean;
+  batch_size: number;
+  batches_per_round: number;
+  gap_between_rounds_minutes: number;
+  gap_between_batches_seconds: [number, number];
+  job_delay_seconds: number;
+  job_delay_jitter_seconds: number;
+  daily_batch_target: number;
+  continue_after_target: boolean;
+  states: string[];
+}
+
+export interface AutopilotBatch {
+  batch: number;
+  location_id: string;
+  anchor: string | null;
+  pincode: string | null;
+  district: string | null;
+  tehsil: string | null;
+  categories: string[];
+  /** PLANNED, RUNNING, DONE, or SKIPPED after repeated CAPTCHAs. */
+  status: string;
+  blocks: number;
+  run_id: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  jobs_completed: number;
+  businesses_saved: number;
+  jobs: number;
+  jobs_finished: number;
+}
+
+export interface AutopilotRound {
+  round_id: string;
+  state: string;
+  status: string;
+  batches_done: number;
+  batches: number;
+  plan: AutopilotBatch[];
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface AutopilotStatus {
+  settings: AutopilotSettings;
+  state: {
+    /** What it is doing right now: off, running_batch, gap_between_batches,
+     *  gap_between_rounds, captcha_cooldown, daily_target_reached, ... */
+    phase: string;
+    captcha_level: number;
+    clean_streak: number;
+    cooldown_until: string | null;
+    next_batch_at: string | null;
+    next_round_at?: string | null;
+    current_batch?: number;
+    last_event: string | null;
+    last_event_at: string | null;
+  };
+  now: string;
+  today: {
+    batches_done: number;
+    target: number;
+    jobs: number;
+    businesses_saved: number;
+    captchas: number;
+    avg_batch_seconds: number | null;
+    target_eta: string | null;
+  };
+  pending_by_state: Record<string, number>;
+  rounds: AutopilotRound[];
+}
+
+export const fetchAutopilot = () => request<AutopilotStatus>('/api/v1/discovery/autopilot');
+
+export const updateAutopilot = (changes: Partial<AutopilotSettings>) =>
+  request<AutopilotStatus>('/api/v1/discovery/autopilot', { method: 'PUT', body: JSON.stringify(changes) });
+
+export const clearAutopilotCooldown = () =>
+  request<AutopilotStatus>('/api/v1/discovery/autopilot/clear-cooldown', { method: 'POST' });

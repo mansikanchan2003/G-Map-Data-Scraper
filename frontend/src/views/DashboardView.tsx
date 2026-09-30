@@ -1,6 +1,7 @@
 import { formatDateTime } from '../utils/datetime';
 import React, { useState } from 'react';
 import { DiscoveryRunner } from '../components/DiscoveryRunner';
+import { AutopilotPanel } from '../components/AutopilotPanel';
 import { CollapsiblePanel } from '../components/CollapsiblePanel';
 import { LeadsPanel } from '../components/LeadsPanel';
 import { ScaleBars } from '../components/ScaleBars';
@@ -222,6 +223,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </section>
 
       {/* Split Layout: Latest Run Card (Left) & Operational Actions (Right) */}
+      <AutopilotPanel />
+
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* Left: Latest Orchestration Run Card */}
         <div className="lg:col-span-7">

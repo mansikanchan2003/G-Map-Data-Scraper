@@ -103,6 +103,28 @@ class GoogleMapsDiscoveryEngine:
                 ]
             )
 
+    def _context_options(self) -> dict:
+        """
+        How each page presents itself.
+
+        The user agent used to be a fixed Chrome 120 string on a far newer
+        Chromium — a mismatch a site can see, since the engine's real features
+        disagree with the version it claims. It is now built from the actual
+        browser's major version, the way real Chrome reports itself, with an
+        Indian locale and time zone to match the searches it runs.
+        """
+        try:
+            major = (self._browser.version or "").split(".")[0] or "140"
+        except Exception:
+            major = "140"
+        return {
+            "viewport": {"width": 1280, "height": 800},
+            "user_agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           f"(KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"),
+            "locale": "en-IN",
+            "timezone_id": "Asia/Kolkata",
+        }
+
     def close(self):
         if self._browser:
             try:
@@ -147,11 +169,7 @@ class GoogleMapsDiscoveryEngine:
         should_close = False
         if page is None:
             self._ensure_browser()
-            context = self._browser.new_context(
-                viewport={"width": 1280, "height": 800},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                           "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            )
+            context = self._browser.new_context(**self._context_options())
             page = context.new_page()
             should_close = True
 
@@ -263,10 +281,7 @@ class GoogleMapsDiscoveryEngine:
 
         if page is None:
             self._ensure_browser()
-            context = self._browser.new_context(
-                viewport={"width": 1280, "height": 800},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
+            context = self._browser.new_context(**self._context_options())
             page = context.new_page()
             should_close_page = True
 
