@@ -570,17 +570,45 @@ def test_audience_geo_filters_combine():
     assert q.filter.call_count == 3, "each chosen level adds a condition"
 
 
-def test_only_sent_recipients_count_as_contacted():
+def test_contacted_means_a_message_went_out():
     """
-    A recipient that was skipped or failed never received anything. Counting
-    them as contacted would quietly shrink every later audience.
+    Sent, delivered and read are all contact: the webhook moves a recipient
+    on from SENT, and counting only SENT put people who had certainly
+    received a message back into the next audience. Skipped and failed
+    recipients received nothing, so counting them would shrink it instead.
     """
-    import inspect
+    import uuid as _uuid
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from src.database import Base
+    from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
     from src.routers import audience
 
-    source = inspect.getsource(audience._contacted_phones)
-    assert '"SENT"' in source
-    assert "FAILED" not in source and "SKIPPED" not in source
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        db.add(WhatsAppCampaign(campaign_id="c1", name="c", data_source_type="scraped"))
+        statuses = {
+            "+919800000001": "SENT", "+919800000002": "DELIVERED",
+            "+919800000003": "READ", "+919800000004": "FAILED",
+            "+919800000005": "SKIPPED", "+919800000006": "PENDING",
+        }
+        for phone, status in statuses.items():
+            db.add(WhatsAppCampaignRecipient(
+                recipient_id=_uuid.uuid4().hex, campaign_id="c1",
+                phone=phone, status=status,
+            ))
+        db.commit()
+
+        assert audience._contacted_phones(db) == {
+            "+919800000001", "+919800000002", "+919800000003",
+        }
+    finally:
+        db.close()
 
 
 class TestTemplateButtons:

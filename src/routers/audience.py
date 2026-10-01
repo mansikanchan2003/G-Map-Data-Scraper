@@ -24,6 +24,9 @@ logger = logging.getLogger("gmap_scraper.audience")
 
 ALL = "All"
 
+# Recipient statuses that mean a message reached Meta and was not refused.
+CONTACTED_STATUSES = ("SENT", "DELIVERED", "READ")
+
 
 class AudienceFilters(BaseModel):
     state: Optional[str] = ALL
@@ -75,11 +78,15 @@ def _contacted_phones(db: Session) -> set:
     """
     Phone numbers a campaign has already reached.
 
-    Only SENT counts: a recipient that was skipped or failed never received
-    anything, so excluding them would quietly shrink the audience.
+    Every stage a sent message can reach counts. The webhook moves a
+    recipient on from SENT to DELIVERED and READ, and a filter on "SENT"
+    alone let exactly the people who certainly received a message back into
+    the next audience. A recipient that was skipped, or that Meta reported
+    as failed, never received anything, so excluding them would quietly
+    shrink the audience.
     """
     rows = db.query(WhatsAppCampaignRecipient.phone).filter(
-        WhatsAppCampaignRecipient.status == "SENT"
+        WhatsAppCampaignRecipient.status.in_(CONTACTED_STATUSES)
     ).distinct().all()
     return {r[0] for r in rows if r[0]}
 
