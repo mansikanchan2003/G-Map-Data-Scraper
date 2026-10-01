@@ -21,6 +21,9 @@ import { WhatsAppPreview } from '../components/WhatsAppPreview';
 // so formatting differences in the stored value do not matter.
 const DEFAULT_SENDER_SUFFIX = '9911844469';
 
+// Business details a campaign to scraped businesses can fill a blank from.
+const BUSINESS_FIELDS = ['category', 'district', 'state', 'tehsil'];
+
 export const WhatsAppCampaignView: React.FC = () => {
   const [step, setStep] = useState<number>(1);
   const [accounts, setAccounts] = useState<WhatsAppAccount[]>([]);
@@ -439,7 +442,7 @@ export const WhatsAppCampaignView: React.FC = () => {
                     <div className="font-semibold text-slate-200">{t.name}</div>
                     <div className="text-xs text-slate-500 mt-1 line-clamp-2">{t.body}</div>
                     {(t.sheet_variables?.length ?? 0) > 0 && (
-                      <div className="text-[11px] text-amber-300/90 mt-1.5">From a sheet · needs {t.sheet_variables!.map(v => `{{${v}}}`).join(', ')}</div>
+                      <div className="text-[11px] text-amber-300/90 mt-1.5">Filled per recipient · {t.sheet_variables!.map(v => `{{${v}}}`).join(', ')}</div>
                     )}
                   </div>
                 ))}
@@ -451,9 +454,11 @@ export const WhatsAppCampaignView: React.FC = () => {
                 if (needs.length === 0) return null;
                 return (
                   <div className="mt-4 p-3 rounded border border-amber-600/50 bg-amber-900/20 text-amber-200 text-xs">
-                    This template fills {needs.map(v => `{{${v}}}`).join(', ')} from each person's row of the sheet it was made from.
+                    This template fills {needs.map(v => `{{${v}}}`).join(', ')} for each recipient.
                     {dataSource === 'scraped'
-                      ? ' Scraped businesses have no such values, so every one of them would be skipped. Upload that sheet instead.'
+                      ? (needs.every(v => BUSINESS_FIELDS.includes(v))
+                        ? " Each business's own details fill them; a business missing one is skipped, with the reason shown in Campaign History."
+                        : ' Scraped businesses have no such values, so every one of them would be skipped. Upload the sheet the template was made from instead.')
                       : ' Anyone whose row has no value for one of them is skipped, with the reason shown in Campaign History.'}
                   </div>
                 );

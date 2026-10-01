@@ -10,17 +10,33 @@ import type {
 import { getApiBaseUrl } from '../api';
 import { WhatsAppPreview } from '../components/WhatsAppPreview';
 import { SheetTemplateBuilder } from '../components/SheetTemplateBuilder';
+import { BusinessTemplateAgent } from '../components/BusinessTemplateAgent';
 
-// Two ways to make a template. From a messages sheet: the team's own wording
-// is read back into one template and submitted to Meta automatically. AI
-// drafts: the agent writes, a person decides, and nothing reaches Meta except
-// through the Approve button.
+// Three ways to make a template.
+//   Business data: the agent writes for scraped businesses, learning from how
+//     earlier templates did; a person approves before anything reaches Meta.
+//   Messages sheet: the team's own wording is read back into one template and
+//     submitted to Meta automatically.
+//   Poster drafts: the agent writes and illustrates; a person approves.
 
-type Mode = 'sheet' | 'agent';
+type Mode = 'business' | 'sheet' | 'agent';
 const MODE_KEY = 'autogmap-studio-mode';
+const MODES: [Mode, string, string][] = [
+  ['business', 'Agent · business data', 'storefront'],
+  ['sheet', 'From a messages sheet', 'table_view'],
+  ['agent', 'AI poster drafts', 'auto_awesome'],
+];
+const SUBTITLE: Record<Mode, string> = {
+  business: 'The agent writes templates for your businesses, learning from every past campaign. Nothing goes to Meta until you approve it.',
+  sheet: 'Turn a sheet of written-out messages into one template. It goes to Meta automatically.',
+  agent: "The agent writes templates in each state's language. Nothing is sent to Meta until you approve it.",
+};
 
 const readMode = (): Mode => {
-  try { return localStorage.getItem(MODE_KEY) === 'agent' ? 'agent' : 'sheet'; } catch { return 'sheet'; }
+  try {
+    const saved = localStorage.getItem(MODE_KEY) as Mode | null;
+    return saved && MODES.some(([m]) => m === saved) ? saved : 'business';
+  } catch { return 'business'; }
 };
 
 type Tab = 'review' | 'working' | 'approved' | 'rejected';
@@ -165,9 +181,7 @@ export const TemplateStudioView: React.FC = () => {
         <div>
           <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Template Studio</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            {mode === 'sheet'
-              ? 'Turn a sheet of written-out messages into one template. It goes to Meta automatically.'
-              : "The agent writes templates in each state's language. Nothing is sent to Meta until you approve it."}
+            {SUBTITLE[mode]}
           </p>
         </div>
         {mode === 'agent' && <button
@@ -180,7 +194,7 @@ export const TemplateStudioView: React.FC = () => {
       </div>
 
       <div className="flex gap-1 mb-6 p-1 rounded-lg bg-slate-900 border border-slate-800 w-fit">
-        {([['sheet', 'From a messages sheet', 'table_view'], ['agent', 'AI drafts', 'auto_awesome']] as const).map(([m, label, icon]) => (
+        {MODES.map(([m, label, icon]) => (
           <button key={m} onClick={() => setMode(m)}
             className={`px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 ${mode === m
               ? 'bg-sky-900/50 text-sky-300' : 'text-slate-400 hover:text-slate-200'}`}>
@@ -189,6 +203,7 @@ export const TemplateStudioView: React.FC = () => {
         ))}
       </div>
 
+      {mode === 'business' && <BusinessTemplateAgent />}
       {mode === 'sheet' && <SheetTemplateBuilder />}
 
       {mode === 'agent' && <>

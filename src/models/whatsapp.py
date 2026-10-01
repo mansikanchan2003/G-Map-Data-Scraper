@@ -60,10 +60,10 @@ class WhatsAppTemplate(Base):
 
     @property
     def sheet_variables(self) -> list:
-        """Columns a template made from a sheet fills per recipient; [] otherwise."""
-        if self.origin != "sheet":
+        """Blanks a sheet or business-agent template fills per recipient; [] otherwise."""
+        if self.origin not in ("sheet", "agent"):
             return []
-        return list((self.generation or {}).get("variables") or [])
+        return [v for v in ((self.generation or {}).get("variables") or []) if v not in ("name", "link")]
 
 
 class WhatsAppCampaign(Base):

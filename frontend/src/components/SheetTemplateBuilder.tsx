@@ -10,7 +10,7 @@ import { formatDateTime } from '../utils/datetime';
 // the one template they share. The wording is the team's own, so it goes to
 // Meta straight away; this page then follows Meta's review until it is ready.
 
-const LANGUAGES: { code: string; label: string }[] = [
+export const LANGUAGES: { code: string; label: string }[] = [
   { code: 'en_US', label: 'English (US)' },
   { code: 'en', label: 'English' },
   { code: 'hi', label: 'Hindi' },
@@ -42,7 +42,7 @@ const guessLanguage = (text: string) => {
   return best;
 };
 
-const guessColumn = (headers: string[], words: string[]) =>
+export const guessColumn = (headers: string[], words: string[]) =>
   headers.find(h => words.some(w => h.toLowerCase().includes(w))) || '';
 
 const OUTCOME: Record<SheetOutcome, { label: string; cls: string; icon: string }> = {
@@ -57,14 +57,14 @@ const isWaiting = (o: SheetOutcome) => o === 'pending' || o === 'created';
 
 const inputCls = 'h-9 px-2 bg-slate-950 border border-slate-700 rounded text-sm text-slate-100';
 
-interface Sheet {
+export interface Sheet {
   fileName: string;
   headers: string[];
   rows: Record<string, string>[];
 }
 
 /** Reads a CSV or Excel file as the text each cell shows, phone column aside. */
-const readSheet = async (file: File): Promise<Sheet> => {
+export const readSheet = async (file: File): Promise<Sheet> => {
   const XLSX = await import('xlsx');
   const data = await file.arrayBuffer();
   const wb = XLSX.read(data, { type: 'array' });
@@ -99,8 +99,6 @@ export const SheetTemplateBuilder: React.FC = () => {
   const [phoneCol, setPhoneCol] = useState('');
   const [category, setCategory] = useState<'MARKETING' | 'UTILITY'>('MARKETING');
   const [language, setLanguage] = useState('en_US');
-  const [addButton, setAddButton] = useState(true);
-  const [buttonText, setButtonText] = useState('');
   const [linkTarget, setLinkTarget] = useState('');
 
   const [reading, setReading] = useState(false);
@@ -127,7 +125,6 @@ export const SheetTemplateBuilder: React.FC = () => {
   useEffect(() => {
     fetchSheetSettings().then(s => {
       setSettings(s);
-      setButtonText(s.default_button_text);
       setLinkTarget(s.default_link_target);
     }).catch(() => {});
     loadHistory();
@@ -177,8 +174,7 @@ export const SheetTemplateBuilder: React.FC = () => {
         category,
         language,
         source_name: sheet.fileName,
-        add_button: addButton,
-        button_text: buttonText.trim() || undefined,
+        add_button: false,
         link_target: linkTarget.trim() || undefined,
       });
       setResult(out);
@@ -272,28 +268,16 @@ export const SheetTemplateBuilder: React.FC = () => {
             </div>
 
             <div className="p-3 rounded border border-slate-800 bg-slate-950 space-y-3">
-              <label className="flex items-center gap-2 text-sm text-slate-200">
-                <input type="checkbox" checked={addButton} onChange={e => setAddButton(e.target.checked)} />
-                Add a tracked button that opens the sign-up page
+              <div className="text-sm text-slate-200">Tracked link in the message</div>
+              <label className="text-xs text-slate-400 flex flex-col gap-1">
+                Visitors land on
+                <input value={linkTarget} onChange={e => setLinkTarget(e.target.value)} className={`${inputCls} font-mono-code`} />
               </label>
-              {addButton && (
-                <div className="flex flex-wrap gap-4">
-                  <label className="text-xs text-slate-400 flex flex-col gap-1">
-                    Button label
-                    <input value={buttonText} maxLength={settings?.button_text_limit || 25}
-                      onChange={e => setButtonText(e.target.value)} className={`${inputCls} w-40`} />
-                  </label>
-                  <label className="text-xs text-slate-400 flex flex-col gap-1 flex-1 min-w-[300px]">
-                    Opens
-                    <input value={linkTarget} onChange={e => setLinkTarget(e.target.value)} className={`${inputCls} font-mono-code`} />
-                  </label>
-                </div>
-              )}
               {settings && (
                 <div className={`text-xs ${settings.tracking_enabled ? 'text-slate-400' : 'text-amber-300'}`}>
                   {settings.tracking_enabled
-                    ? 'Each person gets their own link, so every visit is recorded against them and shown in Campaign History. A kiosk.eko.in link already written in the messages is tracked the same way.'
-                    : 'Visits cannot be tracked on this server yet: PUBLIC_BASE_URL is not set, so the button will open the page directly and nobody’s visit is recorded.'}
+                    ? 'Write a kiosk.eko.in link in the messages. It becomes each person’s own tracked link, so every visit is recorded against them and shown in Campaign History, and they land on the page above.'
+                    : 'Visits cannot be tracked on this server yet: PUBLIC_BASE_URL is not set, so the link in the message opens the page directly and nobody’s visit is recorded.'}
                 </div>
               )}
             </div>
@@ -349,11 +333,16 @@ export const SheetTemplateBuilder: React.FC = () => {
               <div className="text-xs text-slate-400">Every row has the same message, so nothing is filled in per person.</div>
             )}
 
-            {template.buttons.length > 0 && (
+            {template.body.includes('{{link}}') ? (
               <div className="text-xs text-slate-400">
-                Button <span className="text-slate-200">“{template.buttons[0].text}”</span> opens{' '}
+                <span className="font-mono-code text-sky-300">{'{{link}}'}</span> is each person’s own link, opening{' '}
                 <span className="font-mono-code text-slate-300 break-all">{template.link_target}</span>
-                {template.tracked ? ' through each person’s own tracked link.' : ' directly, without tracking.'}
+                {template.tracked ? ' — every visit is recorded against them.' : ' directly, without tracking.'}
+              </div>
+            ) : (
+              <div className="text-xs text-amber-300">
+                No kiosk.eko.in link was found in the messages, so visits from this template cannot be tracked.
+                Add the link to the message text and make the template again.
               </div>
             )}
 

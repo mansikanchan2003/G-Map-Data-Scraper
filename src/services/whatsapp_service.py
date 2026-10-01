@@ -20,6 +20,10 @@ logger = logging.getLogger("gmap_scraper.whatsapp_campaign")
 # as {{1}}, {{2}}. Order matters: Meta matches parameters positionally, so the
 # sequence here must be the sequence used when sending.
 TEMPLATE_PLACEHOLDERS = ("{{name}}", "{{link}}")
+# Origins whose templates list their own blanks in generation["variables"].
+DECLARES_VARIABLES = ("sheet", "agent")
+# What a business record can fill, for audiences picked from scraped data.
+BUSINESS_FIELDS = ("name", "category", "district", "state", "tehsil")
 
 
 def ordered_placeholders(body: str, names=TEMPLATE_PLACEHOLDERS) -> list:
@@ -32,13 +36,14 @@ def template_placeholders(template) -> list:
     """
     The placeholders a template is registered and sent with, in Meta's order.
 
-    {{name}} and {{link}} for every template. One made from a sheet also has
-    its own columns, which it declares; nothing else in a body is treated as
-    a placeholder, so an older template carrying a stray "{{...}}" keeps the
-    parameters Meta approved it with.
+    {{name}} and {{link}} for every template. One made from a sheet, or by
+    the business agent, also declares its own blanks ({{amount}},
+    {{category}}); nothing else in a body is treated as a placeholder, so an
+    older template carrying a stray "{{...}}" keeps the parameters Meta
+    approved it with.
     """
     names = TEMPLATE_PLACEHOLDERS
-    if getattr(template, "origin", None) == "sheet":
+    if getattr(template, "origin", None) in DECLARES_VARIABLES:
         declared = ((getattr(template, "generation", None) or {}).get("variables") or [])
         names = names + tuple("{{%s}}" % k for k in declared if "{{%s}}" % k not in names)
     return ordered_placeholders(template.body or "", names)
@@ -53,19 +58,27 @@ def _example_for(template, placeholder: str) -> str:
     if placeholder == "{{name}}":
         return "Sample Business"
     if placeholder == "{{link}}":
-        return "https://example.com/r/abc123"
+        # Meta's reviewer opens the example, so it is the real redirect's
+        # address, which forwards an unknown token to the campaign page.
+        base = (os.environ.get("PUBLIC_BASE_URL") or "").rstrip("/")
+        if base:
+            return f"{base}/r/0123456789abcdef"
+        return ((getattr(template, "generation", None) or {}).get("link_target")
+                or "https://example.com/r/abc123")
     return "sample"
 
 
-def tracking_link_for(token: str) -> str:
+def tracking_link_for(token: str, target: str = None) -> str:
     """
     The per-recipient link that records a click and forwards to the campaign
     destination. Returns the plain destination when no public base URL is
     configured, so messages still carry a working link before the redirect is
     reachable from the internet.
+
+    `target` is a template's own destination, where it names one.
     """
     base = (os.environ.get("PUBLIC_BASE_URL") or "").rstrip("/")
-    target = os.environ.get(
+    target = target or os.environ.get(
         "CAMPAIGN_LINK_TARGET_URL", "https://kiosk.eko.in/signup?utm_source=AutoGMap"
     )
     if not base or not token:
@@ -159,7 +172,7 @@ def required_variables(template) -> list:
     return [ph[2:-2] for ph in template_placeholders(template) if ph not in TEMPLATE_PLACEHOLDERS]
 
 
-def parameter_value(rec, placeholder: str) -> str:
+def parameter_value(rec, placeholder: str, template=None) -> str:
     """
     What fills one placeholder for one recipient.
 
@@ -171,7 +184,9 @@ def parameter_value(rec, placeholder: str) -> str:
     from src.services.sheet_templates import clean_parameter
 
     if placeholder == "{{link}}":
-        return tracking_link_for(rec.tracking_token)
+        own = ((getattr(template, "generation", None) or {}).get("link_target")
+               if getattr(template, "origin", None) in DECLARES_VARIABLES else None)
+        return tracking_link_for(rec.tracking_token, own)
     key = placeholder[2:-2]
     value = clean_parameter((rec.variables or {}).get(key) or "")
     if not value and key == "name":
@@ -367,15 +382,26 @@ class WhatsAppCampaignService:
             WhatsAppTemplate.template_id == template_id).first()
         needed = required_variables(template) if template else []
 
+        # An audience picked from scraped data carries business ids, not
+        # sheet columns: its blanks are filled from each business's record.
+        businesses = {}
+        if needed and any(c.get("business_id") and not c.get("variables") for c in contacts):
+            from src.models import Business
+            ids = [c["business_id"] for c in contacts if c.get("business_id")]
+            for i in range(0, len(ids), 500):
+                for b in self.db.query(Business).filter(Business.business_id.in_(ids[i:i + 500])):
+                    businesses[b.business_id] = {f: getattr(b, f) for f in BUSINESS_FIELDS}
+
         for c in contacts:
             raw_phone = c.get("phone")
             name = c.get("name")
             business_id = c.get("business_id")
             # Keyed by the sheet's own headers; stored by the placeholder
             # names the template uses for them.
+            raw = c.get("variables") or businesses.get(c.get("business_id")) or {}
             variables = {
                 column_key(k): cell_text(v)
-                for k, v in (c.get("variables") or {}).items()
+                for k, v in raw.items()
                 if cell_text(v)
             } or None
             missing = [k for k in needed if not (variables or {}).get(k)]
@@ -647,7 +673,7 @@ class WhatsAppCampaignService:
                         parameters = []
                         for placeholder in body_placeholders:
                             parameters.append({"type": "text",
-                                               "text": parameter_value(rec, placeholder)})
+                                               "text": parameter_value(rec, placeholder, template)})
                         components.append({"type": "body", "parameters": parameters})
 
                     # Buttons

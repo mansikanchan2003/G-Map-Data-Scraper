@@ -127,7 +127,7 @@ def follow_campaign_link(token: str, request: Request, db: Session = Depends(get
     # configured one, as before.
     template = campaign.template if campaign else None
     own = ((template.generation or {}).get("link_target")
-           if template is not None and template.origin == "sheet" else None)
+           if template is not None and template.origin in ("sheet", "agent") else None)
     if own and _is_safe_target(own):
         target = own
     target = _with_campaign_source(target, campaign.name if campaign else "")

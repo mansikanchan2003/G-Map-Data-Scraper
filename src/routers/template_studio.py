@@ -107,12 +107,16 @@ def studio_performance(db: Session = Depends(get_db)):
 
 @router.get("/drafts", response_model=List[StudioDraft])
 def list_drafts(db: Session = Depends(get_db)):
-    return (
+    """The poster agent's drafts. The business agent's have their own list."""
+    from src.services import business_agent
+
+    rows = (
         db.query(WhatsAppTemplate)
         .filter(WhatsAppTemplate.origin == "agent")
         .order_by(WhatsAppTemplate.created_at.desc())
-        .limit(100).all()
+        .limit(200).all()
     )
+    return [t for t in rows if not business_agent.is_business_draft(t)][:100]
 
 
 @router.post("/generate", response_model=List[StudioDraft])
@@ -154,12 +158,15 @@ def edit_draft(template_id: str, edit: DraftEdit, db: Session = Depends(get_db))
     unknown = set(edit.poster or {}) - set(template_studio.POSTER_FIELDS) - {"benefits"}
     if unknown:
         raise HTTPException(status_code=400, detail=f"Unknown poster fields: {', '.join(sorted(unknown))}")
+    from src.services import business_agent
+
+    buttons = {"apply_button": edit.apply_button, "callback_button": edit.callback_button}
     try:
-        warnings = template_studio.update_draft(
-            db, tmpl, edit.body, edit.footer,
-            {"apply_button": edit.apply_button, "callback_button": edit.callback_button},
-            edit.poster,
-        )
+        if business_agent.is_business_draft(tmpl):
+            # No poster to re-render: the text is the whole template.
+            warnings = business_agent.update(db, tmpl, edit.body, edit.footer, buttons)
+        else:
+            warnings = template_studio.update_draft(db, tmpl, edit.body, edit.footer, buttons, edit.poster)
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=422, detail=f"Could not apply the edit: {e}")
@@ -211,7 +218,8 @@ class FromMessagesRequest(BaseModel):
     # The file it came from, which names the template.
     source_name: Optional[str] = Field(None, max_length=200)
     # The tracked "Apply Now" button, and where its visits are forwarded.
-    add_button: bool = True
+    # The link normally goes in the message text; a button is optional.
+    add_button: bool = False
     button_text: Optional[str] = Field(None, max_length=sheet_templates.BUTTON_TEXT_LIMIT)
     link_target: Optional[str] = Field(None, max_length=500)
 
@@ -263,3 +271,56 @@ def sheet_settings():
 def sheet_template_list(db: Session = Depends(get_db)):
     """Templates made from sheets, with Meta's review state kept current."""
     return [sheet_templates.describe(t) for t in sheet_templates.list_sheet_templates(db)]
+
+
+
+# --- The business agent ------------------------------------------------------
+# Writes templates addressed to scraped businesses, learning from how earlier
+# templates did. Its drafts wait for Approve like the poster agent's above.
+
+from src.services import business_agent  # noqa: E402
+
+
+class BusinessDraftRequest(BaseModel):
+    # One dict per business, keyed by the export's headers (name, category,
+    # district, state...). Only the details are read; nothing is sent.
+    rows: List[dict] = Field(..., min_length=1, max_length=business_agent.MAX_ROWS)
+    count: int = Field(2, ge=1, le=business_agent.MAX_VARIANTS)
+    brief: Optional[str] = Field(None, max_length=1000)
+    # Defaults to the language of the businesses' main state.
+    language: Optional[str] = None
+    link_target: Optional[str] = Field(None, max_length=500)
+    source_name: Optional[str] = Field(None, max_length=200)
+
+
+@router.post("/business-drafts", response_model=List[StudioDraft])
+def write_business_drafts(req: BusinessDraftRequest, background: BackgroundTasks,
+                          db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """
+    Starts the agent writing templates for these businesses. The rows come
+    back at once, GENERATING; the Studio polls until they await approval.
+    """
+    if not GeminiClient().is_configured():
+        raise HTTPException(status_code=503, detail="GEMINI_API_KEY is not set on the server, so the agent cannot write.")
+    try:
+        summary = business_agent.summarise(req.rows)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    language = business_agent.language_for(summary, req.language)
+    link_target = (req.link_target or sheet_templates.DEFAULT_LINK_TARGET).strip()
+    if not link_target.startswith(("http://", "https://")):
+        raise HTTPException(status_code=422, detail="The link must be a full web address starting with https://.")
+
+    rows = business_agent.create_placeholders(db, summary, req.count, req.brief, language,
+                                              link_target, req.source_name)
+    background.add_task(business_agent.run_generation, [r.template_id for r in rows])
+    logger.info(f"template_studio event=BUSINESS_ROUND by={user.email} rows={summary['rows']} "
+                f"state={summary.get('main_state')} language={language} variants={req.count}")
+    return rows
+
+
+@router.get("/business-drafts", response_model=List[StudioDraft])
+def list_business_drafts(db: Session = Depends(get_db)):
+    """The business agent's drafts, with Meta's review kept current once approved."""
+    return business_agent.list_drafts(db)

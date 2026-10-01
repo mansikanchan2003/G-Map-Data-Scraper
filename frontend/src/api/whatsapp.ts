@@ -563,6 +563,21 @@ export interface StudioDraft {
     copy_warnings?: string[];
     models?: { text?: string; image?: string };
     error?: string;
+    // The business agent's drafts:
+    kind?: 'business';
+    /** What past results shaped this wording, in the agent's words. */
+    learned?: string;
+    learned_from?: { templates: number; sends: number; with_responses: number };
+    /** Blanks in Meta's order, {{name}} included. */
+    variables?: string[];
+    examples?: Record<string, string>;
+    columns?: Record<string, string>;
+    allowed_fields?: string[];
+    audience?: { rows: number; states: [string, number][]; categories: [string, number][]; districts: [string, number][] };
+    link_target?: string;
+    tracked?: boolean;
+    source_name?: string | null;
+    rejected_reason?: string;
   } | null;
   review_note: string | null;
   reviewed_by: string | null;
@@ -719,3 +734,20 @@ export const fetchSheetSettings = () => studioCall<SheetSettings>('/sheet-settin
 export const fetchSheetTemplates = () => studioCall<SheetTemplate[]>('/sheet-templates');
 export const templateFromMessages = (req: FromMessagesRequest) =>
   studioCall<FromMessagesResult>('/from-messages', { method: 'POST', body: JSON.stringify(req) });
+
+// ---------------------------------------------------------
+// The business agent — writes for scraped businesses, a person approves.
+// ---------------------------------------------------------
+
+export interface BusinessDraftRequest {
+  rows: Record<string, string>[];
+  count: number;
+  brief?: string | null;
+  language?: string | null;
+  link_target?: string;
+  source_name?: string | null;
+}
+
+export const fetchBusinessDrafts = () => studioCall<StudioDraft[]>('/business-drafts');
+export const writeBusinessDrafts = (req: BusinessDraftRequest) =>
+  studioCall<StudioDraft[]>('/business-drafts', { method: 'POST', body: JSON.stringify(req) });

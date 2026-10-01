@@ -192,8 +192,7 @@ def test_a_rejection_is_reported_with_metas_reason(db):
 def test_an_approved_template_with_the_same_wording_is_reused(db):
     db.add(WhatsAppTemplate(template_id="t1", name="Kits", status="APPROVED", origin="manual",
                             meta_template_name="kits_v1", language_code="en_US",
-                            body="Hi {{name}} - your kit ships on {{day}}!",
-                            buttons=[{"type": "URL", "text": "Apply now!", "url": "https://x/r/{{1}}"}]))
+                            body="Hi {{name}} - your kit ships on {{day}}!", buttons=[]))
     db.commit()
     state = {"submitted": ["kits_v1"], "status": "APPROVED"}
     out = run(db, state)
@@ -201,11 +200,12 @@ def test_an_approved_template_with_the_same_wording_is_reused(db):
     assert state["submitted"] == ["kits_v1"]
 
 
-def test_the_same_wording_without_the_apply_button_is_not_reused(db):
-    """It would send the message without the link the visit is tracked through."""
+def test_the_same_wording_with_different_buttons_is_not_reused(db):
+    """Buttons are part of what Meta approved, so they must match too."""
     db.add(WhatsAppTemplate(template_id="t1", name="Kits", status="APPROVED", origin="manual",
                             meta_template_name="kits_v1", language_code="en_US",
-                            body="Hi {{name}}, your kit ships on {{day}}.", buttons=[]))
+                            body="Hi {{name}}, your kit ships on {{day}}.",
+                            buttons=[{"type": "URL", "text": "Apply now", "url": "https://x/r/{{1}}"}]))
     db.commit()
     out = run(db, {"submitted": ["kits_v1"], "status": "APPROVED"})
     assert out["template"].template_id != "t1"
@@ -294,21 +294,53 @@ def test_older_templates_keep_only_name_and_link():
 # The tracked link
 # ---------------------------------------------------------------------------
 
-def test_the_template_carries_a_tracked_apply_button(db, monkeypatch):
+LINKED = rows("Hi Ram, apply at https://kiosk.eko.in/signup today. Thanks!",
+              "Hi Sita, apply at https://kiosk.eko.in/signup today. Thanks!",
+              name=["Ram", "Sita"])
+
+
+def test_the_link_in_the_messages_becomes_the_tracked_link(db, monkeypatch):
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://indev.eko.in/autogmap")
-    out = run(db, {})
-    t = out["template"]
-    assert t.buttons == [{"type": "URL", "text": "Apply Now",
-                          "url": "https://indev.eko.in/autogmap/r/{{1}}"}]
+    t = run(db, {}, LINKED)["template"]
+    assert t.body == "Hi {{name}}, apply at {{link}} today. Thanks!"
+    assert t.buttons == [], "the link is in the text, not a button"
     assert t.generation["link_target"] == st.DEFAULT_LINK_TARGET
     assert t.generation["tracked"] is True
 
 
-def test_without_a_public_url_the_button_opens_the_page_directly(db, monkeypatch):
-    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+def test_a_button_is_still_available_when_asked_for(db, monkeypatch):
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://indev.eko.in/autogmap")
+    submit, listing = fake_meta({})
+    with patch("src.services.whatsapp_service.WhatsAppTemplateSubmissionService.submit", submit), \
+         patch("src.services.meta_whatsapp_service.MetaWhatsAppService.list_message_templates", listing):
+        t = st.template_from_messages(db, SHEET, "message", "phone", add_button=True)["template"]
+    assert t.buttons == [{"type": "URL", "text": "Apply Now", "url": "https://indev.eko.in/autogmap/r/{{1}}"}]
+
+
+def test_without_a_link_nothing_is_tracked(db, monkeypatch):
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://indev.eko.in/autogmap")
     t = run(db, {})["template"]
-    assert t.buttons[0]["url"] == st.DEFAULT_LINK_TARGET
-    assert t.generation["tracked"] is False
+    assert t.buttons == [] and t.generation["tracked"] is False
+
+
+def test_each_recipient_gets_their_own_link_in_the_text(db, monkeypatch):
+    from src.services.whatsapp_service import parameter_value, template_placeholders
+
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://indev.eko.in/autogmap")
+    t = run(db, {}, LINKED)["template"]
+    rec = WhatsAppCampaignRecipient(recipient_id="r", campaign_id="c", phone="+919876543210",
+                                    name="Ram", tracking_token="tok9", variables={"name": "Ram"})
+    assert [parameter_value(rec, p, t) for p in template_placeholders(t)] == \
+        ["Ram", "https://indev.eko.in/autogmap/r/tok9"]
+    monkeypatch.delenv("PUBLIC_BASE_URL")
+    assert parameter_value(rec, "{{link}}", t) == st.DEFAULT_LINK_TARGET, \
+        "untracked, but still the template's own destination"
+
+
+def test_a_link_to_another_site_is_left_as_written():
+    d = derive(rows("Hi Ram, see https://youtube.com/x today.", "Hi Sita, see https://youtube.com/x today.",
+                    name=["Ram", "Sita"]), "message", "phone")
+    assert "https://youtube.com/x" in d["body"] and "{{link}}" not in d["body"]
 
 
 def test_a_site_link_in_the_messages_becomes_the_tracked_link():

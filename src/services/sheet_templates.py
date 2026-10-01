@@ -59,9 +59,24 @@ DEFAULT_LINK_TARGET = "https://kiosk.eko.in/?utm_source=AutoGMap&utm_medium=what
 DEFAULT_BUTTON_TEXT = "Apply Now"
 BUTTON_TEXT_LIMIT = 25
 
-# A link to the site already written into the messages is the same link,
-# untracked; it is swapped for {{link}} so those visits are counted too.
-SITE_LINK = re.compile(r"https?://(?:www\.)?kiosk\.eko\.in[^\s]*", re.IGNORECASE)
+# A link to the site written into the messages is swapped for {{link}}, each
+# recipient's own tracked link, so every visit through it is recorded.
+SITE_HOSTS = ("kiosk.eko.in",)
+
+
+def site_link_pattern(extra_host: Optional[str] = None) -> re.Pattern:
+    """Links to the kiosk site, or to the destination's own site, in a message."""
+    hosts = list(SITE_HOSTS)
+    if extra_host and extra_host.lower() not in hosts:
+        hosts.append(extra_host.lower())
+    alternatives = "|".join(re.escape(h) for h in hosts)
+    # The host must end there: "kiosk.eko.in.evil.com" is someone else's site,
+    # while a full stop ending the sentence is not part of the link.
+    return re.compile(rf"https?://(?:www\.)?(?:{alternatives})(?![\w-]|\.\w)(?:[/?#][^\s]*)?",
+                      re.IGNORECASE)
+
+
+SITE_LINK = site_link_pattern()
 
 
 class DerivationError(ValueError):
@@ -158,7 +173,7 @@ def _difference(a: str, b: str) -> str:
 
 
 def derive(rows: List[dict], message_column: str, phone_column: str,
-           track_site_links: bool = True) -> dict:
+           track_site_links: bool = True, link_host: Optional[str] = None) -> dict:
     """
     Works out the one template every row's message was written from.
 
@@ -225,7 +240,8 @@ def derive(rows: List[dict], message_column: str, phone_column: str,
 
     body = first
     if track_site_links:
-        body = SITE_LINK.sub(lambda m: "{{link}}" + _trailing_punctuation(m.group(0)), body)
+        body = site_link_pattern(link_host).sub(
+            lambda m: "{{link}}" + _trailing_punctuation(m.group(0)), body)
     order = []
     for key in TOKEN.findall(body):
         if key not in order:
@@ -421,12 +437,14 @@ def template_from_messages(
     source_name: Optional[str] = None,
     link_target: Optional[str] = None,
     button_text: Optional[str] = None,
-    add_button: bool = True,
+    add_button: bool = False,
 ) -> dict:
     """
     Derives the sheet's template and makes sure Meta has it.
 
-    Unless add_button is off, the template carries a button opening each
+    A link to the kiosk site (or to link_target's site) written in the
+    messages becomes each recipient's own tracked link, forwarding to
+    link_target. With add_button the template also carries a button opening each
     recipient's tracked link, which forwards to link_target.
 
     Safe to call again with the same sheet as often as needed: it finds what
@@ -440,12 +458,12 @@ def template_from_messages(
 
     category = (category or "MARKETING").upper()
     language = (language or "en_US").strip()
-    derived = derive(rows, message_column, phone_column)
-    body = derived["body"]
-
     link_target = (link_target or DEFAULT_LINK_TARGET).strip()
-    if not re.match(r"^https?://[^\s/]+", link_target):
+    host = re.match(r"^https?://(?:www\.)?([^\s/?#:]+)", link_target)
+    if not host:
         raise DerivationError("The link must be a full web address starting with https://.")
+    derived = derive(rows, message_column, phone_column, link_host=host.group(1))
+    body = derived["body"]
     button_text = (button_text or DEFAULT_BUTTON_TEXT).strip()
     if add_button and not (0 < len(button_text) <= BUTTON_TEXT_LIMIT):
         raise DerivationError(f"The button label must be 1–{BUTTON_TEXT_LIMIT} characters.")

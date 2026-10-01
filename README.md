@@ -466,6 +466,43 @@ Compose in UI  →  auto-submitted to Meta  →  PENDING  →  APPROVED  →  se
 - Deleting a template keeps past campaign history; the campaign's link to it is
   cleared. The copy registered with Meta is left untouched.
 
+### Template Studio: the agent for business data
+
+**WhatsApp → Template Studio → Agent · business data** writes templates
+addressed to the scraped businesses themselves.
+
+1. Upload an export from **Business Data**. The agent is told the states,
+   districts and kinds of business in it.
+2. It writes 1–3 variants in the state's language, each testing a different
+   angle. They use the business's own details as blanks: `{{name}}` always,
+   plus `{{category}}`, `{{district}}` or `{{state}}`. A field is only offered
+   when at least 98% of the businesses have it.
+3. What it learns from is read fresh every round, so each campaign's results
+   reach the next one as soon as they are recorded:
+   - every template already sent, with its wording and how it did per state;
+   - the Campaign Insights playbook;
+   - the reasons reviewers rejected earlier drafts, and the reasons Meta
+     rejected earlier templates.
+
+   Nothing is fine-tuned: all of this is given to the model as evidence.
+4. Every draft is checked: language and script, allowed facts only, the
+   contact number present, no URL in the body, Meta's limits. A draft that
+   fails is sent back once with its problems listed.
+5. **A draft goes to Meta only when someone approves it.** Edit and Reject are
+   on the same card, and a rejection's reason steers the next round. Once
+   approved, the page follows Meta's review.
+
+The tracked link is written into the message itself as `{{link}}`, exactly once
+and never as the last thing (Meta refuses a body that ends with a blank). Each
+business's message carries its own `/r/<token>`, which records the visit and
+forwards to `kiosk.eko.in/?utm_source=AutoGMap&utm_medium=whatsapp#apply-now`
+by default. The template's one button is **Call me back**. A campaign fills the blanks from the uploaded
+export, or, for an audience picked from Business Data, from each business's
+own record. A business missing a value is skipped, with the reason shown.
+
+Needs `GEMINI_API_KEY` on the server. Text only, so no image quota or billing
+is required.
+
 ### Template Studio: from a messages sheet
 
 **WhatsApp → Template Studio → From a messages sheet** turns a spreadsheet of
@@ -489,14 +526,16 @@ automatically, with no Approve step.
    builder with the sheet and the template. Each recipient is sent their own
    row's values. Anyone missing one is skipped, with the reason shown.
 
-Each template also carries an **Apply Now** button. Every recipient's button
-opens their own `/r/<token>` link, so each visit is recorded against that
-person, then forwards to
+**The tracked link goes in the message text.** Write a `kiosk.eko.in` link
+in the messages, or a link to the destination's own site. It becomes `{{link}}`:
+each recipient's own `/r/<token>`, which records the visit against that person
+and forwards to
 `https://kiosk.eko.in/?utm_source=AutoGMap&utm_medium=whatsapp#apply-now`,
-with `utm_campaign` set to the campaign name. The destination and label can be
-changed per sheet. A `kiosk.eko.in` link already written in the messages is
-swapped for the tracked one too. Tracking needs `PUBLIC_BASE_URL`; without it
-the button opens the page directly and no visit is recorded.
+with `utm_campaign` set to the campaign name. The destination can be changed
+per sheet. Links to other sites are left as written. A sheet whose messages
+carry no such link makes a template whose visits cannot be tracked, and the
+Studio says so. Tracking needs `PUBLIC_BASE_URL`; without it the link opens
+the destination directly and no visit is recorded.
 
 ### Template Studio (AI-drafted templates)
 
