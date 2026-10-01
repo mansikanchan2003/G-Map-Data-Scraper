@@ -70,9 +70,13 @@ def test_api_run_job_endpoint():
         assert data["businesses_saved"] == 1
 
 def test_api_discovery_status_and_stop():
+    # With nothing running, status says so in the shape the dashboard reads.
     res_status = client.get("/api/v1/discovery/status")
     assert res_status.status_code == 200
-    assert "State is fully managed via PostgreSQL" in res_status.json()["message"]
+    status = res_status.json()
+    assert status["is_running"] is False
+    assert status["current_run_id"] is None
+    assert status["jobs_processed"] == 0 and status["jobs_total"] == 0
 
     # /stop now acts on the active run instead of returning a fixed message.
     # With nothing running it reports idle rather than pretending to stop.
@@ -160,3 +164,33 @@ def test_business_detail_api_public_contract():
         assert field not in item, f"Internal field '{field}' must not be exposed in public detail API"
 
     assert item["verified"] is True
+
+
+def test_api_discovery_status_reports_the_active_batch():
+    """The dashboard reads progress from here while a batch runs."""
+    from datetime import datetime, timezone
+    from src.models import RunLog
+
+    db = TestingSessionLocal()
+    try:
+        db.add(RunLog(run_id="run_status_01", trigger_source="api", status="CANCELLING",
+                      started_at=datetime.now(timezone.utc), jobs_total=25, jobs_attempted=7))
+        db.add(Location(location_id="loc_st_01", pincode="110002", latitude=28.6, longitude=77.2))
+        db.add(Category(category_id="cat_st_01", category_name="Status Category"))
+        db.add(Job(job_id="job_status_01", location_id="loc_st_01", category_id="cat_st_01",
+                   status="RUNNING", search_query="q", last_attempt_at=datetime.now(timezone.utc)))
+        db.commit()
+
+        body = client.get("/api/v1/discovery/status").json()
+        assert body["is_running"] is True
+        assert body["current_run_id"] == "run_status_01"
+        assert (body["jobs_processed"], body["jobs_total"]) == (7, 25)
+        assert body["current_job_id"] == "job_status_01"
+        assert body["stop_requested"] is True
+    finally:
+        db.query(Job).filter(Job.job_id == "job_status_01").delete()
+        db.query(RunLog).filter(RunLog.run_id == "run_status_01").delete()
+        db.query(Category).filter(Category.category_id == "cat_st_01").delete()
+        db.query(Location).filter(Location.location_id == "loc_st_01").delete()
+        db.commit()
+        db.close()

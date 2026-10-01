@@ -132,7 +132,7 @@ export interface NormalizedSystemStats {
 export interface DiscoveryStatus {
   is_running: boolean;
   current_run_id: string | null;
-  started_at: number | null;
+  started_at: string | null;  // ISO 8601
   jobs_processed: number;
   jobs_total: number;
   current_job_id: string | null;

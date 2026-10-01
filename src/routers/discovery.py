@@ -406,7 +406,10 @@ def _run_batch(payload: "BatchRequest", db: Session):
         run_id=run_id,
         trigger_source=payload.trigger_source,
         status="RUNNING",
-        started_at=datetime.now(timezone.utc)
+        started_at=datetime.now(timezone.utc),
+        # The planned size, so /status can show progress while it runs. The
+        # finished run overwrites it with the number actually attempted.
+        jobs_total=len(pending_jobs),
     )
     db.add(run_log)
     db.commit()
@@ -465,6 +468,13 @@ def _run_batch(payload: "BatchRequest", db: Session):
 
             if res.get("error"):
                 errors.append({"job_id": job.job_id, "error": res["error"]})
+
+            # Progress for /status. Only these columns are written, so a
+            # CANCELLING set by /stop in the meantime is not overwritten.
+            run_log.jobs_attempted = attempted
+            run_log.jobs_completed = completed
+            run_log.jobs_failed = failed
+            db.commit()
 
             if blocked > 0:
                 break
@@ -535,8 +545,42 @@ def _run_batch(payload: "BatchRequest", db: Session):
     }
 
 @router.get("/status")
-def get_discovery_status():
-    return {"message": "State is fully managed via PostgreSQL. Draining is orchestrated externally."}
+def get_discovery_status(db: Session = Depends(get_db)):
+    """
+    The batch running right now, if any, and how far it has got.
+
+    Read from the run log and the jobs table rather than held in memory, so
+    it is right whichever path started the batch — the dashboard, n8n or the
+    autopilot.
+    """
+    active = (
+        db.query(RunLog)
+        .filter(RunLog.status.in_(("RUNNING", "CANCELLING")))
+        .order_by(RunLog.started_at.desc())
+        .first()
+    )
+    if not active:
+        return {
+            "is_running": False, "current_run_id": None, "started_at": None,
+            "jobs_processed": 0, "jobs_total": 0, "current_job_id": None,
+            "stop_requested": False,
+        }
+
+    current = (
+        db.query(Job.job_id)
+        .filter(Job.status == "RUNNING")
+        .order_by(Job.last_attempt_at.desc())
+        .first()
+    )
+    return {
+        "is_running": True,
+        "current_run_id": active.run_id,
+        "started_at": active.started_at.isoformat() if active.started_at else None,
+        "jobs_processed": active.jobs_attempted or 0,
+        "jobs_total": active.jobs_total or 0,
+        "current_job_id": current[0] if current else None,
+        "stop_requested": active.status == "CANCELLING",
+    }
 
 @router.post("/stop")
 def stop_discovery(db: Session = Depends(get_db)):
