@@ -146,7 +146,7 @@ def signup(payload: SignupRequest, background: BackgroundTasks, db: Session = De
     background.add_task(
         notifier.notify_signup_request,
         auth.BOOTSTRAP_ADMIN, email, user.full_name,
-        f"{_public_app_url()}/#admin-approvals",
+        f"{_public_app_url()}/#approvals",
     )
 
     return {"status": "PENDING", "email": email,

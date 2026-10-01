@@ -47,8 +47,12 @@ export default function App() {
   // Synchronize hash with activeTab
   useEffect(() => {
     const handleHash = () => {
-      const hash = window.location.hash.replace('#', '');
-      if (['businesses', 'jobs', 'config', 'dashboard', 'whatsapp-campaign', 'whatsapp-templates', 'whatsapp-studio', 'whatsapp-history', 'whatsapp-insights'].includes(hash)) {
+      let hash = window.location.hash.replace('#', '');
+      // Approval emails sent before this used #admin-approvals.
+      if (hash === 'admin-approvals') hash = 'approvals';
+      // 'approvals' is listed so the email link and a refresh land on the
+      // queue; it still renders only for admins.
+      if (['businesses', 'jobs', 'config', 'dashboard', 'whatsapp-campaign', 'whatsapp-templates', 'whatsapp-studio', 'whatsapp-history', 'whatsapp-insights', 'approvals'].includes(hash)) {
         setActiveTab(hash as NavTab);
       }
     };
