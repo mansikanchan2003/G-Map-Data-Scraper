@@ -120,6 +120,7 @@
   --color-sky-400: #0f5f78;
   --color-sky-300: #094053;
   --color-sky-200: #062e3b;
+  --color-sky-100: #04222c;
   --color-sky-950: #e8f2f6;
   --color-sky-900: #d2e6ee;
   --color-sky-800: #a3c7d5;
@@ -132,6 +133,10 @@
   --color-emerald-400: #04785a;
   --color-emerald-300: #045c46;
   --color-emerald-200: #033f32;
+  /* -100 is the palest text in dark mode, so the darkest ink here. Left out,
+     it kept its near-white dark-mode value and vanished on light cards: the
+     Insights "Still learning" heading and the callback alert text. */
+  --color-emerald-100: #022e25;
 
   --color-rose-950: #fef0f2;
   --color-rose-900: #fde0e4;
@@ -140,6 +145,7 @@
   --color-rose-400: #be123c;
   --color-rose-300: #9f1239;
   --color-rose-200: #7f1d2e;
+  --color-rose-100: #63141f;
 
   --color-amber-950: #fdf6e7;   /* Eko gold-light */
   --color-amber-900: #fbeac4;
@@ -147,6 +153,7 @@
   --color-amber-400: #9c6a06;
   --color-amber-300: #7d5405;
   --color-amber-200: #5e3f04;
+  --color-amber-100: #4a3103;
 
   --color-purple-950: #f7f2fe;
   --color-purple-900: #ece0fb;
@@ -154,6 +161,7 @@
   --color-purple-400: #7128be;
   --color-purple-300: #5b21b6;
   --color-purple-200: #46157f;
+  --color-purple-100: #360f63;
 
   --eko-gold: #f9ab10;
   --eko-teal: #094053;
