@@ -58,6 +58,13 @@ class WhatsAppTemplate(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_used_at = Column(DateTime(timezone=True), nullable=True)
 
+    @property
+    def sheet_variables(self) -> list:
+        """Columns a template made from a sheet fills per recipient; [] otherwise."""
+        if self.origin != "sheet":
+            return []
+        return list((self.generation or {}).get("variables") or [])
+
 
 class WhatsAppCampaign(Base):
     __tablename__ = "whatsapp_campaigns"
@@ -104,6 +111,10 @@ class WhatsAppCampaignRecipient(Base):
     
     name = Column(String(500), nullable=True)
     phone = Column(String(20), nullable=False, index=True)
+    # This person's values from the sheet they were uploaded with, keyed by
+    # placeholder name ({"amount": "500"}). A template made from a sheet is
+    # filled from these; others never read them.
+    variables = Column(JSON, nullable=True)
     
     status = Column(String(50), nullable=False, default="PENDING") # PENDING, SENDING, SENT, DELIVERED, READ, FAILED, SKIPPED
     reason = Column(Text, nullable=True) # E.g., "Invalid mobile number", "Provider 4xx"

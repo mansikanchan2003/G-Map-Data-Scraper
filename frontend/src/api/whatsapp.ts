@@ -32,6 +32,10 @@ export interface WhatsAppTemplate {
   created_at: string;
   updated_at: string;
   last_used_at: string | null;
+  /** "manual", "agent" (Template Studio drafts) or "sheet" (made from a messages sheet). */
+  origin?: string | null;
+  /** Columns a sheet template fills per recipient; empty for other templates. */
+  sheet_variables?: string[];
 }
 
 export interface WhatsAppCampaign {
@@ -470,7 +474,18 @@ export const fetchAudiencePreview = async (f: AudienceFilters): Promise<Audience
  */
 const AUDIENCE_KEY = 'gmap-campaign-audience';
 
-export const stashAudience = (payload: { contacts: any[]; label: string }) => {
+/** What the campaign builder can be handed: an audience from Business Data,
+ *  or a sheet from the Template Studio together with the template made from it. */
+export interface HandedAudience {
+  contacts: any[];
+  label: string;
+  /** Preselect this template in the builder. */
+  template_id?: string;
+  /** Raw sheet rows: phone numbers still need validating. */
+  needs_validation?: boolean;
+}
+
+export const stashAudience = (payload: HandedAudience) => {
   try {
     sessionStorage.setItem(AUDIENCE_KEY, JSON.stringify(payload));
   } catch {
@@ -478,7 +493,7 @@ export const stashAudience = (payload: { contacts: any[]; label: string }) => {
   }
 };
 
-export const takeAudience = (): { contacts: any[]; label: string } | null => {
+export const takeAudience = (): HandedAudience | null => {
   try {
     const raw = sessionStorage.getItem(AUDIENCE_KEY);
     if (!raw) return null;
@@ -640,3 +655,67 @@ export const rejectStudioDraft = (id: string, reason: string) =>
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
+
+// ---------------------------------------------------------
+// Templates from a messages sheet — the team's own wording, read back into
+// one template and submitted to Meta without an Approve step.
+// ---------------------------------------------------------
+
+export type SheetOutcome = 'ready' | 'pending' | 'created' | 'rejected' | 'failed';
+
+export interface SheetTemplate {
+  template_id: string;
+  name: string;
+  meta_template_name: string | null;
+  status: string;
+  /** What the status means: ready to send, waiting on Meta, or why not. */
+  outcome: SheetOutcome;
+  reason: string | null;
+  language_code: string | null;
+  category: string | null;
+  body: string;
+  /** Placeholder keys in Meta's order, {{link}} excluded. */
+  variables: string[];
+  /** key -> the sheet header it is filled from. */
+  columns: Record<string, string>;
+  examples: Record<string, string>;
+  source_name: string | null;
+  rows: number | null;
+  buttons: { type: string; text: string; url?: string }[];
+  link_target: string | null;
+  /** Whether visits through the button are recorded per recipient. */
+  tracked: boolean;
+  created_at: string;
+}
+
+export interface SheetSettings {
+  tracking_enabled: boolean;
+  default_link_target: string;
+  default_button_text: string;
+  button_text_limit: number;
+  max_rows: number;
+}
+
+export interface FromMessagesRequest {
+  rows: Record<string, string>[];
+  message_column: string;
+  phone_column: string;
+  category: 'MARKETING' | 'UTILITY';
+  language: string;
+  source_name?: string | null;
+  add_button: boolean;
+  button_text?: string;
+  link_target?: string;
+}
+
+export interface FromMessagesResult {
+  action: SheetOutcome;
+  reason: string | null;
+  derived: { body: string; variables: string[]; rows: number };
+  template: SheetTemplate | null;
+}
+
+export const fetchSheetSettings = () => studioCall<SheetSettings>('/sheet-settings');
+export const fetchSheetTemplates = () => studioCall<SheetTemplate[]>('/sheet-templates');
+export const templateFromMessages = (req: FromMessagesRequest) =>
+  studioCall<FromMessagesResult>('/from-messages', { method: 'POST', body: JSON.stringify(req) });

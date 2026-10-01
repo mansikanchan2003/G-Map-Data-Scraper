@@ -518,11 +518,16 @@ def validate_contacts(req: WhatsAppContactValidateRequest):
                 duplicate_count += 1
             else:
                 seen_phones.add(canonical)
-                valid_contacts.append({
+                entry = {
                     "phone": canonical,
                     "name": name,
                     "business_id": business_id
-                })
+                }
+                # A sheet's other columns ride along, for templates that
+                # fill per-person values from them.
+                if c.get("variables"):
+                    entry["variables"] = c["variables"]
+                valid_contacts.append(entry)
 
     return WhatsAppContactValidateResponse(
         total_records=len(req.contacts),

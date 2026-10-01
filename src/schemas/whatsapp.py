@@ -63,6 +63,9 @@ class WhatsAppTemplateResponse(WhatsAppTemplateBase):
     # "agent" when the Template Studio made it, and the state it was written for.
     origin: Optional[str] = "manual"
     target_state: Optional[str] = None
+    # For a template made from a messages sheet: the columns each recipient
+    # must carry a value for. Empty for every other template.
+    sheet_variables: List[str] = []
     created_at: datetime
     updated_at: datetime
     last_used_at: Optional[datetime] = None

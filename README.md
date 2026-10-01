@@ -466,6 +466,38 @@ Compose in UI  →  auto-submitted to Meta  →  PENDING  →  APPROVED  →  se
 - Deleting a template keeps past campaign history; the campaign's link to it is
   cleared. The copy registered with Meta is left untouched.
 
+### Template Studio: from a messages sheet
+
+**WhatsApp → Template Studio → From a messages sheet** turns a spreadsheet of
+messages the team already wrote, one row per person, into the single template
+Meta needs. The wording is the team's own, so it is submitted to Meta
+automatically, with no Approve step.
+
+1. Upload a CSV or Excel file with a phone column, a message column, and the
+   columns the messages were put together from (name, amount, date…).
+2. A column whose value appears in every row's message and changes between
+   rows becomes a placeholder (`{{customer_name}}`, `{{amount}}`). Every row
+   must reduce to the same template. If not, the sheet is refused with the
+   rows and words that differ, rather than guessing.
+3. Meta's own rules are checked first: a template may not start or end with a
+   placeholder, and the body is limited to 1,024 characters.
+4. A template with the same wording (punctuation and emoji aside) that Meta has
+   already approved is reused. Otherwise one is submitted, and the page checks
+   Meta's review every minute until it is approved, or rejected with Meta's
+   reason. Running the same sheet again never submits twice.
+5. Once it is approved, **Start a campaign with this sheet** opens the campaign
+   builder with the sheet and the template. Each recipient is sent their own
+   row's values. Anyone missing one is skipped, with the reason shown.
+
+Each template also carries an **Apply Now** button. Every recipient's button
+opens their own `/r/<token>` link, so each visit is recorded against that
+person, then forwards to
+`https://kiosk.eko.in/?utm_source=AutoGMap&utm_medium=whatsapp#apply-now`,
+with `utm_campaign` set to the campaign name. The destination and label can be
+changed per sheet. A `kiosk.eko.in` link already written in the messages is
+swapped for the tracked one too. Tracking needs `PUBLIC_BASE_URL`; without it
+the button opens the page directly and no visit is recorded.
+
 ### Template Studio (AI-drafted templates)
 
 **WhatsApp → Template Studio** has an agent draft templates for a state and

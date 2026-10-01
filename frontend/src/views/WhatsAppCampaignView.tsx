@@ -65,7 +65,18 @@ export const WhatsAppCampaignView: React.FC = () => {
     // An audience chosen on the Business Data page arrives here ready to use,
     // so the builder can skip straight past data selection.
     const handed = takeAudience();
-    if (handed && handed.contacts.length > 0) {
+    if (handed && handed.contacts.length > 0 && handed.needs_validation) {
+      // A sheet from the Template Studio, with the template made from it.
+      // Its numbers are as typed, so they are checked like any upload.
+      setDataSource('upload');
+      setAudienceLabel(handed.label);
+      if (handed.template_id) setSelectedTemplateId(handed.template_id);
+      setIsValidating(true);
+      validateContacts(handed.contacts)
+        .then(result => { setValidationResult(result); setStep(2); })
+        .catch((err: any) => alert('Error checking the sheet: ' + err.message))
+        .finally(() => setIsValidating(false));
+    } else if (handed && handed.contacts.length > 0) {
       setDataSource('scraped');
       setAudienceLabel(handed.label);
       setValidationResult({
@@ -114,6 +125,9 @@ export const WhatsAppCampaignView: React.FC = () => {
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+        // The other columns as displayed, for templates that fill a
+        // per-person value ({{amount}}, {{date}}) from the row.
+        const shown = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' }) as string[][];
         
         if (data.length < 2) {
           alert("File has no data.");
@@ -132,10 +146,18 @@ export const WhatsAppCampaignView: React.FC = () => {
           return;
         }
 
-        const contacts = data.slice(1).map(row => ({
-          name: nameIdx !== -1 ? String(row[nameIdx] || '') : '',
-          phone: row[phoneIdx] !== undefined ? row[phoneIdx] : '' // Pass raw to backend
-        })).filter(c => c.phone !== '');
+        const original = (shown[0] || []).map(h => String(h || '').trim());
+        const contacts = data.slice(1).map((row, r) => {
+          const variables: Record<string, string> = {};
+          original.forEach((h, i) => {
+            if (h && i !== phoneIdx) variables[h] = String(shown[r + 1]?.[i] ?? '').trim();
+          });
+          return {
+            name: nameIdx !== -1 ? String(row[nameIdx] || '') : '',
+            phone: row[phoneIdx] !== undefined ? row[phoneIdx] : '', // Pass raw to backend
+            variables,
+          };
+        }).filter(c => c.phone !== '');
 
         const result = await validateContacts(contacts);
         setValidationResult(result);
@@ -416,9 +438,26 @@ export const WhatsAppCampaignView: React.FC = () => {
                   >
                     <div className="font-semibold text-slate-200">{t.name}</div>
                     <div className="text-xs text-slate-500 mt-1 line-clamp-2">{t.body}</div>
+                    {(t.sheet_variables?.length ?? 0) > 0 && (
+                      <div className="text-[11px] text-amber-300/90 mt-1.5">From a sheet · needs {t.sheet_variables!.map(v => `{{${v}}}`).join(', ')}</div>
+                    )}
                   </div>
                 ))}
               </div>
+              {(() => {
+                // A sheet template fills these per person, so it only works
+                // with a sheet that has those columns.
+                const needs = templates.find(t => t.template_id === selectedTemplateId)?.sheet_variables || [];
+                if (needs.length === 0) return null;
+                return (
+                  <div className="mt-4 p-3 rounded border border-amber-600/50 bg-amber-900/20 text-amber-200 text-xs">
+                    This template fills {needs.map(v => `{{${v}}}`).join(', ')} from each person's row of the sheet it was made from.
+                    {dataSource === 'scraped'
+                      ? ' Scraped businesses have no such values, so every one of them would be skipped. Upload that sheet instead.'
+                      : ' Anyone whose row has no value for one of them is skipped, with the reason shown in Campaign History.'}
+                  </div>
+                );
+              })()}
               <div className="mt-6 flex justify-between">
                 <button 
                   onClick={() => setStep(1)}

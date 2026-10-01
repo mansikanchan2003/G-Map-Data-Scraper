@@ -5,8 +5,10 @@ Generation runs in the background because one variant takes a minute or more
 (copy, several photo attempts, rendering). The endpoints return the placeholder
 rows immediately and the Studio polls until they are ready.
 
-Nothing here contacts Meta except /approve.
+Nothing here contacts Meta except /approve, and /from-messages, whose
+templates are the team's own wording rather than the agent's.
 """
+import logging
 from datetime import datetime
 from typing import List, Optional
 
@@ -22,6 +24,7 @@ from src.services import creative_brief, template_studio
 from src.services.gemini_client import GeminiClient
 
 router = APIRouter(prefix="/api/v1/whatsapp/studio", tags=["Template Studio"])
+logger = logging.getLogger("gmap_scraper.template_studio")
 
 
 class StudioDraft(BaseModel):
@@ -188,3 +191,75 @@ def reject_draft(template_id: str, req: RejectRequest,
         raise HTTPException(status_code=409, detail=f"This draft is {tmpl.status} and cannot be rejected")
     template_studio.reject(db, tmpl, user.email, req.reason)
     return tmpl
+
+
+# --- From a messages sheet ---------------------------------------------------
+# Unlike the agent's drafts above, these are worded by the team already: the
+# template is read back out of messages written for each person, and goes to
+# Meta without waiting for an Approve click. See src/services/sheet_templates.py.
+
+from src.services import sheet_templates  # noqa: E402
+
+
+class FromMessagesRequest(BaseModel):
+    # One dict per sheet row, keyed by the sheet's own headers.
+    rows: List[dict] = Field(..., min_length=1, max_length=sheet_templates.MAX_ROWS)
+    message_column: str = Field(..., min_length=1)
+    phone_column: str = Field(..., min_length=1)
+    category: str = "MARKETING"
+    language: str = "en_US"
+    # The file it came from, which names the template.
+    source_name: Optional[str] = Field(None, max_length=200)
+    # The tracked "Apply Now" button, and where its visits are forwarded.
+    add_button: bool = True
+    button_text: Optional[str] = Field(None, max_length=sheet_templates.BUTTON_TEXT_LIMIT)
+    link_target: Optional[str] = Field(None, max_length=500)
+
+
+@router.post("/from-messages")
+def template_from_messages(req: FromMessagesRequest, db: Session = Depends(get_db),
+                           user: User = Depends(current_user)):
+    """
+    Turns a sheet of written-out messages into one template, and makes sure
+    Meta has it.
+
+    Call it again with the same sheet to learn where Meta's review has got
+    to: it finds the earlier submission rather than making another.
+    """
+    category = req.category.upper()
+    if category not in ("MARKETING", "UTILITY"):
+        raise HTTPException(status_code=400, detail="Category must be MARKETING or UTILITY.")
+    try:
+        out = sheet_templates.template_from_messages(
+            db, req.rows, req.message_column, req.phone_column,
+            category=category, language=req.language, source_name=req.source_name,
+            link_target=req.link_target, button_text=req.button_text, add_button=req.add_button,
+        )
+    except sheet_templates.DerivationError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    logger.info(f"template_studio event=SHEET_TEMPLATE action={out['action']} by={user.email} "
+                f"rows={len(req.rows)} source={req.source_name!r}")
+    return {
+        "action": out["action"],
+        "reason": out["reason"],
+        "derived": out["derived"],
+        "template": sheet_templates.describe(out["template"]) if out["template"] else None,
+    }
+
+
+@router.get("/sheet-settings")
+def sheet_settings():
+    """Defaults for the sheet form, and whether visits can be tracked here."""
+    return {
+        "tracking_enabled": sheet_templates.tracking_enabled(),
+        "default_link_target": sheet_templates.DEFAULT_LINK_TARGET,
+        "default_button_text": sheet_templates.DEFAULT_BUTTON_TEXT,
+        "button_text_limit": sheet_templates.BUTTON_TEXT_LIMIT,
+        "max_rows": sheet_templates.MAX_ROWS,
+    }
+
+
+@router.get("/sheet-templates")
+def sheet_template_list(db: Session = Depends(get_db)):
+    """Templates made from sheets, with Meta's review state kept current."""
+    return [sheet_templates.describe(t) for t in sheet_templates.list_sheet_templates(db)]

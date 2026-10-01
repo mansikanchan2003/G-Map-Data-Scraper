@@ -92,6 +92,13 @@ def _migrate_db(eng) -> None:
                     conn.execute(text(f"ALTER TABLE whatsapp_templates ADD COLUMN {name} {ddl}"))
             conn.commit()
 
+    if "whatsapp_campaign_recipients" in inspector.get_table_names():
+        columns = [c["name"] for c in inspector.get_columns("whatsapp_campaign_recipients")]
+        if "variables" not in columns:
+            with eng.connect() as conn:
+                conn.execute(text("ALTER TABLE whatsapp_campaign_recipients ADD COLUMN variables JSON"))
+                conn.commit()
+
     if "whatsapp_link_clicks" in inspector.get_table_names():
         columns = [c["name"] for c in inspector.get_columns("whatsapp_link_clicks")]
         if "automated_reason" not in columns:

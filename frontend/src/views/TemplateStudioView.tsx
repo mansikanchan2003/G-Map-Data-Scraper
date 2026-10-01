@@ -9,9 +9,19 @@ import type {
 } from '../api/whatsapp';
 import { getApiBaseUrl } from '../api';
 import { WhatsAppPreview } from '../components/WhatsAppPreview';
+import { SheetTemplateBuilder } from '../components/SheetTemplateBuilder';
 
-// The agent drafts; a person decides. Nothing on this page reaches Meta except
-// the Approve button.
+// Two ways to make a template. From a messages sheet: the team's own wording
+// is read back into one template and submitted to Meta automatically. AI
+// drafts: the agent writes, a person decides, and nothing reaches Meta except
+// through the Approve button.
+
+type Mode = 'sheet' | 'agent';
+const MODE_KEY = 'autogmap-studio-mode';
+
+const readMode = (): Mode => {
+  try { return localStorage.getItem(MODE_KEY) === 'agent' ? 'agent' : 'sheet'; } catch { return 'sheet'; }
+};
 
 type Tab = 'review' | 'working' | 'approved' | 'rejected';
 
@@ -60,6 +70,11 @@ const POSTER_EDIT_FIELDS: { key: keyof StudioPoster; label: string }[] = [
 ];
 
 export const TemplateStudioView: React.FC = () => {
+  const [mode, setModeState] = useState<Mode>(readMode);
+  const setMode = (m: Mode) => {
+    setModeState(m);
+    try { localStorage.setItem(MODE_KEY, m); } catch { /* remembered only when storage allows */ }
+  };
   const [ready, setReady] = useState<{ ready: boolean; error: string | null } | null>(null);
   const [states, setStates] = useState<StudioState[]>([]);
   const [rules, setRules] = useState<StudioRules | null>(null);
@@ -150,19 +165,35 @@ export const TemplateStudioView: React.FC = () => {
         <div>
           <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Template Studio</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            The agent writes templates in each state's language. Nothing is sent to Meta until you approve it.
+            {mode === 'sheet'
+              ? 'Turn a sheet of written-out messages into one template. It goes to Meta automatically.'
+              : "The agent writes templates in each state's language. Nothing is sent to Meta until you approve it."}
           </p>
         </div>
-        <button
+        {mode === 'agent' && <button
           onClick={() => setShowRules(v => !v)}
           className="h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-mono-code font-semibold rounded flex items-center gap-1.5"
         >
           <span className="material-symbols-outlined text-[16px]">rule</span>
           {showRules ? 'Hide rules' : "Agent's rules"}
-        </button>
+        </button>}
       </div>
 
-      {ready && !ready.ready && (
+      <div className="flex gap-1 mb-6 p-1 rounded-lg bg-slate-900 border border-slate-800 w-fit">
+        {([['sheet', 'From a messages sheet', 'table_view'], ['agent', 'AI drafts', 'auto_awesome']] as const).map(([m, label, icon]) => (
+          <button key={m} onClick={() => setMode(m)}
+            className={`px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 ${mode === m
+              ? 'bg-sky-900/50 text-sky-300' : 'text-slate-400 hover:text-slate-200'}`}>
+            <span className="material-symbols-outlined text-[16px]">{icon}</span>{label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'sheet' && <SheetTemplateBuilder />}
+
+      {mode === 'agent' && <>
+
+      {mode === 'agent' && ready && !ready.ready && (
         <div className="mb-4 p-3 rounded border border-amber-600/50 bg-amber-900/20 text-amber-200 text-sm">
           The agent cannot run yet: {ready.error} Drafts already made can still be reviewed.
         </div>
@@ -173,7 +204,7 @@ export const TemplateStudioView: React.FC = () => {
           : 'border-rose-600/50 bg-rose-900/20 text-rose-200'}`}>{notice.text}</div>
       )}
 
-      {showRules && rules && (
+      {mode === 'agent' && showRules && rules && (
         <div className="mb-6 grid md:grid-cols-3 gap-4 text-xs">
           {([['Image rules', rules.image_rules], ['Copy rules', rules.copy_rules], ['Facts it may claim', rules.facts]] as const).map(([title, items]) => (
             <div key={title} className="p-4 rounded-lg border border-slate-800 bg-slate-900">
@@ -241,6 +272,7 @@ export const TemplateStudioView: React.FC = () => {
       )}
 
       <PerformanceTable rows={performance} />
+      </>}
 
       {zoom && (
         <div onClick={() => setZoom(null)} className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6 cursor-zoom-out">

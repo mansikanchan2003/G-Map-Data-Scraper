@@ -22,10 +22,39 @@ logger = logging.getLogger("gmap_scraper.whatsapp_campaign")
 TEMPLATE_PLACEHOLDERS = ("{{name}}", "{{link}}")
 
 
-def ordered_placeholders(body: str) -> list:
+def ordered_placeholders(body: str, names=TEMPLATE_PLACEHOLDERS) -> list:
     """Placeholders present in a body, ordered by where they first appear."""
-    found = [(body.index(ph), ph) for ph in TEMPLATE_PLACEHOLDERS if ph in (body or "")]
+    found = [(body.index(ph), ph) for ph in names if ph in (body or "")]
     return [ph for _pos, ph in sorted(found)]
+
+
+def template_placeholders(template) -> list:
+    """
+    The placeholders a template is registered and sent with, in Meta's order.
+
+    {{name}} and {{link}} for every template. One made from a sheet also has
+    its own columns, which it declares; nothing else in a body is treated as
+    a placeholder, so an older template carrying a stray "{{...}}" keeps the
+    parameters Meta approved it with.
+    """
+    names = TEMPLATE_PLACEHOLDERS
+    if getattr(template, "origin", None) == "sheet":
+        declared = ((getattr(template, "generation", None) or {}).get("variables") or [])
+        names = names + tuple("{{%s}}" % k for k in declared if "{{%s}}" % k not in names)
+    return ordered_placeholders(template.body or "", names)
+
+
+def _example_for(template, placeholder: str) -> str:
+    """What Meta's reviewer is shown in place of a placeholder."""
+    key = placeholder[2:-2]
+    examples = ((getattr(template, "generation", None) or {}).get("examples") or {})
+    if examples.get(key):
+        return str(examples[key])
+    if placeholder == "{{name}}":
+        return "Sample Business"
+    if placeholder == "{{link}}":
+        return "https://example.com/r/abc123"
+    return "sample"
 
 
 def tracking_link_for(token: str) -> str:
@@ -75,15 +104,12 @@ def build_meta_components(template, header_handle: str = None) -> list:
                            "text": template.header_content})
 
     body_text = template.body or ""
-    placeholders = ordered_placeholders(body_text)
+    placeholders = template_placeholders(template)
     if placeholders:
         examples = []
         for index, placeholder in enumerate(placeholders, start=1):
             body_text = body_text.replace(placeholder, "{{%d}}" % index)
-            examples.append(
-                "Sample Business" if placeholder == "{{name}}"
-                else "https://example.com/r/abc123"
-            )
+            examples.append(_example_for(template, placeholder))
         components.append({"type": "BODY", "text": body_text,
                            "example": {"body_text": [examples]}})
     else:
@@ -126,6 +152,31 @@ def build_meta_components(template, header_handle: str = None) -> list:
         components.append({"type": "BUTTONS", "buttons": buttons})
 
     return components
+
+
+def required_variables(template) -> list:
+    """Sheet columns a recipient must carry a value for, {{name}} and {{link}} aside."""
+    return [ph[2:-2] for ph in template_placeholders(template) if ph not in TEMPLATE_PLACEHOLDERS]
+
+
+def parameter_value(rec, placeholder: str) -> str:
+    """
+    What fills one placeholder for one recipient.
+
+    The link is always the recipient's own tracking link. Anything else comes
+    from the sheet the recipient was uploaded with, and {{name}} falls back
+    to the contact's name. Newlines are flattened, since Meta refuses a
+    parameter that contains one.
+    """
+    from src.services.sheet_templates import clean_parameter
+
+    if placeholder == "{{link}}":
+        return tracking_link_for(rec.tracking_token)
+    key = placeholder[2:-2]
+    value = clean_parameter((rec.variables or {}).get(key) or "")
+    if not value and key == "name":
+        value = clean_parameter(rec.name or "") or "there"
+    return value
 
 
 class WhatsAppTemplateSubmissionService:
@@ -309,12 +360,30 @@ class WhatsAppCampaignService:
         pending = 0
         skipped = 0
 
+        # A template made from a sheet fills its columns from each recipient's
+        # own row, so someone without a value for one cannot be sent it.
+        from src.services.sheet_templates import cell_text, column_key
+        template = self.db.query(WhatsAppTemplate).filter(
+            WhatsAppTemplate.template_id == template_id).first()
+        needed = required_variables(template) if template else []
+
         for c in contacts:
             raw_phone = c.get("phone")
             name = c.get("name")
             business_id = c.get("business_id")
+            # Keyed by the sheet's own headers; stored by the placeholder
+            # names the template uses for them.
+            variables = {
+                column_key(k): cell_text(v)
+                for k, v in (c.get("variables") or {}).items()
+                if cell_text(v)
+            } or None
+            missing = [k for k in needed if not (variables or {}).get(k)]
 
             canonical, error = WhatsAppNormalizer.normalize_phone(raw_phone)
+
+            if not error and missing:
+                error = "No value for " + ", ".join("{{%s}}" % k for k in missing)
 
             if error:
                 status = "SKIPPED"
@@ -339,6 +408,7 @@ class WhatsAppCampaignService:
                 campaign_id=campaign_id,
                 business_id=business_id,
                 name=name,
+                variables=variables,
                 phone=canonical or str(raw_phone)[:20], # Save whatever we have if it's invalid
                 status=status,
                 reason=reason
@@ -572,15 +642,12 @@ class WhatsAppCampaignService:
 
                     # Body. Parameters are positional, so they are supplied in
                     # the same order the placeholders were registered with Meta.
-                    body_placeholders = ordered_placeholders(template.body or "")
+                    body_placeholders = template_placeholders(template)
                     if body_placeholders:
                         parameters = []
                         for placeholder in body_placeholders:
-                            if placeholder == "{{name}}":
-                                value = rec.name or "there"
-                            else:
-                                value = tracking_link_for(rec.tracking_token)
-                            parameters.append({"type": "text", "text": value})
+                            parameters.append({"type": "text",
+                                               "text": parameter_value(rec, placeholder)})
                         components.append({"type": "body", "parameters": parameters})
 
                     # Buttons

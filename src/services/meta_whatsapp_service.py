@@ -322,7 +322,9 @@ class MetaWhatsAppService:
         headers = {"Authorization": f"Bearer {self.access_token}"}
 
         templates = []
-        params = {"limit": 100, "fields": "name,language,status,category"}
+        # rejected_reason says why Meta refused a template, which is
+        # the only thing that tells someone what to change.
+        params = {"limit": 100, "fields": "name,language,status,category,rejected_reason"}
         try:
             # Meta paginates; follow "next" so a large WABA is fully covered.
             while url:

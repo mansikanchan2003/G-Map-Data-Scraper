@@ -122,6 +122,14 @@ def follow_campaign_link(token: str, request: Request, db: Session = Depends(get
         return RedirectResponse(_with_campaign_source(target), status_code=302)
 
     campaign = recipient.campaign
+    # A template made from a messages sheet names its own destination (by
+    # default the home page's #apply-now); every other template uses the
+    # configured one, as before.
+    template = campaign.template if campaign else None
+    own = ((template.generation or {}).get("link_target")
+           if template is not None and template.origin == "sheet" else None)
+    if own and _is_safe_target(own):
+        target = own
     target = _with_campaign_source(target, campaign.name if campaign else "")
 
     user_agent = (request.headers.get("user-agent") or "")[:500]
