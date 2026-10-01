@@ -1,6 +1,5 @@
 import hashlib
 import json
-import urllib.parse
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
@@ -15,10 +14,6 @@ from src.utils.logging import logger
 def generate_job_id(location_id: str, category_id: str) -> str:
     s = f"{location_id}{category_id}".encode('utf-8')
     return hashlib.sha256(s).hexdigest()[:16]
-
-def build_search_query(category_name: str, latitude: float, longitude: float) -> str:
-    query = urllib.parse.quote(category_name)
-    return f"https://www.google.com/maps/search/{query}/@{latitude},{longitude},12z"
 
 def generate_jobs(db: Session) -> dict:
     logger.info("Starting job generation...")

@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 from src.config import settings
 from src.models import Category, Job, Location
-from src.services.discovery_engine import GoogleMapsDiscoveryEngine
-from src.services.job_manager import build_search_query
+from src.services.discovery_engine import GoogleMapsDiscoveryEngine, build_search_url
+from src.services.job_manager import generate_job_id
 from src.services.geo_validator import is_valid_coordinate
 
 logger = logging.getLogger("gmap_scraper.custom_target")
@@ -138,9 +138,7 @@ def generate_jobs_for(db: Session, locations: List[Location], categories: List[C
 
     for loc in locations:
         for cat in categories:
-            job_id = hashlib.sha256(
-                f"{loc.location_id}{cat.category_id}".encode("utf-8")
-            ).hexdigest()[:16]
+            job_id = generate_job_id(loc.location_id, cat.category_id)
 
             if db.query(Job).filter(Job.job_id == job_id).first():
                 existing += 1
@@ -151,7 +149,10 @@ def generate_jobs_for(db: Session, locations: List[Location], categories: List[C
                 location_id=loc.location_id,
                 category_id=cat.category_id,
                 status="PENDING",
-                search_query=build_search_query(cat.category_name, loc.latitude, loc.longitude),
+                # The same query the engine runs and generate_jobs stores, so a
+                # custom job reads like any other: "<category> near <PIN>".
+                search_query=build_search_url(cat.category_name, loc.pincode,
+                                              loc.latitude, loc.longitude),
                 max_retries=settings.job_retry_limit,
             ))
             created += 1
