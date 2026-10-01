@@ -1,5 +1,13 @@
 # PROJECT_SPEC.md — Autonomous Google Maps Business Discovery Agent
 
+> **Historical — written 2026-09-14, before any code existed.** This records
+> the original architecture plan and is not kept in step with the code. Several
+> decisions here were later reversed: production runs PostgreSQL, the backend
+> writes the Google Sheet itself, the console is behind admin-approved sign-in,
+> and WhatsApp campaigns, the scraping autopilot, Campaign Insights and the
+> Template Studio were added. For how the system works now, read `README.md`
+> and the code. `docs/MASTER_CONTEXT.md` remains the project charter.
+
 > Version: 1.0.0 | Created: 2026-09-14 | Status: Architecture Complete
 
 ---

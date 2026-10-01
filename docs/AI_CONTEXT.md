@@ -1,5 +1,13 @@
 # AI_CONTEXT.md — Current Project State for AI Continuity
 
+> **Historical — written 2026-09-14, before any code existed.** This records
+> the original architecture plan and is not kept in step with the code. Several
+> decisions here were later reversed: production runs PostgreSQL, the backend
+> writes the Google Sheet itself, the console is behind admin-approved sign-in,
+> and WhatsApp campaigns, the scraping autopilot, Campaign Insights and the
+> Template Studio were added. For how the system works now, read `README.md`
+> and the code. `docs/MASTER_CONTEXT.md` remains the project charter.
+
 > **Last updated:** 2026-09-14T14:00:00+05:30
 > **Updated by:** Architecture Phase (Systems Architect)
 > **Conversation ID:** 9f4961d1-8769-4ead-95de-c502cba1747d
