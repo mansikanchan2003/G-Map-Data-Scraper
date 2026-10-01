@@ -29,6 +29,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from src.models import Business
+from src.services import creative_brief
 from src.models.whatsapp import (
     WhatsAppButtonClick, WhatsAppCampaign, WhatsAppCampaignRecipient,
     WhatsAppLinkClick, WhatsAppTemplate, HUMAN_LINK_CLICK,
@@ -64,15 +65,10 @@ _SCRIPTS = {
 _LANG_NAMES = {"hi": "Hindi", "pa": "Punjabi", "gu": "Gujarati", "mr": "Marathi", "bn": "Bengali",
                "ta": "Tamil", "te": "Telugu", "kn": "Kannada", "ml": "Malayalam", "en": "English"}
 
-# The language people in each state read. Devanagari is shared by Hindi and
-# Marathi, so a Hindi-script body counts as a match in Maharashtra too.
-STATE_LANGUAGE = {
-    "uttar pradesh": "hi", "haryana": "hi", "rajasthan": "hi", "bihar": "hi",
-    "madhya pradesh": "hi", "delhi": "hi", "uttarakhand": "hi", "himachal pradesh": "hi",
-    "jharkhand": "hi", "chhattisgarh": "hi", "maharashtra": "mr", "punjab": "pa",
-    "gujarat": "gu", "west bengal": "bn", "tamil nadu": "ta", "telangana": "te",
-    "andhra pradesh": "te", "karnataka": "kn", "kerala": "ml",
-}
+# The language people in each state read, from the one table the template
+# agent writes by too, so the two can never disagree. Devanagari is shared by
+# Hindi and Marathi, so a Hindi-script body counts as a match in Maharashtra.
+STATE_LANGUAGE = creative_brief.STATE_LANGUAGES
 
 
 def body_language(body: str) -> str:
