@@ -165,7 +165,9 @@ def script_problems(text: str, language_code: str, *, require_script: bool = Tru
     lang = LANGUAGES[language_code]
     problems = []
     for script, block in _INDIC_BLOCKS.items():
-        if block == lang["range"]:
+        # By name: Devanagari's block here leaves out the danda, so it never
+        # equals Hindi's range and Hindi text was flagged as foreign script.
+        if script == lang["script"]:
             continue
         found = re.findall(f"[{block}]", text or "")
         if found:
