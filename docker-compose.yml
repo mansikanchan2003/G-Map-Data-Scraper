@@ -115,6 +115,9 @@ services:
       # sessions with the database password, which works but ties the two
       # together. SMTP is optional: approvals still appear in the queue.
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      # First password for the seeded admin. Read only while that account
+      # has none; it never overwrites one already set.
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}

@@ -215,3 +215,63 @@ class TestEverythingElseIsClosed:
         email = make_admin()
         client.post("/api/v1/auth/login", json={"email": email, "password": GOOD_PASSWORD})
         assert client.get("/api/v1/stats").status_code == 200
+
+
+class TestBootstrapAdmin:
+    """
+    The seeded admin exists before anyone signs up. Signup proves only that
+    an address is on the domain, not that the person typing it owns the
+    mailbox, so it must never be the way that account gets its password.
+    """
+
+    def test_signup_cannot_claim_the_seeded_admin(self, client):
+        res = client.post("/api/v1/auth/signup", json={
+            "email": auth.BOOTSTRAP_ADMIN, "password": GOOD_PASSWORD,
+        })
+        assert res.status_code == 409
+
+        res = client.post("/api/v1/auth/login", json={
+            "email": auth.BOOTSTRAP_ADMIN, "password": GOOD_PASSWORD,
+        })
+        assert res.status_code == 401
+
+    def test_password_comes_from_configuration(self, monkeypatch):
+        monkeypatch.setenv("BOOTSTRAP_ADMIN_PASSWORD", GOOD_PASSWORD)
+        db = TestingSessionLocal()
+        try:
+            auth.ensure_bootstrap_admin(db)
+            user = db.query(User).filter(User.email == auth.BOOTSTRAP_ADMIN).one()
+            assert user.role == "admin" and user.status == "APPROVED"
+            assert auth.verify_password(GOOD_PASSWORD, user.password_hash)
+        finally:
+            db.query(User).delete()
+            db.commit()
+            db.close()
+
+    def test_configured_password_never_overwrites_one_already_set(self, monkeypatch):
+        db = TestingSessionLocal()
+        try:
+            db.add(User(user_id=uuid.uuid4().hex, email=auth.BOOTSTRAP_ADMIN,
+                        password_hash=auth.hash_password("existing-pass-1"),
+                        role="admin", status="APPROVED"))
+            db.commit()
+            monkeypatch.setenv("BOOTSTRAP_ADMIN_PASSWORD", GOOD_PASSWORD)
+            auth.ensure_bootstrap_admin(db)
+            user = db.query(User).filter(User.email == auth.BOOTSTRAP_ADMIN).one()
+            assert auth.verify_password("existing-pass-1", user.password_hash)
+        finally:
+            db.query(User).delete()
+            db.commit()
+            db.close()
+
+    def test_weak_configured_password_is_ignored(self, monkeypatch):
+        monkeypatch.setenv("BOOTSTRAP_ADMIN_PASSWORD", "short")
+        db = TestingSessionLocal()
+        try:
+            auth.ensure_bootstrap_admin(db)
+            user = db.query(User).filter(User.email == auth.BOOTSTRAP_ADMIN).one()
+            assert not auth.has_usable_password(user)
+        finally:
+            db.query(User).delete()
+            db.commit()
+            db.close()

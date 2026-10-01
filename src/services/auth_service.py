@@ -125,32 +125,53 @@ def ensure_bootstrap_admin(db: Session) -> None:
     Makes sure the first admin exists and is approved.
 
     Called at startup. If the account was created by signing up, it is
-    promoted rather than duplicated; its password is never touched.
+    promoted rather than duplicated; a password it already has is never
+    touched.
+
+    Its first password comes from BOOTSTRAP_ADMIN_PASSWORD, never from the
+    signup form. Signup checks only that an address is on the domain, not
+    that the person typing it owns the mailbox, so letting signup set this
+    account's password handed admin to whoever submitted the form first.
+    Whoever can set server configuration is already trusted with the app.
     """
     existing = db.query(User).filter(User.email == BOOTSTRAP_ADMIN).first()
-    if existing:
-        changed = False
-        if existing.role != "admin":
-            existing.role, changed = "admin", True
-        if existing.status != "APPROVED":
-            existing.status, changed = "APPROVED", True
-        if changed:
-            db.commit()
-            logger.info(f"auth event=BOOTSTRAP_ADMIN_PROMOTED email={BOOTSTRAP_ADMIN}")
-        return
+    if existing is None:
+        existing = User(
+            user_id=uuid.uuid4().hex,
+            email=BOOTSTRAP_ADMIN,
+            full_name="Mansi Kanchan",
+            password_hash="!",            # no bcrypt hash can equal this
+            role="admin",
+            status="APPROVED",
+        )
+        db.add(existing)
+        db.commit()
+        logger.info(f"auth event=BOOTSTRAP_ADMIN_CREATED email={BOOTSTRAP_ADMIN}")
 
-    # No password is set: the account cannot be signed into until its owner
-    # sets one, which they do through the normal signup form.
-    db.add(User(
-        user_id=uuid.uuid4().hex,
-        email=BOOTSTRAP_ADMIN,
-        full_name="Mansi Kanchan",
-        password_hash="!",            # no bcrypt hash can equal this
-        role="admin",
-        status="APPROVED",
-    ))
-    db.commit()
-    logger.info(f"auth event=BOOTSTRAP_ADMIN_CREATED email={BOOTSTRAP_ADMIN}")
+    changed = False
+    if existing.role != "admin":
+        existing.role, changed = "admin", True
+    if existing.status != "APPROVED":
+        existing.status, changed = "APPROVED", True
+    if changed:
+        logger.info(f"auth event=BOOTSTRAP_ADMIN_PROMOTED email={BOOTSTRAP_ADMIN}")
+
+    if not has_usable_password(existing):
+        initial = os.environ.get("BOOTSTRAP_ADMIN_PASSWORD") or ""
+        problem = password_problem(initial) if initial else None
+        if initial and not problem:
+            existing.password_hash = hash_password(initial)
+            changed = True
+            logger.info(f"auth event=BOOTSTRAP_ADMIN_PASSWORD_SET email={BOOTSTRAP_ADMIN}")
+        else:
+            logger.warning(
+                f"auth event=BOOTSTRAP_ADMIN_HAS_NO_PASSWORD email={BOOTSTRAP_ADMIN} "
+                + (f"reason={problem!r}" if problem else
+                   "set BOOTSTRAP_ADMIN_PASSWORD and restart to enable sign-in")
+            )
+
+    if changed:
+        db.commit()
 
 
 def has_usable_password(user: User) -> bool:

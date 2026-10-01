@@ -103,8 +103,11 @@ from the company's WhatsApp number.
 
 `mansi.kanchan.intern@eko.co.in` is seeded as the first admin at startup —
 otherwise the approvals queue would have nobody able to read it. That account
-has no password until its owner sets one through the signup form, which
-promotes rather than duplicates it.
+gets its first password from `BOOTSTRAP_ADMIN_PASSWORD`, applied at startup
+only while it has none; an existing password is never overwritten. The signup
+form cannot set it: signup checks that an address is on the domain, not that
+the person typing it owns the mailbox, so whoever submitted it first would
+otherwise become admin.
 
 Admins see **Access Requests** in the sidebar: approve, decline with a reason,
 or reinstate someone previously declined. Every decision records who made it.

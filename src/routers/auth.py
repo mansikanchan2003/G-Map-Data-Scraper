@@ -120,19 +120,9 @@ def signup(payload: SignupRequest, background: BackgroundTasks, db: Session = De
 
     existing = db.query(User).filter(User.email == email).first()
     if existing:
-        # The bootstrap admin exists before anyone signs up, so this is also
-        # how that account gets its first password.
-        if not auth.has_usable_password(existing):
-            existing.password_hash = auth.hash_password(payload.password)
-            if payload.full_name:
-                existing.full_name = payload.full_name
-            db.commit()
-            logger.info(f"auth event=PASSWORD_SET_FOR_SEEDED_ACCOUNT email={email}")
-            return {"status": existing.status, "email": email,
-                    "message": "Password set. You can sign in now."
-                               if existing.status == "APPROVED"
-                               else "Password set. Your account still needs approval."}
-
+        # The seeded admin is never claimed from here, even while it has no
+        # password: nothing proves the person submitting this owns the
+        # mailbox. Its password comes from BOOTSTRAP_ADMIN_PASSWORD.
         if existing.status == "PENDING":
             raise HTTPException(status_code=409, detail="A request for this address is already awaiting approval.")
         if existing.status == "REJECTED":
