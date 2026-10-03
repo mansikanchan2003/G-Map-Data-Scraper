@@ -52,18 +52,33 @@ DEFAULTS: Dict = {
     "enabled": False,
     "batch_size": 25,
     "batches_per_round": 5,
-    "gap_between_rounds_minutes": 5,
-    # A random pause in this range between the batches of a round.
-    "gap_between_batches_seconds": [45, 150],
+    # Thirty minutes between any two batches, whether or not a round ends
+    # between them: the two gaps are the same so the pace is one batch at a
+    # time, half an hour apart.
+    "gap_between_rounds_minutes": 30,
+    # The pause between the batches of a round, as a [low, high] range.
+    "gap_between_batches_seconds": [1800, 1800],
     # After each job: this many seconds plus up to the jitter, at random.
     "job_delay_seconds": 4.0,
     "job_delay_jitter_seconds": 6.0,
-    "daily_batch_target": 30,
+    "daily_batch_target": 10,
     # Past the target, keep going instead of stopping for the day.
     "continue_after_target": False,
     # Limit rounds to these states; empty means every state with work left.
     "states": [],
 }
+
+# The pace is saved in the database once anyone uses the Pacing form, so a
+# change to DEFAULTS alone never reaches a server that has saved settings.
+# Raising this number makes the next start adopt PACE once, and switches the
+# autopilot off as it does: a new pace is something a person turns on, not
+# something a deploy starts running.
+#   2: ten batches a day, one at a time, thirty minutes apart (was thirty a
+#      day, 45-150 s apart).
+PACE_VERSION = 2
+PACE_VERSION_KEY = "discovery_autopilot_pace_version"
+PACE_KEYS = ("daily_batch_target", "gap_between_batches_seconds", "gap_between_rounds_minutes",
+             "continue_after_target")
 
 # How long to stop after a CAPTCHA, by how many have happened in a row.
 COOLDOWN_MINUTES = [30, 60, 120, 240]
@@ -139,6 +154,31 @@ def save_settings(db: Session, updates: dict) -> dict:
         current[key] = value
     _write(db, SETTINGS_KEY, {k: current[k] for k in DEFAULTS})
     return current
+
+
+def adopt_pace(db: Session) -> bool:
+    """
+    Brings saved settings onto the current pace, once per PACE_VERSION.
+
+    Returns True when it changed anything. The autopilot is left switched
+    off, so the new pace starts only when someone turns it on.
+    """
+    seen = (_read(db, PACE_VERSION_KEY) or {}).get("version", 1)
+    if seen >= PACE_VERSION:
+        return False
+    current = get_settings(db)
+    for key in PACE_KEYS:
+        current[key] = DEFAULTS[key]
+    current["enabled"] = False
+    _write(db, SETTINGS_KEY, {k: current[k] for k in DEFAULTS})
+    _write(db, PACE_VERSION_KEY, {"version": PACE_VERSION})
+    state = get_state(db)
+    state["next_batch_at"] = None
+    _event(state, "PACE_CHANGED",
+           f"Pace changed to {DEFAULTS['daily_batch_target']} batches a day, "
+           f"{DEFAULTS['gap_between_rounds_minutes']} minutes apart. Switched off until turned on again.")
+    _write(db, STATE_KEY, state)
+    return True
 
 
 def get_state(db: Session) -> dict:
@@ -548,6 +588,7 @@ def _loop() -> None:
 
     db = SessionLocal()
     try:
+        adopt_pace(db)
         recover_after_restart(db)
     except Exception:
         logger.exception("autopilot event=RECOVERY_FAILED")

@@ -52,14 +52,15 @@ dashboard.
 **Dashboard → Scraping autopilot** runs discovery on its own. Switch it on and
 it works in **rounds**:
 
-- A round is **one state** and **5 batches of 25 jobs**, run one after another.
-  Each batch is a different tehsil — in a different district while the state
-  has unused ones — and no category is repeated within the round.
-- When a round finishes, it waits **5 minutes** and starts the next round in a
-  **different state**, the one visited longest ago.
-- It stops for the day at **30 batches** (IST), finishing the round it is in,
-  and carries on after midnight. A 25-job batch takes 15–20 minutes, so 30
-  batches take about 10–11 hours.
+- A round is **one state** and **5 batches of 25 jobs**. Each batch is a
+  different tehsil — in a different district while the state has unused ones —
+  and no category is repeated within the round.
+- Batches run **one at a time, 30 minutes apart**, whether or not a round ends
+  between them. The next round is in a **different state**, the one visited
+  longest ago.
+- It stops for the day at **10 batches** (IST), finishing the round it is in,
+  and carries on after midnight. A 25-job batch takes 15–20 minutes, so a
+  day's ten take about seven and a half hours.
 - Before each round it runs job generation, so newly added PINs join the queue.
 
 To stay clear of Google's CAPTCHA it paces itself like a person, not a
@@ -73,6 +74,18 @@ Every setting — batches per day, batch size, gaps, which states — is under
 **Pacing**. **Stop** on a running batch also switches the autopilot off. It
 never runs alongside a batch started by hand, and after a restart it resumes
 the round it was in.
+
+**It cannot take the server down.** The machine is shared with other
+applications, so three things bound what scraping can use:
+
+- Every browser a job starts is recorded against it. When the job ends —
+  finished, or timed out and abandoned — anything it left running is killed.
+  A wedged job used to leave its Chromium alive, a few hundred megabytes each.
+- The backend container has a memory ceiling (`BACKEND_MEMORY_LIMIT`, 4 GB by
+  default, swap included). Past it the kernel kills a process inside the
+  container; at worst this container restarts, and nothing else is touched.
+- A change of pace in the code is adopted once at the next start and leaves
+  the autopilot **switched off**. A deploy never starts it; a person does.
 
 ### Target locations
 - **The PIN list is editable.** The spreadsheets seed it, but new PIN codes and

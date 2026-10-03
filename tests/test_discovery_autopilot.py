@@ -3,8 +3,8 @@ The scraping autopilot.
 
 Runs whole days against a fake clock and a fake scraper, so what is checked
 is the behaviour asked for: rounds of five 25-job batches in one state, each
-batch a different tehsil with its own categories, five minutes between
-rounds, a different state each round, at least thirty batches a day — and a
+batch a different tehsil with its own categories, a different state each
+round, ten batches a day run one at a time thirty minutes apart — and a
 CAPTCHA stopping everything for a cool-down instead of pressing on.
 """
 import uuid
@@ -179,28 +179,38 @@ def test_the_gap_between_rounds_is_respected(db):
     ap.tick(db, clock=clock, runner=scraper)
     assert ap.get_state(db)["phase"] == "gap_between_rounds"
     assert db.query(DiscoveryRound).count() == 1
-    clock.t = finished + timedelta(minutes=5, seconds=1)
+    clock.t = finished + timedelta(minutes=29)
+    ap.tick(db, clock=clock, runner=scraper)
+    assert db.query(DiscoveryRound).count() == 1, "still inside the half hour"
+    clock.t = finished + timedelta(minutes=30, seconds=1)
     ap.tick(db, clock=clock, runner=scraper)
     assert db.query(DiscoveryRound).count() == 2
 
 
-def test_thirty_batches_fit_in_a_day_and_then_it_stops(db):
+def test_ten_batches_a_day_half_an_hour_apart_and_then_it_stops(db):
     clock = Clock()
     scraper = FakeScraper(db, clock)
     switch_on(db)
     start = clock()
     run_until(db, clock, scraper, lambda: ap.get_state(db)["phase"] == "daily_target_reached")
 
-    # The target is checked between rounds, so the day ends on a whole round:
-    # 30, or a little over when a nearly-exhausted state made a short round.
-    assert 30 <= ap.batches_today(db, clock()) < 35
-    assert len(scraper.batches) == ap.batches_today(db, clock())
+    # The target is checked between rounds, so the day ends on a whole round.
+    assert ap.batches_today(db, clock()) == 10
+    assert len(scraper.batches) == 10
     # Rotating through the states, never the same one twice running.
     rounds = db.query(DiscoveryRound).order_by(DiscoveryRound.created_at).all()
-    assert len(rounds) >= 6
+    assert len(rounds) == 2
     assert all(a.state != b.state for a, b in zip(rounds, rounds[1:]))
-    # 18-minute batches plus the gaps: comfortably inside one day.
-    assert clock() - start < timedelta(hours=14)
+
+    # One at a time, and never sooner than half an hour after the last one
+    # ended — inside a round and across the round boundary alike.
+    runs = db.query(RunLog).order_by(RunLog.started_at).all()
+    for earlier, later in zip(runs, runs[1:]):
+        gap = ap._aware(later.started_at) - ap._aware(earlier.completed_at)
+        assert gap >= timedelta(minutes=30), f"only {gap} between two batches"
+        assert gap < timedelta(minutes=32)
+    # Ten 18-minute batches and nine half-hour gaps: seven and a half hours.
+    assert clock() - start < timedelta(hours=8)
 
     # Nothing more today; the next IST day it carries on.
     done = len(scraper.batches)
@@ -364,3 +374,42 @@ def test_a_batch_runs_exactly_its_planned_jobs():
         s.query(Job).delete()
         s.commit()
         s.close()
+
+
+# --- a change of pace ---------------------------------------------------------
+
+def test_saved_settings_adopt_the_new_pace_once_and_are_switched_off(db):
+    """
+    The pace lives in the database once the Pacing form is used, so new
+    defaults alone would never reach a server that has saved settings. And a
+    deploy must not be what starts a new pace running.
+    """
+    # A server on the old pace, switched on, with a choice of its own.
+    ap._write(db, ap.SETTINGS_KEY, {**ap.DEFAULTS, "enabled": True, "daily_batch_target": 30,
+                                    "gap_between_batches_seconds": [45, 150],
+                                    "gap_between_rounds_minutes": 5, "batch_size": 20})
+    assert ap.adopt_pace(db) is True
+
+    s = ap.get_settings(db)
+    assert s["enabled"] is False
+    assert s["daily_batch_target"] == 10
+    assert s["gap_between_batches_seconds"] == [1800, 1800]
+    assert s["gap_between_rounds_minutes"] == 30
+    assert s["batch_size"] == 20, "what the pace does not cover is left alone"
+    assert "Switched off" in ap.get_state(db)["last_event"]
+
+    # Only once: a later start leaves a person's own choices in place.
+    ap.save_settings(db, {"enabled": True, "daily_batch_target": 12})
+    assert ap.adopt_pace(db) is False
+    assert ap.get_settings(db)["enabled"] is True
+    assert ap.get_settings(db)["daily_batch_target"] == 12
+
+
+def test_switched_off_it_runs_nothing(db):
+    clock = Clock()
+    scraper = FakeScraper(db, clock)
+    ap.adopt_pace(db)
+    for _ in range(20):
+        clock.advance(seconds=ap.tick(db, clock=clock, runner=scraper))
+    assert scraper.batches == [] and db.query(DiscoveryRound).count() == 0
+    assert ap.get_state(db)["phase"] == "off"
