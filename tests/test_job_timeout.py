@@ -108,3 +108,76 @@ def test_a_job_that_raises_is_reported_not_swallowed(db, monkeypatch):
     res = discovery._run_job_with_timeout(JOB_ID, db, "run-test")
     assert res["job_status"] == "FAILED"
     assert "browser crashed" in res["error"]
+
+
+# --- the browsers a job leaves behind -----------------------------------------
+
+def _spawn_stand_in_browser():
+    """A child process that would run for a minute, like a wedged Chromium."""
+    import subprocess
+    import sys
+    from src.utils import browser_processes
+
+    before = browser_processes.snapshot()
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    browser_processes.claim_new(before)
+    return proc
+
+
+def test_a_hung_jobs_browser_is_killed_not_left_running(db, monkeypatch):
+    """
+    Abandoning the thread used to leave its Chromium alive. On a shared
+    server those pile up until nothing answers.
+    """
+    monkeypatch.setattr(discovery.settings, "job_timeout_seconds", 1)
+    started = {}
+
+    def wedged(job_id, session, *a, **k):
+        started["proc"] = _spawn_stand_in_browser()
+        started["proc"].wait()          # stuck until the browser goes away
+        return {"job_status": "FAILED", "error": "browser closed"}
+
+    monkeypatch.setattr(discovery.job_manager, "execute_single_job", wedged)
+
+    res = discovery._run_job_with_timeout(JOB_ID, db, "run-test")
+    assert res["job_status"] == "TIMEOUT"
+    assert started["proc"].poll() is not None, "the browser is still running"
+
+    db.expire_all()
+    assert db.query(Job).filter(Job.job_id == JOB_ID).first().status == "PENDING"
+
+
+def test_a_browser_left_by_a_finished_job_is_killed_too(db, monkeypatch):
+    """The email step can give up on closing its browser and return anyway."""
+    monkeypatch.setattr(discovery.settings, "job_timeout_seconds", 30)
+    started = {}
+
+    def leaves_one_behind(job_id, session, *a, **k):
+        started["proc"] = _spawn_stand_in_browser()
+        return {"job_status": "COMPLETED", "listings_found": 1, "businesses_saved": 1}
+
+    monkeypatch.setattr(discovery.job_manager, "execute_single_job", leaves_one_behind)
+
+    res = discovery._run_job_with_timeout(JOB_ID, db, "run-test")
+    assert res["job_status"] == "COMPLETED"
+    started["proc"].wait(timeout=10)
+    assert started["proc"].poll() is not None
+
+
+def test_a_browser_the_job_closed_itself_is_not_an_error(db, monkeypatch):
+    from src.utils import browser_processes
+    monkeypatch.setattr(discovery.settings, "job_timeout_seconds", 30)
+
+    def tidy(job_id, session, *a, **k):
+        proc = _spawn_stand_in_browser()
+        proc.kill()
+        proc.wait()
+        return {"job_status": "COMPLETED"}
+
+    monkeypatch.setattr(discovery.job_manager, "execute_single_job", tidy)
+    killed = []
+    real = browser_processes.kill_for_thread
+    monkeypatch.setattr(browser_processes, "kill_for_thread", lambda i: killed.append(real(i)) or killed[-1])
+
+    discovery._run_job_with_timeout(JOB_ID, db, "run-test")
+    assert killed == [0]

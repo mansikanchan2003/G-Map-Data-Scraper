@@ -47,6 +47,19 @@ services:
         # because Vite rewrites every asset URL with it.
         VITE_BASE_PATH: ${VITE_BASE_PATH:-/}
     restart: unless-stopped
+    # A ceiling on what scraping can take. This server is shared: without one,
+    # browsers left behind by wedged jobs can grow until the whole machine
+    # stops answering, taking every other application with it. With one, the
+    # kernel kills a process inside this container instead, and at worst this
+    # container restarts. Swap is capped at the same figure so the limit
+    # cannot be dodged by paging, which is what makes a machine unresponsive.
+    mem_limit: ${BACKEND_MEMORY_LIMIT:-4g}
+    memswap_limit: ${BACKEND_MEMORY_LIMIT:-4g}
+    # No single runaway can fork without end either.
+    pids_limit: 2048
+    # A tiny init as PID 1, so browser processes that exit are reaped rather
+    # than left as zombies; uvicorn does not reap children it did not start.
+    init: true
     environment:
       # Database — point to the postgres service above
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-gmap_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gmap_scraper}

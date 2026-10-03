@@ -92,16 +92,24 @@ class GoogleMapsDiscoveryEngine:
     def _ensure_browser(self):
         if not self._playwright:
             from playwright.sync_api import sync_playwright
-            self._playwright = sync_playwright().start()
-            self._browser = self._playwright.chromium.launch(
-                headless=self.headless,
-                args=[
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-blink-features=AutomationControlled'
-                ]
-            )
+            from src.utils import browser_processes
+
+            # Recorded so the batch can kill this browser if the job wedges
+            # and is abandoned; close() cannot run on a thread that is stuck.
+            before = browser_processes.snapshot()
+            try:
+                self._playwright = sync_playwright().start()
+                self._browser = self._playwright.chromium.launch(
+                    headless=self.headless,
+                    args=[
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-blink-features=AutomationControlled'
+                    ]
+                )
+            finally:
+                browser_processes.claim_new(before)
 
     def _context_options(self) -> dict:
         """

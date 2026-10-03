@@ -320,9 +320,9 @@ def _run_job_with_timeout(job_id: str, db: Session, run_id: str) -> dict:
 
     The work is blocking and synchronous, so it goes on its own thread with
     its own database session — a Session is not safe to share across threads.
-    A thread that overruns cannot be killed, so it is abandoned: the job goes
-    back to PENDING to be picked up again, and the batch moves on instead of
-    stopping dead.
+    A thread that overruns cannot be killed, so it is abandoned, and the
+    browsers it started are killed in its place: the job goes back to PENDING
+    to be picked up again, and the batch moves on instead of stopping dead.
     """
     import threading
 
@@ -340,15 +340,30 @@ def _run_job_with_timeout(job_id: str, db: Session, run_id: str) -> dict:
         finally:
             own_db.close()
 
+    from src.utils import browser_processes
+
     worker = threading.Thread(target=work, daemon=True, name=f"job-{job_id[:8]}")
     worker.start()
     worker.join(timeout=settings.job_timeout_seconds)
+    timed_out = worker.is_alive()
 
-    if worker.is_alive():
+    # The thread can be abandoned but its browsers cannot: each is a few
+    # hundred megabytes that nothing would ever close. Whatever this job
+    # started and did not shut down is killed here, timeout or not — the
+    # email step can leave one behind even when the job itself finishes.
+    killed = browser_processes.kill_for_thread(worker.ident)
+    if killed:
+        logger.warning(f"discovery run_id={run_id} job_id={job_id} event=BROWSERS_KILLED count={killed}")
+
+    if timed_out:
         logger.error(
             f"discovery run_id={run_id} job_id={job_id} event=JOB_TIMEOUT "
             f"after={settings.job_timeout_seconds}s — abandoning and continuing"
         )
+        # With its browser gone the stuck call fails and the thread unwinds;
+        # give it a moment so its own write lands before the reset below.
+        if killed:
+            worker.join(timeout=20)
         # Left RUNNING it would block the retry sweep too, so it is handed
         # back for another attempt rather than marked failed.
         db.query(Job).filter(Job.job_id == job_id).update(

@@ -107,8 +107,16 @@ class EmailEnricher:
         results = []
         semaphore = asyncio.Semaphore(self.max_concurrency)
 
+        from src.utils import browser_processes
+
+        # Recorded against this job's thread: if teardown below cannot finish,
+        # the batch kills what is left once the job is over.
+        before = browser_processes.snapshot()
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True, args=['--disable-blink-features=AutomationControlled'])
+            try:
+                browser = await p.chromium.launch(headless=True, args=['--disable-blink-features=AutomationControlled'])
+            finally:
+                browser_processes.claim_new(before)
             context = await browser.new_context(
                 viewport={"width": 1280, "height": 800},
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -150,8 +158,9 @@ class EmailEnricher:
                     })
 
             # Even after unwinding, a wedged browser must not hold the calling
-            # thread. If teardown does not finish, the process is left for the
-            # OS to reap rather than blocking the batch indefinitely.
+            # thread. If teardown does not finish, the browser is left running
+            # here and killed by the batch when the job ends (see
+            # browser_processes) rather than blocking it indefinitely.
             for name, closer in (("context", context), ("browser", browser)):
                 try:
                     await asyncio.wait_for(closer.close(), timeout=self.teardown_timeout_seconds)
