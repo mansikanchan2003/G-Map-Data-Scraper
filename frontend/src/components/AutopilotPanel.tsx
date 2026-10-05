@@ -300,6 +300,11 @@ const Pacing: React.FC<{ settings: AutopilotSettings; states: string[]; onSave: 
             onChange={e => setForm(f => ({ ...f, continue_after_target: e.target.checked }))} />
           Keep going past the daily target
         </label>
+        <label className="text-xs text-slate-400 flex items-center gap-2 self-center">
+          <input type="checkbox" checked={form.retry_failed_jobs ?? true}
+            onChange={e => setForm(f => ({ ...f, retry_failed_jobs: e.target.checked }))} />
+          Try failed jobs again
+        </label>
       </div>
       <div className="mt-3 text-xs text-slate-400">
         States to rotate through <span className="text-slate-600">(none ticked = all with work left)</span>

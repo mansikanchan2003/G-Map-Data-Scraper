@@ -569,6 +569,7 @@ export interface AutopilotSettings {
   job_delay_jitter_seconds: number;
   daily_batch_target: number;
   continue_after_target: boolean;
+  retry_failed_jobs: boolean;
   states: string[];
 }
 

@@ -75,6 +75,15 @@ Every setting — batches per day, batch size, gaps, which states — is under
 never runs alongside a batch started by hand, and after a restart it resumes
 the round it was in.
 
+**Failed jobs are tried again.** Before each round, failed jobs go back in the
+queue and are scraped in the ordinary batches — the same ten a day, thirty
+minutes apart, with no extra ones. Retries go first: a batch takes the jobs
+being tried again before ones never tried, so a failure is not left waiting
+behind thousands of untouched jobs. A job that failed because the internet was
+down goes back with that attempt not counted. Any other failure is retried
+until the job has used its attempts (`JOB_RETRY_LIMIT`, 3 by default), then it
+stays failed. **Try failed jobs again** under Pacing turns this off.
+
 **It waits out a dead internet connection.** The connection is checked before
 every batch, so nothing is started into an outage. A batch that loses it
 part-way stops after three failed jobs in a row and puts them back in the

@@ -677,6 +677,7 @@ class AutopilotSettings(BaseModel):
     job_delay_jitter_seconds: Optional[float] = None
     daily_batch_target: Optional[int] = None
     continue_after_target: Optional[bool] = None
+    retry_failed_jobs: Optional[bool] = None
     states: Optional[List[str]] = None
 
 

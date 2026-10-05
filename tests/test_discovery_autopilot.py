@@ -515,3 +515,63 @@ def test_a_batch_that_loses_the_connection_is_retried_and_not_counted(db):
     link.up = True
     run_until_with(db, clock, drops_once, link, lambda: len(calls) == 2)
     assert calls[1] == calls[0], "the same batch is tried again"
+
+
+# --- failed jobs get another go -----------------------------------------------
+
+DNS = "Navigation timeout or network failure: Page.goto: net::ERR_NAME_NOT_RESOLVED"
+
+
+def fail(db, job_id, error, attempts):
+    db.query(Job).filter(Job.job_id == job_id).update(
+        {"status": "FAILED", "error_message": error, "attempt_count": attempts,
+         "last_attempt_at": datetime(2026, 10, 4, tzinfo=timezone.utc)})
+
+
+def test_failed_jobs_go_back_in_the_queue_by_why_they_failed(db):
+    fail(db, "L00c000", DNS, 1)                       # the outage: never really tried
+    fail(db, "L00c001", "selector changed", 1)        # a real failure, attempts left
+    fail(db, "L00c002", "selector changed", 3)        # out of attempts
+    db.commit()
+
+    assert ap.requeue_failed_jobs(db) == {"network": 1, "other": 1, "total": 2}
+    jobs = {j.job_id: j for j in db.query(Job).filter(Job.job_id.in_(["L00c000", "L00c001", "L00c002"]))}
+    assert jobs["L00c000"].status == "PENDING" and jobs["L00c000"].attempt_count == 0
+    assert jobs["L00c001"].status == "PENDING" and jobs["L00c001"].attempt_count == 1
+    assert jobs["L00c002"].status == "FAILED", "a search that fails every time is left alone"
+
+
+def test_retries_ride_in_the_ordinary_batches_at_the_same_pace(db):
+    """No extra batches: a failed job is scraped inside the day's ten."""
+    failed_ids = [f"L00c{i:03d}" for i in range(40)]
+    for job_id in failed_ids:
+        fail(db, job_id, DNS, 1)
+    db.commit()
+
+    clock = Clock()
+    scraper = FakeScraper(db, clock)
+    switch_on(db, states=["Haryana"])
+    run_until(db, clock, scraper, lambda: ap.get_state(db)["phase"] == "daily_target_reached")
+
+    assert len(scraper.batches) == 10, "still ten batches, not ten plus retries"
+    assert db.query(Job).filter(Job.status == "FAILED").count() == 0
+    scraped = {j for b in scraper.batches for j in b["jobs"]}
+    # Forty retries in one town, twenty-five to a batch and a town once per
+    # round: all of them are done in the day's two rounds, ahead of the
+    # hundreds of jobs there that were never tried.
+    assert set(failed_ids) <= scraped, "every failed job was scraped again today"
+    first = scraper.batches[0]["jobs"]
+    assert set(first) <= set(failed_ids), "the first batch is made of retries"
+    runs = db.query(RunLog).order_by(RunLog.started_at).all()
+    assert all(ap._aware(b.started_at) - ap._aware(a.completed_at) >= timedelta(minutes=30)
+               for a, b in zip(runs, runs[1:]))
+
+
+def test_retrying_can_be_switched_off(db):
+    fail(db, "L00c000", DNS, 1)
+    db.commit()
+    clock = Clock()
+    scraper = FakeScraper(db, clock)
+    switch_on(db, retry_failed_jobs=False)
+    run_until(db, clock, scraper, lambda: len(scraper.batches) == 1)
+    assert db.query(Job).filter(Job.job_id == "L00c000").one().status == "FAILED"

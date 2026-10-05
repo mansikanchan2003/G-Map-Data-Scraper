@@ -70,6 +70,9 @@ DEFAULTS: Dict = {
     "daily_batch_target": 10,
     # Past the target, keep going instead of stopping for the day.
     "continue_after_target": False,
+    # Put failed jobs back in the queue before each round, so they are tried
+    # again as part of the day's batches rather than left behind.
+    "retry_failed_jobs": True,
     # Limit rounds to these states; empty means every state with work left.
     "states": [],
 }
@@ -253,11 +256,17 @@ def plan_round(db: Session, state: str, batches: int, batch_size: int,
     categories to fill a batch. Categories are never repeated within a round.
     A state with fewer tehsils than batches reuses them, still with fresh
     categories.
+
+    Jobs being tried again go first: among places equally good for the
+    spread, the one with most retries waiting is taken, and within a batch
+    retries are chosen before jobs never tried. Otherwise a failed job would
+    wait behind thousands of untouched ones for its second chance.
     """
     rng = rng or random.Random()
     rows = (
         db.query(Job.job_id, Job.category_id, Category.category_name, Location.location_id,
-                 Location.anchor_name, Location.pincode, Location.district, Location.tehsil)
+                 Location.anchor_name, Location.pincode, Location.district, Location.tehsil,
+                 Job.last_attempt_at)
         .join(Location, Location.location_id == Job.location_id)
         .join(Category, Category.category_id == Job.category_id)
         .filter(Job.status == "PENDING", func.lower(Location.state) == state.lower())
@@ -265,12 +274,15 @@ def plan_round(db: Session, state: str, batches: int, batch_size: int,
     )
 
     locations: Dict[str, dict] = {}
-    for job_id, cat_id, cat_name, loc_id, anchor, pincode, district, tehsil in rows:
+    for job_id, cat_id, cat_name, loc_id, anchor, pincode, district, tehsil, tried_at in rows:
         loc = locations.setdefault(loc_id, {
             "location_id": loc_id, "anchor": anchor, "pincode": pincode,
-            "district": district, "tehsil": tehsil, "jobs": {},
+            "district": district, "tehsil": tehsil, "jobs": {}, "retries": set(),
         })
         loc["jobs"][cat_id] = (job_id, cat_name)
+        # Pending but attempted before: a job put back to be tried again.
+        if tried_at is not None:
+            loc["retries"].add(cat_id)
 
     used_cats, used_locs, used_tehsils, used_districts = set(), set(), set(), set()
     plan = []
@@ -288,6 +300,7 @@ def plan_round(db: Session, state: str, batches: int, batch_size: int,
                 loc["location_id"] in used_locs,
                 tehsil in used_tehsils,
                 loc["district"] in used_districts,
+                -min(sum(1 for c in available(loc) if c in loc["retries"]), batch_size),
                 -min(len(available(loc)), batch_size),
                 rng.random(),
             )
@@ -295,6 +308,7 @@ def plan_round(db: Session, state: str, batches: int, batch_size: int,
         pick = min(options, key=spread)
         cats = available(pick)
         rng.shuffle(cats)
+        cats.sort(key=lambda c: c not in pick["retries"])   # stable: retries first
         chosen = cats[:batch_size]
         plan.append({
             "batch": number,
@@ -373,6 +387,39 @@ def recover_after_restart(db: Session) -> dict:
     if jobs or runs or rounds:
         logger.info(f"autopilot event=RECOVERED jobs={jobs} runs={runs} batches={rounds}")
     return {"jobs": jobs, "runs": runs, "batches": rounds}
+
+
+def requeue_failed_jobs(db: Session) -> dict:
+    """
+    Returns failed jobs to the queue, to be scraped again in the ordinary
+    batches — the same pace, no extra ones.
+
+    A job that failed because the connection was down was never really
+    tried, so it goes back with that attempt not counted. Any other failure
+    is retried until the job has had its full number of attempts; after
+    that it stays FAILED, since a search that fails every time is not going
+    to be fixed by asking again.
+    """
+    from src.config import settings as app_settings
+    from src.utils import connectivity
+
+    limit = app_settings.job_retry_limit
+    network = again = 0
+    for job in db.query(Job).filter(Job.status == "FAILED").all():
+        if connectivity.looks_like_network_failure(job.error_message):
+            job.attempt_count = max(0, (job.attempt_count or 0) - 1)
+            job.error_message = "Failed while the internet was down; queued to try again"
+            network += 1
+        elif (job.attempt_count or 0) < limit:
+            job.error_message = f"Queued to try again after: {(job.error_message or 'a failure')[:300]}"
+            again += 1
+        else:
+            continue
+        job.status = "PENDING"
+    if network or again:
+        db.commit()
+        logger.info(f"autopilot event=FAILED_JOBS_REQUEUED network={network} other={again}")
+    return {"network": network, "other": again, "total": network + again}
 
 
 def _default_online() -> bool:
@@ -456,6 +503,11 @@ def tick(db: Session, clock: Callable[[], datetime] = _now,
 
         # New PINs added since the last round only have jobs once generated.
         job_manager.generate_jobs(db)
+        if settings["retry_failed_jobs"]:
+            back = requeue_failed_jobs(db)
+            if back["total"]:
+                _event(state, "FAILED_JOBS_REQUEUED",
+                       f"{back['total']} failed job(s) put back in the queue to be tried again.")
         state_name = choose_state(db, settings)
         if not state_name:
             return done("no_pending_jobs", 600)
