@@ -315,7 +315,8 @@ class TestManagerRole:
         assert db.query(User).filter(User.user_id == uid).one().status == "PENDING"
         db.close()
 
-    def test_approving_without_a_role_still_makes_a_member(self, client):
+    def test_approving_without_a_role_gives_the_least_access(self, client):
+        """Member is view-only, so a role nobody chose is the safe one."""
         uid = self._pending(client)
         res = client.post(f"/api/v1/auth/users/{uid}/approve")
         assert res.json()["role"] == "member"
@@ -328,18 +329,18 @@ class TestManagerRole:
         assert client.post(f"/api/v1/auth/users/{admin_id}/approve", json={"role": "member"}).status_code == 400
 
 
-class TestOperatorRole:
-    """An operator may look at everything on their tabs and change nothing."""
+class TestViewOnlyMember:
+    """A member may look at everything on their tabs and change nothing."""
 
     @pytest.fixture
-    def operator(self, client):
-        client.post("/api/v1/auth/signup", json={"email": "op@eko.co.in", "password": GOOD_PASSWORD})
+    def member(self, client):
+        client.post("/api/v1/auth/signup", json={"email": "viewer@eko.co.in", "password": GOOD_PASSWORD})
         client.post("/api/v1/auth/login", json={"email": make_admin(), "password": GOOD_PASSWORD})
         uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
-        assert client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "operator"}).json()["role"] == "operator"
+        assert client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "member"}).json()["role"] == "member"
         client.post("/api/v1/auth/logout")
         assert client.post("/api/v1/auth/login",
-                           json={"email": "op@eko.co.in", "password": GOOD_PASSWORD}).json()["role"] == "operator"
+                           json={"email": "viewer@eko.co.in", "password": GOOD_PASSWORD}).json()["role"] == "member"
         return client
 
     @pytest.mark.parametrize("path", [
@@ -347,8 +348,8 @@ class TestOperatorRole:
         "/api/v1/whatsapp/campaigns", "/api/v1/whatsapp/insights/playbook",
         "/api/v1/discovery/autopilot",
     ])
-    def test_can_read(self, operator, path):
-        assert operator.get(path).status_code == 200
+    def test_can_read(self, member, path):
+        assert member.get(path).status_code == 200
 
     @pytest.mark.parametrize("method, path, body", [
         ("put", "/api/v1/discovery/autopilot", {"enabled": True}),
@@ -364,21 +365,29 @@ class TestOperatorRole:
         ("post", "/api/v1/export/google-sheets/sync", None),
         ("post", "/api/v1/whatsapp/studio/from-messages", {}),
     ])
-    def test_cannot_change_anything(self, operator, method, path, body):
-        res = getattr(operator, method)(path, json=body) if body is not None else getattr(operator, method)(path)
+    def test_cannot_change_anything(self, member, method, path, body):
+        res = getattr(member, method)(path, json=body) if body is not None else getattr(member, method)(path)
         assert res.status_code == 403, f"{method.upper()} {path} -> {res.status_code}"
         assert "view-only" in res.json()["detail"]
 
-    def test_can_still_sign_out_and_count_an_audience(self, operator):
-        assert operator.post("/api/v1/whatsapp/audience/summary", json={}).status_code == 200
-        assert operator.post("/api/v1/auth/logout").status_code == 200
+    def test_can_still_sign_out_and_count_an_audience(self, member):
+        assert member.post("/api/v1/whatsapp/audience/summary", json={}).status_code == 200
+        assert member.post("/api/v1/auth/logout").status_code == 200
 
-    def test_cannot_see_the_approvals_queue(self, operator):
-        assert operator.get("/api/v1/auth/users").status_code == 403
+    def test_cannot_see_the_approvals_queue(self, member):
+        assert member.get("/api/v1/auth/users").status_code == 403
 
-    def test_members_and_managers_are_not_restricted(self, client):
+    @pytest.mark.parametrize("role", ["operator", "manager"])
+    def test_operators_and_managers_can_act(self, client, role):
+        client.post("/api/v1/auth/signup", json={"email": "doer@eko.co.in", "password": GOOD_PASSWORD})
         client.post("/api/v1/auth/login", json={"email": make_admin(), "password": GOOD_PASSWORD})
+        uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+        client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": role})
+        client.post("/api/v1/auth/logout")
+        assert client.post("/api/v1/auth/login", json={
+            "email": "doer@eko.co.in", "password": GOOD_PASSWORD}).json()["role"] == role
         assert client.post("/api/v1/discovery/stop").status_code == 200
+        assert client.get("/api/v1/auth/users").status_code == 403
 
 
 class TestAskingForARoleAndLosingAccess:

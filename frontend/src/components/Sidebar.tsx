@@ -7,7 +7,7 @@ interface SidebarProps {
   activeTab: NavTab;
   /** Admins get the approvals queue; members never see it. */
   isAdmin?: boolean;
-  /** Decides which tabs are listed; an operator has only the data ones. */
+  /** Decides which tabs are listed; a member has only the data ones. */
   role?: string | null;
   /** Below lg the sidebar is a drawer, so it needs to be told when to show. */
   isOpen?: boolean;

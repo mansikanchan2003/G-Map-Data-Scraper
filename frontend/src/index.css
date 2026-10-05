@@ -283,7 +283,7 @@ body, aside, header, .bg-slate-900, .bg-slate-950, .bg-slate-800 {
   --chart-accent: #0e7490;   /* cyan, stepped for the light surface */
 }
 
-/* A view-only role (operator) is shown the data and none of the controls that
+/* A view-only role (member) is shown the data and none of the controls that
    change it. The server refuses those changes regardless; this keeps the page
    from offering them. */
 .read-only [data-edit] { display: none !important; }

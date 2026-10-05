@@ -149,15 +149,16 @@ approving, or change it later from the same list.
 
 | Role | Sees | Can change things |
 |---|---|---|
-| Member | Every tab except Access Requests | Yes |
+| Member | Dashboard, Business Data, Templates, Campaign History, Campaign Insights | No — view only |
+| Operator | Every tab except Access Requests, and carries the operator tag | Yes |
 | Manager | The same, and carries the manager tag | Yes |
-| Operator | Dashboard, Business Data, Templates, Campaign History, Campaign Insights | No — view only |
 | Admin | Everything, including Access Requests | Yes |
 
-An operator's limits are enforced by the server on every request, not by
-hiding buttons: anything that is not a read is refused with "You have
-view-only access", whichever route it goes through. The page hides the tabs
-and controls an operator cannot use so that it never offers them.
+Member is what a request gets unless more is asked for or given, so the
+least access is the default. A member's limits are enforced by the server on
+every request, not by hiding buttons: anything that is not a read is refused
+with "You have view-only access", whichever route it goes through. The page
+hides the tabs and controls a member cannot use so that it never offers them.
 
 **Remove access** on an approved account takes effect on that person's next
 request, since every request looks the account up afresh; **Restore access**

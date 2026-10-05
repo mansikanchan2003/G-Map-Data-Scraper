@@ -27,16 +27,18 @@ ALLOWED_DOMAIN = "eko.co.in"
 BOOTSTRAP_ADMIN = "mansi.kanchan.intern@eko.co.in"
 
 # What an admin can make someone when approving them.
-#   member, manager  see every tab except Access Requests, and can act;
-#                    "manager" is the tag a team lead carries.
-#   operator         sees the dashboard, business data, templates, campaign
-#                    history and insights, and can change nothing.
+#   member             sees the dashboard, business data, templates,
+#                      campaign history and insights, and can change nothing.
+#                      It is what a request gets unless more is given, so
+#                      the least access is the default.
+#   operator, manager  see every tab except Access Requests, and can act;
+#                      they differ only in the tag they carry.
 # "admin" is deliberately absent: the approvals queue belongs to the bootstrap
 # admin alone, and nothing in the app can hand it to anyone else.
 GRANTABLE_ROLES = ("member", "manager", "operator")
 
 # Roles that may only look. Enforced on every request, not by hiding buttons.
-READ_ONLY_ROLES = ("operator",)
+READ_ONLY_ROLES = ("member",)
 # Requests a read-only role may make that are not GETs: each of these only
 # works something out and stores nothing.
 READ_ONLY_SAFE_POSTS = (

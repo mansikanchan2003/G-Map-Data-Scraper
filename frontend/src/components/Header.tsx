@@ -182,8 +182,14 @@ export const Header: React.FC<HeaderProps> = ({
               )}
               {user?.role === 'operator' && (
                 <span className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded uppercase
+                                 font-semibold border text-emerald-300 border-emerald-800 bg-emerald-950/50">
+                  operator
+                </span>
+              )}
+              {user?.role === 'member' && (
+                <span className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded uppercase
                                  font-semibold border text-amber-300 border-amber-800 bg-amber-950/50">
-                  operator · view only
+                  member · view only
                 </span>
               )}
             </div>

@@ -104,9 +104,9 @@ export const LoginView: React.FC<Props> = ({ onLogin, onSignup }) => {
               <div>
                 <label className="block text-xs text-slate-400 font-semibold mb-1">Access you need</label>
                 <select className={field} value={role} onChange={e => setRole(e.target.value as typeof role)}>
-                  <option value="member">Member — use every tab</option>
+                  <option value="member">Member — view only: dashboard, data, templates, campaigns</option>
                   <option value="manager">Manager — use every tab, shown as manager</option>
-                  <option value="operator">Operator — view only: dashboard, data, templates, campaigns</option>
+                  <option value="operator">Operator — use every tab, shown as operator</option>
                 </select>
                 <p className="mt-1 text-[11px] text-slate-500">
                   This is a request. The administrator decides the role when approving.

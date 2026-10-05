@@ -186,8 +186,14 @@ export const ApprovalsView: React.FC = () => {
                       )}
                       {u.role === 'operator' && u.status === 'APPROVED' && (
                         <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold
-                                         border text-amber-300 border-amber-800 bg-amber-950/50">
+                                         border text-emerald-300 border-emerald-800 bg-emerald-950/50">
                           operator
+                        </span>
+                      )}
+                      {u.role === 'member' && u.status === 'APPROVED' && (
+                        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold
+                                         border text-amber-300 border-amber-800 bg-amber-950/50">
+                          member · view only
                         </span>
                       )}
                       {u.role === 'manager' && u.status === 'APPROVED' && (
@@ -224,9 +230,9 @@ export const ApprovalsView: React.FC = () => {
                             className="h-7 px-1.5 rounded text-[11px] border border-slate-700 bg-slate-900
                                        text-slate-200 cursor-pointer disabled:opacity-40"
                           >
-                            <option value="member">Member</option>
+                            <option value="member">Member (view only)</option>
                             <option value="manager">Manager</option>
-                            <option value="operator">Operator (view only)</option>
+                            <option value="operator">Operator</option>
                           </select>
                         )}
                         {u.status === 'PENDING' ? (
