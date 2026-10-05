@@ -399,6 +399,10 @@ def recover_after_restart(db: Session) -> dict:
                 rounds += 1
         r.plan = plan
     db.commit()
+    # No job is running now, so anything half-saved by the one a restart cut
+    # off can go.
+    from src.services import job_manager
+    job_manager.drop_uncontactable(db)
     if jobs or runs or rounds:
         logger.info(f"autopilot event=RECOVERED jobs={jobs} runs={runs} batches={rounds}")
     return {"jobs": jobs, "runs": runs, "batches": rounds}

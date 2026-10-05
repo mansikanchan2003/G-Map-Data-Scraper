@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from src.database import get_db
 from src.models import Business, Job, Location
+from src.models.business import CONTACTABLE
 from src.schemas.common import Pagination
 from src.schemas.business import BusinessPublicResponse
 from typing import Optional
@@ -25,7 +26,8 @@ def get_businesses(
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db)
 ):
-    query = db.query(Business)
+    # Rows still waiting for their email to be looked up are not shown.
+    query = db.query(Business).filter(CONTACTABLE)
     
     if category:
         query = query.filter(Business.category == category)

@@ -479,6 +479,28 @@ def execute_single_job(
             "error": str(e),
             "blocked_reason": None
         }
+def drop_uncontactable(db: Session) -> int:
+    """
+    Removes businesses left with neither a phone nor an email by a job that
+    never reached its own clean-up.
+
+    A job saves website-only listings, looks for their email, and deletes
+    the ones it finds none for. A job cut off in between — a restart, or a
+    timeout that abandons it — leaves those rows behind for good. Rows of a
+    job that is still RUNNING are left alone: it has not had its turn yet.
+    """
+    from src.models.business import CONTACTABLE
+
+    running = db.query(Job.job_id).filter(Job.status == "RUNNING")
+    stranded = db.query(Business).filter(~CONTACTABLE, ~Business.job_id.in_(running)).all()
+    for row in stranded:
+        db.delete(row)
+    if stranded:
+        db.commit()
+        logger.info(f"job_manager event=UNCONTACTABLE_SWEPT count={len(stranded)}")
+    return len(stranded)
+
+
 def retry_job(job_id: str, db: Session) -> Dict[str, Any]:
     job = db.query(Job).filter(Job.job_id == job_id).first()
     if not job:

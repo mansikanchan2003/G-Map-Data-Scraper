@@ -199,6 +199,7 @@ def readiness_check(db: Session = Depends(get_db)):
 @app.get("/api/v1/stats", tags=["Stats"])
 def get_stats(db: Session = Depends(get_db)):
     from src.models import Location, Category, Job, Business, RunLog
+    from src.models.business import CONTACTABLE
     try:
         last_run = db.query(RunLog).order_by(RunLog.started_at.desc()).first()
         last_run_dict = None
@@ -231,9 +232,9 @@ def get_stats(db: Session = Depends(get_db)):
                 "blocked": db.query(Job).filter(Job.status == "BLOCKED").count(),
             },
             "businesses": {
-                "total": db.query(Business).count(),
-                "valid": db.query(Business).filter(Business.is_valid == True).count(),
-                "invalid": db.query(Business).filter(Business.is_valid == False).count(),
+                "total": db.query(Business).filter(CONTACTABLE).count(),
+                "valid": db.query(Business).filter(CONTACTABLE, Business.is_valid == True).count(),
+                "invalid": db.query(Business).filter(CONTACTABLE, Business.is_valid == False).count(),
             },
             "last_run": last_run_dict,
         }

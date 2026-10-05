@@ -525,6 +525,12 @@ def _run_batch(payload: "BatchRequest", db: Session):
         errors.append({"batch_error": str(e)})
     finally:
         duration = round(time.time() - start_time, 2)
+        try:
+            # Whatever a timed-out job in this batch left half-saved.
+            job_manager.drop_uncontactable(db)
+        except Exception:
+            db.rollback()
+            logger.exception(f"discovery run_id={run_id} event=UNCONTACTABLE_SWEEP_FAILED")
         if offline:
             # These searches were never really made, so they go back in the
             # queue without the attempt being held against them.

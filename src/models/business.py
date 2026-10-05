@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, Boolean, DateTime, ForeignKey, Text, func
+from sqlalchemy import Column, String, Float, Boolean, DateTime, ForeignKey, Text, and_, func, or_
 from sqlalchemy.orm import relationship
 from src.database import Base
 
@@ -35,3 +35,15 @@ class Business(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     job = relationship("Job")
+
+
+# A business someone can be reached on: it has a phone number or an email.
+#
+# A listing with only a website is saved before its email is looked for, so
+# for a minute or two a row exists with neither. Everything that shows or
+# hands out businesses uses this, so such a row is never seen while it waits,
+# nor if the job is interrupted before it can be removed.
+CONTACTABLE = or_(
+    and_(Business.phone.isnot(None), Business.phone != ""),
+    and_(Business.email.isnot(None), Business.email != ""),
+)

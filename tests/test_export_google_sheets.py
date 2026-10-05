@@ -72,6 +72,7 @@ def setup_db():
             name="Test Invalid",
             address="None",
             phone=None,
+            email="invalid@example.in",   # reachable, so it is still exported
             category="Bar",
             district="South Delhi",
             state="DELHI",
