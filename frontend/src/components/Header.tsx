@@ -174,6 +174,18 @@ export const Header: React.FC<HeaderProps> = ({
                   admin
                 </span>
               )}
+              {user?.role === 'manager' && (
+                <span className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded uppercase
+                                 font-semibold border text-violet-300 border-violet-800 bg-violet-950/50">
+                  manager
+                </span>
+              )}
+              {user?.role === 'operator' && (
+                <span className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded uppercase
+                                 font-semibold border text-amber-300 border-amber-800 bg-amber-950/50">
+                  operator · view only
+                </span>
+              )}
             </div>
             <button
               onClick={onSignOut}

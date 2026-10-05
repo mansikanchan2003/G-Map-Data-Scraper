@@ -12,7 +12,8 @@ import type { AuthUser } from '../api';
 
 interface Props {
   onLogin: (email: string, password: string) => Promise<AuthUser>;
-  onSignup: (email: string, password: string, fullName?: string) => Promise<{ message: string }>;
+  onSignup: (email: string, password: string, fullName?: string,
+             role?: 'member' | 'manager' | 'operator') => Promise<{ message: string }>;
 }
 
 const ALLOWED_DOMAIN = 'eko.co.in';
@@ -27,6 +28,7 @@ export const LoginView: React.FC<Props> = ({ onLogin, onSignup }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [role, setRole] = useState<'member' | 'manager' | 'operator'>('member');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -43,7 +45,7 @@ export const LoginView: React.FC<Props> = ({ onLogin, onSignup }) => {
       if (mode === 'login') {
         await onLogin(email.trim(), password);
       } else {
-        const res = await onSignup(email.trim(), password, fullName.trim() || undefined);
+        const res = await onSignup(email.trim(), password, fullName.trim() || undefined, role);
         setNotice(res.message);
         setPassword('');
         setMode('login');
@@ -95,6 +97,20 @@ export const LoginView: React.FC<Props> = ({ onLogin, onSignup }) => {
                 <label className="block text-xs text-slate-400 font-semibold mb-1">Your name</label>
                 <input className={field} value={fullName} onChange={e => setFullName(e.target.value)}
                        placeholder="Mansi Kanchan" autoComplete="name" />
+              </div>
+            )}
+
+            {mode === 'signup' && (
+              <div>
+                <label className="block text-xs text-slate-400 font-semibold mb-1">Access you need</label>
+                <select className={field} value={role} onChange={e => setRole(e.target.value as typeof role)}>
+                  <option value="member">Member — use every tab</option>
+                  <option value="manager">Manager — use every tab, shown as manager</option>
+                  <option value="operator">Operator — view only: dashboard, data, templates, campaigns</option>
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  This is a request. The administrator decides the role when approving.
+                </p>
               </div>
             )}
 

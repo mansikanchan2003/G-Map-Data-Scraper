@@ -131,6 +131,15 @@ async def require_session(request, call_next):
         if not user:
             return JSONResponse({"detail": "Not signed in"}, status_code=401)
 
+        # A view-only role is refused here, once, for every route there is
+        # or will be: hiding the buttons would stop nobody who called the
+        # API directly.
+        if not auth_service.may_make_request(user, request.method, path):
+            return JSONResponse(
+                {"detail": "You have view-only access, so this cannot be changed from your account."},
+                status_code=403,
+            )
+
     return await call_next(request)
 
 

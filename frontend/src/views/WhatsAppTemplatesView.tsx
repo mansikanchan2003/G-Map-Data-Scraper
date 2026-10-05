@@ -495,7 +495,7 @@ export const WhatsAppTemplatesView: React.FC = () => {
           <p className="text-xs text-slate-400 mt-0.5">Manage your WhatsApp message templates</p>
         </div>
         {!isCreating && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" data-edit>
           <button
             onClick={() => handleSync()}
             disabled={syncing}
@@ -907,7 +907,7 @@ export const WhatsAppTemplatesView: React.FC = () => {
               {selectedIds.length} selected
             </span>
             <button
-              onClick={handleBulkDelete}
+              data-edit onClick={handleBulkDelete}
               disabled={bulkDeleting}
               className="text-xs text-rose-400 hover:text-rose-300 transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -1025,7 +1025,7 @@ export const WhatsAppTemplatesView: React.FC = () => {
                             <div className="flex items-center justify-end gap-1.5">
                               {!t.meta_template_name && (
                                 <button
-                                  onClick={() => handleSubmitForReview(t)}
+                                  data-edit onClick={() => handleSubmitForReview(t)}
                                   title="Submit to Meta for review"
                                   className="text-slate-500 hover:text-emerald-400 transition-colors"
                                 >
@@ -1033,7 +1033,7 @@ export const WhatsAppTemplatesView: React.FC = () => {
                                 </button>
                               )}
                               <button
-                                onClick={() => startEdit(t)}
+                                data-edit onClick={() => startEdit(t)}
                                 title="Edit template"
                                 className="text-slate-500 hover:text-sky-400 transition-colors"
                               >
@@ -1049,7 +1049,7 @@ export const WhatsAppTemplatesView: React.FC = () => {
                                 </span>
                               </button>
                               <button
-                                onClick={() => handleDelete(t.template_id)}
+                                data-edit onClick={() => handleDelete(t.template_id)}
                                 title="Delete template"
                                 className="text-slate-500 hover:text-rose-400 transition-colors"
                               >

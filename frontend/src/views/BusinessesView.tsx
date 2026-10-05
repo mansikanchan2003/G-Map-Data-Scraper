@@ -136,7 +136,7 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
             
             {/* WhatsApp Campaign Button */}
             <button
-              onClick={() => setAudienceOpen(true)}
+              data-edit onClick={() => setAudienceOpen(true)}
               className="h-8 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-mono-code text-xs font-semibold rounded flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
               title="Launch WhatsApp Campaign with Scraped Data"
             >

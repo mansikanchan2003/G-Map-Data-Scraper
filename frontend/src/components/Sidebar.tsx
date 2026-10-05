@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { triggerBatchDiscovery } from '../api';
 import type { NavTab } from './Header';
+import { canOpen } from '../utils/permissions';
 
 interface SidebarProps {
   activeTab: NavTab;
   /** Admins get the approvals queue; members never see it. */
   isAdmin?: boolean;
+  /** Decides which tabs are listed; an operator has only the data ones. */
+  role?: string | null;
   /** Below lg the sidebar is a drawer, so it needs to be told when to show. */
   isOpen?: boolean;
   onClose?: () => void;
@@ -18,6 +21,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   isAdmin = false,
+  role,
   isOpen = false,
   onClose,
   onTabChange,
@@ -45,7 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const navItems: { id: NavTab; label: string; icon: string }[] = [
+  const allItems: { id: NavTab; label: string; icon: string }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
     { id: 'businesses', label: 'Business Data', icon: 'dataset' },
     { id: 'jobs', label: 'Jobs Monitor', icon: 'sync' },
@@ -61,6 +65,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ? [{ id: 'approvals' as NavTab, label: 'Access Requests', icon: 'group_add' }]
       : []),
   ];
+  // With no role given every tab is listed, as before roles existed.
+  const navItems = role ? allItems.filter(item => canOpen(role, item.id)) : allItems;
 
   return (
     <>
@@ -106,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Real Action: Execute Pipeline (POST /api/v1/discovery/batch) */}
-        <div className="space-y-1">
+        <div className="space-y-1" data-edit>
           <button
             onClick={handleExecutePipeline}
             disabled={executing || !isBackendConnected}

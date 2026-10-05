@@ -80,7 +80,7 @@ export const AutopilotPanel: React.FC = () => {
             <span className="material-symbols-outlined text-[14px]">{phase.icon}</span>{phase.label}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" data-edit>
           <button onClick={() => setShowSettings(v => !v)}
             className="h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold rounded">
             {showSettings ? 'Hide pacing' : 'Pacing'}
@@ -156,7 +156,7 @@ const Now: React.FC<{ data: AutopilotStatus; active?: AutopilotRound; onClearCoo
       text = (
         <>
           Google showed a CAPTCHA. Paused until {time(s.cooldown_until)} IST (level {s.captcha_level}), then continuing more slowly.{' '}
-          <button onClick={onClearCooldown} className="underline text-amber-200">End the pause now</button>
+          <button data-edit onClick={onClearCooldown} className="underline text-amber-200">End the pause now</button>
         </>
       );
       break;
@@ -167,7 +167,7 @@ const Now: React.FC<{ data: AutopilotStatus; active?: AutopilotRound; onClearCoo
       text = (
         <>
           The server has no internet connection. Nothing is scraped until it is back; checking again at {time(s.offline_until)} IST.{' '}
-          <button onClick={onClearCooldown} className="underline text-amber-200">Check now</button>
+          <button data-edit onClick={onClearCooldown} className="underline text-amber-200">Check now</button>
         </>
       );
       break;

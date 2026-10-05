@@ -377,7 +377,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <LeadsPanel />
 
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">
+        <div data-edit className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">
           <div className="flex items-center justify-between pb-2 border-b border-slate-800">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-slate-400 text-[20px]">bolt</span>

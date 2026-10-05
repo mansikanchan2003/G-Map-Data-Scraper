@@ -26,6 +26,35 @@ ALLOWED_DOMAIN = "eko.co.in"
 # very first signup — an approval queue with nobody to read it is a deadlock.
 BOOTSTRAP_ADMIN = "mansi.kanchan.intern@eko.co.in"
 
+# What an admin can make someone when approving them.
+#   member, manager  see every tab except Access Requests, and can act;
+#                    "manager" is the tag a team lead carries.
+#   operator         sees the dashboard, business data, templates, campaign
+#                    history and insights, and can change nothing.
+# "admin" is deliberately absent: the approvals queue belongs to the bootstrap
+# admin alone, and nothing in the app can hand it to anyone else.
+GRANTABLE_ROLES = ("member", "manager", "operator")
+
+# Roles that may only look. Enforced on every request, not by hiding buttons.
+READ_ONLY_ROLES = ("operator",)
+# Requests a read-only role may make that are not GETs: each of these only
+# works something out and stores nothing.
+READ_ONLY_SAFE_POSTS = (
+    "/api/v1/auth/logout",
+    "/api/v1/whatsapp/audience/summary",
+    "/api/v1/whatsapp/audience/preview",
+    "/api/v1/whatsapp/contacts/validate",
+)
+
+
+def may_make_request(user: "User", method: str, path: str) -> bool:
+    """Whether this user's role allows the request at all."""
+    if user.role not in READ_ONLY_ROLES:
+        return True
+    if method.upper() in ("GET", "HEAD", "OPTIONS"):
+        return True
+    return path in READ_ONLY_SAFE_POSTS
+
 TOKEN_TTL_HOURS = 12
 COOKIE_NAME = "autogmap_session"
 

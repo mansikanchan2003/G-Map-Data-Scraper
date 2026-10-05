@@ -106,7 +106,7 @@ const LeadRow: React.FC<{ lead: Lead; onSent: () => void }> = ({ lead, onSent })
             </span>
           ) : (
             <button
-              onClick={() => setOpen(o => !o)}
+              data-edit onClick={() => setOpen(o => !o)}
               className="text-[10px] font-semibold px-2 py-1 rounded border
                          border-emerald-800 bg-emerald-950 text-emerald-300
                          hover:bg-emerald-900 transition-colors whitespace-nowrap cursor-pointer"

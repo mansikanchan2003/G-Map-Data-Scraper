@@ -275,3 +275,186 @@ class TestBootstrapAdmin:
             db.query(User).delete()
             db.commit()
             db.close()
+
+
+class TestManagerRole:
+    """
+    A manager sees everything a member does and carries the tag. The
+    approvals queue stays with the administrator: nothing grants it.
+    """
+
+    def _pending(self, client, email="kavya.shukla@eko.co.in"):
+        client.post("/api/v1/auth/signup", json={"email": email, "password": GOOD_PASSWORD})
+        client.post("/api/v1/auth/login", json={"email": make_admin(), "password": GOOD_PASSWORD})
+        return client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+
+    def test_a_request_can_be_approved_as_manager(self, client):
+        uid = self._pending(client)
+        res = client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "manager"})
+        assert res.status_code == 200 and res.json()["role"] == "manager"
+        assert res.json()["status"] == "APPROVED"
+
+    def test_a_manager_sees_the_app_but_not_the_approvals_queue(self, client):
+        uid = self._pending(client)
+        client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "manager"})
+        client.post("/api/v1/auth/logout")
+
+        me = client.post("/api/v1/auth/login",
+                         json={"email": "kavya.shukla@eko.co.in", "password": GOOD_PASSWORD})
+        assert me.status_code == 200 and me.json()["role"] == "manager"
+        assert client.get("/api/v1/stats").status_code == 200
+        assert client.get("/api/v1/whatsapp/templates").status_code == 200
+        assert client.get("/api/v1/auth/users").status_code == 403
+        assert client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "manager"}).status_code == 403
+
+    def test_admin_cannot_be_granted(self, client):
+        uid = self._pending(client)
+        res = client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "admin"})
+        assert res.status_code == 400
+        db = TestingSessionLocal()
+        assert db.query(User).filter(User.user_id == uid).one().status == "PENDING"
+        db.close()
+
+    def test_approving_without_a_role_still_makes_a_member(self, client):
+        uid = self._pending(client)
+        res = client.post(f"/api/v1/auth/users/{uid}/approve")
+        assert res.json()["role"] == "member"
+
+    def test_a_role_can_be_changed_later_but_not_the_administrators(self, client):
+        uid = self._pending(client)
+        client.post(f"/api/v1/auth/users/{uid}/approve")
+        assert client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "manager"}).json()["role"] == "manager"
+        admin_id = next(u["user_id"] for u in client.get("/api/v1/auth/users").json() if u["role"] == "admin")
+        assert client.post(f"/api/v1/auth/users/{admin_id}/approve", json={"role": "member"}).status_code == 400
+
+
+class TestOperatorRole:
+    """An operator may look at everything on their tabs and change nothing."""
+
+    @pytest.fixture
+    def operator(self, client):
+        client.post("/api/v1/auth/signup", json={"email": "op@eko.co.in", "password": GOOD_PASSWORD})
+        client.post("/api/v1/auth/login", json={"email": make_admin(), "password": GOOD_PASSWORD})
+        uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+        assert client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "operator"}).json()["role"] == "operator"
+        client.post("/api/v1/auth/logout")
+        assert client.post("/api/v1/auth/login",
+                           json={"email": "op@eko.co.in", "password": GOOD_PASSWORD}).json()["role"] == "operator"
+        return client
+
+    @pytest.mark.parametrize("path", [
+        "/api/v1/stats", "/api/v1/businesses", "/api/v1/whatsapp/templates",
+        "/api/v1/whatsapp/campaigns", "/api/v1/whatsapp/insights/playbook",
+        "/api/v1/discovery/autopilot",
+    ])
+    def test_can_read(self, operator, path):
+        assert operator.get(path).status_code == 200
+
+    @pytest.mark.parametrize("method, path, body", [
+        ("put", "/api/v1/discovery/autopilot", {"enabled": True}),
+        ("post", "/api/v1/discovery/batch", {}),
+        ("post", "/api/v1/discovery/stop", None),
+        ("post", "/api/v1/whatsapp/templates", {"name": "x", "body": "y"}),
+        ("delete", "/api/v1/whatsapp/templates/abc", None),
+        ("post", "/api/v1/whatsapp/campaigns", {}),
+        ("post", "/api/v1/whatsapp/campaigns/abc/cancel", None),
+        ("post", "/api/v1/whatsapp/leads/abc/reply", {"body": "hi"}),
+        ("post", "/api/v1/jobs/retry-all", None),
+        ("post", "/api/v1/config/sync", None),
+        ("post", "/api/v1/export/google-sheets/sync", None),
+        ("post", "/api/v1/whatsapp/studio/from-messages", {}),
+    ])
+    def test_cannot_change_anything(self, operator, method, path, body):
+        res = getattr(operator, method)(path, json=body) if body is not None else getattr(operator, method)(path)
+        assert res.status_code == 403, f"{method.upper()} {path} -> {res.status_code}"
+        assert "view-only" in res.json()["detail"]
+
+    def test_can_still_sign_out_and_count_an_audience(self, operator):
+        assert operator.post("/api/v1/whatsapp/audience/summary", json={}).status_code == 200
+        assert operator.post("/api/v1/auth/logout").status_code == 200
+
+    def test_cannot_see_the_approvals_queue(self, operator):
+        assert operator.get("/api/v1/auth/users").status_code == 403
+
+    def test_members_and_managers_are_not_restricted(self, client):
+        client.post("/api/v1/auth/login", json={"email": make_admin(), "password": GOOD_PASSWORD})
+        assert client.post("/api/v1/discovery/stop").status_code == 200
+
+
+class TestAskingForARoleAndLosingAccess:
+    def _admin(self, client):
+        """Signs in as the administrator, creating the account the first time."""
+        db = TestingSessionLocal()
+        exists = db.query(User).filter(User.email == "admin@eko.co.in").first() is not None
+        db.close()
+        email = "admin@eko.co.in" if exists else make_admin()
+        client.post("/api/v1/auth/login", json={"email": email, "password": GOOD_PASSWORD})
+
+    def test_a_role_can_be_asked_for_and_is_what_approval_gives(self, client):
+        res = client.post("/api/v1/auth/signup", json={
+            "email": "asks@eko.co.in", "password": GOOD_PASSWORD, "role": "operator"})
+        assert res.status_code == 201
+        # Asking is not having: the account still cannot sign in.
+        assert client.post("/api/v1/auth/login", json={
+            "email": "asks@eko.co.in", "password": GOOD_PASSWORD}).status_code == 403
+
+        self._admin(client)
+        pending = client.get("/api/v1/auth/users?status=PENDING").json()[0]
+        assert pending["role"] == "operator", "the administrator sees what was asked for"
+        approved = client.post(f"/api/v1/auth/users/{pending['user_id']}/approve")
+        assert approved.json()["role"] == "operator"
+
+    def test_the_administrator_can_give_a_different_role(self, client):
+        client.post("/api/v1/auth/signup", json={
+            "email": "asks@eko.co.in", "password": GOOD_PASSWORD, "role": "manager"})
+        self._admin(client)
+        uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+        assert client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "operator"}).json()["role"] == "operator"
+
+    @pytest.mark.parametrize("role", ["admin", "owner", "ADMIN "])
+    def test_admin_cannot_be_asked_for(self, client, role):
+        res = client.post("/api/v1/auth/signup", json={
+            "email": "asks@eko.co.in", "password": GOOD_PASSWORD, "role": role})
+        assert res.status_code == 400
+
+    def test_removing_access_takes_effect_at_once_and_can_be_undone(self, client):
+        client.post("/api/v1/auth/signup", json={"email": "leaver@eko.co.in", "password": GOOD_PASSWORD})
+        self._admin(client)
+        uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+        client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "manager"})
+        client.post("/api/v1/auth/logout")
+
+        # Signed in and working...
+        assert client.post("/api/v1/auth/login", json={
+            "email": "leaver@eko.co.in", "password": GOOD_PASSWORD}).status_code == 200
+        assert client.get("/api/v1/stats").status_code == 200
+        session = client.cookies.get(auth.COOKIE_NAME)
+
+        # ...until access is removed: the same session stops working.
+        client.cookies.clear()
+        self._admin(client)
+        assert client.post(f"/api/v1/auth/users/{uid}/revoke").json()["status"] == "DISABLED"
+        client.cookies.clear()
+        client.cookies.set(auth.COOKIE_NAME, session)
+        assert client.get("/api/v1/stats").status_code == 401
+        client.cookies.clear()
+        assert client.post("/api/v1/auth/login", json={
+            "email": "leaver@eko.co.in", "password": GOOD_PASSWORD}).status_code == 403
+
+        self._admin(client)
+        restored = client.post(f"/api/v1/auth/users/{uid}/approve")
+        assert restored.json()["status"] == "APPROVED" and restored.json()["role"] == "manager"
+
+    def test_the_administrators_own_access_cannot_be_removed(self, client):
+        self._admin(client)
+        me = next(u for u in client.get("/api/v1/auth/users").json() if u["role"] == "admin")
+        assert client.post(f"/api/v1/auth/users/{me['user_id']}/revoke").status_code == 400
+
+    def test_only_the_administrator_can_remove_access(self, client):
+        client.post("/api/v1/auth/signup", json={"email": "mgr@eko.co.in", "password": GOOD_PASSWORD})
+        self._admin(client)
+        uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+        client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "manager"})
+        client.post("/api/v1/auth/logout")
+        client.post("/api/v1/auth/login", json={"email": "mgr@eko.co.in", "password": GOOD_PASSWORD})
+        assert client.post(f"/api/v1/auth/users/{uid}/revoke").status_code == 403

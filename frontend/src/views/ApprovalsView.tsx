@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { approveUser, fetchUsers, rejectUser, type AuthUser } from '../api';
+import { approveUser, fetchUsers, rejectUser, revokeUser, type AuthUser, type GrantRole } from '../api';
 
 /**
  * The approvals queue.
@@ -14,6 +14,7 @@ const statusStyle = (status: string) => {
     case 'APPROVED': return 'text-emerald-400 border-emerald-800 bg-emerald-950/50';
     case 'PENDING': return 'text-amber-400 border-amber-800 bg-amber-950/50';
     case 'REJECTED': return 'text-rose-400 border-rose-800 bg-rose-950/50';
+    case 'DISABLED': return 'text-slate-300 border-slate-600 bg-slate-800';
     default: return 'text-slate-400 border-slate-700 bg-slate-800/50';
   }
 };
@@ -42,6 +43,35 @@ export const ApprovalsView: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
+  // The role each pending request will be approved with; member unless changed.
+  const [roles, setRoles] = useState<Record<string, GrantRole>>({});
+  const roleFor = (u: AuthUser) => roles[u.user_id] || (u.role === 'manager' || u.role === 'operator' ? u.role : 'member');
+
+  const changeRole = async (user: AuthUser, role: GrantRole) => {
+    setBusyId(user.user_id);
+    try {
+      await approveUser(user.user_id, role);
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'Could not change the role.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const revoke = async (user: AuthUser) => {
+    if (!window.confirm(`Remove ${user.email}'s access? They are signed out at once. You can restore it later.`)) return;
+    setBusyId(user.user_id);
+    try {
+      await revokeUser(user.user_id);
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'Could not remove access.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const decide = async (user: AuthUser, approve: boolean) => {
     if (!approve) {
       const reason = window.prompt(`Decline ${user.email}? You can give a reason (optional):`, '');
@@ -60,7 +90,7 @@ export const ApprovalsView: React.FC = () => {
 
     setBusyId(user.user_id);
     try {
-      await approveUser(user.user_id);
+      await approveUser(user.user_id, roleFor(user));
       await load();
     } catch (e: any) {
       setError(e?.message || 'Could not approve this request.');
@@ -154,6 +184,18 @@ export const ApprovalsView: React.FC = () => {
                           admin
                         </span>
                       )}
+                      {u.role === 'operator' && u.status === 'APPROVED' && (
+                        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold
+                                         border text-amber-300 border-amber-800 bg-amber-950/50">
+                          operator
+                        </span>
+                      )}
+                      {u.role === 'manager' && u.status === 'APPROVED' && (
+                        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold
+                                         border text-violet-300 border-violet-800 bg-violet-950/50">
+                          manager
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 text-xs text-slate-400 whitespace-nowrap hidden sm:table-cell">
                       {when(u.created_at)}
@@ -168,6 +210,25 @@ export const ApprovalsView: React.FC = () => {
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="flex items-center justify-end gap-1.5">
+                        {(u.status === 'PENDING' || u.status === 'APPROVED') && u.role !== 'admin' && (
+                          <select
+                            value={roleFor(u)}
+                            disabled={busyId === u.user_id}
+                            title={u.status === 'PENDING'
+                              ? `Asked for ${u.role}. Approve as:` : 'Change role'}
+                            onChange={e => {
+                              const role = e.target.value as GrantRole;
+                              if (u.status === 'PENDING') setRoles(r => ({ ...r, [u.user_id]: role }));
+                              else changeRole(u, role);
+                            }}
+                            className="h-7 px-1.5 rounded text-[11px] border border-slate-700 bg-slate-900
+                                       text-slate-200 cursor-pointer disabled:opacity-40"
+                          >
+                            <option value="member">Member</option>
+                            <option value="manager">Manager</option>
+                            <option value="operator">Operator (view only)</option>
+                          </select>
+                        )}
                         {u.status === 'PENDING' ? (
                           <>
                             <button
@@ -201,6 +262,28 @@ export const ApprovalsView: React.FC = () => {
                                        transition-colors cursor-pointer disabled:opacity-40"
                           >
                             Allow after all
+                          </button>
+                        ) : u.status === 'DISABLED' ? (
+                          <button
+                            onClick={() => decide(u, true)}
+                            disabled={busyId === u.user_id}
+                            className="h-7 px-2.5 rounded text-[11px] font-semibold border
+                                       border-slate-700 bg-slate-800 text-slate-300
+                                       hover:border-emerald-700 hover:text-emerald-300
+                                       transition-colors cursor-pointer disabled:opacity-40"
+                          >
+                            Restore access
+                          </button>
+                        ) : u.role !== 'admin' ? (
+                          <button
+                            onClick={() => revoke(u)}
+                            disabled={busyId === u.user_id}
+                            className="h-7 px-2.5 rounded text-[11px] font-semibold border
+                                       border-rose-900 bg-slate-900 text-rose-300
+                                       hover:bg-rose-950 transition-colors cursor-pointer
+                                       disabled:opacity-40"
+                          >
+                            Remove access
                           </button>
                         ) : (
                           <span className="text-[11px] text-slate-600">—</span>

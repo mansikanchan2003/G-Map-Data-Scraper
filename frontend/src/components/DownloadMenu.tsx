@@ -104,7 +104,7 @@ export const DownloadMenu: React.FC<Props> = ({
                   </span>
                 </span>
               </a>
-              <button className={item} onClick={() => { onSheetSync(); setOpen(false); }} disabled={sheetBusy}>
+              <button className={item} data-edit onClick={() => { onSheetSync(); setOpen(false); }} disabled={sheetBusy}>
                 <span className={`material-symbols-outlined text-[18px] text-sky-400 mt-0.5 ${sheetBusy ? 'animate-spin' : ''}`}>
                   {sheetBusy ? 'progress_activity' : 'sync'}
                 </span>

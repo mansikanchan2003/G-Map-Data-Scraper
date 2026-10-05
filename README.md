@@ -143,6 +143,27 @@ form cannot set it: signup checks that an address is on the domain, not that
 the person typing it owns the mailbox, so whoever submitted it first would
 otherwise become admin.
 
+**Roles.** Someone asking for access chooses the role they need; the
+administrator sees what was asked for and can give a different one when
+approving, or change it later from the same list.
+
+| Role | Sees | Can change things |
+|---|---|---|
+| Member | Every tab except Access Requests | Yes |
+| Manager | The same, and carries the manager tag | Yes |
+| Operator | Dashboard, Business Data, Templates, Campaign History, Campaign Insights | No — view only |
+| Admin | Everything, including Access Requests | Yes |
+
+An operator's limits are enforced by the server on every request, not by
+hiding buttons: anything that is not a read is refused with "You have
+view-only access", whichever route it goes through. The page hides the tabs
+and controls an operator cannot use so that it never offers them.
+
+**Remove access** on an approved account takes effect on that person's next
+request, since every request looks the account up afresh; **Restore access**
+undoes it. The administrator's role cannot be granted, asked for, changed or
+removed from the app, so the approvals queue stays with that one account.
+
 Admins see **Access Requests** in the sidebar: approve, decline with a reason,
 or reinstate someone previously declined. Every decision records who made it.
 Requests also go out by email when SMTP is configured; when it is not, the

@@ -246,7 +246,7 @@ export const WhatsAppHistoryView: React.FC = () => {
                   <td className="px-4 py-3 text-right">
                     {camp.status === 'RUNNING' || camp.status === 'PENDING' ? (
                       <button
-                        onClick={() => handleCancel(camp.campaign_id)}
+                        data-edit onClick={() => handleCancel(camp.campaign_id)}
                         className="text-xs text-rose-400 hover:text-rose-300 font-semibold border border-rose-900/50 px-2 py-1 rounded bg-rose-950/20"
                       >
                         Cancel

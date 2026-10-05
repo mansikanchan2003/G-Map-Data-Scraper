@@ -475,7 +475,7 @@ const History: React.FC<{ rows: Snapshot[]; labels: Record<string, string>; onSn
     <Card title="What has been learned, over time"
       subtitle="A snapshot is saved after every campaign, so you can see which conclusions held as data grew. A tick means confirmed at that point."
       right={
-        <button onClick={onSnapshot} className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs rounded whitespace-nowrap">
+        <button data-edit onClick={onSnapshot} className="h-7 px-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs rounded whitespace-nowrap">
           Save snapshot now
         </button>
       }>

@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { useTheme } from './hooks/useTheme';
 import type { NavTab } from './components/Header';
 import { useAuth } from './hooks/useAuth';
+import { canOpen, isReadOnly } from './utils/permissions';
 import { LoginView } from './views/LoginView';
 import { BackendSettingsModal } from './components/BackendSettingsModal';
 import { fetchStats, fetchDiscoveryStatus, checkBackendHealth } from './api';
@@ -135,11 +136,17 @@ export default function App() {
     return <LoginView onLogin={login} onSignup={signup} />;
   }
 
+  // A tab the role may not open — reached by a typed address or a saved
+  // link — falls back to the dashboard rather than showing a page of errors.
+  const shownTab: NavTab = canOpen(user.role, activeTab) ? activeTab : 'dashboard';
+  const readOnly = isReadOnly(user.role);
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans antialiased select-none">
+    <div className={`flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans antialiased select-none ${readOnly ? 'read-only' : ''}`}>
       {/* Docked Navigation Sidebar (Fixed left, width 240px) */}
       <Sidebar
-        activeTab={activeTab}
+        activeTab={shownTab}
+        role={user.role}
         isAdmin={user?.role === 'admin'}
         onTabChange={(tab) => handleTabChange(tab)}
         isBackendConnected={isBackendConnected}
@@ -155,7 +162,7 @@ export default function App() {
         <Header
           theme={theme}
           onToggleTheme={toggleTheme}
-          activeTab={activeTab}
+          activeTab={shownTab}
           isBackendConnected={isBackendConnected}
           latencyMs={latencyMs}
           onSyncBackend={syncBackend}
@@ -175,7 +182,7 @@ export default function App() {
               <div className="w-7 h-7 border-3 border-sky-400 border-t-transparent rounded-full animate-spin" />
             </div>
           }>
-          {activeTab === 'dashboard' && (
+          {shownTab === 'dashboard' && (
             <DashboardView
               stats={stats}
               discoveryStatus={discoveryStatus}
@@ -186,13 +193,13 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'businesses' && (
+          {shownTab === 'businesses' && (
             <BusinessesView
               initialSearch={searchQuery}
             />
           )}
 
-          {activeTab === 'jobs' && (
+          {shownTab === 'jobs' && (
             <JobsView
               stats={stats}
               initialFilter={jobsFilter}
@@ -200,18 +207,18 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'config' && <ConfigView />}
-          {activeTab === 'approvals' && user?.role === 'admin' && <ApprovalsView />}
+          {shownTab === 'config' && <ConfigView />}
+          {shownTab === 'approvals' && user?.role === 'admin' && <ApprovalsView />}
 
-          {activeTab === 'whatsapp-campaign' && <WhatsAppCampaignView />}
+          {shownTab === 'whatsapp-campaign' && <WhatsAppCampaignView />}
 
-          {activeTab === 'whatsapp-templates' && <WhatsAppTemplatesView />}
+          {shownTab === 'whatsapp-templates' && <WhatsAppTemplatesView />}
 
-          {activeTab === 'whatsapp-studio' && <TemplateStudioView />}
+          {shownTab === 'whatsapp-studio' && <TemplateStudioView />}
 
-          {activeTab === 'whatsapp-history' && <WhatsAppHistoryView />}
+          {shownTab === 'whatsapp-history' && <WhatsAppHistoryView />}
 
-          {activeTab === 'whatsapp-insights' && <CampaignInsightsView />}
+          {shownTab === 'whatsapp-insights' && <CampaignInsightsView />}
           </Suspense>
         </main>
       </div>

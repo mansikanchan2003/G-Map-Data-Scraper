@@ -32,6 +32,9 @@ class SignupRequest(BaseModel):
     email: str = Field(..., max_length=200)
     password: str = Field(..., max_length=200)
     full_name: Optional[str] = Field(None, max_length=200)
+    # The role being asked for: member, manager or operator. It is a request,
+    # shown to the administrator, who can give a different one on approval.
+    role: Optional[str] = Field(None, max_length=20)
 
 
 class LoginRequest(BaseModel):
@@ -51,6 +54,12 @@ class UserResponse(BaseModel):
     last_login_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class ApproveRequest(BaseModel):
+    # The role to give: "member" or "manager". Left out, the account keeps
+    # the role it has, which for a new request is member.
+    role: Optional[str] = None
 
 
 class RejectRequest(BaseModel):
@@ -118,6 +127,13 @@ def signup(payload: SignupRequest, background: BackgroundTasks, db: Session = De
     if problem:
         raise HTTPException(status_code=400, detail=problem)
 
+    role = (payload.role or "member").strip().lower()
+    if role not in auth.GRANTABLE_ROLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Role must be one of: {', '.join(auth.GRANTABLE_ROLES)}.",
+        )
+
     existing = db.query(User).filter(User.email == email).first()
     if existing:
         # The seeded admin is never claimed from here, even while it has no
@@ -134,7 +150,9 @@ def signup(payload: SignupRequest, background: BackgroundTasks, db: Session = De
         email=email,
         full_name=(payload.full_name or "").strip() or None,
         password_hash=auth.hash_password(payload.password),
-        role="member",
+        # Held on a PENDING account, which cannot sign in: it takes effect
+        # only if the administrator approves it as asked.
+        role=role,
         status="PENDING",
     )
     db.add(user)
@@ -202,21 +220,61 @@ def list_users(status: Optional[str] = None, _: User = Depends(current_admin),
 
 
 @router.post("/users/{user_id}/approve", response_model=UserResponse)
-def approve_user(user_id: str, background: BackgroundTasks,
+def approve_user(user_id: str, background: BackgroundTasks, payload: ApproveRequest = None,
                  admin: User = Depends(current_admin), db: Session = Depends(get_db)):
+    """
+    Lets someone in, as a member or a manager. Called again on an account
+    that is already approved, it changes the role.
+    """
     user = db.query(User).filter(User.user_id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="No such user")
 
+    role = ((payload.role if payload else None) or "").strip().lower() or None
+    if role is not None:
+        if role not in auth.GRANTABLE_ROLES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Role must be one of: {', '.join(auth.GRANTABLE_ROLES)}.",
+            )
+        if user.role == "admin":
+            raise HTTPException(status_code=400, detail="The administrator's role cannot be changed.")
+        user.role = role
+
+    already = user.status == "APPROVED"
     user.status = "APPROVED"
     user.decided_by = admin.email
     user.decided_at = datetime.now(timezone.utc)
     user.rejection_reason = None
     db.commit()
     db.refresh(user)
-    logger.info(f"auth event=USER_APPROVED email={user.email} by={admin.email}")
+    logger.info(f"auth event=USER_APPROVED email={user.email} role={user.role} by={admin.email}")
 
-    background.add_task(notifier.notify_decision, user.email, True, _public_app_url())
+    # Someone already let in is not told again when only their role changes.
+    if not already:
+        background.add_task(notifier.notify_decision, user.email, True, _public_app_url())
+    return user
+
+
+@router.post("/users/{user_id}/revoke", response_model=UserResponse)
+def revoke_user(user_id: str, admin: User = Depends(current_admin), db: Session = Depends(get_db)):
+    """
+    Takes access away from someone who had it. Their next request is
+    refused, since every request looks the account up afresh; approving
+    them again restores it.
+    """
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="No such user")
+    if user.user_id == admin.user_id or user.role == "admin":
+        raise HTTPException(status_code=400, detail="The administrator's access cannot be removed.")
+
+    user.status = "DISABLED"
+    user.decided_by = admin.email
+    user.decided_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+    logger.info(f"auth event=USER_REVOKED email={user.email} by={admin.email}")
     return user
 
 

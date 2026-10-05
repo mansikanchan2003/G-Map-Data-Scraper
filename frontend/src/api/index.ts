@@ -451,7 +451,7 @@ export interface AuthUser {
   user_id: string;
   email: string;
   full_name: string | null;
-  role: 'admin' | 'member';
+  role: 'admin' | 'manager' | 'member' | 'operator';
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISABLED';
   created_at: string;
   decided_by: string | null;
@@ -466,10 +466,11 @@ export interface SignupResult {
 }
 
 /** Records a request for access. Never signs anyone in. */
-export async function signup(email: string, password: string, fullName?: string): Promise<SignupResult> {
+export async function signup(email: string, password: string, fullName?: string,
+                             role: 'member' | 'manager' | 'operator' = 'member'): Promise<SignupResult> {
   return request<SignupResult>('/api/v1/auth/signup', {
     method: 'POST',
-    body: JSON.stringify({ email, password, full_name: fullName || null }),
+    body: JSON.stringify({ email, password, full_name: fullName || null, role }),
   });
 }
 
@@ -498,8 +499,21 @@ export async function fetchUsers(status?: string): Promise<AuthUser[]> {
   return request<AuthUser[]>(`/api/v1/auth/users${q}`);
 }
 
-export async function approveUser(userId: string): Promise<AuthUser> {
-  return request<AuthUser>(`/api/v1/auth/users/${userId}/approve`, { method: 'POST' });
+/** Approves a request as a member or a manager; on an approved account it changes the role. */
+/** Roles an admin can give. Operator is view-only. */
+export type GrantRole = 'member' | 'manager' | 'operator';
+
+export async function approveUser(userId: string, role: GrantRole = 'member'): Promise<AuthUser> {
+  return request<AuthUser>(`/api/v1/auth/users/${userId}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  });
+}
+
+/** Takes access away from an approved account. Approving again restores it. */
+export async function revokeUser(userId: string): Promise<AuthUser> {
+  return request<AuthUser>(`/api/v1/auth/users/${userId}/revoke`, { method: 'POST' });
 }
 
 export async function rejectUser(userId: string, reason?: string): Promise<AuthUser> {
