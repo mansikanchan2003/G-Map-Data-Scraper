@@ -57,6 +57,27 @@ def _send(to: str, subject: str, body: str) -> bool:
         return False
 
 
+def send_reset_code(admin_email: str, account_email: str, code: str, minutes: int) -> bool:
+    """
+    The forgotten-password code, to the administrator.
+
+    It goes to the administrator rather than to the person asking: the
+    administrator decides whether the request is genuine and passes the code
+    on. So the email has to say plainly whose account it is for.
+    """
+    # The code is kept out of the subject, which is written to the log.
+    return _send(
+        admin_email,
+        f"AutoGMap: password reset code for {account_email}",
+        f"Someone has asked to reset the AutoGMap password for:\n\n    {account_email}\n\n"
+        f"The code is:\n\n    {code}\n\n"
+        f"It works for {minutes} minutes and only once. Give it to them only if you are sure "
+        f"they are the one who asked — whoever has this code can set a new password for that "
+        f"account.\n\n"
+        f"If nobody should be resetting it, ignore this email: the password has not changed.\n",
+    )
+
+
 def notify_signup_request(admin_email: str, applicant_email: str,
                           applicant_name: Optional[str], approvals_url: str) -> bool:
     name = applicant_name or applicant_email

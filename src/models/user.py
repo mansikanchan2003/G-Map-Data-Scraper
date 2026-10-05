@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, func
+from sqlalchemy import Column, Integer, String, DateTime, func
 
 from src.database import Base
 
@@ -32,6 +32,16 @@ class User(Base):
     rejection_reason = Column(String(500), nullable=True)
 
     last_login_at = Column(DateTime(timezone=True), nullable=True)
+    # When the password was last changed. A session issued before this no
+    # longer works, so a change signs out whoever held the old password.
+    password_changed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # A forgotten-password code, emailed to the administrator to pass on. Only
+    # its hash is kept, with when it was sent and how many wrong guesses it
+    # has had: a six-digit code is safe only while both are bounded.
+    reset_code_hash = Column(String(64), nullable=True)
+    reset_code_sent_at = Column(DateTime(timezone=True), nullable=True)
+    reset_code_attempts = Column(Integer, nullable=False, default=0, server_default="0")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(),
                         onupdate=func.now(), nullable=False)

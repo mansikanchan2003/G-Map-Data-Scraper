@@ -7,6 +7,7 @@ import { useAuth } from './hooks/useAuth';
 import { canOpen, isReadOnly } from './utils/permissions';
 import { LoginView } from './views/LoginView';
 import { BackendSettingsModal } from './components/BackendSettingsModal';
+import { ChangePasswordForm } from './components/ChangePasswordForm';
 import { fetchStats, fetchDiscoveryStatus, checkBackendHealth } from './api';
 import type { NormalizedSystemStats, DiscoveryStatus, ApiError } from './types/api';
 
@@ -42,6 +43,7 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const { user, loading: authLoading, login, logout, signup } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [changingPassword, setChangingPassword] = useState<boolean>(false);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const { theme, toggleTheme } = useTheme();
 
@@ -171,6 +173,7 @@ export default function App() {
           onOpenMenu={() => setSidebarOpen(true)}
           user={user}
           onSignOut={logout}
+          onChangePassword={() => setChangingPassword(true)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
@@ -224,6 +227,25 @@ export default function App() {
       </div>
 
       {/* Backend API URL / Connection Diagnostics Modal */}
+      {changingPassword && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-lg p-5 shadow-xl select-text">
+            <h2 className="text-sm font-semibold text-slate-100 mb-3">Change your password</h2>
+            <ChangePasswordForm
+              email={user.email}
+              onCancel={() => setChangingPassword(false)}
+              onDone={message => {
+                // The change ended every session, this one included, so the
+                // sign-in page is where the new password is first used.
+                setChangingPassword(false);
+                window.alert(message);
+                logout();
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       <BackendSettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}

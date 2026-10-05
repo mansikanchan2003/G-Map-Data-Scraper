@@ -1,3 +1,4 @@
+import { ForgotPasswordForm } from '../components/ForgotPasswordForm';
 import React, { useState } from 'react';
 import type { AuthUser } from '../api';
 
@@ -24,7 +25,7 @@ const field =
   'focus:ring-sky-500 transition-colors';
 
 export const LoginView: React.FC<Props> = ({ onLogin, onSignup }) => {
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -57,7 +58,7 @@ export const LoginView: React.FC<Props> = ({ onLogin, onSignup }) => {
     }
   };
 
-  const switchTo = (next: 'login' | 'signup') => {
+  const switchTo = (next: 'login' | 'signup' | 'forgot') => {
     setMode(next);
     setError(null);
     setNotice(null);
@@ -83,7 +84,7 @@ export const LoginView: React.FC<Props> = ({ onLogin, onSignup }) => {
                 type="button"
                 onClick={() => switchTo(m)}
                 className={`flex-1 py-1.5 text-xs font-semibold rounded transition-colors cursor-pointer ${
-                  mode === m ? 'bg-slate-800 text-slate-100' : 'text-slate-500 hover:text-slate-300'
+                  (mode === m || (m === 'login' && mode === 'forgot')) ? 'bg-slate-800 text-slate-100' : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
                 {m === 'login' ? 'Sign in' : 'Request access'}
@@ -91,7 +92,18 @@ export const LoginView: React.FC<Props> = ({ onLogin, onSignup }) => {
             ))}
           </div>
 
-          <form onSubmit={submit} className="flex flex-col gap-3">
+          {mode === 'forgot' && (
+            <>
+              <h2 className="text-sm font-semibold text-slate-200 mb-3">Forgot your password?</h2>
+              <ForgotPasswordForm
+                initialEmail={email}
+                onDone={message => { switchTo('login'); setPassword(''); setNotice(message); }}
+                onCancel={() => switchTo('login')}
+              />
+            </>
+          )}
+
+          {mode !== 'forgot' && <form onSubmit={submit} className="flex flex-col gap-3">
             {mode === 'signup' && (
               <div>
                 <label className="block text-xs text-slate-400 font-semibold mb-1">Your name</label>
@@ -171,7 +183,14 @@ export const LoginView: React.FC<Props> = ({ onLogin, onSignup }) => {
             >
               {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Send request'}
             </button>
-          </form>
+
+            {mode === 'login' && (
+              <button type="button" onClick={() => switchTo('forgot')}
+                      className="text-xs text-sky-400 hover:text-sky-300 self-center cursor-pointer">
+                Forgot password?
+              </button>
+            )}
+          </form>}
 
           {mode === 'signup' && (
             <p className="text-[11px] text-slate-500 mt-4 leading-relaxed border-t border-slate-800 pt-4">

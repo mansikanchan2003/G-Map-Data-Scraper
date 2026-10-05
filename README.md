@@ -165,6 +165,20 @@ request, since every request looks the account up afresh; **Restore access**
 undoes it. The administrator's role cannot be granted, asked for, changed or
 removed from the app, so the approvals queue stays with that one account.
 
+**Passwords.** Nobody can read a password: only a one-way hash is stored.
+
+- **Change password**, in the account menu once signed in, asks for the
+  current password and the new one.
+- **Forgot password?**, on the sign-in page, sends a 6-digit code **to the
+  administrator**, not to the person asking. The email names the account it
+  is for; the administrator passes the code on if the request is genuine, and
+  the person enters it with a new password. The code works once, for 10
+  minutes, and is thrown away after 5 wrong guesses; another is not sent for
+  60 seconds. Needs the SMTP settings. The page answers the same whether or
+  not the address has an account.
+- Either way, changing a password ends every session that was signed in with
+  the old one.
+
 Admins see **Access Requests** in the sidebar: approve, decline with a reason,
 or reinstate someone previously declined. Every decision records who made it.
 Requests also go out by email when SMTP is configured; when it is not, the

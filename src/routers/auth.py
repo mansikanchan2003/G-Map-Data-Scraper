@@ -42,6 +42,22 @@ class LoginRequest(BaseModel):
     password: str = Field(..., max_length=200)
 
 
+class ChangePasswordRequest(BaseModel):
+    email: str = Field(..., max_length=200)
+    current_password: str = Field(..., max_length=200)
+    new_password: str = Field(..., max_length=200)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., max_length=200)
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str = Field(..., max_length=200)
+    code: str = Field(..., max_length=12)
+    new_password: str = Field(..., max_length=200)
+
+
 class UserResponse(BaseModel):
     user_id: str
     email: str
@@ -197,6 +213,97 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     _set_session_cookie(response, auth.issue_token(user))
     logger.info(f"auth event=LOGIN email={email} role={user.role}")
     return UserResponse.model_validate(user)
+
+
+@router.post("/forgot-password")
+def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Emails a six-digit code for the account to the administrator.
+
+    Not to the person asking: the administrator decides whether the request
+    is genuine and passes the code on. The answer is the same whether or not
+    the address has an account, so this cannot be used to find out which do.
+    """
+    if not notifier.smtp_configured():
+        # True for every address alike, so it gives nothing away.
+        raise HTTPException(
+            status_code=503,
+            detail="Password reset by email is not set up on this server. Ask the administrator.",
+        )
+
+    email = auth.normalise_email(payload.email)
+    user = db.query(User).filter(User.email == email).first()
+    if auth.may_reset_password(user):
+        code = auth.start_password_reset(db, user)
+        if code:
+            sent = notifier.send_reset_code(auth.BOOTSTRAP_ADMIN, email, code,
+                                            auth.RESET_CODE_TTL_MINUTES)
+            logger.info(f"auth event=RESET_CODE_SENT email={email} delivered={sent}")
+        else:
+            logger.info(f"auth event=RESET_CODE_THROTTLED email={email}")
+
+    return {
+        "status": "sent",
+        "message": f"If {email} has an account, a 6-digit code has been emailed to the "
+                   f"administrator ({auth.BOOTSTRAP_ADMIN}). Ask them for it; it works for "
+                   f"{auth.RESET_CODE_TTL_MINUTES} minutes.",
+    }
+
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordRequest, response: Response, db: Session = Depends(get_db)):
+    """Sets a new password for whoever holds the code that was emailed."""
+    problem = auth.password_problem(payload.new_password)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
+
+    email = auth.normalise_email(payload.email)
+    user = db.query(User).filter(User.email == email).first()
+    if not auth.finish_password_reset(db, user, payload.code, payload.new_password):
+        raise HTTPException(
+            status_code=400,
+            detail="That code is incorrect or has expired. Ask for a new one and try again.",
+        )
+    logger.info(f"auth event=PASSWORD_RESET email={email}")
+    response.delete_cookie(auth.COOKIE_NAME, path="/")
+    return {"status": "changed", "message": "Password changed. Sign in with the new one."}
+
+
+@router.post("/change-password")
+def change_password(payload: ChangePasswordRequest, response: Response, db: Session = Depends(get_db)):
+    """
+    Changes a password for whoever can give the current one.
+
+    The current password is the proof of ownership, so this works signed in
+    or not, and for every role. It is no help with a forgotten password:
+    nothing here can be done without the old one.
+    """
+    email = auth.normalise_email(payload.email)
+    user = db.query(User).filter(User.email == email).first()
+
+    # The same answer for an unknown address and a wrong password, as on
+    # sign-in, so this cannot be used to find out which addresses exist.
+    invalid = HTTPException(status_code=401, detail="Incorrect email or current password.")
+    if not user or not auth.has_usable_password(user):
+        raise invalid
+    if not auth.verify_password(payload.current_password, user.password_hash):
+        raise invalid
+
+    problem = auth.password_problem(payload.new_password)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
+    if payload.new_password == payload.current_password:
+        raise HTTPException(status_code=400, detail="The new password must be different from the current one.")
+
+    user.password_hash = auth.hash_password(payload.new_password)
+    user.password_changed_at = datetime.now(timezone.utc)
+    db.commit()
+    logger.info(f"auth event=PASSWORD_CHANGED email={email}")
+
+    # Every session issued before now has just stopped working, this
+    # browser's included, so its cookie is cleared rather than left to fail.
+    response.delete_cookie(auth.COOKIE_NAME, path="/")
+    return {"status": "changed", "message": "Password changed. Sign in with the new one."}
 
 
 @router.post("/logout")

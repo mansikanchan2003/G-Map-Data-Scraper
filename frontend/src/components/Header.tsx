@@ -15,6 +15,7 @@ interface HeaderProps {
   onOpenMenu: () => void;
   /** Null only while signed out, which the app never renders this with. */
   user?: { email: string; full_name: string | null; role: string } | null;
+  onChangePassword?: () => void;
   onSignOut?: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
@@ -32,6 +33,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMenu,
   user,
   onSignOut,
+  onChangePassword,
   searchQuery,
   onSearchChange,
   theme,
@@ -193,6 +195,15 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               )}
             </div>
+            <button
+              onClick={onChangePassword}
+              className="w-full mt-1 flex items-center gap-2 px-2.5 py-2 rounded text-left text-xs
+                         text-slate-300 hover:bg-slate-800 hover:text-slate-100
+                         transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px]">key</span>
+              Change password
+            </button>
             <button
               onClick={onSignOut}
               className="w-full mt-1 flex items-center gap-2 px-2.5 py-2 rounded text-left text-xs

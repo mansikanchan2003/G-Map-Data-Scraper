@@ -467,3 +467,227 @@ class TestAskingForARoleAndLosingAccess:
         client.post("/api/v1/auth/logout")
         client.post("/api/v1/auth/login", json={"email": "mgr@eko.co.in", "password": GOOD_PASSWORD})
         assert client.post(f"/api/v1/auth/users/{uid}/revoke").status_code == 403
+
+
+class TestChangingAPassword:
+    """Whoever can give the current password can change it; nobody else can."""
+
+    NEW = "brand-new-horse-9"
+
+    def _approved(self, client, email="changer@eko.co.in", role="member"):
+        client.post("/api/v1/auth/signup", json={"email": email, "password": GOOD_PASSWORD})
+        client.post("/api/v1/auth/login", json={"email": make_admin(), "password": GOOD_PASSWORD})
+        uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+        client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": role})
+        client.post("/api/v1/auth/logout")
+        client.cookies.clear()
+        return email
+
+    def _change(self, client, email, current, new):
+        return client.post("/api/v1/auth/change-password", json={
+            "email": email, "current_password": current, "new_password": new})
+
+    def test_the_new_password_works_and_the_old_one_stops(self, client):
+        email = self._approved(client)
+        assert self._change(client, email, GOOD_PASSWORD, self.NEW).status_code == 200
+        login = lambda pw: client.post("/api/v1/auth/login", json={"email": email, "password": pw}).status_code
+        assert login(GOOD_PASSWORD) == 401
+        assert login(self.NEW) == 200
+        assert client.get("/api/v1/stats").status_code == 200
+
+    def test_it_works_from_the_sign_in_page_without_a_session(self, client):
+        """The option is on the sign-in page, so no cookie is involved."""
+        email = self._approved(client)
+        assert client.cookies.get(auth.COOKIE_NAME) is None
+        assert self._change(client, email, GOOD_PASSWORD, self.NEW).status_code == 200
+
+    def test_a_view_only_member_can_change_their_own(self, client):
+        email = self._approved(client, role="member")
+        client.post("/api/v1/auth/login", json={"email": email, "password": GOOD_PASSWORD})
+        assert self._change(client, email, GOOD_PASSWORD, self.NEW).status_code == 200
+
+    def test_a_wrong_current_password_changes_nothing(self, client):
+        email = self._approved(client)
+        res = self._change(client, email, "not-the-password-1", self.NEW)
+        assert res.status_code == 401
+        assert client.post("/api/v1/auth/login", json={"email": email, "password": GOOD_PASSWORD}).status_code == 200
+
+    def test_an_unknown_address_reads_the_same_as_a_wrong_password(self, client):
+        email = self._approved(client)
+        wrong = self._change(client, email, "not-the-password-1", self.NEW)
+        unknown = self._change(client, "nobody@eko.co.in", GOOD_PASSWORD, self.NEW)
+        assert (wrong.status_code, wrong.json()) == (unknown.status_code, unknown.json())
+
+    @pytest.mark.parametrize("new, why", [("short1", "10 characters"), ("onlyletters", "mix"),
+                                          (GOOD_PASSWORD, "different")])
+    def test_a_weak_or_unchanged_password_is_refused(self, client, new, why):
+        email = self._approved(client)
+        res = self._change(client, email, GOOD_PASSWORD, new)
+        assert res.status_code == 400 and why in res.json()["detail"]
+
+    def test_changing_it_signs_out_sessions_that_used_the_old_one(self, client):
+        """If someone else knew the old password, they are out too."""
+        import time
+        email = self._approved(client)
+        client.post("/api/v1/auth/login", json={"email": email, "password": GOOD_PASSWORD})
+        old_session = client.cookies.get(auth.COOKIE_NAME)
+        assert client.get("/api/v1/stats").status_code == 200
+
+        time.sleep(1.1)   # a session's issue time is in whole seconds
+        client.cookies.clear()
+        assert self._change(client, email, GOOD_PASSWORD, self.NEW).status_code == 200
+
+        client.cookies.clear()
+        client.cookies.set(auth.COOKIE_NAME, old_session)
+        assert client.get("/api/v1/stats").status_code == 401, "the old session still works"
+
+        client.cookies.clear()
+        assert client.post("/api/v1/auth/login", json={"email": email, "password": self.NEW}).status_code == 200
+        assert client.get("/api/v1/stats").status_code == 200, "a session from the new password works"
+
+    def test_the_seeded_admin_without_a_password_cannot_be_claimed_this_way(self, client):
+        assert self._change(client, auth.BOOTSTRAP_ADMIN, "!", self.NEW).status_code == 401
+
+
+class TestForgottenPassword:
+    """
+    A code emailed to the administrator, and passed on by them, resets the
+    password. The code is the whole of the proof, so what bounds it is what
+    is tested: it goes only to the administrator, it expires, it has few
+    guesses, and it says nothing about who exists.
+    """
+
+    NEW = "brand-new-horse-9"
+
+    @pytest.fixture
+    def mail(self, monkeypatch):
+        """Captures the reset emails that would be sent; nothing is."""
+        from src.services import notifier
+        sent = []
+
+        def capture(to, subject, body):
+            # Signing up and being approved send mail of their own.
+            if "reset code" in subject:
+                sent.append((to, subject, body))
+            return True
+
+        monkeypatch.setattr(notifier, "smtp_configured", lambda: True)
+        monkeypatch.setattr(notifier, "_send", capture)
+        return sent
+
+    def _account(self, client, email="forgetful@eko.co.in", approve=True):
+        client.post("/api/v1/auth/signup", json={"email": email, "password": GOOD_PASSWORD})
+        if approve:
+            client.post("/api/v1/auth/login", json={"email": make_admin(), "password": GOOD_PASSWORD})
+            uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+            client.post(f"/api/v1/auth/users/{uid}/approve")
+            client.post("/api/v1/auth/logout")
+            client.cookies.clear()
+        return email
+
+    def _code(self, mail):
+        import re
+        return re.search(r"\b(\d{6})\b", mail[-1][2]).group(1)
+
+    def _forgot(self, client, email):
+        return client.post("/api/v1/auth/forgot-password", json={"email": email})
+
+    def _reset(self, client, email, code, new=None):
+        return client.post("/api/v1/auth/reset-password", json={
+            "email": email, "code": code, "new_password": new or self.NEW})
+
+    def test_the_code_goes_to_the_administrator_and_resets_the_password(self, client, mail):
+        email = self._account(client)
+        res = self._forgot(client, email)
+        assert res.status_code == 200 and auth.BOOTSTRAP_ADMIN in res.json()["message"]
+        assert [m[0] for m in mail] == [auth.BOOTSTRAP_ADMIN], "to the administrator, never to the person asking"
+        assert email in mail[-1][1] and email in mail[-1][2], "the email says whose account it is for"
+        assert self._code(mail) not in mail[-1][1], "the code is not in the subject, which is logged"
+
+        assert self._reset(client, email, self._code(mail)).status_code == 200
+        login = lambda pw: client.post("/api/v1/auth/login", json={"email": email, "password": pw}).status_code
+        assert login(GOOD_PASSWORD) == 401
+        assert login(self.NEW) == 200
+
+    def test_an_unknown_address_gets_the_same_answer_and_no_email(self, client, mail):
+        email = self._account(client)
+        known = self._forgot(client, email)
+        unknown = self._forgot(client, "nobody@eko.co.in")
+        assert known.status_code == unknown.status_code == 200
+        assert known.json()["status"] == unknown.json()["status"]
+        assert len(mail) == 1 and email in mail[0][2], "only the real account produced a code"
+
+    def test_a_wrong_code_does_not_reset(self, client, mail):
+        email = self._account(client)
+        self._forgot(client, email)
+        wrong = "000000" if self._code(mail) != "000000" else "111111"
+        assert self._reset(client, email, wrong).status_code == 400
+        assert client.post("/api/v1/auth/login", json={"email": email, "password": GOOD_PASSWORD}).status_code == 200
+
+    def test_five_wrong_guesses_throw_the_code_away(self, client, mail):
+        email = self._account(client)
+        self._forgot(client, email)
+        code = self._code(mail)
+        wrong = "000000" if code != "000000" else "111111"
+        for _ in range(auth.RESET_CODE_MAX_ATTEMPTS):
+            assert self._reset(client, email, wrong).status_code == 400
+        assert self._reset(client, email, code).status_code == 400, "the right code after too many guesses"
+
+    def test_the_code_expires(self, client, mail):
+        from datetime import datetime, timedelta, timezone
+        email = self._account(client)
+        self._forgot(client, email)
+        db = TestingSessionLocal()
+        user = db.query(User).filter(User.email == email).one()
+        user.reset_code_sent_at = datetime.now(timezone.utc) - timedelta(minutes=auth.RESET_CODE_TTL_MINUTES + 1)
+        db.commit()
+        db.close()
+        assert self._reset(client, email, self._code(mail)).status_code == 400
+
+    def test_a_code_works_once(self, client, mail):
+        email = self._account(client)
+        self._forgot(client, email)
+        code = self._code(mail)
+        assert self._reset(client, email, code).status_code == 200
+        assert self._reset(client, email, code, "another-new-one-7").status_code == 400
+
+    def test_a_second_code_is_not_sent_straight_away(self, client, mail):
+        email = self._account(client)
+        self._forgot(client, email)
+        assert self._forgot(client, email).status_code == 200
+        assert len(mail) == 1, "the form cannot be used to flood an inbox"
+
+    def test_a_weak_new_password_is_refused_and_the_code_is_kept(self, client, mail):
+        email = self._account(client)
+        self._forgot(client, email)
+        code = self._code(mail)
+        assert self._reset(client, email, code, "short1").status_code == 400
+        assert self._reset(client, email, code).status_code == 200
+
+    def test_someone_whose_access_was_removed_cannot_reset(self, client, mail):
+        email = self._account(client)
+        client.post("/api/v1/auth/login", json={"email": "admin@eko.co.in", "password": GOOD_PASSWORD})
+        uid = next(u["user_id"] for u in client.get("/api/v1/auth/users").json() if u["email"] == email)
+        client.post(f"/api/v1/auth/users/{uid}/revoke")
+        client.post("/api/v1/auth/logout")
+        assert self._forgot(client, email).status_code == 200
+        assert mail == [], "no code is sent to an account that has been shut out"
+
+    def test_resetting_signs_out_sessions_from_the_old_password(self, client, mail):
+        import time
+        email = self._account(client)
+        client.post("/api/v1/auth/login", json={"email": email, "password": GOOD_PASSWORD})
+        old_session = client.cookies.get(auth.COOKIE_NAME)
+        time.sleep(1.1)
+        client.cookies.clear()
+        self._forgot(client, email)
+        assert self._reset(client, email, self._code(mail)).status_code == 200
+        client.cookies.clear()
+        client.cookies.set(auth.COOKIE_NAME, old_session)
+        assert client.get("/api/v1/stats").status_code == 401
+
+    def test_without_a_mail_server_it_says_so(self, client, monkeypatch):
+        from src.services import notifier
+        monkeypatch.setattr(notifier, "smtp_configured", lambda: False)
+        res = self._forgot(client, "anyone@eko.co.in")
+        assert res.status_code == 503 and "not set up" in res.json()["detail"]

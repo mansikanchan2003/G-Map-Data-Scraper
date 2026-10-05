@@ -474,6 +474,29 @@ export async function signup(email: string, password: string, fullName?: string,
   });
 }
 
+/** Emails a reset code to the address, if it has an account. */
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  return request<{ message: string }>('/api/v1/auth/forgot-password', {
+    method: 'POST', body: JSON.stringify({ email }),
+  });
+}
+
+/** Sets a new password using the emailed code. */
+export async function resetPassword(email: string, code: string, newPassword: string): Promise<{ message: string }> {
+  return request<{ message: string }>('/api/v1/auth/reset-password', {
+    method: 'POST', body: JSON.stringify({ email, code, new_password: newPassword }),
+  });
+}
+
+/** Changes a password given the current one. Signs the account out everywhere. */
+export async function changePassword(email: string, currentPassword: string,
+                                     newPassword: string): Promise<{ message: string }> {
+  return request<{ message: string }>('/api/v1/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, current_password: currentPassword, new_password: newPassword }),
+  });
+}
+
 export async function login(email: string, password: string): Promise<AuthUser> {
   return request<AuthUser>('/api/v1/auth/login', {
     method: 'POST',

@@ -92,6 +92,20 @@ def _migrate_db(eng) -> None:
                     conn.execute(text(f"ALTER TABLE whatsapp_templates ADD COLUMN {name} {ddl}"))
             conn.commit()
 
+    if "users" in inspector.get_table_names():
+        columns = [c["name"] for c in inspector.get_columns("users")]
+        added = {
+            "password_changed_at": "DATETIME",
+            "reset_code_hash": "VARCHAR(64)",
+            "reset_code_sent_at": "DATETIME",
+            "reset_code_attempts": "INTEGER NOT NULL DEFAULT 0",
+        }
+        with eng.connect() as conn:
+            for name, ddl in added.items():
+                if name not in columns:
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl}"))
+            conn.commit()
+
     if "whatsapp_campaign_recipients" in inspector.get_table_names():
         columns = [c["name"] for c in inspector.get_columns("whatsapp_campaign_recipients")]
         if "variables" not in columns:
