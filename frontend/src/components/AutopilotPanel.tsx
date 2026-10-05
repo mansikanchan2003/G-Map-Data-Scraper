@@ -22,6 +22,7 @@ const PHASES: Record<string, { label: string; icon: string; cls: string }> = {
   round_complete: { label: 'Round complete', icon: 'task_alt', cls: 'text-sky-300 border-sky-700 bg-sky-900/30' },
   gap_between_rounds: { label: 'Between rounds', icon: 'schedule', cls: 'text-sky-300 border-sky-700 bg-sky-900/30' },
   captcha_cooldown: { label: 'CAPTCHA cool-down', icon: 'gpp_maybe', cls: 'text-amber-300 border-amber-700 bg-amber-900/30' },
+  too_many_failures: { label: 'Stopped: batches failing', icon: 'error', cls: 'text-rose-300 border-rose-700 bg-rose-900/30' },
   no_internet: { label: 'No internet', icon: 'wifi_off', cls: 'text-amber-300 border-amber-700 bg-amber-900/30' },
   daily_target_reached: { label: 'Done for today', icon: 'check_circle', cls: 'text-emerald-300 border-emerald-700 bg-emerald-900/30' },
   waiting_for_other_run: { label: 'Waiting for a manual batch', icon: 'hourglass_top', cls: 'text-amber-300 border-amber-700 bg-amber-900/30' },
@@ -158,6 +159,9 @@ const Now: React.FC<{ data: AutopilotStatus; active?: AutopilotRound; onClearCoo
           <button onClick={onClearCooldown} className="underline text-amber-200">End the pause now</button>
         </>
       );
+      break;
+    case 'too_many_failures':
+      text = 'Too many batches failed completely today, so it has stopped until midnight IST. Failed batches are not counted as part of the day; check the Jobs Monitor for why they failed.';
       break;
     case 'no_internet':
       text = (

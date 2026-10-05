@@ -8,7 +8,8 @@ repeated within the round — so a round spreads across the state instead of
 draining one town. When a round's batches are done the autopilot waits,
 then starts the next round in a different state.
 
-It stops for the day at a batch target, finishing the round it is in.
+It stops for the day at a batch target, which counts only batches that
+scraped something; a round left part-done carries on the next day.
 
 Avoiding Google's CAPTCHA is done by behaving less like a machine, never by
 getting around one:
@@ -342,15 +343,29 @@ def _ist_midnight(now: datetime) -> datetime:
 
 def batches_today(db: Session, now: Optional[datetime] = None) -> int:
     """
-    Autopilot batches that ran today, counting the day in IST. A batch cut
-    short by a dead connection scraped nothing, so it does not use up one of
-    the day's batches.
+    Autopilot batches that counted today, the day being IST.
+
+    A batch counts when at least one of its jobs completed. One whose jobs
+    all failed scraped nothing, so it does not use up one of the day's
+    batches, and neither does one cut short by a dead connection.
     """
     now = now or _now()
     return (
         db.query(RunLog)
-        .filter(RunLog.trigger_source == TRIGGER, RunLog.jobs_attempted > 0,
+        .filter(RunLog.trigger_source == TRIGGER, RunLog.jobs_completed > 0,
                 RunLog.status != "OFFLINE",
+                RunLog.started_at >= _ist_midnight(now))
+        .count()
+    )
+
+
+def failed_batches_today(db: Session, now: Optional[datetime] = None) -> int:
+    """Batches today in which every job failed, the connection being up."""
+    now = now or _now()
+    return (
+        db.query(RunLog)
+        .filter(RunLog.trigger_source == TRIGGER, RunLog.jobs_attempted > 0,
+                RunLog.jobs_completed == 0, RunLog.status.notin_(("OFFLINE", "BLOCKED", "RUNNING")),
                 RunLog.started_at >= _ist_midnight(now))
         .count()
     )
@@ -485,13 +500,38 @@ def tick(db: Session, clock: Callable[[], datetime] = _now,
     active = (db.query(DiscoveryRound).filter(DiscoveryRound.status == "ACTIVE")
               .order_by(DiscoveryRound.created_at).first())
 
-    # --- no round under way: start one, if it is time ----------------------
-    if active is None:
+    def day_is_over() -> Optional[float]:
+        """
+        The wait until tomorrow when today's batches are used up, else None.
+
+        Asked before every batch, not only between rounds: the day's number
+        is a number of batches, and a round left part-done simply carries on
+        tomorrow.
+        """
         target = settings["daily_batch_target"]
+        tomorrow = _ist_midnight(now) + timedelta(days=1)
         if batches_today(db, now) >= target and not settings["continue_after_target"]:
-            tomorrow = _ist_midnight(now) + timedelta(days=1)
             return done("daily_target_reached", min(600, (tomorrow - now).total_seconds()),
                         next_round_at=_iso(tomorrow))
+        # Failed batches do not count towards the day, so something has to
+        # stop a day in which every batch fails: a change on Google's side
+        # would otherwise have it failing jobs every half hour until they ran
+        # out of attempts. As many wholly failed batches as the day's target,
+        # and it stops until tomorrow for someone to look.
+        if failed_batches_today(db, now) >= target:
+            if state.get("phase") != "too_many_failures":
+                _event(state, "TOO_MANY_FAILURES",
+                       f"{target} batches today failed completely, so it has stopped until tomorrow. "
+                       f"Check the Jobs Monitor for the reason.")
+            return done("too_many_failures", min(600, (tomorrow - now).total_seconds()),
+                        next_round_at=_iso(tomorrow))
+        return None
+
+    # --- no round under way: start one, if it is time ----------------------
+    if active is None:
+        over = day_is_over()
+        if over is not None:
+            return over
 
         last = (db.query(DiscoveryRound).filter(DiscoveryRound.completed_at.isnot(None))
                 .order_by(DiscoveryRound.completed_at.desc()).first())
@@ -534,6 +574,10 @@ def tick(db: Session, clock: Callable[[], datetime] = _now,
         db.commit()
         _event(state, "ROUND_DONE", f"Round in {active.state} finished: {active.batches_done} batches.")
         return done("round_complete", 1)
+
+    over = day_is_over()
+    if over is not None:
+        return over
 
     next_at = _parse(state.get("next_batch_at"))
     if next_at and now < next_at:
@@ -647,7 +691,8 @@ def status(db: Session) -> dict:
 
     today_runs = (db.query(RunLog).filter(RunLog.trigger_source == TRIGGER,
                                           RunLog.started_at >= _ist_midnight(now)).all())
-    done_today = sum(1 for r in today_runs if (r.jobs_attempted or 0) > 0 and r.status != "OFFLINE")
+    done_today = sum(1 for r in today_runs if (r.jobs_completed or 0) > 0 and r.status != "OFFLINE")
+    failed_today = failed_batches_today(db, now)
     finished = [r for r in today_runs if r.duration_seconds]
     avg_batch = (sum(r.duration_seconds for r in finished) / len(finished)) if finished else None
 
@@ -665,6 +710,8 @@ def status(db: Session) -> dict:
         "now": _iso(now),
         "today": {
             "batches_done": done_today,
+            # Batches in which every job failed; shown, never counted.
+            "batches_failed": failed_today,
             "target": settings["daily_batch_target"],
             "jobs": sum(r.jobs_attempted or 0 for r in today_runs),
             "businesses_saved": sum(r.businesses_new or 0 for r in today_runs),

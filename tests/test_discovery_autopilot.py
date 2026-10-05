@@ -55,6 +55,7 @@ class FakeScraper:
         self.db, self.clock = db, clock
         self.batches = []
         self.captcha_next = 0
+        self.fail_next = 0       # how many coming batches fail every job
 
     def __call__(self, request, db):
         jobs = db.query(Job).filter(Job.job_id.in_(request.job_ids), Job.status == "PENDING").all()
@@ -63,18 +64,29 @@ class FakeScraper:
         db.add(run)
         self.batches.append({"request": request, "jobs": [j.job_id for j in jobs]})
         blocked = self.captcha_next > 0
+        failing = self.fail_next > 0
+        if failing:
+            self.fail_next -= 1
         done = 0
         for i, job in enumerate(jobs):
             if blocked and i == 3:
                 job.status = "BLOCKED"
                 break
+            if failing:
+                job.status = "FAILED"
+                job.error_message = "selector changed"
+                job.attempt_count = (job.attempt_count or 0) + 1
+                job.last_attempt_at = self.clock()
+                continue
             job.status = "COMPLETED"
             done += 1
         if blocked:
             self.captcha_next -= 1
         self.clock.advance(minutes=18)
-        run.status = "BLOCKED" if blocked else "COMPLETED"
-        run.jobs_attempted = done + (1 if blocked else 0)
+        run.status = "BLOCKED" if blocked else ("FAILED" if failing else "COMPLETED")
+        run.jobs_attempted = len(jobs) if failing else done + (1 if blocked else 0)
+        run.jobs_completed = done
+        run.jobs_failed = len(jobs) if failing else 0
         run.businesses_new = done * 7
         run.duration_seconds = 18 * 60
         run.completed_at = self.clock()
@@ -575,3 +587,43 @@ def test_retrying_can_be_switched_off(db):
     switch_on(db, retry_failed_jobs=False)
     run_until(db, clock, scraper, lambda: len(scraper.batches) == 1)
     assert db.query(Job).filter(Job.job_id == "L00c000").one().status == "FAILED"
+
+
+# --- a failed batch is not one of the day's ------------------------------------
+
+def test_a_batch_whose_jobs_all_failed_does_not_count(db):
+    """Ten batches a day means ten that scraped something."""
+    clock = Clock()
+    scraper = FakeScraper(db, clock)
+    scraper.fail_next = 3
+    switch_on(db)
+    run_until(db, clock, scraper, lambda: ap.get_state(db)["phase"] == "daily_target_reached")
+
+    assert len(scraper.batches) == 13, "three failed batches, then the day's ten"
+    assert ap.batches_today(db, clock()) == 10
+    assert ap.failed_batches_today(db, clock()) == 3
+    status = ap.status(db)["today"]
+    assert status["batches_done"] == 10 and status["batches_failed"] == 3
+    # Still one at a time, half an hour apart, failed ones included.
+    runs = db.query(RunLog).order_by(RunLog.started_at).all()
+    assert all(ap._aware(b.started_at) - ap._aware(a.completed_at) >= timedelta(minutes=30)
+               for a, b in zip(runs, runs[1:]))
+
+
+def test_a_day_of_nothing_but_failures_stops_itself(db):
+    """Uncounted must not mean unlimited: it stops and asks to be looked at."""
+    clock = Clock()
+    scraper = FakeScraper(db, clock)
+    scraper.fail_next = 999
+    switch_on(db)
+    run_until(db, clock, scraper, lambda: ap.get_state(db)["phase"] == "too_many_failures")
+
+    assert len(scraper.batches) == 10, "as many failed batches as the day's target, no more"
+    assert ap.batches_today(db, clock()) == 0
+    assert "failed completely" in ap.get_state(db)["last_event"]
+    done = len(scraper.batches)
+    for _ in range(20):
+        clock.advance(seconds=ap.tick(db, clock=clock, runner=scraper))
+        if clock().astimezone(ap.IST).date() > datetime(2026, 10, 5).date():
+            break
+    assert len(scraper.batches) == done or clock().astimezone(ap.IST).date() > datetime(2026, 10, 5).date()

@@ -58,9 +58,12 @@ it works in **rounds**:
 - Batches run **one at a time, 30 minutes apart**, whether or not a round ends
   between them. The next round is in a **different state**, the one visited
   longest ago.
-- It stops for the day at **10 batches** (IST), finishing the round it is in,
-  and carries on after midnight. A 25-job batch takes 15–20 minutes, so a
+- It stops for the day at **10 batches** (IST) and carries on after midnight,
+  picking up a round left part-done. A 25-job batch takes 15–20 minutes, so a
   day's ten take about seven and a half hours.
+- **Only a batch that scraped something counts.** One whose jobs all failed is
+  not one of the day's ten. So that this cannot run without end, ten wholly
+  failed batches in a day stop it until midnight with a note to look at why.
 - Before each round it runs job generation, so newly added PINs join the queue.
 
 To stay clear of Google's CAPTCHA it paces itself like a person, not a
