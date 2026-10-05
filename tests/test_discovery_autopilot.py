@@ -4,7 +4,7 @@ The scraping autopilot.
 Runs whole days against a fake clock and a fake scraper, so what is checked
 is the behaviour asked for: rounds of five 25-job batches in one state, each
 batch a different tehsil with its own categories, a different state each
-round, ten batches a day run one at a time thirty minutes apart — and a
+round, ten batches a day run one at a time fifteen minutes apart — and a
 CAPTCHA stopping everything for a cool-down instead of pressing on.
 """
 import uuid
@@ -193,10 +193,10 @@ def test_the_gap_between_rounds_is_respected(db):
     ap.tick(db, clock=clock, runner=scraper)
     assert ap.get_state(db)["phase"] == "gap_between_rounds"
     assert db.query(DiscoveryRound).count() == 1
-    clock.t = finished + timedelta(minutes=29)
+    clock.t = finished + timedelta(minutes=14)
     ap.tick(db, clock=clock, runner=scraper)
-    assert db.query(DiscoveryRound).count() == 1, "still inside the half hour"
-    clock.t = finished + timedelta(minutes=30, seconds=1)
+    assert db.query(DiscoveryRound).count() == 1, "still inside the quarter hour"
+    clock.t = finished + timedelta(minutes=15, seconds=1)
     ap.tick(db, clock=clock, runner=scraper)
     assert db.query(DiscoveryRound).count() == 2
 
@@ -216,15 +216,15 @@ def test_ten_batches_a_day_half_an_hour_apart_and_then_it_stops(db):
     assert len(rounds) == 2
     assert all(a.state != b.state for a, b in zip(rounds, rounds[1:]))
 
-    # One at a time, and never sooner than half an hour after the last one
+    # One at a time, and never sooner than a quarter of an hour after the last one
     # ended — inside a round and across the round boundary alike.
     runs = db.query(RunLog).order_by(RunLog.started_at).all()
     for earlier, later in zip(runs, runs[1:]):
         gap = ap._aware(later.started_at) - ap._aware(earlier.completed_at)
-        assert gap >= timedelta(minutes=30), f"only {gap} between two batches"
-        assert gap < timedelta(minutes=32)
-    # Ten 18-minute batches and nine half-hour gaps: seven and a half hours.
-    assert clock() - start < timedelta(hours=8)
+        assert gap >= timedelta(minutes=15), f"only {gap} between two batches"
+        assert gap < timedelta(minutes=17)
+    # Ten 18-minute batches and nine quarter-hour gaps: about five and a quarter hours.
+    assert clock() - start < timedelta(hours=6)
 
     # Nothing more today; the next IST day it carries on.
     done = len(scraper.batches)
@@ -407,8 +407,8 @@ def test_saved_settings_adopt_the_new_pace_once_and_are_switched_off(db):
     s = ap.get_settings(db)
     assert s["enabled"] is False
     assert s["daily_batch_target"] == 10
-    assert s["gap_between_batches_seconds"] == [1800, 1800]
-    assert s["gap_between_rounds_minutes"] == 30
+    assert s["gap_between_batches_seconds"] == [900, 900]
+    assert s["gap_between_rounds_minutes"] == 15
     assert s["batch_size"] == 20, "what the pace does not cover is left alone"
     assert "Switched off" in ap.get_state(db)["last_event"]
 
@@ -575,7 +575,7 @@ def test_retries_ride_in_the_ordinary_batches_at_the_same_pace(db):
     first = scraper.batches[0]["jobs"]
     assert set(first) <= set(failed_ids), "the first batch is made of retries"
     runs = db.query(RunLog).order_by(RunLog.started_at).all()
-    assert all(ap._aware(b.started_at) - ap._aware(a.completed_at) >= timedelta(minutes=30)
+    assert all(ap._aware(b.started_at) - ap._aware(a.completed_at) >= timedelta(minutes=15)
                for a, b in zip(runs, runs[1:]))
 
 
@@ -604,9 +604,9 @@ def test_a_batch_whose_jobs_all_failed_does_not_count(db):
     assert ap.failed_batches_today(db, clock()) == 3
     status = ap.status(db)["today"]
     assert status["batches_done"] == 10 and status["batches_failed"] == 3
-    # Still one at a time, half an hour apart, failed ones included.
+    # Still one at a time, a quarter of an hour apart, failed ones included.
     runs = db.query(RunLog).order_by(RunLog.started_at).all()
-    assert all(ap._aware(b.started_at) - ap._aware(a.completed_at) >= timedelta(minutes=30)
+    assert all(ap._aware(b.started_at) - ap._aware(a.completed_at) >= timedelta(minutes=15)
                for a, b in zip(runs, runs[1:]))
 
 

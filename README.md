@@ -55,12 +55,12 @@ it works in **rounds**:
 - A round is **one state** and **5 batches of 25 jobs**. Each batch is a
   different tehsil — in a different district while the state has unused ones —
   and no category is repeated within the round.
-- Batches run **one at a time, 30 minutes apart**, whether or not a round ends
+- Batches run **one at a time, 15 minutes apart**, whether or not a round ends
   between them. The next round is in a **different state**, the one visited
   longest ago.
 - It stops for the day at **10 batches** (IST) and carries on after midnight,
   picking up a round left part-done. A 25-job batch takes 15–20 minutes, so a
-  day's ten take about seven and a half hours.
+  day's ten take about five and a quarter hours.
 - **Only a batch that scraped something counts.** One whose jobs all failed is
   not one of the day's ten. So that this cannot run without end, ten wholly
   failed batches in a day stop it until midnight with a note to look at why.
@@ -79,7 +79,7 @@ never runs alongside a batch started by hand, and after a restart it resumes
 the round it was in.
 
 **Failed jobs are tried again.** Before each round, failed jobs go back in the
-queue and are scraped in the ordinary batches — the same ten a day, thirty
+queue and are scraped in the ordinary batches — the same ten a day, fifteen
 minutes apart, with no extra ones. Retries go first: a batch takes the jobs
 being tried again before ones never tried, so a failure is not left waiting
 behind thousands of untouched jobs. A job that failed because the internet was

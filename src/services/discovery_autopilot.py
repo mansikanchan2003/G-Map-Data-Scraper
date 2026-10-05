@@ -59,12 +59,12 @@ DEFAULTS: Dict = {
     "enabled": False,
     "batch_size": 25,
     "batches_per_round": 5,
-    # Thirty minutes between any two batches, whether or not a round ends
+    # Fifteen minutes between any two batches, whether or not a round ends
     # between them: the two gaps are the same so the pace is one batch at a
-    # time, half an hour apart.
-    "gap_between_rounds_minutes": 30,
+    # time, a quarter of an hour apart.
+    "gap_between_rounds_minutes": 15,
     # The pause between the batches of a round, as a [low, high] range.
-    "gap_between_batches_seconds": [1800, 1800],
+    "gap_between_batches_seconds": [900, 900],
     # After each job: this many seconds plus up to the jitter, at random.
     "job_delay_seconds": 4.0,
     "job_delay_jitter_seconds": 6.0,
@@ -85,6 +85,9 @@ DEFAULTS: Dict = {
 # something a deploy starts running.
 #   2: ten batches a day, one at a time, thirty minutes apart (was thirty a
 #      day, 45-150 s apart).
+# The gap was later shortened to fifteen minutes by changing the saved
+# settings and these defaults together, without a new version: raising the
+# version switches the autopilot off, which a shorter gap is no reason to do.
 PACE_VERSION = 2
 PACE_VERSION_KEY = "discovery_autopilot_pace_version"
 PACE_KEYS = ("daily_batch_target", "gap_between_batches_seconds", "gap_between_rounds_minutes",
