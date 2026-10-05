@@ -22,6 +22,7 @@ const PHASES: Record<string, { label: string; icon: string; cls: string }> = {
   round_complete: { label: 'Round complete', icon: 'task_alt', cls: 'text-sky-300 border-sky-700 bg-sky-900/30' },
   gap_between_rounds: { label: 'Between rounds', icon: 'schedule', cls: 'text-sky-300 border-sky-700 bg-sky-900/30' },
   captcha_cooldown: { label: 'CAPTCHA cool-down', icon: 'gpp_maybe', cls: 'text-amber-300 border-amber-700 bg-amber-900/30' },
+  no_internet: { label: 'No internet', icon: 'wifi_off', cls: 'text-amber-300 border-amber-700 bg-amber-900/30' },
   daily_target_reached: { label: 'Done for today', icon: 'check_circle', cls: 'text-emerald-300 border-emerald-700 bg-emerald-900/30' },
   waiting_for_other_run: { label: 'Waiting for a manual batch', icon: 'hourglass_top', cls: 'text-amber-300 border-amber-700 bg-amber-900/30' },
   no_pending_jobs: { label: 'Nothing left to scrape', icon: 'inventory', cls: 'text-slate-300 border-slate-600 bg-slate-800' },
@@ -155,6 +156,14 @@ const Now: React.FC<{ data: AutopilotStatus; active?: AutopilotRound; onClearCoo
         <>
           Google showed a CAPTCHA. Paused until {time(s.cooldown_until)} IST (level {s.captcha_level}), then continuing more slowly.{' '}
           <button onClick={onClearCooldown} className="underline text-amber-200">End the pause now</button>
+        </>
+      );
+      break;
+    case 'no_internet':
+      text = (
+        <>
+          The server has no internet connection. Nothing is scraped until it is back; checking again at {time(s.offline_until)} IST.{' '}
+          <button onClick={onClearCooldown} className="underline text-amber-200">Check now</button>
         </>
       );
       break;

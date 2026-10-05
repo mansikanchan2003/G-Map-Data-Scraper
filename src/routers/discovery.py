@@ -1,7 +1,7 @@
 import uuid
 import time
 from fastapi import APIRouter, Depends, HTTPException, Body, BackgroundTasks
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 from src.database import get_db, SessionLocal
 from src.models import Job, RunLog
@@ -13,7 +13,12 @@ from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 import json
 
+from src.utils import connectivity
+
 router = APIRouter(prefix="/api/v1/discovery", tags=["Discovery"])
+
+# Consecutive connection failures before a batch asks whether it is online.
+OFFLINE_AFTER_FAILURES = 3
 
 class BatchRequest(BaseModel):
     batch_size: int = Field(50, ge=1, le=500)
@@ -446,6 +451,8 @@ def _run_batch(payload: "BatchRequest", db: Session):
 
     try:
         cancelled = False
+        offline = False
+        network_failures = []   # consecutive jobs that failed on the connection
         for job in pending_jobs:
             # /discovery/stop marks the active run CANCELLING. Checking it here
             # lets a batch wind down between jobs instead of needing the whole
@@ -494,6 +501,22 @@ def _run_batch(payload: "BatchRequest", db: Session):
             if blocked > 0:
                 break
 
+            # Three jobs in a row failing on the connection, and a direct
+            # check agreeing, is the internet being down rather than three
+            # bad searches. Carrying on would only fail the rest of the batch
+            # the same way, and every batch after it.
+            if status not in ("COMPLETED", "PARTIAL") and connectivity.looks_like_network_failure(res.get("error")):
+                network_failures.append(job.job_id)
+            else:
+                network_failures = []
+            if len(network_failures) >= OFFLINE_AFTER_FAILURES and not connectivity.is_online():
+                offline = True
+                logger.error(
+                    f"discovery run_id={run_id} event=BATCH_OFFLINE "
+                    f"processed={attempted} remaining={len(pending_jobs) - attempted}"
+                )
+                break
+
             import random
             time.sleep(payload.delay_between_jobs_seconds
                        + random.uniform(0, payload.delay_jitter_seconds))
@@ -502,6 +525,15 @@ def _run_batch(payload: "BatchRequest", db: Session):
         errors.append({"batch_error": str(e)})
     finally:
         duration = round(time.time() - start_time, 2)
+        if offline:
+            # These searches were never really made, so they go back in the
+            # queue without the attempt being held against them.
+            db.query(Job).filter(Job.job_id.in_(network_failures), Job.status == "FAILED").update(
+                {"status": "PENDING",
+                 "attempt_count": case((Job.attempt_count > 0, Job.attempt_count - 1), else_=0),
+                 "error_message": "No internet connection; returned to the queue"},
+                synchronize_session=False)
+            db.commit()
         # Mirror the batch's own filters so the caller can drain one target
         # without unrelated pending jobs making it look unfinished.
         remaining = apply_target_filters(db.query(Job).filter(Job.status == "PENDING"), payload).count()
@@ -517,6 +549,8 @@ def _run_batch(payload: "BatchRequest", db: Session):
             batch_error = any("batch_error" in e for e in errors)
             if cancelled:
                 run_log.status = "CANCELLED"
+            elif offline:
+                run_log.status = "OFFLINE"
             elif batch_error:
                 run_log.status = "FAILED"
             elif blocked > 0:
@@ -546,7 +580,11 @@ def _run_batch(payload: "BatchRequest", db: Session):
             db.commit()
 
     return {
-        "status": "cancelled" if cancelled else ("completed" if blocked == 0 else "blocked"),
+        # A dead connection reads as "blocked" to callers that only know the
+        # older outcomes (the n8n workflow stops on it rather than looping);
+        # `offline` says which kind of stop it was.
+        "status": "cancelled" if cancelled else ("blocked" if (blocked or offline) else "completed"),
+        "offline": offline,
         "run_id": run_id,
         "jobs_processed": attempted,
         "jobs_completed": completed,
@@ -666,6 +704,9 @@ def autopilot_clear_cooldown(db: Session = Depends(get_db)):
     from src.services import discovery_autopilot as ap
     state = ap.get_state(db)
     state["cooldown_until"] = None
-    ap._event(state, "COOLDOWN_CLEARED", "CAPTCHA pause ended by hand.")
+    # The same button ends a wait for the connection: it is checked again on
+    # the next step rather than at the scheduled time.
+    state["offline_until"] = None
+    ap._event(state, "COOLDOWN_CLEARED", "Pause ended by hand.")
     ap._write(db, ap.STATE_KEY, state)
     return ap.status(db)

@@ -75,6 +75,15 @@ Every setting — batches per day, batch size, gaps, which states — is under
 never runs alongside a batch started by hand, and after a restart it resumes
 the round it was in.
 
+**It waits out a dead internet connection.** The connection is checked before
+every batch, so nothing is started into an outage. A batch that loses it
+part-way stops after three failed jobs in a row and puts them back in the
+queue, with the attempt not counted against them. The autopilot then checks
+again after 5, 15, 30 and then every 60 minutes, and carries on by itself when
+the connection is back. None of this uses up the day's batches. (On 3 October
+2026 the server's link dropped and it ran 30 batches a day into it for two
+days, failing 1,490 jobs.)
+
 **It cannot take the server down.** The machine is shared with other
 applications, so three things bound what scraping can use:
 

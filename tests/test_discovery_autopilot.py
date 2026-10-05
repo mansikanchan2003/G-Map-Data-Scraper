@@ -88,6 +88,8 @@ class FakeScraper:
 def db(monkeypatch):
     # Job generation is exercised elsewhere; here the jobs are laid out below.
     monkeypatch.setattr("src.services.job_manager.generate_jobs", lambda db: {})
+    # Online unless a test says otherwise; never the real network.
+    monkeypatch.setattr(ap, "_default_online", lambda: True)
     session = Session()
     cats = [Category(category_id=f"c{i:03d}", category_name=f"Category {i:03d}") for i in range(CATEGORIES)]
     session.add_all(cats)
@@ -413,3 +415,103 @@ def test_switched_off_it_runs_nothing(db):
         clock.advance(seconds=ap.tick(db, clock=clock, runner=scraper))
     assert scraper.batches == [] and db.query(DiscoveryRound).count() == 0
     assert ap.get_state(db)["phase"] == "off"
+
+
+# --- no internet --------------------------------------------------------------
+
+class Link:
+    """The server's connection, up or down as a test says."""
+
+    def __init__(self, up=True):
+        self.up = up
+        self.checks = 0
+
+    def __call__(self):
+        self.checks += 1
+        return self.up
+
+
+def test_nothing_is_scraped_while_the_internet_is_down(db):
+    """
+    On 3 October the connection dropped and thirty batches a day ran into it
+    for two days, failing every job. A dead connection now starts nothing.
+    """
+    clock, link = Clock(), Link(up=False)
+    scraper = FakeScraper(db, clock)
+    switch_on(db)
+    for _ in range(400):
+        clock.advance(seconds=ap.tick(db, clock=clock, runner=scraper, online=link))
+
+    assert scraper.batches == [], "no batch is started into a dead connection"
+    assert db.query(Job).filter(Job.status != "PENDING").count() == 0, "no job is used up"
+    assert ap.get_state(db)["phase"] == "no_internet"
+    assert ap.batches_today(db, clock()) == 0
+
+
+def test_the_connection_is_rechecked_at_growing_intervals(db):
+    clock, link = Clock(), Link(up=False)
+    scraper = FakeScraper(db, clock)
+    switch_on(db)
+    times = []
+    seen = 0
+    for _ in range(3000):
+        clock.advance(seconds=ap.tick(db, clock=clock, runner=scraper, online=link))
+        if link.checks > seen:
+            seen = link.checks
+            times.append(clock())
+        if len(times) == 6:
+            break
+    gaps = [round((b - a).total_seconds() / 60) for a, b in zip(times, times[1:])]
+    assert gaps == [5, 15, 30, 60, 60], gaps
+
+
+def test_it_carries_on_by_itself_when_the_connection_returns(db):
+    clock, link = Clock(), Link(up=False)
+    scraper = FakeScraper(db, clock)
+    switch_on(db)
+    for _ in range(50):
+        clock.advance(seconds=ap.tick(db, clock=clock, runner=scraper, online=link))
+    assert scraper.batches == []
+
+    link.up = True
+    run_until_with(db, clock, scraper, link, lambda: len(scraper.batches) == 2)
+    state = ap.get_state(db)
+    assert state["offline_level"] == 0 and state["offline_until"] is None
+    assert ap.batches_today(db, clock()) == 2
+
+
+def run_until_with(db, clock, scraper, link, stop, max_ticks=5000):
+    for _ in range(max_ticks):
+        if stop():
+            return
+        clock.advance(seconds=ap.tick(db, clock=clock, runner=scraper, online=link))
+    raise AssertionError("did not get there")
+
+
+def test_a_batch_that_loses_the_connection_is_retried_and_not_counted(db):
+    """Dropping mid-batch must not use up the batch, or one of the day's ten."""
+    clock, link = Clock(), Link(up=True)
+    scraper = FakeScraper(db, clock)
+    calls = []
+
+    def drops_once(request, session):
+        calls.append(list(request.job_ids))
+        if len(calls) == 1:
+            # What _run_batch reports when the connection goes mid-batch.
+            run = RunLog(run_id=str(uuid.uuid4()), trigger_source=request.trigger_source,
+                         status="OFFLINE", started_at=clock(), jobs_attempted=3)
+            session.add(run)
+            session.commit()
+            link.up = False
+            return {"status": "blocked", "offline": True, "run_id": run.run_id,
+                    "jobs_processed": 3, "jobs_completed": 0, "businesses_saved": 0}
+        return scraper(request, session)
+
+    switch_on(db)
+    run_until_with(db, clock, drops_once, link, lambda: ap.get_state(db)["phase"] == "no_internet")
+    assert ap.batches_today(db, clock()) == 0, "a batch that scraped nothing is not one of the day's"
+    assert ap.get_state(db).get("captcha_level", 0) == 0, "a dead connection is not a CAPTCHA"
+
+    link.up = True
+    run_until_with(db, clock, drops_once, link, lambda: len(calls) == 2)
+    assert calls[1] == calls[0], "the same batch is tried again"

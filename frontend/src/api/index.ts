@@ -612,6 +612,8 @@ export interface AutopilotStatus {
     captcha_level: number;
     clean_streak: number;
     cooldown_until: string | null;
+    offline_until?: string | null;
+    offline_level?: number;
     next_batch_at: string | null;
     next_round_at?: string | null;
     current_batch?: number;

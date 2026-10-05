@@ -18,6 +18,12 @@ getting around one:
     recurs (30 min, 1 h, 2 h, 4 h), slows the pace afterwards, and puts the
     blocked job back in the queue. A few clean batches bring it back down.
 
+It also waits out a dead internet connection instead of scraping into it:
+the connection is checked before every batch, a batch that loses it stops
+and returns its jobs to the queue, and it tries again after 5, 15, 30 and
+then 60 minutes until the connection is back. None of that counts towards
+the day's batches.
+
 Everything the autopilot is doing lives in the database — the settings, its
 runtime state and every round's plan — so a restart resumes rather than
 repeats, and the dashboard shows exactly what it is up to.
@@ -82,6 +88,10 @@ PACE_KEYS = ("daily_batch_target", "gap_between_batches_seconds", "gap_between_r
 
 # How long to stop after a CAPTCHA, by how many have happened in a row.
 COOLDOWN_MINUTES = [30, 60, 120, 240]
+# How long to wait before checking the connection again, by how many checks
+# in a row have found it down. Short at first — most drops are brief — then
+# hourly, so a long outage costs a check an hour rather than a day's batches.
+OFFLINE_RETRY_MINUTES = [5, 15, 30, 60]
 # Clean batches after a CAPTCHA before the cool-down ladder resets.
 CLEAN_BATCHES_TO_RESET = 3
 # A batch blocked this many times is set aside rather than retried forever.
@@ -183,6 +193,7 @@ def adopt_pace(db: Session) -> bool:
 
 def get_state(db: Session) -> dict:
     return {"phase": "off", "captcha_level": 0, "clean_streak": 0, "cooldown_until": None,
+            "offline_level": 0, "offline_until": None,
             "next_batch_at": None, "last_event": None, "last_event_at": None, **_read(db, STATE_KEY)}
 
 
@@ -316,11 +327,16 @@ def _ist_midnight(now: datetime) -> datetime:
 
 
 def batches_today(db: Session, now: Optional[datetime] = None) -> int:
-    """Autopilot batches that ran today, counting the day in IST."""
+    """
+    Autopilot batches that ran today, counting the day in IST. A batch cut
+    short by a dead connection scraped nothing, so it does not use up one of
+    the day's batches.
+    """
     now = now or _now()
     return (
         db.query(RunLog)
         .filter(RunLog.trigger_source == TRIGGER, RunLog.jobs_attempted > 0,
+                RunLog.status != "OFFLINE",
                 RunLog.started_at >= _ist_midnight(now))
         .count()
     )
@@ -359,6 +375,11 @@ def recover_after_restart(db: Session) -> dict:
     return {"jobs": jobs, "runs": runs, "batches": rounds}
 
 
+def _default_online() -> bool:
+    from src.utils import connectivity
+    return connectivity.is_online()
+
+
 def _default_runner(request, db: Session) -> dict:
     from src.routers.discovery import _run_batch
     return _run_batch(request, db)
@@ -369,7 +390,8 @@ def _default_runner(request, db: Session) -> dict:
 # ---------------------------------------------------------------------------
 
 def tick(db: Session, clock: Callable[[], datetime] = _now,
-         runner: Callable = _default_runner, rng: Optional[random.Random] = None) -> float:
+         runner: Callable = _default_runner, rng: Optional[random.Random] = None,
+         online: Optional[Callable[[], bool]] = None) -> float:
     """
     Does the next thing the autopilot should do, and returns how many
     seconds to wait before being called again.
@@ -382,6 +404,7 @@ def tick(db: Session, clock: Callable[[], datetime] = _now,
 
     now = clock()
     rng = rng or random.Random()
+    online = online or _default_online
     settings = get_settings(db)
     state = get_state(db)
 
@@ -392,6 +415,18 @@ def tick(db: Session, clock: Callable[[], datetime] = _now,
 
     if not settings["enabled"]:
         return done("off", 30)
+
+    def went_offline(at: datetime, what: str) -> float:
+        """Waits before the next look at the connection, longer each time."""
+        level = state.get("offline_level", 0)
+        minutes = OFFLINE_RETRY_MINUTES[min(level, len(OFFLINE_RETRY_MINUTES) - 1)]
+        state.update(offline_level=level + 1, offline_until=_iso(at + timedelta(minutes=minutes)))
+        _event(state, "NO_INTERNET", f"{what} Checking again in {minutes} minutes; nothing is scraped until it is back.")
+        return done("no_internet", 1)
+
+    offline_until = _parse(state.get("offline_until"))
+    if offline_until and now < offline_until:
+        return done("no_internet", min(60, (offline_until - now).total_seconds()))
 
     cooldown = _parse(state.get("cooldown_until"))
     if cooldown and now < cooldown:
@@ -452,6 +487,14 @@ def tick(db: Session, clock: Callable[[], datetime] = _now,
     if next_at and now < next_at:
         return done("gap_between_batches", min(30, (next_at - now).total_seconds()))
 
+    # Asked before every batch: a second's check, against a batch of jobs
+    # that would each fail on the connection and be marked as failed.
+    if not online():
+        return went_offline(now, "The server has no internet connection.")
+    if state.get("offline_level"):
+        state.update(offline_level=0, offline_until=None)
+        _event(state, "BACK_ONLINE", "The internet connection is back; carrying on.")
+
     # Slower after a CAPTCHA, by half again per level.
     slow = 1 + 0.5 * state.get("captcha_level", 0)
     upcoming.update(status="RUNNING", started_at=_iso(now))
@@ -477,6 +520,13 @@ def tick(db: Session, clock: Callable[[], datetime] = _now,
     outcome = result.get("status")
     finished = clock()
 
+    if result.get("offline"):
+        # The connection went mid-batch. Its jobs are already back in the
+        # queue; the batch is simply tried again once the connection returns.
+        batch["status"] = "PLANNED"
+        active.plan = plan
+        db.commit()
+        return went_offline(finished, f"The internet connection dropped during batch {batch['batch']} in {active.state}.")
     if outcome == "blocked":
         # Stop, cool down for longer each time, and try this batch again
         # afterwards: its unfinished jobs are still pending.
@@ -545,7 +595,7 @@ def status(db: Session) -> dict:
 
     today_runs = (db.query(RunLog).filter(RunLog.trigger_source == TRIGGER,
                                           RunLog.started_at >= _ist_midnight(now)).all())
-    done_today = sum(1 for r in today_runs if (r.jobs_attempted or 0) > 0)
+    done_today = sum(1 for r in today_runs if (r.jobs_attempted or 0) > 0 and r.status != "OFFLINE")
     finished = [r for r in today_runs if r.duration_seconds]
     avg_batch = (sum(r.duration_seconds for r in finished) / len(finished)) if finished else None
 
