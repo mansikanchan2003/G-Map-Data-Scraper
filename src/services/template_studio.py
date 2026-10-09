@@ -8,7 +8,8 @@ A round works like this:
    while the slow part runs in the background.
 2. The copy for every variant is written in one call, so the variants test
    different angles rather than rephrasing one. The prompt carries the
-   standing brief, the templates already sent (same language first), how each
+   standing brief, Meta-approved templates in the same language as examples
+   of the team's grammar, how each
    has performed by state, and the reasons a reviewer gave for rejecting
    earlier drafts.
 3. Each variant is validated — script, facts, lengths — and sent back once
@@ -38,7 +39,7 @@ from src.models.whatsapp import (
     WhatsAppLinkClick, WhatsAppTemplate, HUMAN_LINK_CLICK,
 )
 from src.services import creative_brief, poster_renderer
-from src.services.gemini_client import GeminiClient, GeminiError
+from src.services.gemini_client import GeminiClient, GeminiError, ImageUnavailable
 
 logger = logging.getLogger("gmap_scraper.template_studio")
 
@@ -48,12 +49,18 @@ GENERATING = "GENERATING"
 AWAITING_APPROVAL = "AWAITING_APPROVAL"
 GENERATION_FAILED = "GENERATION_FAILED"
 REJECTED = "REJECTED_BY_REVIEWER"
+# The copy is written; the photo waits for the free image allowance to come
+# back, and photo_queue finishes it then.
+PHOTO_PENDING = "PHOTO_PENDING"
 # States in which an agent template exists only in the Studio: not submitted,
 # not sendable, and kept out of the Templates list and the campaign picker.
-DRAFT_STATUSES = (GENERATING, AWAITING_APPROVAL, GENERATION_FAILED, REJECTED)
+DRAFT_STATUSES = (GENERATING, AWAITING_APPROVAL, GENERATION_FAILED, REJECTED, PHOTO_PENDING)
 
 MAX_VARIANTS = 4
-PHOTO_ATTEMPTS = 3
+# One image each, so a draft costs at most two: the free FLUX allowance is
+# about three runs a day per account. A photo the check dislikes is kept with
+# its problems listed, and "New photo" asks for another.
+PHOTO_ATTEMPTS = 1
 BODY_LIMIT = 900
 # Meta's own limits for button labels and the footer.
 BUTTON_TEXT_LIMIT = 25
@@ -181,27 +188,78 @@ def _body_language(t: WhatsAppTemplate) -> Optional[str]:
     return code if n else (t.language_code or None)
 
 
-def _reference_bodies(db: Session, language_code: str, limit: int = 4) -> List[str]:
-    """Bodies of real templates, the state's own language first, test ones skipped."""
-    rows = (
-        db.query(WhatsAppTemplate)
-        .filter(~WhatsAppTemplate.status.in_(DRAFT_STATUSES))
-        .order_by(WhatsAppTemplate.created_at.desc())
-        .all()
-    )
-    real = [t for t in rows if len(t.body or "") > 300]
-    lang_of = {t.template_id: _body_language(t) for t in real}
-    # Marathi shares Devanagari with Hindi, so a Hindi reference is the closest
-    # there is until a Marathi template exists.
-    wanted = "hi" if language_code == "mr" else language_code
-    same = [t for t in real if lang_of[t.template_id] == wanted]
-    other = [t for t in real if lang_of[t.template_id] != wanted]
-    seen, out = set(), []
-    for t in same + other:
-        if t.body in seen:
+# Meta's list is read at most this often; a round makes several prompts.
+APPROVED_CACHE_SECONDS = 3600
+_approved_cache: dict = {"at": 0.0, "rows": None}
+
+
+def _approved_from_meta() -> Optional[List[dict]]:
+    """
+    Every APPROVED template in the WABA with its body, or None if Meta can't
+    be read. Meta, not the local table, because templates made by other tools
+    on the same account (the TARA ones) exist only there.
+    """
+    import time
+    from src.services.meta_whatsapp_service import MetaWhatsAppService
+
+    if _approved_cache["rows"] is not None and time.time() - _approved_cache["at"] < APPROVED_CACHE_SECONDS:
+        return _approved_cache["rows"]
+    listing = MetaWhatsAppService().list_message_templates(with_components=True)
+    if listing.get("status") != "success":
+        return None
+    rows = []
+    for t in listing.get("templates") or []:
+        if (t.get("status") or "").upper() != "APPROVED":
             continue
-        seen.add(t.body)
-        out.append(t.body)
+        body = next((c.get("text") or "" for c in t.get("components") or [] if c.get("type") == "BODY"), "")
+        rows.append({"name": t.get("name"), "language": t.get("language") or "",
+                     "category": (t.get("category") or "").upper(), "body": body})
+    _approved_cache.update(at=time.time(), rows=rows)
+    return rows
+
+
+def approved_examples(db: Session, language_code: str, limit: int = 5) -> List[str]:
+    """
+    Bodies of Meta-approved templates written in this language, as examples of
+    the team's own grammar, spelling and formatting.
+
+    Language is judged by script, since most Hindi templates were registered
+    as en_US. Tests, English and Hinglish (Latin-script Hindi) fall out on
+    their own: too short, or not mostly in the script. Near-copies, of which
+    there are many, are shown once. Marathi shares Devanagari with Hindi but
+    not its grammar, so it only takes templates registered as Marathi.
+    """
+    rows = _approved_from_meta()
+    if rows is None:
+        rows = [{"name": t.name, "language": t.language_code or "", "category": (t.category or "").upper(),
+                 "body": t.body or ""}
+                for t in db.query(WhatsAppTemplate).filter(func.upper(WhatsAppTemplate.status) == "APPROVED")]
+
+    lang = creative_brief.LANGUAGES.get(language_code)
+    if not lang:
+        return []
+    picked = []
+    for r in rows:
+        body = r["body"]
+        native = len(re.findall(f"[{lang['range']}]", body))
+        latin = len(re.findall("[A-Za-z]", body))
+        if len(body) < 120 or native < 60 or native <= latin:
+            continue
+        if language_code == "mr" and not r["language"].startswith("mr"):
+            continue
+        picked.append(r)
+    # Invitations to become a kiosk operator are closest to what is written
+    # here, so marketing first, longest first.
+    picked.sort(key=lambda r: (r["category"] != "MARKETING", -len(r["body"])))
+
+    seen, out = set(), []
+    for r in picked:
+        # Resubmissions of one campaign open identically and differ later.
+        key = re.sub(r"[\W\d_]+", "", r["body"])[:80]
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(r["body"])
         if len(out) == limit:
             break
     return out
@@ -226,8 +284,58 @@ def _review_history(db: Session, state: str) -> dict:
         key = (t.generation or {}).get("angle_key")
         if key:
             tried_keys[key] = tried_keys.get(key, 0) + 1
+    language_code = creative_brief.language_for_state(state)
     return {"rejected": rejected, "approved": [a for a in approved if a], "tried": tried,
-            "tried_keys": tried_keys}
+            "tried_keys": tried_keys,
+            "mistakes": past_mistakes(db, language_code) if language_code else []}
+
+
+def _sentences(text: str) -> List[str]:
+    return [s.strip() for s in re.split(r"(?<=[।!?\n])", text or "") if s.strip()]
+
+
+def _corrections(written: str, final: str) -> List[tuple]:
+    """Sentences a reviewer changed, as (what the agent wrote, what they made it)."""
+    import difflib
+
+    a, b = _sentences(written), _sentences(final)
+    out = []
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(a=a, b=b, autojunk=False).get_opcodes():
+        if op == "replace":
+            out += [(x, y) for x, y in zip(a[i1:i2], b[j1:j2]) if len(x) <= 200 and len(y) <= 200]
+    return out
+
+
+def past_mistakes(db: Session, language_code: str, limit: int = 12) -> List[str]:
+    """
+    What went wrong in the agent's earlier drafts in this language, for it to
+    read before writing again: sentences a reviewer corrected, newest first,
+    then the problems the checker most often found in first attempts.
+
+    By language rather than state, since grammar is the language's.
+    """
+    from collections import Counter
+
+    rows = (
+        db.query(WhatsAppTemplate)
+        .filter(WhatsAppTemplate.origin == "agent", WhatsAppTemplate.language_code == language_code)
+        .order_by(WhatsAppTemplate.created_at.desc())
+        .limit(60).all()
+    )
+    out, seen = [], set()
+    for t in rows:
+        written = (t.generation or {}).get("agent_body")
+        if written and t.body and written.strip() != t.body.strip():
+            for before, after in _corrections(written, t.body):
+                if before not in seen:
+                    seen.add(before)
+                    out.append(f'You wrote "{before}" and a reviewer corrected it to "{after}"')
+    counts = Counter(
+        re.sub(r"\[\d+\]", "[n]", p)
+        for t in rows for p in (t.generation or {}).get("first_problems") or []
+    )
+    out += [f"{p} (in {n} earlier draft{'s' if n > 1 else ''})" for p, n in counts.most_common(8)]
+    return out[:limit]
 
 
 def assign_angles(count: int, tried_keys: dict) -> List[str]:
@@ -244,6 +352,22 @@ def assign_angles(count: int, tried_keys: dict) -> List[str]:
 # ---------------------------------------------------------------------------
 # Copy
 # ---------------------------------------------------------------------------
+
+GRAMMAR_HEADING = (
+    "HOW EKO WRITES {lang} — real templates Meta approved, written by Eko's own team. "
+    "Write {lang} exactly as they do: the same grammar (gender and number agreement, "
+    "postpositions, verb forms), spelling, polite address, everyday vocabulary, and "
+    "WhatsApp formatting (*single asterisks* for bold, emoji at the start of a line). "
+    "Do not copy their content: some are for people who already run a kiosk, and only "
+    "the FACTS below may be claimed."
+)
+
+
+MISTAKES_HEADING = (
+    "MISTAKES IN YOUR EARLIER DRAFTS — caught by the checker or corrected by a reviewer. "
+    "Do not make them again:"
+)
+
 
 def _copy_prompt(state: str, language_code: str, angles: List[str], brief: Optional[str],
                  references: List[str], performance: List[dict], history: dict) -> str:
@@ -264,7 +388,7 @@ def _copy_prompt(state: str, language_code: str, angles: List[str], brief: Optio
         )
 
     icons = ", ".join(creative_brief.BENEFIT_ICONS)
-    refs = "\n\n---\n\n".join(references) or "(none yet)"
+    refs = "\n\n---\n\n".join(references) or f"(no approved {lang['name']} template yet)"
     bullets = lambda items: "\n".join(f"- {i}" for i in items) or "- (none)"
 
     return f"""You are the copywriter for Eko's WhatsApp outreach. You write WhatsApp marketing templates, and the text for the poster image that heads each one, inviting people in {state} to become SBI Kiosk Operators with Eko.
@@ -278,7 +402,7 @@ FACTS — the only claims allowed:
 RULES:
 {bullets(creative_brief.COPY_RULES)}
 
-TEMPLATES ALREADY SENT (learn their tone and structure; do not copy them):
+{GRAMMAR_HEADING.format(lang=lang['name'])}
 {refs}
 
 HOW TEMPLATES HAVE PERFORMED (response = link visits + button taps):
@@ -288,6 +412,8 @@ EARLIER VARIANTS FOR {state.upper()} (find a fresh way into the angle, do not re
 ANGLES A REVIEWER APPROVED: {'; '.join(history['approved']) or 'none'}
 DRAFTS A REVIEWER REJECTED, AND WHY (avoid these mistakes):
 {bullets([f"{r['angle']}: {r['reason']}" for r in history['rejected']])}
+{MISTAKES_HEADING}
+{bullets(history.get('mistakes') or [])}
 {f"{chr(10)}THIS ROUND'S BRIEF FROM THE TEAM: {brief}" if brief else ''}
 
 Answer with JSON only, in this shape:
@@ -315,6 +441,7 @@ Answer with JSON only, in this shape:
     "phone_label": "the equivalent of 'Call / WhatsApp:', at most 24 characters",
     "web_label": "the equivalent of 'Apply now:', at most 24 characters"
   }},
+  "image_phrase": "2 to 5 words copied exactly from your headline or body, in {lang['name']} — the line that will be printed on a sign in the photo",
   "photo_scene": "in English: who is in the photo and what is happening — the kiosk operator (age, gender, clothing typical of {state}) seated behind the counter with a laptop and a fingerprint scanner, serving one or two customers typical of {state} (for example taking a thumbprint, counting cash, handing over a passbook); the setting (village or small town); the mood that suits the angle. Not a phone or tablet demo. No text, signs or logos."
 }}]}}"""
 
@@ -327,7 +454,7 @@ def _clean(variant: dict) -> dict:
     def fix(text):
         return text.replace("\\n", "\n").replace("\\t", " ").strip() if isinstance(text, str) else text
 
-    for key in ("body", "footer", "apply_button", "callback_button"):
+    for key in ("body", "footer", "apply_button", "callback_button", "image_phrase"):
         variant[key] = fix(variant.get(key))
     poster = variant.get("poster") or {}
     for key in POSTER_FIELDS:
@@ -335,6 +462,20 @@ def _clean(variant: dict) -> dict:
     for b in poster.get("benefits") or []:
         b["text"] = fix(b.get("text"))
     return variant
+
+
+def _letters(text: str) -> str:
+    """
+    Text reduced to letters, vowel signs and digits, for comparing wording.
+    Vowel signs are kept on purpose: a wrong matra is a misspelling.
+    """
+    import unicodedata
+
+    return "".join(c for c in unicodedata.normalize("NFC", text or "")
+                   if unicodedata.category(c)[0] in "LMN").lower()
+
+
+DOUBLE_ASTERISK ="body uses **double asterisks**; WhatsApp bold is a single *asterisk* and would show the extra ones"
 
 
 def validate_copy(variant: dict, language_code: str) -> List[str]:
@@ -358,11 +499,22 @@ def validate_copy(variant: dict, language_code: str) -> List[str]:
         errors.append(f"body does not give the contact number {creative_brief.PHONE}")
     if "{{" in body:
         errors.append("body contains a {{placeholder}}; none are allowed")
+    if "**" in body:
+        errors.append(DOUBLE_ASTERISK)
     if len(variant.get("footer") or "") > FOOTER_LIMIT:
         errors.append(f"footer is longer than {FOOTER_LIMIT} characters")
     for key in ("apply_button", "callback_button"):
         if len(variant.get(key) or "") > BUTTON_TEXT_LIMIT:
             errors.append(f"{key} is longer than {BUTTON_TEXT_LIMIT} characters")
+
+    phrase = variant.get("image_phrase") or ""
+    if phrase:
+        words = len(phrase.split())
+        written = " ".join([body] + [str(poster.get(k) or "") for k in POSTER_FIELDS])
+        if not 2 <= words <= 5:
+            errors.append(f"image_phrase has {words} words; it needs 2 to 5")
+        elif _letters(phrase) not in _letters(written):
+            errors.append("image_phrase is not copied exactly from the headline or body")
 
     benefits = poster.get("benefits") or []
     if len(benefits) != 6:
@@ -379,6 +531,8 @@ def validate_copy(variant: dict, language_code: str) -> List[str]:
     texts = {"body": body, "footer": variant.get("footer"),
              "apply_button": variant.get("apply_button"),
              "callback_button": variant.get("callback_button")}
+    if phrase:
+        texts["image_phrase"] = phrase
     texts.update({f"poster.{k}": poster.get(k) for k in POSTER_FIELDS if k not in ("headline_highlight", "callout_highlight")})
     texts.update({f"poster.benefits[{i}]": b.get("text") for i, b in enumerate(benefits)})
     for name, text in texts.items():
@@ -405,7 +559,9 @@ def _unsupported_claims(client: GeminiClient, variant: dict) -> List[str]:
     prompt = (
         "You are checking marketing copy for factual accuracy. The ONLY facts that may be claimed are:\n"
         + "\n".join(f"- {f}" for f in creative_brief.FACTS)
-        + "\n\nGeneral encouragement, greetings and calls to action are fine. List every specific claim "
+        + "\n\nGeneral encouragement, greetings and calls to action are fine. Blanks written like "
+        "{{name}}, {{category}} or {{link}} are filled in per recipient later ({{link}} becomes the "
+        "apply link) and are never claims. List every specific claim "
         "in the copy below — a service, number, benefit, promise or partner — that these facts do not "
         "support, and any earning phrased as a guarantee rather than an opportunity. Quote each in the "
         "copy's own words with a short English explanation.\n\nCOPY:\n" + "\n".join(t for t in texts if t)
@@ -430,6 +586,7 @@ def _write_copy(client: GeminiClient, prompt: str, angles: List[str], language_c
         variant = _clean(variant)
         errors = validate_copy(variant, language_code)
         errors += [f"unsupported claim: {c}" for c in _unsupported_claims(client, variant)]
+        first_errors = list(errors)
         if errors:
             # One repair round, with the problems spelled out and the angle
             # pinned — an unpinned repair drifted back to the round's first idea.
@@ -446,6 +603,7 @@ def _write_copy(client: GeminiClient, prompt: str, angles: List[str], language_c
         # The assignment is authoritative, whatever key the model echoed.
         variant["angle_key"] = angle_key
         variant["_errors"] = errors
+        variant["_first_errors"] = first_errors
         fixed.append(variant)
     return fixed
 
@@ -484,37 +642,43 @@ def _photo_passes(check: dict) -> bool:
             and check.get("operator_serving_customer") and not check.get("anatomy_problems"))
 
 
-def _make_photo(gemini: GeminiClient, scene: str, state: str):
+def _make_photo(client: GeminiClient, scene: str, state: str):
     """
-    Generates a photo using the available models, with multiple attempts if the image check fails.
+    Generates photos until one passes the check, or the attempts run out.
+
+    When none passes the best one is kept and its problems recorded, so the
+    reviewer sees them and decides, rather than the round failing outright.
     """
-    used_prompt = photo_prompt(scene, state)
-    
-    last_photo = None
-    last_mime = "image/jpeg"
-    last_check = {"issues": ["generation failed"]}
-    
-    for attempt in range(PHOTO_ATTEMPTS):
+    prompt = photo_prompt(scene, state)
+    best, last_error = None, None
+    for attempt in range(1, PHOTO_ATTEMPTS + 1):
         try:
-            photo = gemini.generate_image(used_prompt)
-            # HF API usually returns JPEG or PNG
-            mime = "image/png" if photo.startswith(b"\x89PNG") else "image/jpeg"
-            check = gemini.inspect_image(photo, mime, PHOTO_CHECK)
-            
-            last_photo = photo
-            last_mime = mime
-            last_check = check
-            
-            if _photo_passes(check):
-                return photo, mime, used_prompt, check
+            image = client.generate_image(prompt)
+        except ImageUnavailable:
+            raise  # Retrying now would hit the same spent allowance; wait instead.
         except Exception as e:
-            logger.warning(f"Photo generation attempt {attempt + 1} failed: {e}")
-            last_check = {"issues": [str(e)]}
-            
-    if last_photo is None:
-        raise GeminiError(f"Failed to generate photo after {PHOTO_ATTEMPTS} attempts: {last_check.get('issues')}")
-        
-    return last_photo, last_mime, used_prompt, last_check
+            last_error = e
+            logger.warning(f"template_studio event=PHOTO_FAILED attempt={attempt} reason={e}")
+            continue
+        mime = "image/png" if image[:4] == b"\x89PNG" else "image/jpeg"
+        try:
+            check = client.inspect_image(image, mime, PHOTO_CHECK)
+        except GeminiError as e:
+            check = {"issues": [f"could not be checked: {e}"]}
+        check["attempt"] = attempt
+        score = sum(bool(x) for x in (not check.get("has_text"), check.get("photorealistic"),
+                                      check.get("operator_serving_customer"),
+                                      not check.get("anatomy_problems")))
+        if best is None or score > best[3]:
+            best = (image, mime, check, score)
+        if _photo_passes(check):
+            break
+        logger.info(f"template_studio event=PHOTO_REJECTED attempt={attempt} issues={check.get('issues')}")
+    if best is None:
+        raise GeminiError(f"No photo after {PHOTO_ATTEMPTS} attempts: {last_error}")
+    image, mime, check, _ = best
+    check["passed"] = _photo_passes(check)
+    return image, mime, prompt, check
 
 
 def _save_media(data: bytes, ext: str) -> str:
@@ -551,6 +715,137 @@ def _render_into(tmpl: WhatsAppTemplate, poster: dict, photo: bytes, photo_mime:
     media_id = _save_media(image, ".jpg")
     tmpl.header_type = "IMAGE"
     tmpl.header_content = json.dumps({"source_type": "upload", "media_id": media_id})
+
+
+# Attempts at a photo carrying the phrase before falling back to typesetting.
+# One: free image models rarely spell Indic scripts right on a second try
+# either, and each attempt spends a run of the free allowance.
+TEXT_PHOTO_ATTEMPTS = 1
+
+TEXT_PHOTO_CHECK = (
+    "Look at this photograph. Answer with JSON only: "
+    '{"sign_text": the text on the main sign, copied character by character exactly as it is drawn, '
+    'including any misspelling or malformed letters ("" if there is no sign), '
+    '"other_text": any other letters or words visible anywhere else ("" if none), '
+    '"photorealistic": true only if an ordinary viewer would believe it is a real photograph, '
+    '"operator_serving_customer": true if a person behind a counter is serving a customer, '
+    '"anatomy_problems": true if any hand, face or body looks distorted, '
+    '"issues": [short strings describing anything wrong]}'
+)
+
+
+def text_photo_prompt(scene: str, state: str, phrase: str, language_code: str) -> str:
+    """The photo prompt with one sign carrying the phrase, and no other text."""
+    lang = creative_brief.LANGUAGES[language_code]
+    base = photo_prompt(scene, state).split(" Absolutely no text")[0]
+    return (
+        f"{base} On the plain wall above the counter hangs one clean, printed sign with large, "
+        f"dark, clearly legible lettering that reads exactly: \"{phrase}\" — in {lang['name']} "
+        f"({lang['script']} script), spelled exactly as given, nothing added. Apart from that one "
+        f"sign there is no text, letters, numbers, logos or watermarks anywhere. Not an "
+        f"illustration, not a 3D render, not glossy stock photography."
+    )
+
+
+def _text_photo_passes(check: dict, phrase: str) -> bool:
+    # The match is decided here, not by the model: it compares what it read
+    # with the phrase letter by letter, vowel signs included.
+    stray = re.sub(r"\b(SBI|Eko)\b", "", check.get("other_text") or "", flags=re.I)
+    return (_letters(check.get("sign_text")) == _letters(phrase)
+            and not _letters(stray)
+            and bool(check.get("photorealistic"))
+            and not check.get("anatomy_problems"))
+
+
+def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, state: str) -> dict:
+    """
+    Makes the header image once the copy is written, and returns what to
+    record about it.
+
+    First a photo with the variant's phrase printed on a sign, read back by a
+    vision model and kept only if the reading matches the phrase exactly.
+    Image models often misspell Indic scripts, so failing that, a photo with
+    no text and the poster typeset around it, where every word is correct.
+
+    Raises ImageUnavailable when the image allowance is spent. A sign photo
+    already made and rejected is recorded in `variant["text_photo_attempts"]`,
+    so a draft finished later goes straight to the typeset poster rather than
+    spending another run on the sign.
+    """
+    phrase = (variant.get("image_phrase") or "").strip()
+    attempts = list(variant.get("text_photo_attempts") or [])
+    made = sum(1 for a in attempts if a.get("media_id"))
+    if phrase and made < TEXT_PHOTO_ATTEMPTS:
+        prompt = text_photo_prompt(variant["photo_scene"], state, phrase, tmpl.language_code)
+        for attempt in range(made + 1, TEXT_PHOTO_ATTEMPTS + 1):
+            try:
+                image = client.generate_image(prompt)
+            except ImageUnavailable:
+                raise
+            except GeminiError as e:
+                attempts.append({"attempt": attempt, "error": str(e)})
+                break
+            try:
+                check = client.inspect_image(image, "image/jpeg", TEXT_PHOTO_CHECK)
+            except GeminiError as e:
+                check = {"issues": [f"could not be checked: {e}"]}
+            passed = _text_photo_passes(check, phrase)
+            attempts.append({"attempt": attempt, "media_id": _save_media(image, ".jpg"),
+                             "read": check.get("sign_text"), "other_text": check.get("other_text"),
+                             "passed": passed, "issues": check.get("issues") or []})
+            if passed:
+                header = poster_renderer.render_photo_with_logo(image, "image/jpeg")
+                tmpl.header_type = "IMAGE"
+                tmpl.header_content = json.dumps({"source_type": "upload", "media_id": _save_media(header, ".jpg")})
+                return {"image_mode": "photo_text", "image_phrase": phrase, "text_photo_prompt": prompt,
+                        "text_photo_attempts": attempts, "photo_media_id": attempts[-1]["media_id"],
+                        "photo_check": {**check, "passed": True}}
+            logger.info(f"template_studio event=TEXT_PHOTO_REJECTED attempt={attempt} "
+                        f"read={check.get('sign_text')!r} wanted={phrase!r}")
+
+    try:
+        photo, mime, used_prompt, check = _make_photo(client, variant["photo_scene"], state)
+    except ImageUnavailable as e:
+        e.text_photo_attempts = attempts  # kept, so the wait does not undo them
+        raise
+    photo_id = _save_media(photo, ".png" if mime == "image/png" else ".jpg")
+    _render_into(tmpl, variant["poster"], photo, mime)
+    return {"image_mode": "typeset", "image_phrase": phrase or None, "text_photo_attempts": attempts,
+            "photo_prompt": used_prompt, "photo_media_id": photo_id, "photo_check": check}
+
+
+# Waits between tries when Hugging Face does not say when the allowance comes
+# back, then every four hours. After MAX_PHOTO_WAITS tries (about a day and a
+# half) the draft is failed and says so; "Retry photo" still works then.
+PHOTO_WAIT_MINUTES = (30, 60, 120, 240)
+MAX_PHOTO_WAITS = 10
+
+
+def _park_for_photo(tmpl: WhatsAppTemplate, gen: dict, error: ImageUnavailable) -> None:
+    """Keeps a draft whose copy is written until the image allowance returns."""
+    from datetime import timedelta
+
+    waits = int(gen.get("photo_waits") or 0) + 1
+    gen["photo_waits"] = waits
+    gen["text_photo_attempts"] = getattr(error, "text_photo_attempts", None) or gen.get("text_photo_attempts") or []
+    if waits > MAX_PHOTO_WAITS:
+        tmpl.status = GENERATION_FAILED if not tmpl.header_content else AWAITING_APPROVAL
+        gen.pop("photo_retry_at", None)
+        gen["error"] = f"No photo after waiting {MAX_PHOTO_WAITS} times for the free image allowance. {error}"
+        tmpl.generation = gen
+        return
+    if error.retry_after:
+        delay = timedelta(seconds=error.retry_after + 120)  # a little past the stated reset
+    else:
+        delay = timedelta(minutes=PHOTO_WAIT_MINUTES[min(waits, len(PHOTO_WAIT_MINUTES)) - 1])
+    retry_at = datetime.now(timezone.utc) + delay
+    gen["photo_retry_at"] = retry_at.isoformat()
+    gen["error"] = ("The text is ready. The free image allowance is used up for now, so the photo "
+                    "will be made automatically when it comes back.")
+    tmpl.status = PHOTO_PENDING
+    tmpl.generation = gen
+    logger.info(f"template_studio event=PHOTO_PENDING template_id={tmpl.template_id} "
+                f"retry_at={retry_at.isoformat()} waits={waits}")
 
 
 def create_placeholders(db: Session, state: str, count: int, brief: Optional[str]) -> List[WhatsAppTemplate]:
@@ -598,7 +893,7 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
             angles = assign_angles(len(rows), history["tried_keys"])
             prompt = _copy_prompt(
                 state, language_code, angles, brief,
-                _reference_bodies(db, language_code),
+                approved_examples(db, language_code),
                 template_performance(db),
                 history,
             )
@@ -615,6 +910,7 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
                 # failure — no image quota, say — keeps the writing, and
                 # "New photo" can finish the draft later.
                 errors = variant.pop("_errors", [])
+                first_errors = variant.pop("_first_errors", [])
                 tmpl.body = (variant.get("body") or "").strip()
                 tmpl.footer = (variant.get("footer") or "").strip() or None
                 tmpl.buttons = [
@@ -627,19 +923,26 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
                     "angle_key": variant.get("angle_key"),
                     "poster": variant.get("poster"),
                     "photo_scene": variant.get("photo_scene"),
+                    "image_phrase": variant.get("image_phrase"),
                     "copy_warnings": errors,
+                    # Read back by later rounds (past_mistakes): what the
+                    # checker found first time, and the body as written, so
+                    # a reviewer's edits show up as corrections.
+                    "first_problems": first_errors,
+                    "agent_body": tmpl.body,
                     "models": models,
                 }
                 db.commit()
 
-                photo, mime, used_prompt, check = _make_photo(client, variant["photo_scene"], state)
-                photo_id = _save_media(photo, ".png" if mime == "image/png" else ".jpg")
-                _render_into(tmpl, variant["poster"], photo, mime)
+                try:
+                    header = _make_header(client, tmpl, variant, state)
+                except ImageUnavailable as e:
+                    _park_for_photo(tmpl, dict(tmpl.generation), e)
+                    db.commit()
+                    continue
                 tmpl.generation = {
                     **tmpl.generation,
-                    "photo_prompt": used_prompt,
-                    "photo_media_id": photo_id,
-                    "photo_check": check,
+                    **header,
                     "models": {**models, "image": client.last_used_image_model},
                 }
                 tmpl.status = AWAITING_APPROVAL
@@ -659,8 +962,14 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
         db.close()
 
 
-def run_new_photo(template_id: str) -> None:
-    """Background entry point: a new photograph for a draft, same copy."""
+def run_new_photo(template_id: str, fresh: bool = True) -> None:
+    """
+    Background entry point: a new photograph for a draft, same copy.
+
+    `fresh` is a reviewer asking for another photo, which tries the sign
+    again; the queue finishing a waiting draft passes False, so a sign photo
+    already rejected is not made twice.
+    """
     from src.database import SessionLocal
 
     db = SessionLocal()
@@ -669,16 +978,25 @@ def run_new_photo(template_id: str) -> None:
         if not tmpl:
             return
         gen = dict(tmpl.generation or {})
+        if fresh:
+            gen.pop("text_photo_attempts", None)
+            gen.pop("photo_waits", None)
         try:
             client = GeminiClient()
-            photo, mime, used_prompt, check = _make_photo(client, gen["photo_scene"], tmpl.target_state)
-            gen["photo_media_id"] = _save_media(photo, ".png" if mime == "image/png" else ".jpg")
-            gen["photo_prompt"], gen["photo_check"] = used_prompt, check
+            gen.update(_make_header(client, tmpl, gen, tmpl.target_state))
             gen.setdefault("models", {})["image"] = client.last_used_image_model
-            gen.pop("error", None)
-            _render_into(tmpl, gen["poster"], photo, mime)
+            for key in ("error", "photo_retry_at", "photo_waits"):
+                gen.pop(key, None)
             tmpl.generation = gen
             tmpl.status = AWAITING_APPROVAL
+        except ImageUnavailable as e:
+            if tmpl.header_content:
+                # It already has a usable poster; it stays in review with that.
+                gen["error"] = "No new photo: the free image allowance is used up for now. Try again later."
+                tmpl.generation = gen
+                tmpl.status = AWAITING_APPROVAL
+            else:
+                _park_for_photo(tmpl, gen, e)
         except Exception as e:
             logger.exception(f"template_studio event=PHOTO_FAILED template_id={template_id}")
             gen["error"] = str(e)

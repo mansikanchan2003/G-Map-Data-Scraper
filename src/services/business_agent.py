@@ -186,8 +186,9 @@ def learning(db: Session, state: Optional[str], language_code: str) -> dict:
         "lessons": lessons,
         "overall": overall,
         "history": history,
+        "mistakes": studio.past_mistakes(db, language_code),
         "meta_rejected": meta_rejected,
-        "references": studio._reference_bodies(db, language_code if language_code in creative_brief.LANGUAGES else "hi", limit=3),
+        "references": studio.approved_examples(db, language_code),
         "counts": {
             "templates": len(performance),
             "sends": sum(p["sent"] for p in performance),
@@ -245,6 +246,9 @@ RULES:
 - The message must not begin or end with a blank: start with a greeting word, end with fixed text.
 - Speak to the business owner about their business: what an SBI Kiosk adds to a {{{{category}}}} like theirs, in their area.
 
+{studio.GRAMMAR_HEADING.format(lang=lang)}
+{chr(10).join(chr(10) + '---' + chr(10) + r for r in learned['references']) or f'(no approved {lang} template yet)'}
+
 WHAT PAST TEMPLATES ACHIEVED — learn from it. Response rate = (link visits + button taps) / delivered. Prefer the tone, structure and ideas of templates that drew responses; move away from ones that did not. Results marked untracked or with few sends are weak evidence.
 {chr(10).join(perf) or '- no campaign has been sent yet; rely on the facts and rules'}
 
@@ -255,6 +259,8 @@ DRAFTS A REVIEWER REJECTED, AND WHY — do not repeat these mistakes:
 {bullets([f"{r['angle']}: {r['reason']}" for r in history['rejected']])}
 TEMPLATES META REJECTED, AND WHY:
 {bullets([f"{r['name']}: {r['reason']} — {r['body']!r}" for r in learned['meta_rejected']])}
+{studio.MISTAKES_HEADING}
+{bullets(learned.get('mistakes') or [])}
 ANGLES ALREADY TRIED (find a fresh way in): {'; '.join(history['tried']) or 'none'}
 {f"{chr(10)}THIS ROUND'S BRIEF FROM THE TEAM: {brief}" if brief else ''}
 
@@ -286,6 +292,8 @@ def validate(variant: dict, language_code: str, allowed: List[str]) -> List[str]
         errors.append("body must contain {{link}} exactly once" + (f"; it has {links}" if links else ""))
     if "7291988625" not in body.replace(" ", ""):
         errors.append(f"body does not give the contact number {creative_brief.PHONE}")
+    if "**" in body:
+        errors.append(studio.DOUBLE_ASTERISK)
 
     used = TOKEN.findall(body)
     unknown = sorted(set(used) - set(allowed) - {"link"})
@@ -338,6 +346,7 @@ def _write(client: GeminiClient, prompt: str, angles: List[str], language_code: 
         variant = _clean(variant)
         errors = validate(variant, language_code, allowed)
         errors += [f"unsupported claim: {c}" for c in studio._unsupported_claims(client, variant)]
+        first_errors = list(errors)
         if errors:
             repair = (
                 f"{prompt}\n\nYou wrote this variant:\n{json.dumps(variant, ensure_ascii=False)}\n\n"
@@ -351,6 +360,7 @@ def _write(client: GeminiClient, prompt: str, angles: List[str], language_code: 
             variant = again
         variant["angle_key"] = angle_key
         variant["_errors"] = errors
+        variant["_first_errors"] = first_errors
         out.append(variant)
     return out
 
@@ -429,6 +439,7 @@ def run_generation(template_ids: List[str]) -> None:
 
         for tmpl, variant in zip(rows, variants):
             errors = variant.pop("_errors", [])
+            first_errors = variant.pop("_first_errors", [])
             body = (variant.get("body") or "").strip()
             used = blanks_in(body)
             tmpl.body = body
@@ -444,6 +455,9 @@ def run_generation(template_ids: List[str]) -> None:
                 "learned_from": learned["counts"],
                 "variables": used,
                 "copy_warnings": errors,
+                # Read back by later rounds; see template_studio.past_mistakes.
+                "first_problems": first_errors,
+                "agent_body": body,
                 "models": {"text": model},
                 "tracked": sheet_templates.tracking_enabled(),
             }
@@ -454,10 +468,7 @@ def run_generation(template_ids: List[str]) -> None:
             if photo_scene:
                 try:
                     from src.services.template_studio import _save_media
-                    from io import BytesIO
-                    from PIL import Image
-                    import os
-                    
+
                     full_prompt = (
                         f"{photo_scene}\n\n"
                         f"MANDATORY REQUIREMENTS:\n"
@@ -466,30 +477,12 @@ def run_generation(template_ids: List[str]) -> None:
                         f"- Text written in the image MUST be 100% accurate in {language_code}.\n"
                         f"- Depict an SBI Customer Service Point front desk with an operator working and 1-2 customers.\n"
                     )
-                    image_data, mime = client.generate_image(full_prompt)
-                    
-                    # Composite Eko logo
-                    img = Image.open(BytesIO(image_data)).convert("RGBA")
-                    logo_path = "data/screenshot.png"
-                    if os.path.exists(logo_path):
-                        logo = Image.open(logo_path).convert("RGBA")
-                        # Resize logo to a reasonable size (e.g. 150px height)
-                        aspect_ratio = logo.width / logo.height
-                        new_height = 150
-                        new_width = int(new_height * aspect_ratio)
-                        logo = logo.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                        
-                        # Paste in top right corner with some padding
-                        padding = 30
-                        x = img.width - new_width - padding
-                        y = padding
-                        img.alpha_composite(logo, (x, y))
-                    
-                    # Convert back to RGB for JPEG
-                    out_buffer = BytesIO()
-                    img.convert("RGB").save(out_buffer, format="JPEG", quality=90)
-                    final_image_data = out_buffer.getvalue()
-                    
+                    image_data = client.generate_image(full_prompt)
+                    # The real Eko logo, set by the renderer (data/screenshot.png
+                    # was a picture of the sign-in page).
+                    from src.services import poster_renderer
+                    final_image_data = poster_renderer.render_photo_with_logo(image_data, "image/jpeg")
+
                     media_id = _save_media(final_image_data, ".jpg")
                     tmpl.header_type = "IMAGE"
                     tmpl.header_content = json.dumps({"source_type": "upload", "media_id": media_id})

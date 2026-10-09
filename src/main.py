@@ -46,11 +46,16 @@ async def lifespan(app: FastAPI):
     if os.environ.get("DISCOVERY_AUTOPILOT_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
         from src.services import discovery_autopilot
         discovery_autopilot.start()
+    # Finishes Studio drafts waiting for the free image allowance to return.
+    if os.environ.get("STUDIO_PHOTO_QUEUE_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
+        from src.services import photo_queue
+        photo_queue.start()
     yield
     # --- Shutdown ---
     try:
-        from src.services import discovery_autopilot
+        from src.services import discovery_autopilot, photo_queue
         discovery_autopilot.stop()
+        photo_queue.stop()
     except Exception:
         pass
     logger.info("Shutdown complete")

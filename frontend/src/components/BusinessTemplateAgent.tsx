@@ -23,7 +23,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   REJECTED: { label: 'Rejected by Meta', cls: 'text-rose-300' },
 };
 const statusOf = (s: string) => STATUS[s] || { label: s, cls: 'text-slate-300' };
-const META_WAITING = (s: string) => !['GENERATING', 'AWAITING_APPROVAL', 'GENERATION_FAILED',
+const META_WAITING = (s: string) => !['GENERATING', 'AWAITING_APPROVAL', 'GENERATION_FAILED', 'PHOTO_PENDING',
   'REJECTED_BY_REVIEWER', 'APPROVED', 'REJECTED', 'DISABLED'].includes(s);
 
 const inputCls = 'h-9 px-2 bg-slate-950 border border-slate-700 rounded text-sm text-slate-100';

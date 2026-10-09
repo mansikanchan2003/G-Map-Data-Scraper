@@ -289,7 +289,7 @@ class MetaWhatsAppService:
             logger.exception("Failed to upload media to Meta")
             return None
 
-    def list_message_templates(self) -> Dict[str, Any]:
+    def list_message_templates(self, with_components: bool = False) -> Dict[str, Any]:
         """
         Fetches the templates registered in the Meta WhatsApp Business Account.
 
@@ -324,7 +324,12 @@ class MetaWhatsAppService:
         templates = []
         # rejected_reason says why Meta refused a template, which is
         # the only thing that tells someone what to change.
-        params = {"limit": 100, "fields": "name,language,status,category,rejected_reason"}
+        fields = "name,language,status,category,rejected_reason"
+        # The wording itself, only when asked: the Studio reads approved bodies
+        # as writing examples; status syncs need just the review state.
+        if with_components:
+            fields += ",components"
+        params = {"limit": 100, "fields": fields}
         try:
             # Meta paginates; follow "next" so a large WABA is fully covered.
             while url:

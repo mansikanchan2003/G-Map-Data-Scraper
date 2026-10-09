@@ -182,6 +182,34 @@ _FONTS_JS = """async (families) => {
 }"""
 
 
+def render_photo_with_logo(photo: bytes, photo_mime: str, size: int = 1024) -> bytes:
+    """
+    The photo as it is, with the Eko logo on a white tab in the top-left
+    corner. Used when the photo's own lettering was checked and is correct,
+    so nothing else needs setting over it.
+    """
+    from playwright.sync_api import sync_playwright
+
+    photo_uri = f"data:{photo_mime};base64,{base64.b64encode(photo).decode()}"
+    page_html = f"""<!doctype html><html><head><meta charset="utf-8"><style>
+html,body{{margin:0;width:{size}px;height:{size}px;overflow:hidden}}
+.photo{{position:absolute;inset:0;background:url('{photo_uri}') center/cover no-repeat}}
+.logo{{position:absolute;left:28px;top:28px;padding:14px 22px;background:rgba(255,255,255,.94);
+  border-radius:16px;box-shadow:0 6px 18px rgba(0,0,0,.25)}} .logo svg{{height:64px;width:auto;display:block}}
+</style></head><body><div class="photo"></div><div class="logo">{_logo_svg()}</div></body></html>"""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page(viewport={"width": size, "height": size}, device_scale_factor=1)
+            page.set_content(page_html, wait_until="load", timeout=30000)
+            image = page.screenshot(type="jpeg", quality=90, full_page=False)
+        finally:
+            browser.close()
+    if len(image) > MAX_BYTES:
+        raise PosterError(f"Image is {len(image) / 1024 / 1024:.1f} MB; WhatsApp allows 5 MB")
+    return image
+
+
 def render(poster: dict, language_code: str, photo: bytes, photo_mime: str) -> bytes:
     """
     Renders the poster to JPEG bytes.

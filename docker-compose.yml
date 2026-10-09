@@ -105,11 +105,10 @@ services:
       META_APP_SECRET: ${META_APP_SECRET:-}
       META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-gmap_scraper_verify_token}
 
-      # Template Studio. Gemini writes copy and checks photos. FLUX.1 Schnell
-      # generates photos via Hugging Face.
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL:-}
+      # Template Studio. Free models: text through g4f (no key), photos from
+      # FLUX.1 on Hugging Face Spaces with this token's daily allowance.
       HF_TOKEN: ${HF_TOKEN:-}
+      STUDIO_PHOTO_QUEUE_THREAD: ${STUDIO_PHOTO_QUEUE_THREAD:-true}
 
       # Discovery tuning. These were in .env but never listed here, so the
       # container fell back to the code defaults and editing .env appeared to

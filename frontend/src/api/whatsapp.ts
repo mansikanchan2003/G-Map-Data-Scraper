@@ -542,6 +542,7 @@ export interface StudioDraft {
   template_id: string;
   name: string;
   /** GENERATING, AWAITING_APPROVAL, GENERATION_FAILED, REJECTED_BY_REVIEWER,
+   *  PHOTO_PENDING (copy written, photo waiting for the free image allowance),
    *  or Meta's review state once approved and submitted. */
   status: string;
   target_state: string | null;
@@ -563,6 +564,11 @@ export interface StudioDraft {
     copy_warnings?: string[];
     models?: { text?: string; image?: string };
     error?: string;
+    /** When a PHOTO_PENDING draft is next tried, ISO time. */
+    photo_retry_at?: string;
+    /** How the header was made: the photo's own sign read back correctly, or the typeset poster. */
+    image_mode?: 'photo_text' | 'typeset';
+    image_phrase?: string | null;
     // The business agent's drafts:
     kind?: 'business';
     /** What past results shaped this wording, in the agent's words. */

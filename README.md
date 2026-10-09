@@ -552,7 +552,11 @@ addressed to the scraped businesses themselves.
    - every template already sent, with its wording and how it did per state;
    - the Campaign Insights playbook;
    - the reasons reviewers rejected earlier drafts, and the reasons Meta
-     rejected earlier templates.
+     rejected earlier templates;
+   - templates Meta has approved in the same language, as examples of how
+     the team writes it (see [How the agents write good Hindi](#how-the-agents-write-good-hindi-punjabi));
+   - its own earlier mistakes: problems the checker found and sentences a
+     reviewer corrected.
 
    Nothing is fine-tuned: all of this is given to the model as evidence.
 4. Every draft is checked: language and script, allowed facts only, the
@@ -570,8 +574,7 @@ by default. The template's one button is **Call me back**. A campaign fills the 
 export, or, for an audience picked from Business Data, from each business's
 own record. A business missing a value is skipped, with the reason shown.
 
-Needs `GEMINI_API_KEY` on the server. Text only, so no image quota or billing
-is required.
+Uses the free models described under [Which models](#which-models-all-free).
 
 ### Template Studio: from a messages sheet
 
@@ -620,28 +623,73 @@ Each round:
    `src/services/creative_brief.py` (Punjab → Punjabi, Gujarat → Gujarati,
    Maharashtra → Marathi, Uttar Pradesh/Haryana/Rajasthan → Hindi). A new
    state needs a line there before it can be generated for.
-2. Gemini writes 1–4 variants at once, each testing a different angle, from
-   the standing brief, the templates already sent, how each has performed per
-   state, and the reasons given for earlier rejections.
+2. **The text comes first.** The agent writes 1–4 variants at once, each
+   testing a different angle, from the standing brief, approved templates in
+   the same language, how each template has performed per state, reviewers'
+   rejection reasons, and its own earlier mistakes. Each variant also names an
+   **image phrase**: 2–5 words copied exactly from its headline or body.
 3. Every variant is checked: all text in the state's script, only the allowed
-   facts, the contact number present, no URL in the body, Meta's length limits.
-4. A photograph of an SBI Customer Service Point with an operator is generated
-   **with no text in it** by FLUX.1 Schnell, checked for stray lettering and an
-   artificial look by Gemini, and regenerated if it fails.
-5. The poster is rendered in Chromium around the photo: Eko logo, SBI
-   signboard, headline, benefits and contact footer, all set in real fonts.
-   Image models misspell Indic scripts; a renderer does not.
+   facts, the contact number present, no URL in the body, no `**double
+   asterisks**` (WhatsApp would show them), the image phrase really taken
+   from the copy, Meta's length limits. A failing variant is sent back once.
+4. **Then the image, built from the text.** FLUX.1 is asked for a photograph
+   of an SBI Customer Service Point with the image phrase printed on one sign.
+   A vision model reads the sign back, and the code compares the reading with
+   the phrase letter by letter, vowel signs included. If they match, the photo
+   is the header, with the Eko logo added.
+5. **If the sign is misspelt**, which free image models usually do with Indic
+   scripts, one photo with no text is made instead and the poster is typeset
+   around it in Chromium: Eko logo, SBI signboard, headline, benefits and
+   contact footer, all in real fonts, so every word is spelled right.
+
+A draft costs at most two images: one try at the sign, one plain photo. A photo
+the check dislikes is shown to the reviewer with its problems, not replaced.
 
 Approving submits the draft to Meta (it then follows the usual review above).
 Rejecting asks for a reason, which the agent reads next time for that state.
-**Edit text** re-renders the poster; **New photo** keeps the copy.
+**Edit text** re-renders the poster; **New photo** keeps the copy. An edited
+sentence is remembered as a correction and shown to the agent in later rounds.
 
 The table at the bottom — sent, delivered, read, link visits and button taps per
 template and recipient state — is what the agent learns from. It only means
 something once the webhook is live: campaigns sent before it show "not tracked".
 
-Needs `GEMINI_API_KEY` (for text), `HF_TOKEN` (for Hugging Face Inference API FLUX.1 models),
-and internet access from the backend to Google Fonts at render time.
+### How the agents write good Hindi, Punjabi…
+
+Both agents are shown, every round, up to five templates **Meta has approved**
+in the language they are writing, read from the WhatsApp Business Account
+(templates made by other tools on the same account included) and refreshed
+hourly. They are told to copy the grammar, spelling, polite forms and WhatsApp
+formatting, not the content. Language is judged by script, since most Hindi
+templates were registered as `en_US`; tests, English and Hinglish fall out, and
+resubmissions of one campaign count once. A language with no approved template
+yet (Gujarati, Marathi today) gets none; Marathi is never given Hindi examples.
+
+They are also shown **their own mistakes** in that language: sentences a
+reviewer corrected ("you wrote …, a reviewer corrected it to …") and the
+problems the checker most often found in first attempts.
+
+### Which models (all free)
+
+| For | Model | Notes |
+|---|---|---|
+| Text, fact check | `gemini-2.0-flash`, then `llama-3.3-70b`, `gpt-4o-mini`, through g4f | No key. If none answers the round fails and says so; nothing is made up. |
+| Reading the photo | `gemini-2.0-flash` through g4f | |
+| Photos | FLUX.1-dev, then FLUX.1-schnell, on Hugging Face Spaces | Uses `HF_TOKEN`, then anonymous access. |
+
+**The free photo allowance is small**: about three runs a day per Hugging Face
+account, renewed 24 hours after the day's first use, plus a smaller anonymous
+one. When it is spent, a draft does not fail. It keeps its text, shows
+"photo pending" under *In progress* with the time of the next try, and a
+background loop (`src/services/photo_queue.py`, every 5 minutes) finishes it
+when the allowance returns — at the time Hugging Face gives, or after 30 min,
+1 h, 2 h, then every 4 h. **Try now** and **Reject** work meanwhile. After ten
+tries (about a day and a half) the draft fails and says why. Hugging Face PRO
+on the same account raises the allowance to 40 GPU minutes a day.
+
+Needs `HF_TOKEN` for photos, and internet access from the backend to Hugging
+Face, the g4f providers and Google Fonts. `STUDIO_PHOTO_QUEUE_THREAD=false`
+turns the waiting loop off.
 
 ### Media limits
 

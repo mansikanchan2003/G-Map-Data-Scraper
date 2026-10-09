@@ -11,6 +11,7 @@ import { getApiBaseUrl } from '../api';
 import { WhatsAppPreview } from '../components/WhatsAppPreview';
 import { SheetTemplateBuilder } from '../components/SheetTemplateBuilder';
 import { BusinessTemplateAgent } from '../components/BusinessTemplateAgent';
+import { formatDateTime } from '../utils/datetime';
 
 // Three ways to make a template.
 //   Business data: the agent writes for scraped businesses, learning from how
@@ -43,8 +44,8 @@ type Tab = 'review' | 'working' | 'approved' | 'rejected';
 
 const TAB_STATUSES: Record<Tab, (s: string) => boolean> = {
   review: s => s === 'AWAITING_APPROVAL',
-  working: s => s === 'GENERATING' || s === 'GENERATION_FAILED',
-  approved: s => !['AWAITING_APPROVAL', 'GENERATING', 'GENERATION_FAILED', 'REJECTED_BY_REVIEWER'].includes(s),
+  working: s => s === 'GENERATING' || s === 'GENERATION_FAILED' || s === 'PHOTO_PENDING',
+  approved: s => !['AWAITING_APPROVAL', 'GENERATING', 'GENERATION_FAILED', 'REJECTED_BY_REVIEWER', 'PHOTO_PENDING'].includes(s),
   rejected: s => s === 'REJECTED_BY_REVIEWER',
 };
 
@@ -135,11 +136,14 @@ export const TemplateStudioView: React.FC = () => {
   // A round takes a minute or more per variant, so the page polls while
   // anything is still being made rather than asking the reviewer to refresh.
   const anyGenerating = drafts.some(d => d.status === 'GENERATING');
+  // Drafts waiting for a photo are finished by the server, hours later at
+  // times, so the page looks in once a minute rather than every few seconds.
+  const anyWaiting = drafts.some(d => d.status === 'PHOTO_PENDING');
   useEffect(() => {
-    if (!anyGenerating) return;
-    const t = setInterval(loadDrafts, 5000);
+    if (!anyGenerating && !anyWaiting) return;
+    const t = setInterval(loadDrafts, anyGenerating ? 5000 : 60000);
     return () => clearInterval(t);
-  }, [anyGenerating, loadDrafts]);
+  }, [anyGenerating, anyWaiting, loadDrafts]);
 
   const counts = useMemo(() => {
     const c = { review: 0, working: 0, approved: 0, rejected: 0 } as Record<Tab, number>;
@@ -333,6 +337,7 @@ const DraftCard: React.FC<{
   const gen = draft.generation || {};
   const check = gen.photo_check;
   const awaiting = draft.status === 'AWAITING_APPROVAL';
+  const waiting = draft.status === 'PHOTO_PENDING';
 
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-900 overflow-hidden flex flex-col">
@@ -340,6 +345,14 @@ const DraftCard: React.FC<{
         <div className="aspect-[3/2] flex flex-col items-center justify-center gap-3 bg-slate-950 text-slate-400 text-sm">
           <div className="w-7 h-7 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
           Writing copy, taking the photo, setting the poster…
+        </div>
+      ) : waiting ? (
+        <div className="aspect-[3/2] flex flex-col items-center justify-center gap-2 bg-slate-950 text-slate-300 text-sm px-6 text-center">
+          <span className="material-symbols-outlined text-[32px] text-amber-300">schedule</span>
+          <div>The text is ready. The photo is waiting for the free image allowance to come back.</div>
+          {gen.photo_retry_at && (
+            <div className="text-xs text-slate-400">Tries again automatically around {formatDateTime(gen.photo_retry_at)}</div>
+          )}
         </div>
       ) : img ? (
         <img src={img} alt="Poster" onClick={() => onZoom(img)} className="w-full aspect-[3/2] object-cover cursor-zoom-in bg-slate-950" />
@@ -373,7 +386,7 @@ const DraftCard: React.FC<{
         {(gen.copy_warnings || []).length > 0 && (
           <div className="text-xs text-amber-300">Copy checker: {gen.copy_warnings!.join('; ')}</div>
         )}
-        {gen.error && draft.status !== 'GENERATION_FAILED' && <div className="text-xs text-rose-300">{gen.error}</div>}
+        {gen.error && draft.status !== 'GENERATION_FAILED' && !waiting && <div className="text-xs text-rose-300">{gen.error}</div>}
         {draft.review_note && (
           <div className="text-xs text-slate-400">
             {draft.status === 'REJECTED_BY_REVIEWER' ? 'Rejected' : 'Note'} by {draft.reviewed_by}: {draft.review_note}
@@ -402,6 +415,12 @@ const DraftCard: React.FC<{
             </button>
             <button onClick={onEdit} className="h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold rounded">Edit text</button>
             <button onClick={onNewPhoto} disabled={busy} className="h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold rounded disabled:opacity-50">New photo</button>
+            <button onClick={onReject} className="h-8 px-3 bg-rose-900/40 hover:bg-rose-900/60 border border-rose-800 text-rose-200 text-xs font-semibold rounded">Reject</button>
+          </div>
+        )}
+        {waiting && (
+          <div className="flex gap-2 mt-auto pt-2">
+            <button onClick={onNewPhoto} disabled={busy} className="h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold rounded disabled:opacity-50">Try now</button>
             <button onClick={onReject} className="h-8 px-3 bg-rose-900/40 hover:bg-rose-900/60 border border-rose-800 text-rose-200 text-xs font-semibold rounded">Reject</button>
           </div>
         )}

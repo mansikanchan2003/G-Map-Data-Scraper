@@ -140,13 +140,16 @@ def generate(req: GenerateRequest, background: BackgroundTasks, db: Session = De
 def new_photo(template_id: str, background: BackgroundTasks, db: Session = Depends(get_db)):
     tmpl = _draft(db, template_id)
     has_copy = bool((tmpl.generation or {}).get("poster") and (tmpl.generation or {}).get("photo_scene"))
-    # A failed draft whose copy survived can be finished once photos work.
+    # A failed draft whose copy survived can be finished once photos work, and
+    # one waiting for the image allowance can be tried now rather than later.
+    waiting = tmpl.status == template_studio.PHOTO_PENDING
     retryable = tmpl.status == template_studio.GENERATION_FAILED and has_copy
-    if tmpl.status != template_studio.AWAITING_APPROVAL and not retryable:
+    if tmpl.status != template_studio.AWAITING_APPROVAL and not (retryable or waiting):
         raise HTTPException(status_code=409, detail="Only a draft awaiting approval, or one whose photo failed, can get a new photo")
     tmpl.status = template_studio.GENERATING
     db.commit()
-    background.add_task(template_studio.run_new_photo, template_id)
+    # A waiting draft keeps the sign photo it already tried.
+    background.add_task(template_studio.run_new_photo, template_id, not waiting)
     return tmpl
 
 
@@ -194,7 +197,8 @@ def approve_draft(template_id: str, req: ApproveRequest = None,
 def reject_draft(template_id: str, req: RejectRequest,
                  db: Session = Depends(get_db), user: User = Depends(current_user)):
     tmpl = _draft(db, template_id)
-    if tmpl.status not in (template_studio.AWAITING_APPROVAL, template_studio.GENERATION_FAILED):
+    if tmpl.status not in (template_studio.AWAITING_APPROVAL, template_studio.GENERATION_FAILED,
+                           template_studio.PHOTO_PENDING):
         raise HTTPException(status_code=409, detail=f"This draft is {tmpl.status} and cannot be rejected")
     template_studio.reject(db, tmpl, user.email, req.reason)
     return tmpl
