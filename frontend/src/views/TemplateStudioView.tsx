@@ -12,6 +12,7 @@ import { SheetTemplateBuilder } from '../components/SheetTemplateBuilder';
 import { BusinessTemplateAgent } from '../components/BusinessTemplateAgent';
 import { formatDateTime } from '../utils/datetime';
 import { SignNote } from '../components/SignNote';
+import { PhotoPromptRecord } from '../components/PhotoPromptRecord';
 
 // Three ways to make a template.
 //   Business data: the agent writes for scraped businesses, learning from how
@@ -282,6 +283,7 @@ export const TemplateStudioView: React.FC = () => {
 
       <PerformanceTable rows={performance} />
       </>}
+      {mode !== 'sheet' && <PhotoPromptRecord />}
 
       {zoom && (
         <div onClick={() => setZoom(null)} className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6 cursor-zoom-out">

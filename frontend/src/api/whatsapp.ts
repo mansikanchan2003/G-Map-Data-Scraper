@@ -538,6 +538,21 @@ export interface StudioPhotoCheck {
   issues?: string[];
 }
 
+export interface ImagePromptRecord {
+  styles: { kind: 'sign' | 'plain'; style: string; tries: number; worked: number; gibberish: number;
+            score: number; chosen_next: boolean }[];
+  /** Signs keep coming out misspelt, so they are being skipped for now. */
+  sign_paused: boolean;
+  recent: {
+    prompt_id: string; created_at: string | null; template_id: string | null;
+    kind: 'sign' | 'plain'; style: string; scene: string | null; phrase: string | null;
+    prompt: string; model: string | null; seed: number | null; media_id: string | null;
+    checked: boolean; passed: boolean; gibberish: boolean;
+    /** unused | in_review | kept | replaced | draft_rejected */
+    outcome: string; note: string | null;
+  }[];
+}
+
 export interface StudioSignAttempt {
   attempt: number;
   /** False when the vision model's answer could not be read: unchecked, not misspelt. */
@@ -578,6 +593,9 @@ export interface StudioDraft {
     /** How the header was made: the photo's own sign read back correctly, or the typeset poster. */
     image_mode?: 'photo_text' | 'typeset';
     image_phrase?: string | null;
+    /** The sign was not tried: signs have kept coming out misspelt. */
+    sign_skipped?: boolean;
+    photo_style?: string;
     /** The tries at a photo with the phrase on its sign, and what the sign was read as. */
     text_photo_attempts?: StudioSignAttempt[];
     /** Why a business draft has no photo; its message can still be sent. */
@@ -666,6 +684,8 @@ export const studioMediaUrl = (headerContent: string | null): string | null => {
     return null;
   }
 };
+
+export const fetchImagePromptRecord = () => studioCall<ImagePromptRecord>('/image-prompts');
 
 export const fetchStudioStatus = () => studioCall<{ ready: boolean; error: string | null }>('/status');
 export const fetchStudioRules = () => studioCall<StudioRules>('/rules');

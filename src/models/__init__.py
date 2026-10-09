@@ -7,6 +7,7 @@ from .app_setting import AppSetting
 from .user import User
 from .autopilot import DiscoveryRound
 from .insights import CampaignInsight, InsightSnapshot
+from .studio import StudioImagePrompt
 from .whatsapp import WhatsAppAccount, WhatsAppTemplate, WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppCampaignLog, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppReply
 
 __all__ = [
@@ -27,5 +28,6 @@ __all__ = [
     "CampaignInsight",
     "DiscoveryRound",
     "InsightSnapshot",
+    "StudioImagePrompt",
     "User"
 ]

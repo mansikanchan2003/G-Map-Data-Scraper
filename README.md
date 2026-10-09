@@ -682,6 +682,26 @@ They are also shown **their own mistakes** in that language: sentences a
 reviewer corrected ("you wrote …, a reviewer corrected it to …") and the
 problems the checker most often found in first attempts.
 
+### How the photos get better
+
+Every image the Studio asks for is recorded (`studio_image_prompts`): the
+prompt, its style, the seed, how the check judged it (a sign that read back
+right, or came out as gibberish; stray lettering; an artificial look) and what
+the reviewer did with it — kept it by approving the draft, or replaced it with
+**New photo**. **Photo prompts: what has worked**, at the foot of the Studio,
+shows the record. Three things are learned from it:
+
+- **The wording.** A scene is wrapped in one of two styles: `short`, the brief
+  prompt behind the photo the team liked, and `documentary`, the original
+  longer one. The style with the better record is used; an untried one is
+  tried before a failing one is used again.
+- **The scene.** Before writing, the agent is shown the scenes that made good
+  photos and the ones that failed, with the reason, and asked for a photo
+  better than the best so far.
+- **Whether to try a sign.** While signs keep coming out misspelt (none right
+  in five or more tries), the sign is skipped and the image goes to the photo
+  for the typeset poster; a sign is tried again every fifth photo or so.
+
 ### Which models (all free)
 
 | For | Model | Notes |
@@ -836,6 +856,7 @@ alembic history --verbose
 | `b2e9f7a4d3c5` | Campaign insights and playbook snapshots |
 | `c4a7e2d9b8f1` | Automated link hits flagged, never counted as clicks |
 | `d5b8f3a1c6e2` | Scraping autopilot rounds |
+| `a8f3c5d1e7b9` | Studio image prompts and how each turned out |
 
 ---
 

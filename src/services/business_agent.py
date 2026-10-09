@@ -32,7 +32,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from src.models.whatsapp import WhatsAppTemplate
-from src.services import creative_brief, sheet_templates
+from src.services import creative_brief, image_prompts, sheet_templates
 from src.services.gemini_client import GeminiClient, GeminiError, ImageUnavailable
 from src.services import template_studio as studio
 
@@ -187,6 +187,7 @@ def learning(db: Session, state: Optional[str], language_code: str) -> dict:
         "overall": overall,
         "history": history,
         "mistakes": studio.past_mistakes(db, language_code),
+        "photos": image_prompts.lessons(db),
         "meta_rejected": meta_rejected,
         "references": studio.approved_examples(db, language_code),
         "counts": {
@@ -262,6 +263,7 @@ TEMPLATES META REJECTED, AND WHY:
 {bullets([f"{r['name']}: {r['reason']} — {r['body']!r}" for r in learned['meta_rejected']])}
 {studio.MISTAKES_HEADING}
 {bullets(learned.get('mistakes') or [])}
+{studio.photo_lessons(learned.get('photos'))}
 ANGLES ALREADY TRIED (find a fresh way in): {'; '.join(history['tried']) or 'none'}
 {f"{chr(10)}THIS ROUND'S BRIEF FROM THE TEAM: {brief}" if brief else ''}
 

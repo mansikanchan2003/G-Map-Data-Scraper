@@ -38,7 +38,7 @@ from src.models.whatsapp import (
     WhatsAppButtonClick, WhatsAppCampaign, WhatsAppCampaignRecipient,
     WhatsAppLinkClick, WhatsAppTemplate, HUMAN_LINK_CLICK,
 )
-from src.services import creative_brief, poster_renderer
+from src.services import creative_brief, image_prompts, poster_renderer
 from src.services.gemini_client import GeminiClient, GeminiError, ImageUnavailable
 
 logger = logging.getLogger("gmap_scraper.template_studio")
@@ -295,7 +295,8 @@ def _review_history(db: Session, state: str) -> dict:
     language_code = creative_brief.language_for_state(state)
     return {"rejected": rejected, "approved": [a for a in approved if a], "tried": tried,
             "tried_keys": tried_keys,
-            "mistakes": past_mistakes(db, language_code) if language_code else []}
+            "mistakes": past_mistakes(db, language_code) if language_code else [],
+            "photos": image_prompts.lessons(db)}
 
 
 def _sentences(text: str) -> List[str]:
@@ -371,6 +372,12 @@ GRAMMAR_HEADING = (
 )
 
 
+def photo_lessons(photos: Optional[dict]) -> str:
+    """The photo record as a prompt section; empty before any photo was judged."""
+    lines = image_prompts.lesson_lines(photos)
+    return f"{image_prompts.PHOTOS_HEADING}\n" + "\n".join(f"- {l}" for l in lines) if lines else ""
+
+
 MISTAKES_HEADING = (
     "MISTAKES IN YOUR EARLIER DRAFTS — caught by the checker or corrected by a reviewer. "
     "Do not make them again:"
@@ -443,6 +450,7 @@ DRAFTS A REVIEWER REJECTED, AND WHY (avoid these mistakes):
 {bullets([f"{r['angle']}: {r['reason']}" for r in history['rejected']])}
 {MISTAKES_HEADING}
 {bullets(history.get('mistakes') or [])}
+{photo_lessons(history.get('photos'))}
 {f"{chr(10)}THIS ROUND'S BRIEF FROM THE TEAM: {brief}" if brief else ''}
 
 Answer with JSON only, in this shape:
@@ -648,20 +656,9 @@ def _write_copy(client: GeminiClient, prompt: str, angles: List[str], language_c
 # Photo
 # ---------------------------------------------------------------------------
 
-def photo_prompt(scene: str, state: str) -> str:
-    return (
-        f"A candid, unposed documentary photograph taken inside a small State Bank of India "
-        f"customer service point (a bank kiosk run by a local shopkeeper) in {state + ', ' if state else ''}India. "
-        f"{scene} The kiosk operator sits behind a counter with a laptop, a fingerprint scanner "
-        f"and a small receipt printer, serving a customer at the counter. "
-        f"Shot on a 35mm lens at eye level in natural daylight, slight film grain, true-to-life "
-        f"colours, real skin texture with pores and imperfections, ordinary everyday clothing, a "
-        f"lived-in room with papers and cables. The people are in the centre of the frame; the "
-        f"upper fifth of the frame is a plain painted wall and the lower quarter is the front of "
-        f"the counter. Absolutely no text, letters, numbers, signs, posters, logos or watermarks "
-        f"anywhere in the image. Not an illustration, not a 3D render, not glossy stock photography."
-    )
-
+def photo_prompt(scene: str, state: str, style: str = image_prompts.DEFAULT_STYLE) -> str:
+    """A photo with no text: the scene in the style's wording, then the no-text rule."""
+    return image_prompts.build(style, scene, state)
 
 PHOTO_CHECK = (
     "Inspect this image and answer with JSON only: "
@@ -678,44 +675,63 @@ def _photo_passes(check: dict) -> bool:
             and check.get("operator_serving_customer") and not check.get("anatomy_problems"))
 
 
-def _make_photo(client: GeminiClient, scene: str, state: str):
+def _make_photo(client: GeminiClient, scene: str, state: str, tmpl: Optional[WhatsAppTemplate] = None):
     """
     Generates photos until one passes the check, or the attempts run out.
 
     When none passes the best one is kept and its problems recorded, so the
     reviewer sees them and decides, rather than the round failing outright.
+    Every photo made is recorded with how it was judged (image_prompts), in
+    the style whose photos have done best so far.
+
+    Returns the image, its type, the prompt, the check, the saved photo's id
+    and the style.
     """
-    prompt = photo_prompt(scene, state)
-    best, last_error = None, None
+    style = image_prompts.with_db(image_prompts.choose_style, "plain")
+    prompt = photo_prompt(scene, state, style)
+    best, last_error, made = None, None, []
     for attempt in range(1, PHOTO_ATTEMPTS + 1):
+        seed = image_prompts.new_seed()
         try:
-            image = client.generate_image(prompt)
+            image = client.generate_image(prompt, seed=seed)
         except ImageUnavailable:
             raise  # Retrying now would hit the same spent allowance; wait instead.
         except Exception as e:
             last_error = e
             logger.warning(f"template_studio event=PHOTO_FAILED attempt={attempt} reason={e}")
             continue
+        model = client.last_used_image_model
         mime = "image/png" if image[:4] == b"\x89PNG" else "image/jpeg"
         try:
-            check = client.inspect_image(image, mime, PHOTO_CHECK)
+            check, checked = client.inspect_image(image, mime, PHOTO_CHECK), True
         except GeminiError as e:
-            check = {"issues": [f"could not be checked: {e}"]}
+            check, checked = {"issues": [f"could not be checked: {e}"]}, False
         check["attempt"] = attempt
+        media_id = _save_media(image, ".png" if mime == "image/png" else ".jpg")
+        made.append((media_id, seed, model, check, checked))
         score = sum(bool(x) for x in (not check.get("has_text"), check.get("photorealistic"),
                                       check.get("operator_serving_customer"),
                                       not check.get("anatomy_problems")))
         if best is None or score > best[3]:
-            best = (image, mime, check, score)
+            best = (image, mime, check, score, media_id)
         if _photo_passes(check):
             break
         logger.info(f"template_studio event=PHOTO_REJECTED attempt={attempt} issues={check.get('issues')}")
     if best is None:
         raise GeminiError(f"No photo after {PHOTO_ATTEMPTS} attempts: {last_error}")
-    image, mime, check, _ = best
+    image, mime, check, _, media_id = best
     check["passed"] = _photo_passes(check)
-    return image, mime, prompt, check
-
+    for mid, seed, model, c, checked in made:
+        passed = checked and bool(_photo_passes(c))
+        image_prompts.record(
+            template_id=tmpl.template_id if tmpl else None, kind="plain", style=style, prompt=prompt,
+            scene=scene, phrase=None, language_code=tmpl.language_code if tmpl else None, state=state,
+            model=model, seed=seed, media_id=mid, check=c, checked=checked, passed=passed,
+            gibberish=checked and bool(c.get("has_text")),
+            outcome=image_prompts.IN_REVIEW if mid == media_id else image_prompts.UNUSED,
+            note=image_prompts.plain_note(c, passed, checked),
+        )
+    return image, mime, prompt, check, media_id, style
 
 def _save_media(data: bytes, ext: str) -> str:
     os.makedirs(MEDIA_DIR, exist_ok=True)
@@ -770,18 +786,10 @@ TEXT_PHOTO_CHECK = (
 )
 
 
-def text_photo_prompt(scene: str, state: str, phrase: str, language_code: str) -> str:
+def text_photo_prompt(scene: str, state: str, phrase: str, language_code: str,
+                      style: str = image_prompts.DEFAULT_STYLE) -> str:
     """The photo prompt with one sign carrying the phrase, and no other text."""
-    lang = creative_brief.LANGUAGES[language_code]
-    base = photo_prompt(scene, state).split(" Absolutely no text")[0]
-    return (
-        f"{base} On the plain wall above the counter hangs one clean, printed sign with large, "
-        f"dark, clearly legible lettering that reads exactly: \"{phrase}\" — in {lang['name']} "
-        f"({lang['script']} script), spelled exactly as given, nothing added. Apart from that one "
-        f"sign there is no text, letters, numbers, logos or watermarks anywhere. Not an "
-        f"illustration, not a 3D render, not glossy stock photography."
-    )
-
+    return image_prompts.build(style, scene, state, phrase, language_code)
 
 def _text_photo_passes(check: dict, phrase: str) -> bool:
     # The match is decided here, not by the model: it compares what it read
@@ -835,11 +843,18 @@ def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, st
     made = sum(1 for a in attempts if a.get("media_id"))
     # Only in a script the renderer can set too: the fallback must say the same.
     printable = tmpl.language_code in creative_brief.LANGUAGES
+    # While signs keep coming out as gibberish they are skipped, saving the
+    # few free images a day, and tried again now and then.
+    sign_skipped = False
     if phrase and printable and made < TEXT_PHOTO_ATTEMPTS:
-        prompt = text_photo_prompt(variant["photo_scene"], state, phrase, tmpl.language_code)
+        sign_skipped = not image_prompts.with_db(image_prompts.sign_worth_trying)
+    if phrase and printable and made < TEXT_PHOTO_ATTEMPTS and not sign_skipped:
+        style = image_prompts.with_db(image_prompts.choose_style, "sign")
+        prompt = text_photo_prompt(variant["photo_scene"], state, phrase, tmpl.language_code, style)
         for attempt in range(made + 1, TEXT_PHOTO_ATTEMPTS + 1):
+            seed = image_prompts.new_seed()
             try:
-                image = client.generate_image(prompt)
+                image = client.generate_image(prompt, seed=seed)
             except ImageUnavailable:
                 raise
             except GeminiError as e:
@@ -853,8 +868,18 @@ def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, st
             passed = checked and _text_photo_passes(check, phrase)
             attempts.append({"attempt": attempt, "media_id": _save_media(image, ".jpg"),
                              "checked": checked, "read": check.get("sign_text"),
-                             "other_text": check.get("other_text"),
+                             "other_text": check.get("other_text"), "style": style,
                              "passed": passed, "issues": check.get("issues") or []})
+            image_prompts.record(
+                template_id=tmpl.template_id, kind="sign", style=style, prompt=prompt,
+                scene=variant["photo_scene"], phrase=phrase, language_code=tmpl.language_code,
+                state=state, model=client.last_used_image_model, seed=seed,
+                media_id=attempts[-1]["media_id"], check=check, checked=checked, passed=passed,
+                gibberish=checked and not passed and (
+                    _letters(check.get("sign_text")) != _letters(phrase) or bool(_letters(check.get("other_text")))),
+                outcome=image_prompts.IN_REVIEW if passed else image_prompts.UNUSED,
+                note=image_prompts.sign_note(check, phrase, passed, checked),
+            )
             if passed:
                 header = poster_renderer.render_photo_with_logo(image, "image/jpeg")
                 tmpl.header_type = "IMAGE"
@@ -866,11 +891,10 @@ def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, st
                         f"read={check.get('sign_text')!r} wanted={phrase!r}")
 
     try:
-        photo, mime, used_prompt, check = _make_photo(client, variant["photo_scene"], state)
+        photo, mime, used_prompt, check, photo_id, style = _make_photo(client, variant["photo_scene"], state, tmpl)
     except ImageUnavailable as e:
         e.text_photo_attempts = attempts  # kept, so the wait does not undo them
         raise
-    photo_id = _save_media(photo, ".png" if mime == "image/png" else ".jpg")
     if _has_poster(variant) and printable:
         _render_into(tmpl, variant["poster"], photo, mime)
     else:
@@ -880,6 +904,7 @@ def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, st
         tmpl.header_type = "IMAGE"
         tmpl.header_content = json.dumps({"source_type": "upload", "media_id": _save_media(image, ".jpg")})
     return {"image_mode": "typeset", "image_phrase": phrase or None, "text_photo_attempts": attempts,
+            "sign_skipped": sign_skipped, "photo_style": style,
             "photo_prompt": used_prompt, "photo_media_id": photo_id, "photo_check": check}
 
 
@@ -1047,12 +1072,16 @@ def run_new_photo(template_id: str, fresh: bool = True) -> None:
         if not tmpl:
             return
         gen = dict(tmpl.generation or {})
+        # A reviewer asking for another photo is a verdict on the current one,
+        # recorded once the new one exists (the old stays if none can be made).
+        replacing = image_prompts.in_review_ids(db, template_id) if fresh else []
         if fresh:
             gen.pop("text_photo_attempts", None)
             gen.pop("photo_waits", None)
         try:
             client = GeminiClient()
             gen.update(_make_header(client, tmpl, gen, tmpl.target_state))
+            image_prompts.mark_ids(db, replacing, image_prompts.REPLACED)
             gen.setdefault("models", {})["image"] = client.last_used_image_model
             for key in ("error", "photo_retry_at", "photo_waits"):
                 gen.pop(key, None)
@@ -1121,6 +1150,8 @@ def approve(db: Session, tmpl: WhatsAppTemplate, reviewer: str, category: str = 
     """
     from src.services.whatsapp_service import WhatsAppTemplateSubmissionService
 
+    # Approving keeps the photo: the strongest sign a prompt worked.
+    image_prompts.mark(db, tmpl.template_id, image_prompts.KEPT)
     tmpl.reviewed_by = reviewer
     tmpl.reviewed_at = datetime.now(timezone.utc)
     tmpl.review_note = None
@@ -1139,6 +1170,7 @@ def approve(db: Session, tmpl: WhatsAppTemplate, reviewer: str, category: str = 
 
 
 def reject(db: Session, tmpl: WhatsAppTemplate, reviewer: str, reason: str) -> None:
+    image_prompts.mark(db, tmpl.template_id, image_prompts.DRAFT_REJECTED)
     tmpl.status = REJECTED
     tmpl.review_note = reason.strip()
     tmpl.reviewed_by = reviewer

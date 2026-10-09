@@ -117,7 +117,7 @@ class FakeGemini:
     images = 0
     allowance = None
 
-    def generate_image(self, prompt):
+    def generate_image(self, prompt, seed=None):
         from src.services.gemini_client import ImageUnavailable
         if FakeGemini.allowance is not None:
             if FakeGemini.allowance <= 0:
@@ -150,7 +150,8 @@ def db(monkeypatch, tmp_path):
         yield session
     finally:
         session.rollback()
-        for model in (WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppCampaignRecipient,
+        from src.models.studio import StudioImagePrompt
+        for model in (StudioImagePrompt, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppCampaignRecipient,
                       WhatsAppCampaign, WhatsAppTemplate, Business, Job, Location):
             session.query(model).delete()
         session.commit()
@@ -706,3 +707,108 @@ def test_a_phrase_edited_out_of_the_copy_is_not_printed(db, monkeypatch):
     # No sign attempt for a phrase no longer in the copy: just the plain photo.
     assert FakeGemini.images == 1
     assert draft.generation["image_mode"] == "typeset"
+
+
+# --- keeping track of which image prompts work --------------------------------
+
+from src.models.studio import StudioImagePrompt  # noqa: E402
+from src.services import image_prompts  # noqa: E402
+
+
+def records(db, **where):
+    db.expire_all()
+    q = db.query(StudioImagePrompt).order_by(StudioImagePrompt.created_at, StudioImagePrompt.prompt_id)
+    return [r for r in q.all() if all(getattr(r, k) == v for k, v in where.items())]
+
+
+def add_record(db, kind="plain", style="documentary", passed=True, outcome="in_review", **kw):
+    db.add(StudioImagePrompt(prompt_id=uuid.uuid4().hex, created_at=_dt.now(_tz.utc), kind=kind,
+                             style=style, prompt="p",
+                             scene=kw.pop("scene", f"scene {uuid.uuid4().hex[:6]}"), passed=passed,
+                             checked=True, outcome=outcome, **kw))
+    db.commit()
+
+
+def test_every_photo_is_recorded_with_its_prompt_and_verdict(db):
+    [draft] = generate(db)
+    [r] = records(db)
+    assert r.template_id == draft.template_id and r.kind == "plain"
+    assert r.prompt == draft.generation["photo_prompt"] and r.scene == PA_VARIANT["photo_scene"]
+    assert r.style in image_prompts.STYLES and isinstance(r.seed, int)
+    assert r.passed and r.outcome == "in_review" and r.media_id == draft.generation["photo_media_id"]
+
+
+def test_a_gibberish_sign_is_recorded_with_what_it_said(db, monkeypatch):
+    with_phrase(monkeypatch, ["ਦੋਰ ਸਵੇ"])
+    generate(db)
+    [sign] = records(db, kind="sign")
+    assert sign.gibberish and not sign.passed and sign.outcome == "unused"
+    assert 'came out as "ਦੋਰ ਸਵੇ"' in sign.note and sign.phrase == PHRASE
+
+
+def test_the_reviewers_verdict_is_recorded(db, monkeypatch):
+    monkeypatch.setenv("MOCK_WHATSAPP_API", "true")
+    [kept] = generate(db)
+    studio_router.approve_draft(kept.template_id, None, db=db, user=FakeUser())
+    assert [r.outcome for r in records(db, template_id=kept.template_id)] == ["kept"]
+
+    [redone] = generate(db)
+    template_studio.run_new_photo(redone.template_id)
+    assert [r.outcome for r in records(db, template_id=redone.template_id)] == ["replaced", "in_review"]
+
+    [dropped] = generate(db)
+    studio_router.reject_draft(dropped.template_id, studio_router.RejectRequest(reason="dull photo"),
+                               db=db, user=FakeUser())
+    assert [r.outcome for r in records(db, template_id=dropped.template_id)] == ["draft_rejected"]
+
+
+def test_the_style_with_the_better_record_is_used(db):
+    # Untried, both score the same and the one the team liked goes first.
+    assert image_prompts.choose_style(db, "plain") == "short"
+    add_record(db, style="short", passed=False, outcome="unused")
+    # One failure: the untried style is tried before it is used again.
+    assert image_prompts.choose_style(db, "plain") == "documentary"
+    add_record(db, style="documentary", passed=True, outcome="kept")
+    add_record(db, style="documentary", passed=True, outcome="replaced")  # the reviewer disliked it
+    add_record(db, style="documentary", passed=True, outcome="kept")
+    assert image_prompts.choose_style(db, "plain") == "documentary"
+    [draft] = generate(db)
+    assert draft.generation["photo_style"] == "documentary"
+
+
+def test_signs_are_skipped_while_they_keep_coming_out_wrong(db, monkeypatch):
+    for _ in range(5):
+        add_record(db, kind="sign", passed=False, outcome="unused", gibberish=True)
+    with_phrase(monkeypatch, [PHRASE])
+    [draft] = generate(db)
+    assert draft.generation["sign_skipped"] is True
+    assert FakeGemini.images == 1, "no image spent on a sign"
+    # Tried again once a few plain photos have been made since.
+    for _ in range(image_prompts.RETEST_EVERY - 2):
+        add_record(db)
+    assert image_prompts.sign_worth_trying(db)
+
+
+def test_the_next_round_is_told_what_worked_and_what_failed(db):
+    add_record(db, scene="A woman operator hands a passbook to a farmer", outcome="kept")
+    add_record(db, kind="sign", scene="A crowded kiosk at dusk", phrase="ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ", passed=False,
+               outcome="unused", gibberish=True, note='sign came out as "ਦੋਰ ਸਵੇ" instead of "ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ"')
+    generate(db)
+    prompt = FakeGemini.prompts[-1]
+    section = prompt.split("PHOTOS SO FAR")[1]
+    assert 'WORKED: "A woman operator hands a passbook to a farmer" (clean photo, kept by the reviewer)' in section
+    assert 'FAILED: "A crowded kiosk at dusk"' in section and 'came out as "ਦੋਰ ਸਵੇ"' in section
+    assert "0 of 1 came out spelled right" in section
+
+
+def test_no_photo_section_before_any_photo(db):
+    generate(db)
+    assert "PHOTOS SO FAR" not in FakeGemini.prompts[0]
+
+
+def test_the_record_is_shown_on_the_studio_page(db):
+    generate(db)
+    out = studio_router.image_prompt_record(db=db)
+    assert {s["style"] for s in out["styles"]} == set(image_prompts.STYLES)
+    assert sum(s["chosen_next"] for s in out["styles"] if s["kind"] == "plain") == 1
+    assert out["recent"][0]["prompt"].startswith(("A candid", "Candid"))

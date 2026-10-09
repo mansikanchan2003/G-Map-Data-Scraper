@@ -105,6 +105,13 @@ def studio_performance(db: Session = Depends(get_db)):
     return template_studio.template_performance(db)
 
 
+@router.get("/image-prompts")
+def image_prompt_record(db: Session = Depends(get_db)):
+    """Which image prompts have worked: per style, and the latest images asked for."""
+    from src.services import image_prompts
+    return image_prompts.summary(db)
+
+
 @router.get("/drafts", response_model=List[StudioDraft])
 def list_drafts(db: Session = Depends(get_db)):
     """The poster agent's drafts. The business agent's have their own list."""
