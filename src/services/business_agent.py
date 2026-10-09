@@ -263,6 +263,7 @@ Answer with JSON only:
   "angle_key": "the key of this variant's angle",
   "angle": "one English sentence: how this variant expresses its angle",
   "learned": "one or two English sentences: which past results or rejections shaped this wording, and how",
+  "photo_scene": "A detailed, strict prompt for an image generation model to create a photorealistic scene of an SBI Customer Service Point front desk. The prompt MUST instruct the model to write a short, catchy phrase in {lang} (the regional language) somewhere in the scene (e.g., on a sign, wall, or desk) that matches the text body. It must include an operator working and 1-2 customers. Specify that sometimes the operator and customers should be looking directly at the camera. The prompt must demand the SBI logo be visible and photorealistic.",
   "body": "the message in {lang}, at most {studio.BODY_LIMIT} characters, with blanks as {{{{name}}}} and {{{{link}}}}, no web address of your own",
   "footer": "at most {studio.FOOTER_LIMIT} characters, e.g. the equivalent of 'Team Eko'",
   "callback_button": "button label meaning 'Call me back', at most 20 characters"
@@ -318,7 +319,7 @@ def validate(variant: dict, language_code: str, allowed: List[str]) -> List[str]
 
 
 def _clean(variant: dict) -> dict:
-    for key in ("body", "footer", "callback_button", "angle", "learned"):
+    for key in ("body", "footer", "callback_button", "angle", "learned", "photo_scene"):
         text = variant.get(key)
         if isinstance(text, str):
             variant[key] = text.replace("\\n", "\n").replace("\\t", " ").strip()
@@ -432,7 +433,6 @@ def run_generation(template_ids: List[str]) -> None:
             used = blanks_in(body)
             tmpl.body = body
             tmpl.footer = (variant.get("footer") or "").strip() or None
-            # The link is in the text; the one button asks for a call back.
             tmpl.buttons = [
                 {"type": "QUICK_REPLY", "text": (variant.get("callback_button") or "").strip()},
             ]
@@ -448,6 +448,56 @@ def run_generation(template_ids: List[str]) -> None:
                 "tracked": sheet_templates.tracking_enabled(),
             }
             tmpl.status = studio.AWAITING_APPROVAL
+            tmpl.category = "UTILITY"  # Default to UTILITY as requested
+            
+            photo_scene = variant.get("photo_scene")
+            if photo_scene:
+                try:
+                    from src.services.template_studio import _save_media
+                    from io import BytesIO
+                    from PIL import Image
+                    import os
+                    
+                    full_prompt = (
+                        f"{photo_scene}\n\n"
+                        f"MANDATORY REQUIREMENTS:\n"
+                        f"- The image MUST be highly photorealistic, not AI-generated looking. Looks like a real smartphone photo.\n"
+                        f"- SBI (State Bank of India) logo MUST be clearly visible in the scene.\n"
+                        f"- Text written in the image MUST be 100% accurate in {language_code}.\n"
+                        f"- Depict an SBI Customer Service Point front desk with an operator working and 1-2 customers.\n"
+                    )
+                    image_data, mime = client.generate_image(full_prompt)
+                    
+                    # Composite Eko logo
+                    img = Image.open(BytesIO(image_data)).convert("RGBA")
+                    logo_path = "data/screenshot.png"
+                    if os.path.exists(logo_path):
+                        logo = Image.open(logo_path).convert("RGBA")
+                        # Resize logo to a reasonable size (e.g. 150px height)
+                        aspect_ratio = logo.width / logo.height
+                        new_height = 150
+                        new_width = int(new_height * aspect_ratio)
+                        logo = logo.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                        
+                        # Paste in top right corner with some padding
+                        padding = 30
+                        x = img.width - new_width - padding
+                        y = padding
+                        img.alpha_composite(logo, (x, y))
+                    
+                    # Convert back to RGB for JPEG
+                    out_buffer = BytesIO()
+                    img.convert("RGB").save(out_buffer, format="JPEG", quality=90)
+                    final_image_data = out_buffer.getvalue()
+                    
+                    media_id = _save_media(final_image_data, ".jpg")
+                    tmpl.header_type = "IMAGE"
+                    tmpl.header_content = json.dumps({"source_type": "upload", "media_id": media_id})
+                    tmpl.generation["poster"] = {"url": f"/data/whatsapp_media/{media_id}", "mime": "image/jpeg"}
+                except Exception as e:
+                    logger.warning(f"business_agent image generation failed: {e}")
+                    tmpl.generation["photo_error"] = str(e)
+            
             logger.info(f"business_agent event=DRAFT_READY template_id={tmpl.template_id} "
                         f"state={tmpl.target_state} angle={variant.get('angle_key')}")
         db.commit()

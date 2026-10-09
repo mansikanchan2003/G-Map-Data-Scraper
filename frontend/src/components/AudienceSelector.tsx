@@ -86,6 +86,20 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
         alert('No sendable contacts match this selection.');
         return;
       }
+      
+      // Auto-generate business templates for the selected audience
+      try {
+        const { writeBusinessDrafts } = await import('../api/whatsapp');
+        await writeBusinessDrafts({
+          rows: preview.contacts,
+          count: 3,
+        });
+        alert(`Successfully queued 3 regional language templates for generation!\n\nPlease go to "Template Studio" -> "Business Data Agent" to review, preview the generated images, and approve them before sending.`);
+      } catch (err: any) {
+        console.error("Template generation failed", err);
+        alert(`Audience ready, but template generation failed: ${err.message}`);
+      }
+      
       stashAudience({ contacts: preview.contacts, label: scopeLabel });
       onReady();
     } catch (err: any) {

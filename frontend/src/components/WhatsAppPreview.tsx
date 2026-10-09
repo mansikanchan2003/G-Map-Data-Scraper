@@ -65,8 +65,17 @@ export const WhatsAppPreview: React.FC<WhatsAppPreviewProps> = ({
           
           {/* Header */}
           {headerType === 'IMAGE' && resolvedMediaUrl && (
-            <div className="w-full h-32 bg-[#dfe5e7] rounded-t-md mb-2 overflow-hidden flex items-center justify-center relative">
+            <div className="w-full h-32 bg-[#dfe5e7] rounded-t-md mb-2 overflow-hidden flex items-center justify-center relative group">
                <img src={resolvedMediaUrl} alt="Header" className="w-full h-full object-cover" />
+               <a 
+                 href={resolvedMediaUrl} 
+                 target="_blank" 
+                 rel="noopener noreferrer"
+                 className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                 title="Open image in new tab"
+               >
+                 <span className="material-symbols-outlined text-white text-3xl">open_in_new</span>
+               </a>
             </div>
           )}
           {headerType === 'VIDEO' && resolvedMediaUrl && (
