@@ -135,17 +135,25 @@ class GeminiClient:
             retry_after=min(waits) if waits else None,
         )
 
+    # Free vision answers sometimes stop part-way through the JSON. Reading an
+    # image costs none of the photo allowance, so it is simply asked again.
+    VISION_TRIES = 2
+
     def inspect_image(self, image: bytes, mime_type: str, question: str) -> dict:
         """Asks a vision model a question about an image; answers with JSON."""
         ext = "png" if mime_type == "image/png" else "jpg"
+        ask = (question + "\n\nReply with the JSON object only, on a single line, no code fence. "
+               "Keep every string short.")
         for model in self.VISION_MODELS:
-            try:
-                response = self.client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": question + "\n\nReply ONLY with valid JSON."}],
-                    images=[[image, f"image.{ext}"]],
-                )
-                return _json_in(response.choices[0].message.content)
-            except Exception as e:
-                logger.warning(f"gemini event=VISION_MODEL_FAILED model={model} reason={str(e)[:160]}")
-        raise GeminiError("No free model could look at the image")
+            for attempt in range(1, self.VISION_TRIES + 1):
+                try:
+                    response = self.client.chat.completions.create(
+                        model=model,
+                        messages=[{"role": "user", "content": ask}],
+                        images=[[image, f"image.{ext}"]],
+                    )
+                    return _json_in(response.choices[0].message.content)
+                except Exception as e:
+                    logger.warning(f"gemini event=VISION_MODEL_FAILED model={model} attempt={attempt} "
+                                   f"reason={str(e)[:160]}")
+        raise GeminiError("the free vision model's answer could not be read")

@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 
 from src.models.whatsapp import WhatsAppTemplate
 from src.services import creative_brief, sheet_templates
-from src.services.gemini_client import GeminiClient, GeminiError
+from src.services.gemini_client import GeminiClient, GeminiError, ImageUnavailable
 from src.services import template_studio as studio
 
 logger = logging.getLogger("gmap_scraper.business_agent")
@@ -269,7 +269,8 @@ Answer with JSON only:
   "angle_key": "the key of this variant's angle",
   "angle": "one English sentence: how this variant expresses its angle",
   "learned": "one or two English sentences: which past results or rejections shaped this wording, and how",
-  "photo_scene": "A detailed, strict prompt for an image generation model to create a photorealistic scene of an SBI Customer Service Point front desk. The prompt MUST instruct the model to write a short, catchy phrase in {lang} (the regional language) somewhere in the scene (e.g., on a sign, wall, or desk) that matches the text body. It must include an operator working and 1-2 customers. Specify that sometimes the operator and customers should be looking directly at the camera. The prompt must demand the SBI logo be visible and photorealistic.",
+  "image_phrase": "2 to 5 words copied exactly from your body, in {lang}, with no blank in them — the line printed on a sign in the photo",
+  "photo_scene": "in English: who is in the photo and what is happening — a kiosk operator seated behind the counter of a business like these, with a laptop and a fingerprint scanner, serving one or two local customers (for example taking a thumbprint, counting cash, handing over a passbook); the setting; the mood that suits the angle. No text, signs or logos: the sign is added separately.",
   "body": "the message in {lang}, at most {studio.BODY_LIMIT} characters, with blanks as {{{{name}}}} and {{{{link}}}}, no web address of your own",
   "footer": "at most {studio.FOOTER_LIMIT} characters, e.g. the equivalent of 'Team Eko'",
   "callback_button": "button label meaning 'Call me back', at most 20 characters"
@@ -314,11 +315,23 @@ def validate(variant: dict, language_code: str, allowed: List[str]) -> List[str]
     if len(variant.get("callback_button") or "") > studio.BUTTON_TEXT_LIMIT:
         errors.append(f"callback_button is longer than {studio.BUTTON_TEXT_LIMIT} characters")
 
+    phrase = variant.get("image_phrase") or ""
+    if phrase:
+        words = len(phrase.split())
+        if "{" in phrase or "}" in phrase:
+            errors.append("image_phrase has a blank in it; it is printed as it is, the same for every business")
+        elif not 2 <= words <= 5:
+            errors.append(f"image_phrase has {words} words; it needs 2 to 5")
+        elif studio._letters(phrase) not in studio._letters(TOKEN.sub("", body)):
+            errors.append("image_phrase is not copied exactly from the body")
+
     if language_code in creative_brief.LANGUAGES:
         # Blanks are filled with English values, so they are left out of the
         # script check rather than counted as stray Latin.
         texts = {"body": TOKEN.sub("", body), "footer": variant.get("footer"),
                  "callback_button": variant.get("callback_button")}
+        if phrase:
+            texts["image_phrase"] = phrase
         for name, text in texts.items():
             for problem in creative_brief.script_problems(text or "", language_code,
                                                           require_script=name != "footer"):
@@ -327,7 +340,7 @@ def validate(variant: dict, language_code: str, allowed: List[str]) -> List[str]
 
 
 def _clean(variant: dict) -> dict:
-    for key in ("body", "footer", "callback_button", "angle", "learned", "photo_scene"):
+    for key in ("body", "footer", "callback_button", "angle", "learned", "photo_scene", "image_phrase"):
         text = variant.get(key)
         if isinstance(text, str):
             variant[key] = text.replace("\\n", "\n").replace("\\t", " ").strip()
@@ -458,39 +471,33 @@ def run_generation(template_ids: List[str]) -> None:
                 # Read back by later rounds; see template_studio.past_mistakes.
                 "first_problems": first_errors,
                 "agent_body": body,
+                "photo_scene": variant.get("photo_scene"),
+                "image_phrase": variant.get("image_phrase"),
                 "models": {"text": model},
                 "tracked": sheet_templates.tracking_enabled(),
             }
-            tmpl.status = studio.AWAITING_APPROVAL
             tmpl.category = "UTILITY"  # Default to UTILITY as requested
-            
-            photo_scene = variant.get("photo_scene")
-            if photo_scene:
+            db.commit()  # The copy is kept whatever happens to the photo.
+
+            # The image, made from the finished text the same way as the
+            # poster agent's (template_studio._make_header): the phrase on a
+            # sign if it reads back right, else a banner typeset around a
+            # photo with no text.
+            if studio.can_make_header(tmpl.generation):
                 try:
-                    from src.services.template_studio import _save_media
-
-                    full_prompt = (
-                        f"{photo_scene}\n\n"
-                        f"MANDATORY REQUIREMENTS:\n"
-                        f"- The image MUST be highly photorealistic, not AI-generated looking. Looks like a real smartphone photo.\n"
-                        f"- SBI (State Bank of India) logo MUST be clearly visible in the scene.\n"
-                        f"- Text written in the image MUST be 100% accurate in {language_code}.\n"
-                        f"- Depict an SBI Customer Service Point front desk with an operator working and 1-2 customers.\n"
-                    )
-                    image_data = client.generate_image(full_prompt)
-                    # The real Eko logo, set by the renderer (data/screenshot.png
-                    # was a picture of the sign-in page).
-                    from src.services import poster_renderer
-                    final_image_data = poster_renderer.render_photo_with_logo(image_data, "image/jpeg")
-
-                    media_id = _save_media(final_image_data, ".jpg")
-                    tmpl.header_type = "IMAGE"
-                    tmpl.header_content = json.dumps({"source_type": "upload", "media_id": media_id})
-                    tmpl.generation["poster"] = {"url": f"/data/whatsapp_media/{media_id}", "mime": "image/jpeg"}
+                    header = studio._make_header(client, tmpl, tmpl.generation, tmpl.target_state)
+                    tmpl.generation = {**tmpl.generation, **header,
+                                       "models": {"text": model, "image": client.last_used_image_model}}
+                except ImageUnavailable as e:
+                    studio._park_for_photo(tmpl, dict(tmpl.generation), e)
+                    db.commit()
+                    continue
                 except Exception as e:
-                    logger.warning(f"business_agent image generation failed: {e}")
-                    tmpl.generation["photo_error"] = str(e)
-            
+                    # The message can be sent without a photo; the reviewer is told.
+                    logger.exception(f"business_agent event=PHOTO_FAILED template_id={tmpl.template_id}")
+                    tmpl.generation = {**tmpl.generation, "photo_error": str(e)}
+            tmpl.status = studio.AWAITING_APPROVAL
+            db.commit()
             logger.info(f"business_agent event=DRAFT_READY template_id={tmpl.template_id} "
                         f"state={tmpl.target_state} angle={variant.get('angle_key')}")
         db.commit()
@@ -519,9 +526,14 @@ def update(db: Session, tmpl: WhatsAppTemplate, body: Optional[str], footer: Opt
     tmpl.generation = gen
     db.commit()
     labels = {b.get("type"): b.get("text") for b in (tmpl.buttons or [])}
-    return validate({"angle": gen.get("angle"), "body": tmpl.body, "footer": tmpl.footer or "",
-                     "callback_button": labels.get("QUICK_REPLY")},
-                    tmpl.language_code, gen.get("allowed_fields") or ["name"])
+    problems = validate({"angle": gen.get("angle"), "body": tmpl.body, "footer": tmpl.footer or "",
+                         "callback_button": labels.get("QUICK_REPLY")},
+                        tmpl.language_code, gen.get("allowed_fields") or ["name"])
+    phrase = gen.get("image_phrase")
+    if phrase and tmpl.header_content and studio._letters(phrase) not in studio._letters(tmpl.body):
+        problems.append(f"the image still shows “{phrase}”, which is no longer in the message; "
+                        "New photo makes one without it")
+    return problems
 
 
 def is_business_draft(t: WhatsAppTemplate) -> bool:

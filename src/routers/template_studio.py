@@ -139,7 +139,7 @@ def generate(req: GenerateRequest, background: BackgroundTasks, db: Session = De
 @router.post("/drafts/{template_id}/new-photo", response_model=StudioDraft)
 def new_photo(template_id: str, background: BackgroundTasks, db: Session = Depends(get_db)):
     tmpl = _draft(db, template_id)
-    has_copy = bool((tmpl.generation or {}).get("poster") and (tmpl.generation or {}).get("photo_scene"))
+    has_copy = template_studio.can_make_header(tmpl.generation or {})
     # A failed draft whose copy survived can be finished once photos work, and
     # one waiting for the image allowance can be tried now rather than later.
     waiting = tmpl.status == template_studio.PHOTO_PENDING

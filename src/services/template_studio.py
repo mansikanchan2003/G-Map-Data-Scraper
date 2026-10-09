@@ -72,6 +72,14 @@ POSTER_FIELDS = (
     "opportunity_title", "opportunity_text", "sign_title", "bank_name",
     "phone_label", "web_label",
 )
+# The poster fields that can say something untrue, and so go to the fact
+# check. The rest are fixed labels (the bank's name, "Customer Service Point",
+# "Apply today", "Call / WhatsApp:") or copies of a phrase already sent; sent
+# to the check, they came back as "unsupported claims" every round.
+CLAIM_FIELDS = (
+    "headline_line1", "headline_line2", "subline", "callout",
+    "opportunity_title", "opportunity_text",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -554,14 +562,16 @@ def _unsupported_claims(client: GeminiClient, variant: dict) -> List[str]:
     """
     texts = [variant.get("body") or ""]
     poster = variant.get("poster") or {}
-    texts += [str(poster.get(k) or "") for k in POSTER_FIELDS]
+    texts += [str(poster.get(k) or "") for k in CLAIM_FIELDS]
     texts += [b.get("text") or "" for b in poster.get("benefits") or []]
     prompt = (
         "You are checking marketing copy for factual accuracy. The ONLY facts that may be claimed are:\n"
         + "\n".join(f"- {f}" for f in creative_brief.FACTS)
         + "\n\nGeneral encouragement, greetings and calls to action are fine. Blanks written like "
         "{{name}}, {{category}} or {{link}} are filled in per recipient later ({{link}} becomes the "
-        "apply link) and are never claims. List every specific claim "
+        "apply link) and are never claims. Names written in the local language — the bank (e.g. "
+        "भारतीय स्टेट बैंक), 'Customer Service Point', the kiosk, the listed services and schemes — "
+        "are names, not claims. List every specific claim "
         "in the copy below — a service, number, benefit, promise or partner — that these facts do not "
         "support, and any earning phrased as a guarantee rather than an opportunity. Quote each in the "
         "copy's own words with a short English explanation.\n\nCOPY:\n" + "\n".join(t for t in texts if t)
@@ -615,7 +625,7 @@ def _write_copy(client: GeminiClient, prompt: str, angles: List[str], language_c
 def photo_prompt(scene: str, state: str) -> str:
     return (
         f"A candid, unposed documentary photograph taken inside a small State Bank of India "
-        f"customer service point (a bank kiosk run by a local shopkeeper) in {state}, India. "
+        f"customer service point (a bank kiosk run by a local shopkeeper) in {state + ', ' if state else ''}India. "
         f"{scene} The kiosk operator sits behind a counter with a laptop, a fingerprint scanner "
         f"and a small receipt printer, serving a customer at the counter. "
         f"Shot on a 35mm lens at eye level in natural daylight, slight film grain, true-to-life "
@@ -633,7 +643,7 @@ PHOTO_CHECK = (
     '"photorealistic": true only if an ordinary viewer would believe it is a real photograph, '
     '"operator_serving_customer": true if a person behind a counter is serving a customer, '
     '"anatomy_problems": true if any hand, face or body looks distorted, '
-    '"issues": [short strings describing anything wrong]}'
+    '"issues": [at most three short strings describing anything wrong]}'
 )
 
 
@@ -730,7 +740,7 @@ TEXT_PHOTO_CHECK = (
     '"photorealistic": true only if an ordinary viewer would believe it is a real photograph, '
     '"operator_serving_customer": true if a person behind a counter is serving a customer, '
     '"anatomy_problems": true if any hand, face or body looks distorted, '
-    '"issues": [short strings describing anything wrong]}'
+    '"issues": [at most three short strings describing anything wrong]}'
 )
 
 
@@ -757,6 +767,25 @@ def _text_photo_passes(check: dict, phrase: str) -> bool:
             and not check.get("anatomy_problems"))
 
 
+def _has_poster(gen: dict) -> bool:
+    """Whether a draft has the poster agent's text (the business agent's has none)."""
+    poster = gen.get("poster")
+    return isinstance(poster, dict) and bool(poster.get("headline_line1"))
+
+
+def can_make_header(gen: dict) -> bool:
+    """Whether a draft's copy is far enough along to make its image from."""
+    return bool(gen.get("photo_scene")) and (_has_poster(gen) or gen.get("kind") == "business")
+
+
+def _usable_without_photo(tmpl: WhatsAppTemplate) -> bool:
+    """
+    A draft that can go on to review with no new photo: it has one already,
+    or it is the business agent's, whose message can be sent without one.
+    """
+    return bool(tmpl.header_content) or (tmpl.generation or {}).get("kind") == "business"
+
+
 def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, state: str) -> dict:
     """
     Makes the header image once the copy is written, and returns what to
@@ -765,7 +794,9 @@ def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, st
     First a photo with the variant's phrase printed on a sign, read back by a
     vision model and kept only if the reading matches the phrase exactly.
     Image models often misspell Indic scripts, so failing that, a photo with
-    no text and the poster typeset around it, where every word is correct.
+    no text and the poster typeset around it, where every word is correct —
+    for the business agent, whose drafts have no poster text, a smaller
+    banner with the phrase as its headline.
 
     Raises ImageUnavailable when the image allowance is spent. A sign photo
     already made and rejected is recorded in `variant["text_photo_attempts"]`,
@@ -773,9 +804,14 @@ def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, st
     spending another run on the sign.
     """
     phrase = (variant.get("image_phrase") or "").strip()
+    written = " ".join([tmpl.body or ""] + [v for v in (variant.get("poster") or {}).values() if isinstance(v, str)])
+    if phrase and _letters(phrase) not in _letters(written):
+        phrase = ""  # a reviewer's edit took it out of the copy; it is not printed
     attempts = list(variant.get("text_photo_attempts") or [])
     made = sum(1 for a in attempts if a.get("media_id"))
-    if phrase and made < TEXT_PHOTO_ATTEMPTS:
+    # Only in a script the renderer can set too: the fallback must say the same.
+    printable = tmpl.language_code in creative_brief.LANGUAGES
+    if phrase and printable and made < TEXT_PHOTO_ATTEMPTS:
         prompt = text_photo_prompt(variant["photo_scene"], state, phrase, tmpl.language_code)
         for attempt in range(made + 1, TEXT_PHOTO_ATTEMPTS + 1):
             try:
@@ -786,12 +822,14 @@ def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, st
                 attempts.append({"attempt": attempt, "error": str(e)})
                 break
             try:
-                check = client.inspect_image(image, "image/jpeg", TEXT_PHOTO_CHECK)
+                check, checked = client.inspect_image(image, "image/jpeg", TEXT_PHOTO_CHECK), True
             except GeminiError as e:
-                check = {"issues": [f"could not be checked: {e}"]}
-            passed = _text_photo_passes(check, phrase)
+                # Unread is not misspelt: the card says which it was.
+                check, checked = {"issues": [f"could not be checked: {e}"]}, False
+            passed = checked and _text_photo_passes(check, phrase)
             attempts.append({"attempt": attempt, "media_id": _save_media(image, ".jpg"),
-                             "read": check.get("sign_text"), "other_text": check.get("other_text"),
+                             "checked": checked, "read": check.get("sign_text"),
+                             "other_text": check.get("other_text"),
                              "passed": passed, "issues": check.get("issues") or []})
             if passed:
                 header = poster_renderer.render_photo_with_logo(image, "image/jpeg")
@@ -809,7 +847,14 @@ def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, st
         e.text_photo_attempts = attempts  # kept, so the wait does not undo them
         raise
     photo_id = _save_media(photo, ".png" if mime == "image/png" else ".jpg")
-    _render_into(tmpl, variant["poster"], photo, mime)
+    if _has_poster(variant):
+        _render_into(tmpl, variant["poster"], photo, mime)
+    else:
+        # The business agent: no poster text, so the phrase is the headline.
+        image = (poster_renderer.render_banner(phrase, tmpl.language_code, photo, mime) if phrase and printable
+                 else poster_renderer.render_photo_with_logo(photo, mime))
+        tmpl.header_type = "IMAGE"
+        tmpl.header_content = json.dumps({"source_type": "upload", "media_id": _save_media(image, ".jpg")})
     return {"image_mode": "typeset", "image_phrase": phrase or None, "text_photo_attempts": attempts,
             "photo_prompt": used_prompt, "photo_media_id": photo_id, "photo_check": check}
 
@@ -829,7 +874,7 @@ def _park_for_photo(tmpl: WhatsAppTemplate, gen: dict, error: ImageUnavailable) 
     gen["photo_waits"] = waits
     gen["text_photo_attempts"] = getattr(error, "text_photo_attempts", None) or gen.get("text_photo_attempts") or []
     if waits > MAX_PHOTO_WAITS:
-        tmpl.status = GENERATION_FAILED if not tmpl.header_content else AWAITING_APPROVAL
+        tmpl.status = AWAITING_APPROVAL if _usable_without_photo(tmpl) else GENERATION_FAILED
         gen.pop("photo_retry_at", None)
         gen["error"] = f"No photo after waiting {MAX_PHOTO_WAITS} times for the free image allowance. {error}"
         tmpl.generation = gen
@@ -1001,7 +1046,7 @@ def run_new_photo(template_id: str, fresh: bool = True) -> None:
             logger.exception(f"template_studio event=PHOTO_FAILED template_id={template_id}")
             gen["error"] = str(e)
             tmpl.generation = gen
-            tmpl.status = AWAITING_APPROVAL if tmpl.header_content else GENERATION_FAILED
+            tmpl.status = AWAITING_APPROVAL if _usable_without_photo(tmpl) else GENERATION_FAILED
         db.commit()
     finally:
         db.close()

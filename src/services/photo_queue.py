@@ -81,7 +81,7 @@ def recover_after_restart(db) -> int:
         gen = dict(t.generation or {})
         if t.header_content:
             t.status = studio.AWAITING_APPROVAL
-        elif gen.get("poster") and gen.get("photo_scene"):
+        elif studio.can_make_header(gen):
             gen.pop("photo_retry_at", None)
             t.status = studio.PHOTO_PENDING
         else:

@@ -85,6 +85,7 @@ class FakeGemini:
     checks: list = []
     # What the fact check reports, one entry per call; empty means all supported.
     unsupported: list = []
+    fact_prompts: list = []
 
     def __init__(self):
         self.image_calls = 0
@@ -100,12 +101,16 @@ class FakeGemini:
 
     def generate_json(self, prompt, temperature=1.0):
         if "checking marketing copy" in prompt:
+            FakeGemini.fact_prompts.append(prompt)
             return {"unsupported": FakeGemini.unsupported.pop(0) if FakeGemini.unsupported else []}
         FakeGemini.prompts.append(prompt)
         return {"variants": copy.deepcopy(FakeGemini.variants)}
 
     def inspect_image(self, image, mime, question):
-        return dict(FakeGemini.checks.pop(0) if FakeGemini.checks else GOOD_CHECK)
+        check = FakeGemini.checks.pop(0) if FakeGemini.checks else GOOD_CHECK
+        if isinstance(check, Exception):
+            raise check
+        return dict(check)
 
     last_used_image_model = "fake-image"
     # Images made, and how many more before the "allowance" runs out (None: no limit).
@@ -137,7 +142,7 @@ def db(monkeypatch, tmp_path):
     monkeypatch.setattr(template_studio.poster_renderer, "render",
                         lambda poster, lang, photo, mime: b"\xff\xd8JPEG" + lang.encode())
     FakeGemini.prompts, FakeGemini.variants, FakeGemini.checks = [], [copy.deepcopy(PA_VARIANT)], []
-    FakeGemini.unsupported = []
+    FakeGemini.unsupported, FakeGemini.fact_prompts = [], []
     FakeGemini.images, FakeGemini.allowance = 0, None
 
     session = TestingSessionLocal()
@@ -627,3 +632,77 @@ def test_retry_after_is_read_from_hugging_faces_message():
     from src.services.gemini_client import _retry_after
     assert _retry_after("You have exceeded your free ZeroGPU quota. Try again in 2:05:30.") == 7530
     assert _retry_after("You have exceeded your ZeroGPU runs limit.") is None
+
+
+# --- the fact check reads only what can make a claim --------------------------
+
+def test_poster_labels_are_not_sent_to_the_fact_check(db):
+    generate(db)
+    sent = FakeGemini.fact_prompts[0].split("COPY:")[1]
+    # Fixed labels came back as "unsupported claims" every round.
+    for label in ("bank_name", "sign_title", "cta", "benefits_title", "phone_label", "web_label"):
+        assert PA_POSTER[label] not in sent, label
+    # The text that can promise something is still read.
+    for field in ("callout", "subline", "opportunity_text"):
+        assert PA_POSTER[field] in sent, field
+    assert all(b["text"] in sent for b in PA_POSTER["benefits"])
+    assert "are names, not claims" in FakeGemini.fact_prompts[0]
+
+
+# --- a cut-off answer from the vision model -----------------------------------
+
+class SeqG4F:
+    """A g4f stand-in answering each call with the next of `answers`."""
+
+    def __init__(self, answers):
+        self.answers, self.calls = list(answers), 0
+        self.chat = self.completions = self
+
+    def create(self, model, messages, **kwargs):
+        self.calls += 1
+        msg = type("M", (), {"content": self.answers.pop(0)})()
+        return type("R", (), {"choices": [type("C", (), {"message": msg})()]})()
+
+
+def test_a_cut_off_vision_answer_is_asked_again(monkeypatch):
+    from src.services import gemini_client as gc
+
+    fake = SeqG4F(['```json\n{"sign_text": "ਆਪਣਾ ਕਾਰ', '{"sign_text": "ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ", "issues": []}'])
+    monkeypatch.setattr(gc, "G4FClient", lambda: fake)
+    check = gc.GeminiClient().inspect_image(PNG, "image/png", "read the sign")
+    assert check["sign_text"] == "ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ"
+    assert fake.calls == 2
+
+
+def test_two_unreadable_vision_answers_give_up(monkeypatch):
+    from src.services import gemini_client as gc
+
+    monkeypatch.setattr(gc, "G4FClient", lambda: SeqG4F(['{"sign_text": "ਆ', "sorry"]))
+    with pytest.raises(gc.GeminiError, match="could not be read"):
+        gc.GeminiClient().inspect_image(PNG, "image/png", "read the sign")
+
+
+def test_an_unread_sign_is_recorded_as_unchecked_not_misspelt(db, monkeypatch):
+    from src.services.gemini_client import GeminiError
+
+    with_phrase(monkeypatch, [])
+    FakeGemini.checks = [GeminiError("the free vision model's answer could not be read"), GOOD_CHECK]
+    [draft] = generate(db)
+    [attempt] = draft.generation["text_photo_attempts"]
+    assert attempt["checked"] is False and attempt["passed"] is False
+    assert draft.generation["image_mode"] == "typeset"
+
+
+def test_a_phrase_edited_out_of_the_copy_is_not_printed(db, monkeypatch):
+    with_phrase(monkeypatch, [PHRASE])
+    [draft] = generate(db)
+    poster = {**draft.generation["poster"], "headline_line2": "ਨਵੀਂ ਲਾਈਨ ਇੱਥੇ"}
+    draft.generation = {**draft.generation, "poster": poster}
+    db.commit()
+    FakeGemini.images = 0
+    template_studio.run_new_photo(draft.template_id)
+    db.expire_all()
+    draft = db.get(WhatsAppTemplate, draft.template_id)
+    # No sign attempt for a phrase no longer in the copy: just the plain photo.
+    assert FakeGemini.images == 1
+    assert draft.generation["image_mode"] == "typeset"

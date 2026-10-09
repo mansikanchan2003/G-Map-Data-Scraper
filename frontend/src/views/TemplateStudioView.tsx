@@ -2,16 +2,16 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   approveStudioDraft, editStudioDraft, fetchStudioDrafts, fetchStudioPerformance,
   fetchStudioRules, fetchStudioStates, fetchStudioStatus, generateStudioDrafts,
-  rejectStudioDraft, requestNewPhoto,
+  rejectStudioDraft, requestNewPhoto, studioMediaUrl,
 } from '../api/whatsapp';
 import type {
   StudioDraft, StudioPerformance, StudioPoster, StudioRules, StudioState,
 } from '../api/whatsapp';
-import { getApiBaseUrl } from '../api';
 import { WhatsAppPreview } from '../components/WhatsAppPreview';
 import { SheetTemplateBuilder } from '../components/SheetTemplateBuilder';
 import { BusinessTemplateAgent } from '../components/BusinessTemplateAgent';
 import { formatDateTime } from '../utils/datetime';
+import { SignNote } from '../components/SignNote';
 
 // Three ways to make a template.
 //   Business data: the agent writes for scraped businesses, learning from how
@@ -54,16 +54,6 @@ const TAB_LABELS: Record<Tab, string> = {
   working: 'In progress / failed',
   approved: 'Approved',
   rejected: 'Rejected',
-};
-
-const mediaUrl = (headerContent: string | null) => {
-  if (!headerContent) return null;
-  try {
-    const data = JSON.parse(headerContent);
-    return data.media_id ? `${getApiBaseUrl()}/api/v1/whatsapp/media/${data.media_id}` : null;
-  } catch {
-    return null;
-  }
 };
 
 const pct = (v: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
@@ -333,7 +323,7 @@ const DraftCard: React.FC<{
   onZoom: (url: string) => void; onEdit: () => void; onApprove: () => void;
   onReject: () => void; onNewPhoto: () => void;
 }> = ({ draft, busy, onZoom, onEdit, onApprove, onReject, onNewPhoto }) => {
-  const img = mediaUrl(draft.header_content);
+  const img = studioMediaUrl(draft.header_content);
   const gen = draft.generation || {};
   const check = gen.photo_check;
   const awaiting = draft.status === 'AWAITING_APPROVAL';
@@ -380,6 +370,7 @@ const DraftCard: React.FC<{
             <span className="text-slate-500">Tests{gen.angle_key ? ` ${gen.angle_key.replace(/_/g, ' ')}` : ''}: </span>{gen.angle}
           </div>
         )}
+        <SignNote generation={gen} />
         {check && !check.passed && (check.issues || []).length > 0 && (
           <div className="text-xs text-amber-300">Photo: {check.issues!.join('; ')}</div>
         )}

@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   approveStudioDraft, editStudioDraft, fetchBusinessDrafts, fetchSheetSettings, fetchStudioStatus,
-  rejectStudioDraft, stashAudience, writeBusinessDrafts,
+  rejectStudioDraft, requestNewPhoto, stashAudience, studioMediaUrl, writeBusinessDrafts,
 } from '../api/whatsapp';
 import type { SheetSettings, StudioDraft } from '../api/whatsapp';
 import { LANGUAGES, readSheet } from './SheetTemplateBuilder';
 import type { Sheet } from './SheetTemplateBuilder';
 import { WhatsAppPreview } from './WhatsAppPreview';
 import { formatDateTime } from '../utils/datetime';
+import { SignNote } from './SignNote';
 
 // The agent writes templates for the businesses in an export, learning from
 // how earlier templates did. A draft reaches Meta only when someone approves
@@ -17,6 +18,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   GENERATING: { label: 'Agent is writing…', cls: 'text-sky-300' },
   AWAITING_APPROVAL: { label: 'Awaiting your review', cls: 'text-amber-300' },
   GENERATION_FAILED: { label: 'Writing failed', cls: 'text-rose-300' },
+  PHOTO_PENDING: { label: 'Text ready — photo waiting', cls: 'text-amber-300' },
   REJECTED_BY_REVIEWER: { label: 'Rejected by reviewer', cls: 'text-slate-400' },
   PENDING: { label: 'Approved — Meta is reviewing', cls: 'text-sky-300' },
   APPROVED: { label: 'Approved by Meta — ready to send', cls: 'text-emerald-300' },
@@ -63,14 +65,16 @@ export const BusinessTemplateAgent: React.FC = () => {
     load();
   }, [load]);
 
-  // Writing takes under a minute; Meta's review minutes to a day.
+  // Writing takes under a minute; Meta's review minutes to a day; a photo
+  // waiting for the free allowance, hours.
   const writing = drafts.some(d => d.status === 'GENERATING');
   const atMeta = drafts.some(d => META_WAITING(d.status));
+  const waiting = drafts.some(d => d.status === 'PHOTO_PENDING');
   useEffect(() => {
-    if (!writing && !atMeta) return;
+    if (!writing && !atMeta && !waiting) return;
     const t = setInterval(load, writing ? 4000 : 30000);
     return () => clearInterval(t);
-  }, [writing, atMeta, load]);
+  }, [writing, atMeta, waiting, load]);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -269,6 +273,12 @@ const DraftCard: React.FC<{
     onChanged();
     say('ok', 'Rejected. The agent reads your reason before writing the next round.');
   });
+  const newPhoto = () => act(async () => {
+    await requestNewPhoto(d.template_id);
+    onChanged();
+  });
+  const img = studioMediaUrl(d.header_type === 'IMAGE' ? d.header_content : null);
+  const reviewable = d.status === 'AWAITING_APPROVAL' || d.status === 'PHOTO_PENDING';
 
   return (
     <div className="p-4 rounded-lg border border-slate-800 bg-slate-900 space-y-3">
@@ -286,13 +296,26 @@ const DraftCard: React.FC<{
       {d.status === 'GENERATING' && (
         <div className="py-8 flex items-center justify-center gap-3 text-sm text-slate-400">
           <div className="w-5 h-5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-          Reading past results and writing…
+          {d.body ? 'Text written. Making the photo and checking its sign…' : 'Reading past results and writing…'}
         </div>
       )}
       {d.status === 'GENERATION_FAILED' && <div className="text-sm text-rose-300">{g.error}</div>}
 
       {d.body && d.status !== 'GENERATING' && (
         <>
+          {img && (
+            <a href={img} target="_blank" rel="noopener noreferrer" title="Open the image">
+              <img src={img} alt="Header" className="w-full max-h-72 object-cover rounded border border-slate-800 bg-slate-950" />
+            </a>
+          )}
+          {d.status === 'PHOTO_PENDING' && (
+            <div className="text-xs text-amber-300">
+              The photo is waiting for the free image allowance to come back
+              {g.photo_retry_at ? <> and will be made automatically around {formatDateTime(g.photo_retry_at)}</> : null}.
+            </div>
+          )}
+          <SignNote generation={g} />
+          {g.photo_error && <div className="text-xs text-amber-300">No photo: {g.photo_error}. The message can be sent without one.</div>}
           {g.angle && <div className="text-xs text-slate-300"><span className="text-slate-500">Idea it tests: </span>{g.angle}</div>}
           {g.learned && (
             <div className="text-xs text-slate-300">
@@ -323,6 +346,7 @@ const DraftCard: React.FC<{
             <div className="grid md:grid-cols-[1fr_260px] gap-3">
               <pre className="whitespace-pre-wrap text-sm text-slate-100 bg-slate-950 border border-slate-800 rounded p-3 font-sans">{d.body}</pre>
               <WhatsAppPreview businessName={g.examples?.name || ''} templateBody={filled(d)}
+                headerType={d.header_type} headerContent={d.header_content}
                 footer={d.footer} buttons={d.buttons} />
             </div>
           )}
@@ -357,7 +381,7 @@ const DraftCard: React.FC<{
           <button onClick={() => setMode('view')} className={`${btn} bg-slate-800 text-slate-200`}>Cancel</button>
         </div>
       )}
-      {d.status === 'AWAITING_APPROVAL' && mode === 'reject' && (
+      {reviewable && mode === 'reject' && (
         <div className="flex flex-wrap items-center gap-2">
           <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Why? The agent reads this next round."
             className={`${inputCls} flex-1 min-w-[240px] px-3`} />
@@ -372,6 +396,21 @@ const DraftCard: React.FC<{
           </button>
           <button onClick={() => setMode('edit')} className={`${btn} bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200`}>
             <span className="material-symbols-outlined text-[16px]">edit</span>Edit text
+          </button>
+          {g.photo_scene && (
+            <button onClick={newPhoto} disabled={busy} className={`${btn} bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200`}>
+              <span className="material-symbols-outlined text-[16px]">image</span>New photo
+            </button>
+          )}
+          <button onClick={() => setMode('reject')} className={`${btn} bg-slate-800 hover:bg-slate-700 border border-slate-700 text-rose-300`}>
+            <span className="material-symbols-outlined text-[16px]">close</span>Reject
+          </button>
+        </div>
+      )}
+      {d.status === 'PHOTO_PENDING' && mode === 'view' && (
+        <div className="flex flex-wrap gap-2">
+          <button onClick={newPhoto} disabled={busy} className={`${btn} bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200`}>
+            <span className="material-symbols-outlined text-[16px]">refresh</span>Try now
           </button>
           <button onClick={() => setMode('reject')} className={`${btn} bg-slate-800 hover:bg-slate-700 border border-slate-700 text-rose-300`}>
             <span className="material-symbols-outlined text-[16px]">close</span>Reject

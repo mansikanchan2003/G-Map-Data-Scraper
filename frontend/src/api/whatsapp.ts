@@ -538,6 +538,15 @@ export interface StudioPhotoCheck {
   issues?: string[];
 }
 
+export interface StudioSignAttempt {
+  attempt: number;
+  /** False when the vision model's answer could not be read: unchecked, not misspelt. */
+  checked?: boolean;
+  read?: string | null;
+  passed?: boolean;
+  error?: string;
+}
+
 export interface StudioDraft {
   template_id: string;
   name: string;
@@ -569,6 +578,11 @@ export interface StudioDraft {
     /** How the header was made: the photo's own sign read back correctly, or the typeset poster. */
     image_mode?: 'photo_text' | 'typeset';
     image_phrase?: string | null;
+    /** The tries at a photo with the phrase on its sign, and what the sign was read as. */
+    text_photo_attempts?: StudioSignAttempt[];
+    /** Why a business draft has no photo; its message can still be sent. */
+    photo_error?: string;
+    photo_scene?: string;
     // The business agent's drafts:
     kind?: 'business';
     /** What past results shaped this wording, in the agent's words. */
@@ -640,6 +654,17 @@ const studioCall = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.detail || `Request failed (${res.status})`);
   return json as T;
+};
+
+/** Where a draft's uploaded header image is served, from its header_content. */
+export const studioMediaUrl = (headerContent: string | null): string | null => {
+  if (!headerContent) return null;
+  try {
+    const data = JSON.parse(headerContent);
+    return data.media_id ? `${getApiBaseUrl()}/api/v1/whatsapp/media/${data.media_id}` : null;
+  } catch {
+    return null;
+  }
 };
 
 export const fetchStudioStatus = () => studioCall<{ ready: boolean; error: string | null }>('/status');

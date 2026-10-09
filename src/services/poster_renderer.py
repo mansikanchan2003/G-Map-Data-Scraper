@@ -210,9 +210,9 @@ html,body{{margin:0;width:{size}px;height:{size}px;overflow:hidden}}
     return image
 
 
-def render(poster: dict, language_code: str, photo: bytes, photo_mime: str) -> bytes:
+def _capture(page_html: str, language_code: str) -> bytes:
     """
-    Renders the poster to JPEG bytes.
+    Screenshots a laid-out page to JPEG bytes.
 
     Refuses rather than guessing when a font did not load — a fallback font
     would quietly draw boxes instead of the state's script — or when text is
@@ -220,9 +220,7 @@ def render(poster: dict, language_code: str, photo: bytes, photo_mime: str) -> b
     """
     from playwright.sync_api import sync_playwright
 
-    page_html = build_html(poster, language_code, photo, photo_mime)
     needed = [creative_brief.LANGUAGES[language_code]["font"], "Material Symbols Outlined"]
-
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
         try:
@@ -241,3 +239,70 @@ def render(poster: dict, language_code: str, photo: bytes, photo_mime: str) -> b
     if len(image) > MAX_BYTES:
         raise PosterError(f"Poster is {len(image) / 1024 / 1024:.1f} MB; WhatsApp allows 5 MB")
     return image
+
+
+def render(poster: dict, language_code: str, photo: bytes, photo_mime: str) -> bytes:
+    """Renders the poster to JPEG bytes."""
+    return _capture(build_html(poster, language_code, photo, photo_mime), language_code)
+
+
+def build_banner_html(phrase: str, language_code: str, photo: bytes, photo_mime: str) -> str:
+    """
+    A smaller poster for the business agent, whose drafts have a message but
+    not the poster agent's headline, benefits and labels: the photo, the Eko
+    logo, the image phrase as the headline, the SBI sign and the contacts.
+
+    Every word not taken from the approved message is a brand name, the
+    phone number or the address, so nothing here needs translating.
+    """
+    font = creative_brief.LANGUAGES[language_code]["font"]
+    font_q = font.replace(" ", "+")
+    photo_uri = f"data:{photo_mime};base64,{base64.b64encode(photo).decode()}"
+    return f"""<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700;800&family={font_q}:wght@400;600;700;800&display=block" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,500,1,0&display=block" rel="stylesheet">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+html,body{{width:{WIDTH}px;height:{HEIGHT}px;overflow:hidden;background:#fff}}
+body{{font-family:"{font}","Noto Sans",sans-serif;color:#14234B;position:relative}}
+.ms{{font-family:"Material Symbols Outlined";font-weight:500;font-style:normal;line-height:1;
+  font-feature-settings:"liga";-webkit-font-smoothing:antialiased;display:inline-block}}
+.abs{{position:absolute}}
+.photo{{left:560px;top:0;width:976px;height:904px;background:url('{photo_uri}') center/cover no-repeat}}
+.fade{{left:560px;top:0;width:420px;height:904px;background:linear-gradient(90deg,#fff 0%,rgba(255,255,255,.85) 35%,rgba(255,255,255,0) 100%)}}
+.logo{{left:48px;top:40px;height:96px}} .logo svg{{height:96px;width:auto}}
+.headline{{left:48px;top:200px;width:640px;height:390px;font-size:84px;font-weight:800;line-height:1.25;
+  display:flex;align-items:center}}
+.rule{{left:50px;top:620px;width:560px;height:4px;background:linear-gradient(90deg,#F5A300,#14234B 40%,rgba(20,35,75,0))}}
+.tag{{left:48px;top:650px;font-family:"Noto Sans",sans-serif;font-size:34px;font-weight:700;line-height:1.35}}
+.eko{{color:#F5A300;font-weight:800}} .sbi{{color:#1D4ED8;font-weight:800}}
+.sign{{right:34px;top:30px;width:520px;border-radius:12px;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.28)}}
+.sign .top{{background:linear-gradient(180deg,#F4F8FD,#DCE8F6);padding:14px 24px;font-family:"Noto Sans",sans-serif;
+  font-size:32px;font-weight:700}}
+.sign .band{{background:#1E3A8A;padding:10px 24px;display:flex;align-items:center;gap:14px;color:#fff;font-family:"Noto Sans",sans-serif}}
+.sign .sbiw{{font-size:44px;font-weight:800;letter-spacing:1px}} .sign .be{{margin-left:auto;font-size:18px;font-weight:600;letter-spacing:.5px}}
+.foot{{left:0;top:904px;width:{WIDTH}px;height:120px;background:#13214A;display:flex;align-items:center;justify-content:center;gap:56px}}
+.fc{{display:flex;align-items:center;gap:18px}}
+.fi{{width:78px;height:78px;border-radius:39px;background:#F5B400;display:flex;align-items:center;justify-content:center}}
+.fi .ms{{font-size:46px;color:#13214A}} .fg .ms{{font-size:70px;color:#F5B400}}
+.fv{{font-family:"Noto Sans",sans-serif;color:#FFC21A;font-size:46px;font-weight:800}}
+.div{{width:2px;height:78px;background:rgba(255,255,255,.35)}}
+</style></head><body>
+<div class="abs photo"></div><div class="abs fade"></div>
+<div class="abs logo">{_logo_svg()}</div>
+<div class="abs headline"><div class="fit" id="headline" data-min="44" style="max-height:390px;width:100%">{_esc(phrase)}</div></div>
+<div class="abs rule"></div>
+<div class="abs tag">{_brand_marks("Eko · SBI Kiosk / CSP")}</div>
+<div class="abs sign"><div class="top">Customer Service Point</div>
+  <div class="band">{SBI_MARK}<span class="sbiw">SBI</span><span class="be">STATE BANK OF INDIA</span></div></div>
+<div class="abs foot">
+  <div class="fc"><div class="fi"><span class="ms">call</span></div><div class="fv">{_esc(creative_brief.PHONE)}</div></div>
+  <div class="div"></div>
+  <div class="fc fg"><span class="ms">language</span><div class="fv">{_esc(creative_brief.SIGNUP_URL)}</div></div>
+</div>
+</body></html>"""
+
+
+def render_banner(phrase: str, language_code: str, photo: bytes, photo_mime: str) -> bytes:
+    """Renders the business agent's banner to JPEG bytes."""
+    return _capture(build_banner_html(phrase, language_code, photo, photo_mime), language_code)

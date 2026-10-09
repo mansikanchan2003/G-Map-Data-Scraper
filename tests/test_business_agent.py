@@ -228,3 +228,141 @@ def test_business_drafts_are_kept_out_of_the_poster_list(db):
         assert len(client.get("/api/v1/whatsapp/studio/business-drafts").json()) == 1
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+# --- the image, made from the finished text -----------------------------------
+
+PHRASE = "अतिरिक्त आय चाहते हैं"  # copied from GOOD_BODY
+SCENE = "A shopkeeper in his forties serves a farmer at the counter of his battery store."
+
+
+class ImageGemini(FakeGemini):
+    """FakeGemini that also makes photos and reads their signs."""
+
+    reads: list = []          # what each sign photo is read as, in turn
+    images = 0
+    allowance = None          # images left before the "free allowance" runs out
+    image_failure = None      # an error every image request raises
+    last_used_image_model = "fake-flux"
+
+    def generate_json(self, prompt, temperature=1.0):
+        FakeGemini.prompts.append(prompt)
+        if "checking marketing copy" in prompt:
+            return {"unsupported": []}
+        return {"variants": [variant(image_phrase=PHRASE, photo_scene=SCENE)]}
+
+    def generate_image(self, prompt, seed=None):
+        from src.services.gemini_client import ImageUnavailable
+        if ImageGemini.image_failure:
+            raise ImageGemini.image_failure
+        if ImageGemini.allowance is not None:
+            if ImageGemini.allowance <= 0:
+                raise ImageUnavailable("You have exceeded your free ZeroGPU quota.")
+            ImageGemini.allowance -= 1
+        ImageGemini.images += 1
+        return b"\xff\xd8photo"
+
+    def inspect_image(self, image, mime, question):
+        if "sign_text" in question:
+            read = ImageGemini.reads.pop(0) if ImageGemini.reads else ""
+            return {"sign_text": read, "other_text": "", "photorealistic": True,
+                    "operator_serving_customer": True, "anatomy_problems": False, "issues": []}
+        return {"has_text": False, "photorealistic": True, "operator_serving_customer": True,
+                "anatomy_problems": False, "issues": []}
+
+
+@pytest.fixture
+def images(monkeypatch, tmp_path):
+    monkeypatch.setattr(studio, "MEDIA_DIR", str(tmp_path))
+    banners = []
+    monkeypatch.setattr(studio.poster_renderer, "render_banner",
+                        lambda phrase, lang, photo, mime: banners.append((phrase, lang)) or b"\xff\xd8BANNER")
+    monkeypatch.setattr(studio.poster_renderer, "render_photo_with_logo", lambda photo, mime: b"\xff\xd8LOGO")
+    ImageGemini.reads, ImageGemini.images = [], 0
+    ImageGemini.allowance = ImageGemini.image_failure = None
+    return banners
+
+
+def image_round(db):
+    summary = ba.summarise(EXPORT)
+    rows = ba.create_placeholders(db, summary, 1, None, "hi", "https://kiosk.eko.in/", None)
+    with patch("src.services.business_agent.GeminiClient", ImageGemini):
+        ba.run_generation([r.template_id for r in rows])
+    db.expire_all()
+    return db.query(WhatsAppTemplate).get(rows[0].template_id)
+
+
+def test_the_prompt_asks_for_a_phrase_from_the_body_and_a_scene_without_text(db, images):
+    FakeGemini.prompts = []
+    image_round(db)
+    prompt = FakeGemini.prompts[0]
+    assert '"image_phrase": "2 to 5 words copied exactly from your body' in prompt
+    assert "No text, signs or logos" in prompt
+    # The 9 October instructions asked the image model for Indic text and logos.
+    assert "MUST instruct the model to write" not in prompt
+
+
+def test_a_correct_sign_makes_the_photo_the_header(db, images):
+    ImageGemini.reads = [PHRASE]
+    d = image_round(db)
+    assert d.status == studio.AWAITING_APPROVAL
+    assert d.header_type == "IMAGE" and d.header_content
+    assert d.generation["image_mode"] == "photo_text"
+    assert ImageGemini.images == 1 and images == []
+
+
+def test_a_misspelt_sign_gets_the_banner_with_the_phrase(db, images):
+    ImageGemini.reads = ["अतिरिक्त आय चाहत"]
+    d = image_round(db)
+    assert d.generation["image_mode"] == "typeset"
+    assert images == [(PHRASE, "hi")]
+    assert ImageGemini.images == 2  # one sign photo, one plain photo
+    assert d.status == studio.AWAITING_APPROVAL and d.header_content
+
+
+def test_a_spent_allowance_waits_and_the_queue_finishes_it(db, images):
+    from datetime import timedelta
+    from src.services import photo_queue
+
+    ImageGemini.allowance = 0
+    d = image_round(db)
+    assert d.status == studio.PHOTO_PENDING
+    assert d.body == GOOD_BODY, "the text is kept while the photo waits"
+
+    ImageGemini.allowance, ImageGemini.reads = 5, [PHRASE]
+    with patch("src.services.template_studio.GeminiClient", ImageGemini):
+        assert photo_queue.tick(db, now=_now() + timedelta(hours=3)) == 1
+    db.expire_all()
+    d = db.query(WhatsAppTemplate).get(d.template_id)
+    assert d.status == studio.AWAITING_APPROVAL and d.generation["image_mode"] == "photo_text"
+
+
+def test_another_photo_failure_leaves_a_sendable_draft(db, images):
+    from src.services.gemini_client import GeminiError
+
+    ImageGemini.image_failure = GeminiError("the Space returned an error")
+    d = image_round(db)
+    assert d.status == studio.AWAITING_APPROVAL
+    assert not d.header_content
+    assert "photo" in d.generation["photo_error"].lower()
+
+
+def test_an_edit_that_drops_the_phrase_is_flagged(db, images):
+    ImageGemini.reads = [PHRASE]
+    d = image_round(db)
+    problems = ba.update(db, d, GOOD_BODY.replace("अतिरिक्त आय चाहते हैं", "और कमाई चाहते हैं"), None, None)
+    assert any("no longer in the message" in p for p in problems)
+
+
+@pytest.mark.parametrize("phrase, problem", [
+    ("{{name}} आय चाहते", "has a blank in it"),
+    ("यह कहीं नहीं लिखा", "not copied exactly from the body"),
+    ("आय", "needs 2 to 5"),
+])
+def test_image_phrase_rules(phrase, problem):
+    errors = ba.validate(variant(image_phrase=phrase), "hi", ["name", "category", "state"])
+    assert any(problem in e for e in errors)
+
+
+def test_a_good_image_phrase_passes():
+    assert ba.validate(variant(image_phrase=PHRASE), "hi", ["name", "category", "state"]) == []
