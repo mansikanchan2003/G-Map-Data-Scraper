@@ -105,11 +105,11 @@ services:
       META_APP_SECRET: ${META_APP_SECRET:-}
       META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-gmap_scraper_verify_token}
 
-      # Template Studio. The agent writes copy, makes and checks photos with
-      # Gemini. Model overrides are optional; the best available is picked.
+      # Template Studio. Gemini writes copy and checks photos. FLUX.1 Schnell
+      # generates photos via Hugging Face.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL:-}
-      GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL:-}
+      HF_TOKEN: ${HF_TOKEN:-}
 
       # Discovery tuning. These were in .env but never listed here, so the
       # container fell back to the code defaults and editing .env appeared to

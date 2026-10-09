@@ -626,8 +626,8 @@ Each round:
 3. Every variant is checked: all text in the state's script, only the allowed
    facts, the contact number present, no URL in the body, Meta's length limits.
 4. A photograph of an SBI Customer Service Point with an operator is generated
-   **with no text in it**, checked for stray lettering and an artificial look,
-   and regenerated if it fails.
+   **with no text in it** by FLUX.1 Schnell, checked for stray lettering and an
+   artificial look by Gemini, and regenerated if it fails.
 5. The poster is rendered in Chromium around the photo: Eko logo, SBI
    signboard, headline, benefits and contact footer, all set in real fonts.
    Image models misspell Indic scripts; a renderer does not.
@@ -640,8 +640,8 @@ The table at the bottom — sent, delivered, read, link visits and button taps p
 template and recipient state — is what the agent learns from. It only means
 something once the webhook is live: campaigns sent before it show "not tracked".
 
-Needs `GEMINI_API_KEY`, and internet access from the backend to Google Fonts
-at render time.
+Needs `GEMINI_API_KEY` (for text), `HF_TOKEN` (for Hugging Face Inference API FLUX.1 models),
+and internet access from the backend to Google Fonts at render time.
 
 ### Media limits
 

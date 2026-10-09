@@ -484,34 +484,37 @@ def _photo_passes(check: dict) -> bool:
             and check.get("operator_serving_customer") and not check.get("anatomy_problems"))
 
 
-def _make_photo(client: GeminiClient, scene: str, state: str):
+def _make_photo(gemini: GeminiClient, scene: str, state: str):
     """
-    Generates photos until one passes the check, or the attempts run out.
-
-    When none passes the best one is kept and its problems recorded, so the
-    reviewer sees them and decides, rather than the round failing outright.
+    Generates a photo using the available models, with multiple attempts if the image check fails.
     """
-    prompt = photo_prompt(scene, state)
-    best = None
-    for attempt in range(1, PHOTO_ATTEMPTS + 1):
-        image = client.generate_image(prompt, aspect_ratio="1:1")
-        mime = "image/png" if image[:4] == b"\x89PNG" else "image/jpeg"
+    used_prompt = photo_prompt(scene, state)
+    
+    last_photo = None
+    last_mime = "image/jpeg"
+    last_check = {"issues": ["generation failed"]}
+    
+    for attempt in range(PHOTO_ATTEMPTS):
         try:
-            check = client.inspect_image(image, mime, PHOTO_CHECK)
-        except GeminiError as e:
-            check = {"issues": [f"could not be checked: {e}"]}
-        check["attempt"] = attempt
-        score = sum(bool(x) for x in (not check.get("has_text"), check.get("photorealistic"),
-                                      check.get("operator_serving_customer"),
-                                      not check.get("anatomy_problems")))
-        if best is None or score > best[3]:
-            best = (image, mime, check, score)
-        if _photo_passes(check):
-            break
-        logger.info(f"template_studio event=PHOTO_REJECTED attempt={attempt} issues={check.get('issues')}")
-    image, mime, check, _ = best
-    check["passed"] = _photo_passes(check)
-    return image, mime, prompt, check
+            photo = gemini.generate_image(used_prompt)
+            # HF API usually returns JPEG or PNG
+            mime = "image/png" if photo.startswith(b"\x89PNG") else "image/jpeg"
+            check = gemini.inspect_image(photo, mime, PHOTO_CHECK)
+            
+            last_photo = photo
+            last_mime = mime
+            last_check = check
+            
+            if _photo_passes(check):
+                return photo, mime, used_prompt, check
+        except Exception as e:
+            logger.warning(f"Photo generation attempt {attempt + 1} failed: {e}")
+            last_check = {"issues": [str(e)]}
+            
+    if last_photo is None:
+        raise GeminiError(f"Failed to generate photo after {PHOTO_ATTEMPTS} attempts: {last_check.get('issues')}")
+        
+    return last_photo, last_mime, used_prompt, last_check
 
 
 def _save_media(data: bytes, ext: str) -> str:
@@ -637,7 +640,7 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
                     "photo_prompt": used_prompt,
                     "photo_media_id": photo_id,
                     "photo_check": check,
-                    "models": {**models, "image": client.image_model()},
+                    "models": {**models, "image": client.last_used_image_model},
                 }
                 tmpl.status = AWAITING_APPROVAL
                 db.commit()
@@ -671,6 +674,7 @@ def run_new_photo(template_id: str) -> None:
             photo, mime, used_prompt, check = _make_photo(client, gen["photo_scene"], tmpl.target_state)
             gen["photo_media_id"] = _save_media(photo, ".png" if mime == "image/png" else ".jpg")
             gen["photo_prompt"], gen["photo_check"] = used_prompt, check
+            gen.setdefault("models", {})["image"] = client.last_used_image_model
             gen.pop("error", None)
             _render_into(tmpl, gen["poster"], photo, mime)
             tmpl.generation = gen

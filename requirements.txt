@@ -19,3 +19,5 @@ psutil
 # Authentication: signed session tokens and password hashing
 PyJWT==2.10.1
 bcrypt==4.2.1
+gradio_client
+g4f

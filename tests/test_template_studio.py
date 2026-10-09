@@ -104,12 +104,16 @@ class FakeGemini:
         FakeGemini.prompts.append(prompt)
         return {"variants": copy.deepcopy(FakeGemini.variants)}
 
-    def generate_image(self, prompt, aspect_ratio="1:1"):
-        self.image_calls += 1
-        return PNG
-
     def inspect_image(self, image, mime, question):
         return dict(FakeGemini.checks.pop(0) if FakeGemini.checks else GOOD_CHECK)
+
+
+class FakeFlux:
+    def is_configured(self):
+        return True
+
+    def generate_image(self, prompt, aspect_ratio="1:1"):
+        return PNG
 
 
 class FakeUser:
@@ -123,6 +127,7 @@ def db(monkeypatch, tmp_path):
     monkeypatch.setattr(src.database, "SessionLocal", TestingSessionLocal)
     monkeypatch.setattr(template_studio, "MEDIA_DIR", str(tmp_path))
     monkeypatch.setattr(template_studio, "GeminiClient", FakeGemini)
+    monkeypatch.setattr(template_studio, "FluxClient", FakeFlux)
     monkeypatch.setattr(template_studio.poster_renderer, "render",
                         lambda poster, lang, photo, mime: b"\xff\xd8JPEG" + lang.encode())
     FakeGemini.prompts, FakeGemini.variants, FakeGemini.checks = [], [copy.deepcopy(PA_VARIANT)], []
@@ -329,28 +334,34 @@ def test_poster_html_carries_every_rule():
 # --- models the key cannot use -----------------------------------------------
 
 def test_unusable_models_fall_back_and_photo_failure_keeps_the_copy(db, monkeypatch):
-    """A free-tier key: Pro has no quota and no image model works at all."""
+    """Text models fall back on quota errors, and a FLUX image failure keeps the copy."""
     from src.services import gemini_client as gc
+    from src.services import flux_client as fc
 
     monkeypatch.setenv("GEMINI_API_KEY", "k")
     monkeypatch.setattr(gc, "_dead_models", set())
     monkeypatch.setattr(gc.GeminiClient, "available_models",
-                        lambda self: ["gemini-3.1-pro-preview", "gemini-3.8-flash", "gemini-3-pro-image"])
+                        lambda self: ["gemini-3.1-pro-preview", "gemini-3.8-flash"])
     calls = []
 
     def fake_post(self, model, payload, timeout):
         calls.append(model)
-        if model in ("gemini-3.1-pro-preview", "gemini-3-pro-image"):
+        if model in ("gemini-3.1-pro-preview",):
             raise gc.GeminiError(f"Gemini ({model}) refused the request: Quota exceeded ... limit: 0, model: x")
         return {"candidates": [{"content": {"parts": [{"text": json.dumps({"variants": [PA_VARIANT]})}]}}]}
 
     monkeypatch.setattr(gc.GeminiClient, "_post", fake_post)
     monkeypatch.setattr(template_studio, "GeminiClient", gc.GeminiClient)
 
+    def failing_flux_generate(*args, **kwargs):
+        raise fc.FluxError("FLUX API timed out")
+
+    monkeypatch.setattr(template_studio.FluxClient, "generate_image", failing_flux_generate)
+
     [draft] = generate(db)
     assert calls[:2] == ["gemini-3.1-pro-preview", "gemini-3.8-flash"]
     assert draft.status == template_studio.GENERATION_FAILED
-    assert "billing" in draft.generation["error"]
+    assert "FLUX" in draft.generation["error"]
     # The writing survived, so the draft can be finished once photos work.
     assert draft.body == PA_VARIANT["body"]
     assert draft.generation["poster"]["cta"] == PA_POSTER["cta"]
