@@ -400,7 +400,11 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
       <AudienceSelector
         isOpen={audienceOpen}
         onClose={() => setAudienceOpen(false)}
-        onReady={() => { setAudienceOpen(false); window.location.hash = 'whatsapp-campaign'; }}
+        onReady={() => { 
+          setAudienceOpen(false); 
+          localStorage.setItem('autogmap-studio-mode', 'business');
+          window.location.hash = 'template-studio'; 
+        }}
       />
     </div>
   );
