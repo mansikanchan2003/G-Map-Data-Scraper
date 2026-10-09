@@ -245,6 +245,7 @@ RULES:
 {bullets(_copy_rules())}
 - The message must not begin or end with a blank: start with a greeting word, end with fixed text.
 - Speak to the business owner about their business: what an SBI Kiosk adds to a {{{{category}}}} like theirs, in their area.
+- Also write the poster that heads the message, in {lang}: the same offer as the body, in its own short words. The poster is one picture for every business, so it has no blanks.
 
 {studio.GRAMMAR_HEADING.format(lang=lang)}
 {chr(10).join(chr(10) + '---' + chr(10) + r for r in learned['references']) or f'(no approved {lang} template yet)'}
@@ -269,7 +270,8 @@ Answer with JSON only:
   "angle_key": "the key of this variant's angle",
   "angle": "one English sentence: how this variant expresses its angle",
   "learned": "one or two English sentences: which past results or rejections shaped this wording, and how",
-  "image_phrase": "2 to 5 words copied exactly from your body, in {lang}, with no blank in them — the line printed on a sign in the photo",
+{studio.poster_spec(lang)},
+  "image_phrase": "2 to 5 words copied exactly from your headline or body, in {lang}, with no blank in them — the line printed on a sign in the photo",
   "photo_scene": "in English: who is in the photo and what is happening — a kiosk operator seated behind the counter of a business like these, with a laptop and a fingerprint scanner, serving one or two local customers (for example taking a thumbprint, counting cash, handing over a passbook); the setting; the mood that suits the angle. No text, signs or logos: the sign is added separately.",
   "body": "the message in {lang}, at most {studio.BODY_LIMIT} characters, with blanks as {{{{name}}}} and {{{{link}}}}, no web address of your own",
   "footer": "at most {studio.FOOTER_LIMIT} characters, e.g. the equivalent of 'Team Eko'",
@@ -315,15 +317,24 @@ def validate(variant: dict, language_code: str, allowed: List[str]) -> List[str]
     if len(variant.get("callback_button") or "") > studio.BUTTON_TEXT_LIMIT:
         errors.append(f"callback_button is longer than {studio.BUTTON_TEXT_LIMIT} characters")
 
+    poster = variant.get("poster") or {}
+    if language_code in creative_brief.LANGUAGES:
+        errors += studio.validate_poster(poster, language_code)
+        poster_texts = [v for v in poster.values() if isinstance(v, str)]
+        poster_texts += [b.get("text") or "" for b in poster.get("benefits") or [] if isinstance(b, dict)]
+        if any(TOKEN.search(t) for t in poster_texts):
+            errors.append("the poster has a blank in it; it is one picture, the same for every business")
+
     phrase = variant.get("image_phrase") or ""
     if phrase:
         words = len(phrase.split())
+        written = " ".join([TOKEN.sub("", body)] + [str(poster.get(k) or "") for k in studio.POSTER_FIELDS])
         if "{" in phrase or "}" in phrase:
             errors.append("image_phrase has a blank in it; it is printed as it is, the same for every business")
         elif not 2 <= words <= 5:
             errors.append(f"image_phrase has {words} words; it needs 2 to 5")
-        elif studio._letters(phrase) not in studio._letters(TOKEN.sub("", body)):
-            errors.append("image_phrase is not copied exactly from the body")
+        elif studio._letters(phrase) not in studio._letters(written):
+            errors.append("image_phrase is not copied exactly from the headline or body")
 
     if language_code in creative_brief.LANGUAGES:
         # Blanks are filled with English values, so they are left out of the
@@ -340,10 +351,12 @@ def validate(variant: dict, language_code: str, allowed: List[str]) -> List[str]
 
 
 def _clean(variant: dict) -> dict:
+    def fix(text):
+        return text.replace("\\n", "\n").replace("\\t", " ").strip() if isinstance(text, str) else text
+
     for key in ("body", "footer", "callback_button", "angle", "learned", "photo_scene", "image_phrase"):
-        text = variant.get(key)
-        if isinstance(text, str):
-            variant[key] = text.replace("\\n", "\n").replace("\\t", " ").strip()
+        variant[key] = fix(variant.get(key))
+    studio.clean_poster(variant.get("poster"), fix)
     return variant
 
 
@@ -471,6 +484,7 @@ def run_generation(template_ids: List[str]) -> None:
                 # Read back by later rounds; see template_studio.past_mistakes.
                 "first_problems": first_errors,
                 "agent_body": body,
+                "poster": variant.get("poster"),
                 "photo_scene": variant.get("photo_scene"),
                 "image_phrase": variant.get("image_phrase"),
                 "models": {"text": model},
@@ -481,7 +495,7 @@ def run_generation(template_ids: List[str]) -> None:
 
             # The image, made from the finished text the same way as the
             # poster agent's (template_studio._make_header): the phrase on a
-            # sign if it reads back right, else a banner typeset around a
+            # sign if it reads back right, else the poster typeset around a
             # photo with no text.
             if studio.can_make_header(tmpl.generation):
                 try:
@@ -530,7 +544,8 @@ def update(db: Session, tmpl: WhatsAppTemplate, body: Optional[str], footer: Opt
                          "callback_button": labels.get("QUICK_REPLY")},
                         tmpl.language_code, gen.get("allowed_fields") or ["name"])
     phrase = gen.get("image_phrase")
-    if phrase and tmpl.header_content and studio._letters(phrase) not in studio._letters(tmpl.body):
+    written = " ".join([tmpl.body or ""] + [str(v) for v in (gen.get("poster") or {}).values() if isinstance(v, str)])
+    if phrase and tmpl.header_content and studio._letters(phrase) not in studio._letters(written):
         problems.append(f"the image still shows “{phrase}”, which is no longer in the message; "
                         "New photo makes one without it")
     return problems

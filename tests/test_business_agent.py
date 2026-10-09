@@ -2,6 +2,7 @@
 The business agent: templates written for scraped businesses, learning from
 earlier results, held for a reviewer, and filled per business when sent.
 """
+import copy
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import patch
@@ -35,10 +36,32 @@ GOOD_BODY = ("नमस्ते {{name}} 🙏\n\nक्या आप अपन�
              "अभी आवेदन करें 👇\n{{link}}\n\nकॉल या WhatsApp करें: +91 7291988625\n\nधन्यवाद!")
 
 
+HI_POSTER = {
+    "headline_line1": "अपनी दुकान के साथ",
+    "headline_line2": "बढ़ाएँ अपनी आय",
+    "headline_highlight": "अपनी आय",
+    "subline": "Eko के साथ SBI Kiosk Operator / CSP बनें",
+    "callout": "हर महीने ₹15,000 से ₹50,000 तक कमीशन कमाने का अवसर",
+    "callout_highlight": "कमाने का अवसर",
+    "benefits_title": "आपको मिलेगा",
+    "benefits": [{"icon": icon, "text": text} for icon, text in [
+        ("account", "नया SBI खाता"), ("withdrawal", "नकद निकासी"), ("transfer", "मनी ट्रांसफर"),
+        ("banking", "बैलेंस जाँच"), ("support", "प्रशिक्षण और सहायता"), ("income", "अतिरिक्त कमाई")]],
+    "cta": "आज ही आवेदन करें",
+    "opportunity_title": "दुकान के साथ अतिरिक्त आय",
+    "opportunity_text": "आपके मौजूदा ग्राहक ही आपके पहले Kiosk ग्राहक बनेंगे।",
+    "sign_title": "ग्राहक सेवा केंद्र",
+    "bank_name": "भारतीय स्टेट बैंक",
+    "phone_label": "कॉल / WhatsApp:",
+    "web_label": "अभी आवेदन करें:",
+}
+
+
 def variant(**over):
     v = {"angle_key": "extra_income", "angle": "Extra income alongside the shop",
          "learned": "Hindi templates with a direct greeting drew the only taps.",
-         "body": GOOD_BODY, "footer": "Team Eko", "callback_button": "मुझे कॉल करें"}
+         "body": GOOD_BODY, "footer": "Team Eko", "callback_button": "मुझे कॉल करें",
+         "poster": copy.deepcopy(HI_POSTER)}
     v.update(over)
     return v
 
@@ -274,13 +297,13 @@ class ImageGemini(FakeGemini):
 @pytest.fixture
 def images(monkeypatch, tmp_path):
     monkeypatch.setattr(studio, "MEDIA_DIR", str(tmp_path))
-    banners = []
-    monkeypatch.setattr(studio.poster_renderer, "render_banner",
-                        lambda phrase, lang, photo, mime: banners.append((phrase, lang)) or b"\xff\xd8BANNER")
+    posters = []
+    monkeypatch.setattr(studio.poster_renderer, "render",
+                        lambda poster, lang, photo, mime: posters.append((poster["headline_line2"], lang)) or b"\xff\xd8POSTER")
     monkeypatch.setattr(studio.poster_renderer, "render_photo_with_logo", lambda photo, mime: b"\xff\xd8LOGO")
     ImageGemini.reads, ImageGemini.images = [], 0
     ImageGemini.allowance = ImageGemini.image_failure = None
-    return banners
+    return posters
 
 
 def image_round(db):
@@ -296,7 +319,7 @@ def test_the_prompt_asks_for_a_phrase_from_the_body_and_a_scene_without_text(db,
     FakeGemini.prompts = []
     image_round(db)
     prompt = FakeGemini.prompts[0]
-    assert '"image_phrase": "2 to 5 words copied exactly from your body' in prompt
+    assert '"image_phrase": "2 to 5 words copied exactly from your headline or body' in prompt
     assert "No text, signs or logos" in prompt
     # The 9 October instructions asked the image model for Indic text and logos.
     assert "MUST instruct the model to write" not in prompt
@@ -311,11 +334,12 @@ def test_a_correct_sign_makes_the_photo_the_header(db, images):
     assert ImageGemini.images == 1 and images == []
 
 
-def test_a_misspelt_sign_gets_the_banner_with_the_phrase(db, images):
+def test_a_misspelt_sign_gets_the_full_poster(db, images):
     ImageGemini.reads = ["अतिरिक्त आय चाहत"]
     d = image_round(db)
     assert d.generation["image_mode"] == "typeset"
-    assert images == [(PHRASE, "hi")]
+    assert images == [(HI_POSTER["headline_line2"], "hi")], "the poster agent's full poster, not a thin banner"
+    assert d.generation["poster"]["callout"] == HI_POSTER["callout"]
     assert ImageGemini.images == 2  # one sign photo, one plain photo
     assert d.status == studio.AWAITING_APPROVAL and d.header_content
 
@@ -356,7 +380,7 @@ def test_an_edit_that_drops_the_phrase_is_flagged(db, images):
 
 @pytest.mark.parametrize("phrase, problem", [
     ("{{name}} आय चाहते", "has a blank in it"),
-    ("यह कहीं नहीं लिखा", "not copied exactly from the body"),
+    ("यह कहीं नहीं लिखा", "not copied exactly from the headline or body"),
     ("आय", "needs 2 to 5"),
 ])
 def test_image_phrase_rules(phrase, problem):
@@ -366,3 +390,27 @@ def test_image_phrase_rules(phrase, problem):
 
 def test_a_good_image_phrase_passes():
     assert ba.validate(variant(image_phrase=PHRASE), "hi", ["name", "category", "state"]) == []
+
+
+def test_the_prompt_asks_for_the_full_poster(db, images):
+    FakeGemini.prompts = []
+    image_round(db)
+    prompt = FakeGemini.prompts[0]
+    for field in ("headline_line1", "callout", "benefits", "opportunity_text", "sign_title", "web_label"):
+        assert f'"{field}"' in prompt, field
+
+
+def test_poster_problems_are_named():
+    bad = copy.deepcopy(HI_POSTER)
+    bad["benefits"] = bad["benefits"][:4]
+    bad["cta"] = "Apply today"
+    bad["callout"] = "{{name}} के लिए अवसर"
+    errors = ba.validate(variant(poster=bad), "hi", ["name", "category", "state"])
+    assert any("exactly 6 are needed" in e for e in errors)
+    assert any(e.startswith("poster.cta") and "Devanagari" in e for e in errors)
+    assert any("the poster has a blank in it" in e for e in errors)
+
+
+def test_a_phrase_from_the_poster_headline_is_allowed():
+    v = variant(image_phrase=HI_POSTER["headline_line2"])
+    assert ba.validate(v, "hi", ["name", "category", "state"]) == []

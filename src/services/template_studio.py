@@ -377,6 +377,28 @@ MISTAKES_HEADING = (
 )
 
 
+def poster_spec(language_name: str) -> str:
+    """The poster text the model is asked for, as it appears in the answer's JSON shape."""
+    icons = ", ".join(creative_brief.BENEFIT_ICONS)
+    return f"""  "poster": {{
+    "headline_line1": "first headline line, about 3 words",
+    "headline_line2": "second headline line, about 3 words",
+    "headline_highlight": "a phrase copied exactly from headline_line2 to colour yellow",
+    "subline": "one sentence, at most 110 characters, naming Eko, SBI and Kiosk Operator / CSP",
+    "callout": "one punchy sentence for a dark box, at most 80 characters",
+    "callout_highlight": "a phrase copied exactly from callout to colour yellow",
+    "benefits_title": "the equivalent of 'You will get', at most 18 characters",
+    "benefits": [{{"icon": "one of: {icons}", "text": "at most 24 characters"}}, ... exactly 6],
+    "cta": "the equivalent of 'Apply today', at most 22 characters",
+    "opportunity_title": "at most 32 characters",
+    "opportunity_text": "at most 110 characters",
+    "sign_title": "'Customer Service Point' as written on SBI signboards in {language_name}",
+    "bank_name": "'State Bank of India' as written in {language_name}",
+    "phone_label": "the equivalent of 'Call / WhatsApp:', at most 24 characters",
+    "web_label": "the equivalent of 'Apply now:', at most 24 characters"
+  }}"""
+
+
 def _copy_prompt(state: str, language_code: str, angles: List[str], brief: Optional[str],
                  references: List[str], performance: List[dict], history: dict) -> str:
     count = len(angles)
@@ -395,7 +417,6 @@ def _copy_prompt(state: str, language_code: str, angles: List[str], brief: Optio
             f"{'' if p['tracked'] else ' [no delivery tracking for this one — reads and taps unknown]'}"
         )
 
-    icons = ", ".join(creative_brief.BENEFIT_ICONS)
     refs = "\n\n---\n\n".join(references) or f"(no approved {lang['name']} template yet)"
     bullets = lambda items: "\n".join(f"- {i}" for i in items) or "- (none)"
 
@@ -432,23 +453,7 @@ Answer with JSON only, in this shape:
   "footer": "at most {FOOTER_LIMIT} characters, e.g. the equivalent of 'Team Eko'",
   "apply_button": "button label meaning 'Apply now', at most 20 characters",
   "callback_button": "button label meaning 'Call me back', at most 20 characters",
-  "poster": {{
-    "headline_line1": "first headline line, about 3 words",
-    "headline_line2": "second headline line, about 3 words",
-    "headline_highlight": "a phrase copied exactly from headline_line2 to colour yellow",
-    "subline": "one sentence, at most 110 characters, naming Eko, SBI and Kiosk Operator / CSP",
-    "callout": "one punchy sentence for a dark box, at most 80 characters",
-    "callout_highlight": "a phrase copied exactly from callout to colour yellow",
-    "benefits_title": "the equivalent of 'You will get', at most 18 characters",
-    "benefits": [{{"icon": "one of: {icons}", "text": "at most 24 characters"}}, ... exactly 6],
-    "cta": "the equivalent of 'Apply today', at most 22 characters",
-    "opportunity_title": "at most 32 characters",
-    "opportunity_text": "at most 110 characters",
-    "sign_title": "'Customer Service Point' as written on SBI signboards in {lang['name']}",
-    "bank_name": "'State Bank of India' as written in {lang['name']}",
-    "phone_label": "the equivalent of 'Call / WhatsApp:', at most 24 characters",
-    "web_label": "the equivalent of 'Apply now:', at most 24 characters"
-  }},
+{poster_spec(lang['name'])},
   "image_phrase": "2 to 5 words copied exactly from your headline or body, in {lang['name']} — the line that will be printed on a sign in the photo",
   "photo_scene": "in English: who is in the photo and what is happening — the kiosk operator (age, gender, clothing typical of {state}) seated behind the counter with a laptop and a fingerprint scanner, serving one or two customers typical of {state} (for example taking a thumbprint, counting cash, handing over a passbook); the setting (village or small town); the mood that suits the angle. Not a phone or tablet demo. No text, signs or logos."
 }}]}}"""
@@ -464,12 +469,19 @@ def _clean(variant: dict) -> dict:
 
     for key in ("body", "footer", "apply_button", "callback_button", "image_phrase"):
         variant[key] = fix(variant.get(key))
-    poster = variant.get("poster") or {}
+    clean_poster(variant.get("poster"), fix)
+    return variant
+
+
+def clean_poster(poster: Optional[dict], fix) -> None:
+    """Applies `fix` to every piece of the poster's text."""
+    if not isinstance(poster, dict):
+        return
     for key in POSTER_FIELDS:
         poster[key] = fix(poster.get(key))
     for b in poster.get("benefits") or []:
-        b["text"] = fix(b.get("text"))
-    return variant
+        if isinstance(b, dict):
+            b["text"] = fix(b.get("text"))
 
 
 def _letters(text: str) -> str:
@@ -483,7 +495,35 @@ def _letters(text: str) -> str:
                    if unicodedata.category(c)[0] in "LMN").lower()
 
 
-DOUBLE_ASTERISK ="body uses **double asterisks**; WhatsApp bold is a single *asterisk* and would show the extra ones"
+def validate_poster(poster: dict, language_code: str) -> List[str]:
+    """Everything wrong with a variant's poster text; empty when it can be set."""
+    errors = []
+    for key in POSTER_FIELDS:
+        if not (poster.get(key) or "").strip():
+            errors.append(f"poster.{key} is missing")
+    benefits = [b for b in poster.get("benefits") or [] if isinstance(b, dict)]
+    if len(benefits) != 6:
+        errors.append(f"poster.benefits has {len(benefits)} items; exactly 6 are needed")
+    for i, b in enumerate(benefits):
+        if b.get("icon") not in creative_brief.BENEFIT_ICONS:
+            errors.append(f"poster.benefits[{i}].icon '{b.get('icon')}' is not one of the allowed icons")
+    if poster.get("headline_highlight") and poster.get("headline_highlight") not in (poster.get("headline_line2") or ""):
+        errors.append("poster.headline_highlight is not a phrase from headline_line2")
+    if poster.get("callout_highlight") and poster.get("callout_highlight") not in (poster.get("callout") or ""):
+        errors.append("poster.callout_highlight is not a phrase from callout")
+
+    # Everything on the poster must be in the state's script.
+    if language_code in creative_brief.LANGUAGES:
+        texts = {f"poster.{k}": poster.get(k) for k in POSTER_FIELDS
+                 if k not in ("headline_highlight", "callout_highlight")}
+        texts.update({f"poster.benefits[{i}]": b.get("text") for i, b in enumerate(benefits)})
+        for name, text in texts.items():
+            for problem in creative_brief.script_problems(text or "", language_code):
+                errors.append(f"{name} {problem}")
+    return errors
+
+
+DOUBLE_ASTERISK = "body uses **double asterisks**; WhatsApp bold is a single *asterisk* and would show the extra ones"
 
 
 def validate_copy(variant: dict, language_code: str) -> List[str]:
@@ -495,9 +535,6 @@ def validate_copy(variant: dict, language_code: str) -> List[str]:
     for key in ("angle", "body", "footer", "apply_button", "callback_button", "photo_scene"):
         if not (variant.get(key) or "").strip():
             errors.append(f"{key} is missing")
-    for key in POSTER_FIELDS:
-        if not (poster.get(key) or "").strip():
-            errors.append(f"poster.{key} is missing")
 
     if len(body) > BODY_LIMIT:
         errors.append(f"body is {len(body)} characters; the limit is {BODY_LIMIT}")
@@ -524,16 +561,7 @@ def validate_copy(variant: dict, language_code: str) -> List[str]:
         elif _letters(phrase) not in _letters(written):
             errors.append("image_phrase is not copied exactly from the headline or body")
 
-    benefits = poster.get("benefits") or []
-    if len(benefits) != 6:
-        errors.append(f"poster.benefits has {len(benefits)} items; exactly 6 are needed")
-    for i, b in enumerate(benefits):
-        if b.get("icon") not in creative_brief.BENEFIT_ICONS:
-            errors.append(f"poster.benefits[{i}].icon '{b.get('icon')}' is not one of the allowed icons")
-    if poster.get("headline_highlight") and poster.get("headline_highlight") not in (poster.get("headline_line2") or ""):
-        errors.append("poster.headline_highlight is not a phrase from headline_line2")
-    if poster.get("callout_highlight") and poster.get("callout_highlight") not in (poster.get("callout") or ""):
-        errors.append("poster.callout_highlight is not a phrase from callout")
+    errors += validate_poster(poster, language_code)
 
     # Script: everything a recipient reads must be in the state's script.
     texts = {"body": body, "footer": variant.get("footer"),
@@ -541,8 +569,6 @@ def validate_copy(variant: dict, language_code: str) -> List[str]:
              "callback_button": variant.get("callback_button")}
     if phrase:
         texts["image_phrase"] = phrase
-    texts.update({f"poster.{k}": poster.get(k) for k in POSTER_FIELDS if k not in ("headline_highlight", "callout_highlight")})
-    texts.update({f"poster.benefits[{i}]": b.get("text") for i, b in enumerate(benefits)})
     for name, text in texts.items():
         # A footer may legitimately be just "Team Eko".
         for problem in creative_brief.script_problems(text or "", language_code,
@@ -794,9 +820,7 @@ def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, st
     First a photo with the variant's phrase printed on a sign, read back by a
     vision model and kept only if the reading matches the phrase exactly.
     Image models often misspell Indic scripts, so failing that, a photo with
-    no text and the poster typeset around it, where every word is correct —
-    for the business agent, whose drafts have no poster text, a smaller
-    banner with the phrase as its headline.
+    no text and the poster typeset around it, where every word is correct.
 
     Raises ImageUnavailable when the image allowance is spent. A sign photo
     already made and rejected is recorded in `variant["text_photo_attempts"]`,
@@ -847,12 +871,12 @@ def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, st
         e.text_photo_attempts = attempts  # kept, so the wait does not undo them
         raise
     photo_id = _save_media(photo, ".png" if mime == "image/png" else ".jpg")
-    if _has_poster(variant):
+    if _has_poster(variant) and printable:
         _render_into(tmpl, variant["poster"], photo, mime)
     else:
-        # The business agent: no poster text, so the phrase is the headline.
-        image = (poster_renderer.render_banner(phrase, tmpl.language_code, photo, mime) if phrase and printable
-                 else poster_renderer.render_photo_with_logo(photo, mime))
+        # No poster text to set (an older business draft, or a language the
+        # renderer has no font for): the photo, with the logo only.
+        image = poster_renderer.render_photo_with_logo(photo, mime)
         tmpl.header_type = "IMAGE"
         tmpl.header_content = json.dumps({"source_type": "upload", "media_id": _save_media(image, ".jpg")})
     return {"image_mode": "typeset", "image_phrase": phrase or None, "text_photo_attempts": attempts,

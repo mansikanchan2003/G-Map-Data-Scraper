@@ -575,10 +575,12 @@ export, or, for an audience picked from Business Data, from each business's
 own record. A business missing a value is skipped, with the reason shown.
 
 **The image** is made once the text is written, the same way as the poster
-agent's (below): a photo with the draft's image phrase, 2–5 words from the
-message, printed on a sign, kept only if the sign reads back letter for letter.
-Otherwise a photo with no text gets a banner set around it: the Eko logo, the
-phrase as the headline, the SBI sign, and the phone number and address. When
+agent's (below). With the message the agent writes the same poster text —
+headline, subline, callout, six benefits, the opportunity box and the labels,
+with no blanks, since one picture goes to every business — checked by the same
+rules. A photo with the draft's image phrase, 2–5 words from the headline or
+message, printed on a sign is kept only if the sign reads back letter for
+letter; otherwise the full poster is typeset around a photo with no text. When
 the free image allowance is spent the draft waits for its photo like the
 poster agent's. If the photo fails for any other reason, the message can still
 be approved and sent without one, and the card says why. **New photo** asks
