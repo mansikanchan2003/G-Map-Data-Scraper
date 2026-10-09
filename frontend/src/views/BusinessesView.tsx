@@ -403,7 +403,7 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
         onReady={() => { 
           setAudienceOpen(false); 
           localStorage.setItem('autogmap-studio-mode', 'business');
-          window.location.hash = 'template-studio'; 
+          window.location.hash = 'whatsapp-studio'; 
         }}
       />
     </div>
