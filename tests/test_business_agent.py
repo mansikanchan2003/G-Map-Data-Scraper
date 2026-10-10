@@ -299,7 +299,7 @@ def images(monkeypatch, tmp_path):
     monkeypatch.setattr(studio, "MEDIA_DIR", str(tmp_path))
     posters = []
     monkeypatch.setattr(studio.poster_renderer, "render",
-                        lambda poster, lang, photo, mime: posters.append((poster["headline_line2"], lang)) or b"\xff\xd8POSTER")
+                        lambda poster, lang, photo, mime, layout="classic": posters.append((poster["headline_line2"], lang)) or b"\xff\xd8POSTER")
     monkeypatch.setattr(studio.poster_renderer, "render_photo_with_logo", lambda photo, mime: b"\xff\xd8LOGO")
     ImageGemini.reads, ImageGemini.images = [], 0
     ImageGemini.allowance = ImageGemini.image_failure = None

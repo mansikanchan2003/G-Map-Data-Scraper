@@ -538,6 +538,19 @@ export interface StudioPhotoCheck {
   issues?: string[];
 }
 
+export interface ImageAllowance {
+  limit: number;
+  used: number;
+  remaining: number;
+  reached: boolean;
+  /** Hugging Face itself refused for want of allowance. */
+  refused_by_provider: boolean;
+  window_started_at: string | null;
+  /** When images can be made again; only when none are left. */
+  resets_at: string | null;
+  images_per_draft: number;
+}
+
 export interface ImagePromptRecord {
   styles: { kind: 'sign' | 'plain'; style: string; tries: number; worked: number; gibberish: number;
             score: number; chosen_next: boolean }[];
@@ -685,6 +698,7 @@ export const studioMediaUrl = (headerContent: string | null): string | null => {
   }
 };
 
+export const fetchImageAllowance = () => studioCall<ImageAllowance>('/image-allowance');
 export const fetchImagePromptRecord = () => studioCall<ImagePromptRecord>('/image-prompts');
 
 export const fetchStudioStatus = () => studioCall<{ ready: boolean; error: string | null }>('/status');

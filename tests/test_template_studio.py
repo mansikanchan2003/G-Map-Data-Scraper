@@ -140,7 +140,7 @@ def db(monkeypatch, tmp_path):
     monkeypatch.setattr(template_studio, "MEDIA_DIR", str(tmp_path))
     monkeypatch.setattr(template_studio, "GeminiClient", FakeGemini)
     monkeypatch.setattr(template_studio.poster_renderer, "render",
-                        lambda poster, lang, photo, mime: b"\xff\xd8JPEG" + lang.encode())
+                        lambda poster, lang, photo, mime, layout="classic": b"\xff\xd8JPEG" + lang.encode())
     FakeGemini.prompts, FakeGemini.variants, FakeGemini.checks = [], [copy.deepcopy(PA_VARIANT)], []
     FakeGemini.unsupported, FakeGemini.fact_prompts = [], []
     FakeGemini.images, FakeGemini.allowance = 0, None
@@ -150,8 +150,9 @@ def db(monkeypatch, tmp_path):
         yield session
     finally:
         session.rollback()
+        from src.models import AppSetting
         from src.models.studio import StudioImagePrompt
-        for model in (StudioImagePrompt, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppCampaignRecipient,
+        for model in (AppSetting, StudioImagePrompt, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppCampaignRecipient,
                       WhatsAppCampaign, WhatsAppTemplate, Business, Job, Location):
             session.query(model).delete()
         session.commit()
@@ -865,3 +866,78 @@ def test_a_sage_looking_operator_fails_the_photo_check(db):
     assert draft.generation["photo_check"]["passed"] is False
     [r] = records(db)
     assert not r.passed and "did not look like a professional" in r.note
+
+
+# --- the day's image allowance ------------------------------------------------
+
+def test_the_allowance_counts_down_and_says_when_it_resets(db, monkeypatch):
+    monkeypatch.setattr(image_prompts, "DAILY_IMAGE_LIMIT", 5)
+    now = _dt.now(_tz.utc)
+    a = image_prompts.allowance(db, now)
+    assert (a["used"], a["remaining"], a["reached"], a["resets_at"]) == (0, 5, False, None)
+
+    first = now - _td(hours=3)
+    db.add(StudioImagePrompt(prompt_id=uuid.uuid4().hex, created_at=first, kind="plain", style="short", prompt="p"))
+    db.commit()
+    a = image_prompts.allowance(db, now)
+    assert (a["used"], a["remaining"]) == (1, 4)
+
+    for i in range(4):
+        add_record(db)
+    a = image_prompts.allowance(db, now + _td(minutes=1))
+    assert a["reached"] and a["remaining"] == 0
+    # Hugging Face's day starts with the first image and lasts 24 hours.
+    assert _dt.fromisoformat(a["resets_at"]) == first + _td(hours=24)
+    # Past it, the day starts again.
+    assert image_prompts.allowance(db, first + _td(hours=25))["remaining"] == 5
+
+
+def test_a_refusal_from_hugging_face_shows_its_own_reset_time(db, monkeypatch):
+    monkeypatch.setattr(image_prompts, "DAILY_IMAGE_LIMIT", 5)
+    FakeGemini.allowance = 0  # the fake refuses: "Try again in 1:00:00"
+    generate(db)
+    a = image_prompts.allowance(db)
+    assert a["reached"] and a["refused_by_provider"]
+    left = _dt.fromisoformat(a["resets_at"]) - _dt.now(_tz.utc)
+    assert _td(minutes=55) < left <= _td(hours=1)
+
+
+# --- drafts that do not all look alike ----------------------------------------
+
+from src.services import variety  # noqa: E402
+
+
+def test_variants_of_a_round_get_different_layouts_shots_and_shapes(db):
+    plans = variety.plan(db, 3)
+    for key in ("layout", "shot", "shape"):
+        assert len({p[key] for p in plans}) == 3, key
+    assert {p["operator"] for p in plans} == {"man", "woman"}
+
+
+def test_the_next_round_uses_what_was_used_least(db):
+    first = generate(db)[0].generation
+    second = generate(db)[0].generation
+    assert first["layout"] != second["layout"]
+    assert first["shot"] != second["shot"]
+    assert first["shape"] != second["shape"]
+
+
+def test_the_layout_shot_and_operator_reach_the_poster_and_the_photo(db, monkeypatch):
+    used = []
+    monkeypatch.setattr(template_studio.poster_renderer, "render",
+                        lambda poster, lang, photo, mime, layout="classic": used.append(layout) or b"\xff\xd8P")
+    [draft] = generate(db)
+    gen = draft.generation
+    assert used == [gen["layout"]]
+    assert variety.SHOTS[gen["shot"]] in gen["photo_prompt"]
+    assert variety.OPERATORS[gen["operator"]] in gen["photo_prompt"]
+
+
+def test_the_writer_is_told_each_variants_shape_and_what_not_to_repeat(db):
+    generate(db)
+    prompt = FakeGemini.prompts[-1]
+    assert "MAKE EACH VARIANT DIFFERENT" in prompt and "message shape:" in prompt
+    generate(db)
+    prompt = FakeGemini.prompts[-1]
+    headline = f'{PA_POSTER["headline_line1"]} / {PA_POSTER["headline_line2"]}'
+    assert "HEADLINES ALREADY USED" in prompt and headline in prompt

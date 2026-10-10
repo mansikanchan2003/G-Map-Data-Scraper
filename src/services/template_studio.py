@@ -38,7 +38,7 @@ from src.models.whatsapp import (
     WhatsAppButtonClick, WhatsAppCampaign, WhatsAppCampaignRecipient,
     WhatsAppLinkClick, WhatsAppTemplate, HUMAN_LINK_CLICK,
 )
-from src.services import creative_brief, image_prompts, poster_renderer
+from src.services import creative_brief, image_prompts, poster_renderer, variety
 from src.services.gemini_client import GeminiClient, GeminiError, ImageUnavailable
 
 logger = logging.getLogger("gmap_scraper.template_studio")
@@ -407,7 +407,8 @@ def poster_spec(language_name: str) -> str:
 
 
 def _copy_prompt(state: str, language_code: str, angles: List[str], brief: Optional[str],
-                 references: List[str], performance: List[dict], history: dict) -> str:
+                 references: List[str], performance: List[dict], history: dict,
+                 variety_text: str = "") -> str:
     count = len(angles)
     lang = creative_brief.LANGUAGES[language_code]
     perf_lines = []
@@ -431,6 +432,8 @@ def _copy_prompt(state: str, language_code: str, angles: List[str], brief: Optio
 
 Write {count} variant(s) in {lang['name']} ({lang['script']} script), in this order, each built around its own assigned angle — the single idea it bets on. The results will be compared per angle, so every part of a variant (headline, callout, body, photo) must serve its angle, and variants must not blur into each other:
 {chr(10).join(f"{i}. {k}: {creative_brief.ANGLES[k]}" for i, k in enumerate(angles, 1))}
+
+{variety_text}
 
 FACTS — the only claims allowed:
 {bullets(creative_brief.FACTS)}
@@ -656,9 +659,9 @@ def _write_copy(client: GeminiClient, prompt: str, angles: List[str], language_c
 # Photo
 # ---------------------------------------------------------------------------
 
-def photo_prompt(scene: str, state: str, style: str = image_prompts.DEFAULT_STYLE) -> str:
+def photo_prompt(scene: str, state: str, style: str = image_prompts.DEFAULT_STYLE, direction: str = "") -> str:
     """A photo with no text: the scene in the style's wording, then the no-text rule."""
-    return image_prompts.build(style, scene, state)
+    return image_prompts.build(style, scene, state, direction=direction)
 
 PHOTO_CHECK = (
     "Inspect this image and answer with JSON only: "
@@ -692,13 +695,14 @@ def _make_photo(client: GeminiClient, scene: str, state: str, tmpl: Optional[Wha
     and the style.
     """
     style = image_prompts.with_db(image_prompts.choose_style, "plain")
-    prompt = photo_prompt(scene, state, style)
+    prompt = photo_prompt(scene, state, style, variety.photo_direction((tmpl.generation if tmpl else None) or {}))
     best, last_error, made = None, None, []
     for attempt in range(1, PHOTO_ATTEMPTS + 1):
         seed = image_prompts.new_seed()
         try:
             image = client.generate_image(prompt, seed=seed)
-        except ImageUnavailable:
+        except ImageUnavailable as e:
+            image_prompts.note_quota_spent(e.retry_after)
             raise  # Retrying now would hit the same spent allowance; wait instead.
         except Exception as e:
             last_error = e
@@ -767,7 +771,8 @@ def _apply_url() -> str:
 
 
 def _render_into(tmpl: WhatsAppTemplate, poster: dict, photo: bytes, photo_mime: str) -> None:
-    image = poster_renderer.render(poster, tmpl.language_code, photo, photo_mime)
+    layout = (tmpl.generation or {}).get("layout") or "classic"
+    image = poster_renderer.render(poster, tmpl.language_code, photo, photo_mime, layout)
     media_id = _save_media(image, ".jpg")
     tmpl.header_type = "IMAGE"
     tmpl.header_content = json.dumps({"source_type": "upload", "media_id": media_id})
@@ -794,9 +799,9 @@ TEXT_PHOTO_CHECK = (
 
 
 def text_photo_prompt(scene: str, state: str, phrase: str, language_code: str,
-                      style: str = image_prompts.DEFAULT_STYLE) -> str:
+                      style: str = image_prompts.DEFAULT_STYLE, direction: str = "") -> str:
     """The photo prompt with one sign carrying the phrase, and no other text."""
-    return image_prompts.build(style, scene, state, phrase, language_code)
+    return image_prompts.build(style, scene, state, phrase, language_code, direction)
 
 def _text_photo_passes(check: dict, phrase: str) -> bool:
     # The match is decided here, not by the model: it compares what it read
@@ -858,12 +863,14 @@ def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, st
         sign_skipped = not image_prompts.with_db(image_prompts.sign_worth_trying)
     if phrase and printable and made < TEXT_PHOTO_ATTEMPTS and not sign_skipped:
         style = image_prompts.with_db(image_prompts.choose_style, "sign")
-        prompt = text_photo_prompt(variant["photo_scene"], state, phrase, tmpl.language_code, style)
+        prompt = text_photo_prompt(variant["photo_scene"], state, phrase, tmpl.language_code, style,
+                                   variety.photo_direction(tmpl.generation or {}))
         for attempt in range(made + 1, TEXT_PHOTO_ATTEMPTS + 1):
             seed = image_prompts.new_seed()
             try:
                 image = client.generate_image(prompt, seed=seed)
-            except ImageUnavailable:
+            except ImageUnavailable as e:
+                image_prompts.note_quota_spent(e.retry_after)
                 raise
             except GeminiError as e:
                 attempts.append({"attempt": attempt, "error": str(e)})
@@ -993,11 +1000,13 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
         try:
             history = _review_history(db, state)
             angles = assign_angles(len(rows), history["tried_keys"])
+            plans = variety.plan(db, len(rows))
             prompt = _copy_prompt(
                 state, language_code, angles, brief,
                 approved_examples(db, language_code),
                 template_performance(db),
                 history,
+                variety.prompt_section(plans, variety.already_used(db, language_code)),
             )
             variants = _write_copy(client, prompt, angles, language_code)
             models = {"text": client.text_model()}
@@ -1006,7 +1015,7 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
             fail_all(str(e) if isinstance(e, GeminiError) else f"Copywriting failed: {e}")
             return
 
-        for tmpl, variant in zip(rows, variants):
+        for tmpl, variant, look in zip(rows, variants, plans):
             try:
                 # The copy is saved before the photo is attempted, so a photo
                 # failure — no image quota, say — keeps the writing, and
@@ -1033,6 +1042,8 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
                     "first_problems": first_errors,
                     "agent_body": tmpl.body,
                     "models": models,
+                    # Layout, shot, operator and message shape (variety.plan).
+                    **look,
                 }
                 db.commit()
 

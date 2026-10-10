@@ -241,6 +241,19 @@ def _capture(page_html: str, language_code: str) -> bytes:
     return image
 
 
-def render(poster: dict, language_code: str, photo: bytes, photo_mime: str) -> bytes:
-    """Renders the poster to JPEG bytes."""
-    return _capture(build_html(poster, language_code, photo, photo_mime), language_code)
+# The poster's structures, rotated so drafts do not all look alike; see
+# poster_layouts for the ones after "classic".
+LAYOUTS = ("classic", "list", "banner", "mirror")
+
+
+def build_layout(layout: str, poster: dict, language_code: str, photo: bytes, photo_mime: str) -> str:
+    from src.services import poster_layouts
+
+    builders = {"classic": build_html, "list": poster_layouts.build_list,
+                "banner": poster_layouts.build_banner, "mirror": poster_layouts.build_mirror}
+    return builders.get(layout, build_html)(poster, language_code, photo, photo_mime)
+
+
+def render(poster: dict, language_code: str, photo: bytes, photo_mime: str, layout: str = "classic") -> bytes:
+    """Renders the poster to JPEG bytes, in one of LAYOUTS."""
+    return _capture(build_layout(layout, poster, language_code, photo, photo_mime), language_code)

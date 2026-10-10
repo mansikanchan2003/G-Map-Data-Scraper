@@ -20,9 +20,10 @@ reviewer did with it. Three things are then learned from that record:
 the reviewer kept, by approving its draft, is the strongest evidence of all.
 """
 import logging
+import os
 import random
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -83,9 +84,13 @@ DEFAULT_STYLE = "short"
 
 
 def build(style: str, scene: str, state: Optional[str], phrase: Optional[str] = None,
-          language_code: Optional[str] = None) -> str:
-    """The full prompt: the style's wording around the scene, then the text rule."""
-    base = f"{STYLES.get(style, STYLES[DEFAULT_STYLE])(scene, state)} {CSP_SETTING}"
+          language_code: Optional[str] = None, direction: str = "") -> str:
+    """
+    The full prompt: the style's wording around the scene, the shot and
+    operator the variant was given (variety.photo_direction), the kiosk as it
+    must look, then the text rule.
+    """
+    base = " ".join(x for x in (STYLES.get(style, STYLES[DEFAULT_STYLE])(scene, state), direction, CSP_SETTING) if x)
     if not phrase:
         return f"{base} {_NO_TEXT}"
     lang = creative_brief.LANGUAGES[language_code]
@@ -341,4 +346,83 @@ def summary(db: Session, recent: int = 30) -> dict:
             "media_id": r.media_id, "checked": r.checked, "passed": r.passed,
             "gibberish": r.gibberish, "outcome": r.outcome, "note": r.note,
         } for r in rows],
+    }
+
+
+# ---------------------------------------------------------------------------
+# The day's free image allowance, as the Studio shows it
+# ---------------------------------------------------------------------------
+
+# Hugging Face does not say how much of the free GPU allowance is left, so
+# the images made are counted here against this number. 3 is what one free
+# account got through on 2026-10-09 before "runs limit"; change it with
+# STUDIO_DAILY_IMAGE_LIMIT (Hugging Face PRO allows far more).
+DAILY_IMAGE_LIMIT = int(os.environ.get("STUDIO_DAILY_IMAGE_LIMIT", "3"))
+WINDOW = timedelta(hours=24)
+# When Hugging Face refused for want of allowance, and when it said to come back.
+QUOTA_KEY = "studio_image_quota_until"
+
+
+def _utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+
+def note_quota_spent(retry_after: Optional[int]) -> None:
+    """
+    Hugging Face refused for want of allowance: the Studio shows the limit as
+    reached until it said to come back, or for an hour when it did not say.
+    """
+    from src.models import AppSetting
+
+    until = datetime.now(timezone.utc) + (timedelta(seconds=retry_after) if retry_after else timedelta(hours=1))
+    db = _session()
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == QUOTA_KEY).first() or AppSetting(key=QUOTA_KEY)
+        row.value = until.isoformat()
+        db.merge(row)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("image_prompts event=QUOTA_NOTE_FAILED")
+    finally:
+        db.close()
+
+
+def allowance(db: Session, now: Optional[datetime] = None) -> dict:
+    """
+    How many images can still be made today. The day is Hugging Face's: it
+    starts with the first image and ends 24 hours later. A refusal from
+    Hugging Face overrides the count, with the time it gave.
+    """
+    from src.models import AppSetting
+
+    now = now or datetime.now(timezone.utc)
+    made = [_utc(r.created_at) for r in db.query(StudioImagePrompt.created_at)
+            .filter(StudioImagePrompt.created_at >= now - 2 * WINDOW, StudioImagePrompt.created_at <= now)
+            .order_by(StudioImagePrompt.created_at)]
+    # Hugging Face's days are not a rolling 24 hours: one starts with an image
+    # and ends 24 hours later, and the next starts with the next image after.
+    started = None
+    for t in made:
+        if started is None or t >= started + WINDOW:
+            started = t
+    if started is not None and now >= started + WINDOW:
+        started = None
+    used = sum(1 for t in made if started is not None and t >= started)
+    resets_at = started + WINDOW if started else None
+    remaining = max(0, DAILY_IMAGE_LIMIT - used)
+
+    row = db.query(AppSetting).filter(AppSetting.key == QUOTA_KEY).first()
+    refused_until = _utc(datetime.fromisoformat(row.value)) if row and row.value else None
+    refused = bool(refused_until and refused_until > now)
+    if refused:
+        remaining, resets_at = 0, refused_until
+    return {
+        "limit": DAILY_IMAGE_LIMIT, "used": used, "remaining": remaining,
+        "reached": remaining == 0, "refused_by_provider": refused,
+        "window_started_at": started.isoformat() if started else None,
+        "resets_at": resets_at.isoformat() if remaining == 0 and resets_at else None,
+        "images_per_draft": 2,
     }

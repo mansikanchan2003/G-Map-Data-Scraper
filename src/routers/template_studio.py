@@ -105,6 +105,13 @@ def studio_performance(db: Session = Depends(get_db)):
     return template_studio.template_performance(db)
 
 
+@router.get("/image-allowance")
+def image_allowance(db: Session = Depends(get_db)):
+    """How many free images can still be made today, and when the limit resets."""
+    from src.services import image_prompts
+    return image_prompts.allowance(db)
+
+
 @router.get("/image-prompts")
 def image_prompt_record(db: Session = Depends(get_db)):
     """Which image prompts have worked: per style, and the latest images asked for."""

@@ -32,7 +32,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from src.models.whatsapp import WhatsAppTemplate
-from src.services import creative_brief, image_prompts, sheet_templates
+from src.services import creative_brief, image_prompts, sheet_templates, variety
 from src.services.gemini_client import GeminiClient, GeminiError, ImageUnavailable
 from src.services import template_studio as studio
 
@@ -206,7 +206,8 @@ def _language_name(code: str) -> str:
     return creative_brief.LANGUAGES[code]["name"] if code in creative_brief.LANGUAGES else "English"
 
 
-def _prompt(summary: dict, language_code: str, angles: List[str], brief: Optional[str], learned: dict) -> str:
+def _prompt(summary: dict, language_code: str, angles: List[str], brief: Optional[str], learned: dict,
+            variety_text: str = "") -> str:
     lang = _language_name(language_code)
     script = creative_brief.LANGUAGES[language_code]["script"] if language_code in creative_brief.LANGUAGES else "Latin"
     bullets = lambda items: "\n".join(f"- {i}" for i in items) or "- (none)"
@@ -238,6 +239,8 @@ BLANKS YOU MAY USE — each is filled per business when the campaign is sent. Us
 
 Write {len(angles)} variant(s) in {lang} ({script} script), one per angle below, each built entirely around its angle so the results can be compared:
 {chr(10).join(f"{i}. {k}: {creative_brief.ANGLES[k]}" for i, k in enumerate(angles, 1))}
+
+{variety_text}
 
 FACTS — the only claims allowed:
 {bullets(creative_brief.FACTS)}
@@ -457,7 +460,9 @@ def run_generation(template_ids: List[str]) -> None:
             learned = learning(db, first.target_state, language_code)
             angles = studio.assign_angles(len(rows), learned["history"]["tried_keys"])
             summary = {**gen["audience"], "usable_fields": allowed}
-            variants = _write(client, _prompt(summary, language_code, angles, gen.get("brief"), learned),
+            plans = variety.plan(db, len(rows))
+            section = variety.prompt_section(plans, variety.already_used(db, language_code))
+            variants = _write(client, _prompt(summary, language_code, angles, gen.get("brief"), learned, section),
                               angles, language_code, allowed)
             model = client.text_model()
         except Exception as e:
@@ -465,7 +470,7 @@ def run_generation(template_ids: List[str]) -> None:
             fail_all(str(e) if isinstance(e, GeminiError) else f"Writing failed: {e}")
             return
 
-        for tmpl, variant in zip(rows, variants):
+        for tmpl, variant, look in zip(rows, variants, plans):
             errors = variant.pop("_errors", [])
             first_errors = variant.pop("_first_errors", [])
             body = (variant.get("body") or "").strip()
@@ -491,6 +496,8 @@ def run_generation(template_ids: List[str]) -> None:
                 "image_phrase": variant.get("image_phrase"),
                 "models": {"text": model},
                 "tracked": sheet_templates.tracking_enabled(),
+                # Layout, shot, operator and message shape (variety.plan).
+                **look,
             }
             tmpl.category = "UTILITY"  # Default to UTILITY as requested
             db.commit()  # The copy is kept whatever happens to the photo.

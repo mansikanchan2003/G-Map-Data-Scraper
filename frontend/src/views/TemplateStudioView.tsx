@@ -13,6 +13,7 @@ import { BusinessTemplateAgent } from '../components/BusinessTemplateAgent';
 import { formatDateTime } from '../utils/datetime';
 import { SignNote } from '../components/SignNote';
 import { PhotoPromptRecord } from '../components/PhotoPromptRecord';
+import { ImageAllowance } from '../components/ImageAllowance';
 
 // Three ways to make a template.
 //   Business data: the agent writes for scraped businesses, learning from how
@@ -198,6 +199,7 @@ export const TemplateStudioView: React.FC = () => {
         ))}
       </div>
 
+      {mode !== 'sheet' && <div className="mb-4"><ImageAllowance refreshKey={drafts} /></div>}
       {mode === 'business' && <BusinessTemplateAgent />}
       {mode === 'sheet' && <SheetTemplateBuilder />}
 
