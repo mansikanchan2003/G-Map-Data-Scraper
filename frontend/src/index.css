@@ -64,20 +64,30 @@
   animation: pulse-sky 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* Precision clean dark scrollbars */
+/* Scrollbars. Wide and contrasting enough to find: at 5px and nearly the
+   colour of their track they could not be seen, and long pages such as the
+   Template Studio looked as if they did not scroll. The border is the
+   track's colour, so the thumb reads as a rounded bar with room around it. */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 12px;
+  height: 12px;
 }
 ::-webkit-scrollbar-track {
-  background: #020617;
+  background: #0b1222;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 3px;
+  background: #475569;
+  border: 3px solid #0b1222;
+  border-radius: 8px;
+  min-height: 40px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: #64748b;
+}
+/* Firefox, which ignores the rules above. */
+* {
+  scrollbar-width: auto;
+  scrollbar-color: #475569 #0b1222;
 }
 
 
@@ -236,8 +246,9 @@
 
 /* Scrollbars */
 :root[data-theme="light"] ::-webkit-scrollbar-track { background: #e2ecf1; }
-:root[data-theme="light"] ::-webkit-scrollbar-thumb { background: #b3cad5; }
-:root[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #94b1bf; }
+:root[data-theme="light"] ::-webkit-scrollbar-thumb { background: #7f9cab; border-color: #e2ecf1; }
+:root[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #5f7f8f; }
+:root[data-theme="light"] * { scrollbar-color: #7f9cab #e2ecf1; }
 
 /* Theme transition — kept off inputs so typing never feels laggy */
 body, aside, header, .bg-slate-900, .bg-slate-950, .bg-slate-800 {
