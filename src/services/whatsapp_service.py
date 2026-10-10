@@ -13,6 +13,7 @@ from src.models.whatsapp import (
 )
 from src.services.whatsapp_normalizer import WhatsAppNormalizer
 from src.services.meta_whatsapp_service import MetaWhatsAppService
+from src.services.creative_brief import meta_language
 
 logger = logging.getLogger("gmap_scraper.whatsapp_campaign")
 
@@ -203,7 +204,8 @@ class WhatsAppTemplateSubmissionService:
 
     def submit(self, template, category: str = "MARKETING") -> dict:
         meta_name = template.meta_template_name or meta_template_name_for(template.name)
-        language = template.language_code or "en_US"
+        # Odia has no code at Meta; see creative_brief.META_LANGUAGE_FALLBACK.
+        language = meta_language(template.language_code) or "en_US"
 
         # A media header needs an example handle, produced by uploading the
         # local file through Meta's resumable upload endpoint.
@@ -298,7 +300,8 @@ class WhatsAppTemplateEditService:
             return {"status": "skipped",
                     "error": "Template has not been submitted to Meta yet, so there is nothing to update."}
 
-        language = template.language_code or "en_US"
+        # Odia has no code at Meta; see creative_brief.META_LANGUAGE_FALLBACK.
+        language = meta_language(template.language_code) or "en_US"
         meta_id = self.meta_service.find_template_id(template.meta_template_name, language)
         if not meta_id:
             return {"status": "failed",

@@ -34,8 +34,25 @@ logger = logging.getLogger("gmap_scraper.image_prompts")
 
 UNUSED, IN_REVIEW, KEPT, REPLACED, DRAFT_REJECTED = "unused", "in_review", "kept", "replaced", "draft_rejected"
 
-_NO_TEXT = ("Absolutely no text, letters, numbers, signs, posters, logos or watermarks anywhere in the "
-            "image. Not an illustration, not a 3D render, not glossy stock photography.")
+# What every photo shows, whatever the scene: the team's own reference photos
+# of real Customer Service Points (2026-10-10). Fixed here rather than left to
+# the scene, after a photo made the operator look like a sage.
+CSP_SETTING = (
+    "The kiosk operator looks like a professional: neatly groomed, in professional attire — a man "
+    "in a collared shirt or a plain T-shirt, a woman in a saree, kurti or salwar suit — seated "
+    "behind the counter with a laptop or desktop computer, a fingerprint scanner and a small "
+    "printer. Not a sage, monk, priest or holy man: no saffron robe or turban, no tilak, no long "
+    "ascetic beard. The customers are ordinary local people in everyday clothes, standing at a "
+    "wooden or laminated counter. The wall behind the operator is covered, as in a real SBI "
+    "Customer Service Point, with large SBI-blue banners bearing the round SBI logo, colourful "
+    "posters for account opening, money transfer and Aadhaar cash withdrawal, printed notices of "
+    "rules, and framed training certificates."
+)
+# Free image models draw lettering as gibberish, so the wall's posters are
+# asked for out of focus: they read as posters without legible text.
+_NO_TEXT = ("The posters and banners on the wall are softly out of focus in the background, so none "
+            "of their lettering is legible. No sharp text, numbers or watermarks anywhere in the "
+            "foreground. Not an illustration, not a 3D render, not glossy stock photography.")
 
 
 def _place(state: Optional[str]) -> str:
@@ -49,7 +66,7 @@ def _place(state: Optional[str]) -> str:
 STYLES = {
     "short": lambda scene, state: (
         f"Candid documentary photo inside a small State Bank of India customer service point in "
-        f"{_place(state)}. {scene} Natural daylight, 35mm, real skin texture. A plain wall at the top."
+        f"{_place(state)}. {scene} Natural daylight, 35mm, real skin texture."
     ),
     "documentary": lambda scene, state: (
         f"A candid, unposed documentary photograph taken inside a small State Bank of India "
@@ -57,10 +74,9 @@ STYLES = {
         f"{scene} The kiosk operator sits behind a counter with a laptop, a fingerprint scanner "
         f"and a small receipt printer, serving a customer at the counter. "
         f"Shot on a 35mm lens at eye level in natural daylight, slight film grain, true-to-life "
-        f"colours, real skin texture with pores and imperfections, ordinary everyday clothing, a "
-        f"lived-in room with papers and cables. The people are in the centre of the frame; the "
-        f"upper fifth of the frame is a plain painted wall and the lower quarter is the front of "
-        f"the counter."
+        f"colours, real skin texture with pores and imperfections, a lived-in room with papers "
+        f"and cables. The people are in the centre of the frame and the lower quarter is the "
+        f"front of the counter."
     ),
 }
 DEFAULT_STYLE = "short"
@@ -69,16 +85,16 @@ DEFAULT_STYLE = "short"
 def build(style: str, scene: str, state: Optional[str], phrase: Optional[str] = None,
           language_code: Optional[str] = None) -> str:
     """The full prompt: the style's wording around the scene, then the text rule."""
-    base = STYLES.get(style, STYLES[DEFAULT_STYLE])(scene, state)
+    base = f"{STYLES.get(style, STYLES[DEFAULT_STYLE])(scene, state)} {CSP_SETTING}"
     if not phrase:
         return f"{base} {_NO_TEXT}"
     lang = creative_brief.LANGUAGES[language_code]
     return (
-        f"{base} On the plain wall above the counter hangs one clean, printed sign with large, "
+        f"{base} Above the counter, in sharp focus, hangs one clean, printed sign with large, "
         f"dark, clearly legible lettering that reads exactly: \"{phrase}\" — in {lang['name']} "
-        f"({lang['script']} script), spelled exactly as given, nothing added. Apart from that one "
-        f"sign there is no text, letters, numbers, logos or watermarks anywhere. Not an "
-        f"illustration, not a 3D render, not glossy stock photography."
+        f"({lang['script']} script), spelled exactly as given, nothing added. Every other poster "
+        f"on the wall is softly out of focus, its lettering not legible. Not an illustration, not "
+        f"a 3D render, not glossy stock photography."
     )
 
 
@@ -170,7 +186,7 @@ def plain_note(check: dict, passed: bool, checked: bool) -> Optional[str]:
         return "the photo could not be checked"
     if passed:
         return None
-    parts = ["lettering appeared where none was asked for"] if check.get("has_text") else []
+    parts = ["sharp lettering appeared where none was asked for"] if check.get("has_text") else []
     if check.get("operator_serving_customer") is False:
         parts.append("nobody serving a customer")
     return "; ".join(parts + _look_problems(check)) or "failed the check"
@@ -178,6 +194,8 @@ def plain_note(check: dict, passed: bool, checked: bool) -> Optional[str]:
 
 def _look_problems(check: dict) -> List[str]:
     parts = []
+    if check.get("operator_professional") is False:
+        parts.append("the operator did not look like a professional")
     if check.get("photorealistic") is False:
         parts.append("looked artificial")
     if check.get("anatomy_problems"):

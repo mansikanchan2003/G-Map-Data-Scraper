@@ -463,7 +463,7 @@ Answer with JSON only, in this shape:
   "callback_button": "button label meaning 'Call me back', at most 20 characters",
 {poster_spec(lang['name'])},
   "image_phrase": "2 to 5 words copied exactly from your headline or body, in {lang['name']} — the line that will be printed on a sign in the photo",
-  "photo_scene": "in English: who is in the photo and what is happening — the kiosk operator (age, gender, clothing typical of {state}) seated behind the counter with a laptop and a fingerprint scanner, serving one or two customers typical of {state} (for example taking a thumbprint, counting cash, handing over a passbook); the setting (village or small town); the mood that suits the angle. Not a phone or tablet demo. No text, signs or logos."
+  "photo_scene": "in English: who is in the photo and what is happening — the kiosk operator (age, gender; in professional attire — a shirt or T-shirt for a man, a saree, kurti or salwar suit for a woman; never a sage or holy man) seated behind the counter with a laptop and a fingerprint scanner, serving one or two customers typical of {state} (for example taking a thumbprint, counting cash, handing over a passbook); the setting (village or small town); the mood that suits the angle. Not a phone or tablet demo. No text, signs or logos."
 }}]}}"""
 
 
@@ -662,7 +662,10 @@ def photo_prompt(scene: str, state: str, style: str = image_prompts.DEFAULT_STYL
 
 PHOTO_CHECK = (
     "Inspect this image and answer with JSON only: "
-    '{"has_text": true if ANY letters, numbers, signs, posters, logos or pseudo-writing are visible, '
+    '{"has_text": true if sharp, in-focus letters, numbers or pseudo-writing are visible (posters '
+    'softly out of focus on the back wall are expected and do not count), '
+    '"operator_professional": true if the person behind the counter is neatly dressed in a shirt, '
+    'T-shirt, saree, kurti or suit, and false if they look like a sage, monk or priest, '
     '"photorealistic": true only if an ordinary viewer would believe it is a real photograph, '
     '"operator_serving_customer": true if a person behind a counter is serving a customer, '
     '"anatomy_problems": true if any hand, face or body looks distorted, '
@@ -672,7 +675,8 @@ PHOTO_CHECK = (
 
 def _photo_passes(check: dict) -> bool:
     return (not check.get("has_text") and check.get("photorealistic")
-            and check.get("operator_serving_customer") and not check.get("anatomy_problems"))
+            and check.get("operator_serving_customer") and not check.get("anatomy_problems")
+            and check.get("operator_professional") is not False)
 
 
 def _make_photo(client: GeminiClient, scene: str, state: str, tmpl: Optional[WhatsAppTemplate] = None):
@@ -778,7 +782,10 @@ TEXT_PHOTO_CHECK = (
     "Look at this photograph. Answer with JSON only: "
     '{"sign_text": the text on the main sign, copied character by character exactly as it is drawn, '
     'including any misspelling or malformed letters ("" if there is no sign), '
-    '"other_text": any other letters or words visible anywhere else ("" if none), '
+    '"other_text": any other sharp, legible letters or words outside the main sign ("" if none; '
+    'posters softly out of focus on the back wall do not count), '
+    '"operator_professional": true if the person behind the counter is neatly dressed in a shirt, '
+    'T-shirt, saree, kurti or suit, and false if they look like a sage, monk or priest, '
     '"photorealistic": true only if an ordinary viewer would believe it is a real photograph, '
     '"operator_serving_customer": true if a person behind a counter is serving a customer, '
     '"anatomy_problems": true if any hand, face or body looks distorted, '
@@ -798,7 +805,8 @@ def _text_photo_passes(check: dict, phrase: str) -> bool:
     return (_letters(check.get("sign_text")) == _letters(phrase)
             and not _letters(stray)
             and bool(check.get("photorealistic"))
-            and not check.get("anatomy_problems"))
+            and not check.get("anatomy_problems")
+            and check.get("operator_professional") is not False)
 
 
 def _has_poster(gen: dict) -> bool:

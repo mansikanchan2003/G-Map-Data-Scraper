@@ -274,7 +274,7 @@ Answer with JSON only:
   "learned": "one or two English sentences: which past results or rejections shaped this wording, and how",
 {studio.poster_spec(lang)},
   "image_phrase": "2 to 5 words copied exactly from your headline or body, in {lang}, with no blank in them — the line printed on a sign in the photo",
-  "photo_scene": "in English: who is in the photo and what is happening — a kiosk operator seated behind the counter of a business like these, with a laptop and a fingerprint scanner, serving one or two local customers (for example taking a thumbprint, counting cash, handing over a passbook); the setting; the mood that suits the angle. No text, signs or logos: the sign is added separately.",
+  "photo_scene": "in English: who is in the photo and what is happening — a kiosk operator in professional attire (a shirt or T-shirt for a man, a saree, kurti or salwar suit for a woman; never a sage or holy man) seated behind the counter of a business like these, with a laptop and a fingerprint scanner, serving one or two local customers (for example taking a thumbprint, counting cash, handing over a passbook); the setting; the mood that suits the angle. No text, signs or logos: the sign is added separately.",
   "body": "the message in {lang}, at most {studio.BODY_LIMIT} characters, with blanks as {{{{name}}}} and {{{{link}}}}, no web address of your own",
   "footer": "at most {studio.FOOTER_LIMIT} characters, e.g. the equivalent of 'Team Eko'",
   "callback_button": "button label meaning 'Call me back', at most 20 characters"

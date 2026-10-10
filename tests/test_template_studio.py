@@ -812,3 +812,56 @@ def test_the_record_is_shown_on_the_studio_page(db):
     assert {s["style"] for s in out["styles"]} == set(image_prompts.STYLES)
     assert sum(s["chosen_next"] for s in out["styles"] if s["kind"] == "plain") == 1
     assert out["recent"][0]["prompt"].startswith(("A candid", "Candid"))
+
+
+# --- Odia, and how the kiosk must look ----------------------------------------
+
+def test_odisha_is_written_in_odia_and_registered_as_en_us():
+    assert creative_brief.language_for_state("Odisha") == "or"
+    assert creative_brief.LANGUAGES["or"]["script"] == "Odia"
+    # Meta lists no Odia; the template is registered under en_US, as the
+    # team's Hindi ones were, and still written and checked in Odia.
+    assert creative_brief.meta_language("or") == "en_US"
+    assert creative_brief.meta_language("hi") == "hi"
+    assert creative_brief.script_problems("ବ୍ୟବସାୟ ବଢ଼ାନ୍ତୁ", "or") == []
+    assert creative_brief.script_problems("व्यापार", "or")  # Devanagari in an Odia template
+
+
+def test_an_odia_draft_is_submitted_to_meta_as_en_us(db, monkeypatch):
+    monkeypatch.setenv("MOCK_WHATSAPP_API", "true")
+    from src.services.whatsapp_service import WhatsAppTemplateSubmissionService
+
+    sent = {}
+    real = WhatsAppTemplateSubmissionService.submit
+
+    def spy(self, template, category="MARKETING"):
+        sent["before"] = template.language_code
+        out = real(self, template, category)
+        sent["after"] = template.language_code
+        return out
+
+    monkeypatch.setattr(WhatsAppTemplateSubmissionService, "submit", spy)
+    t = WhatsAppTemplate(template_id=uuid.uuid4().hex, name="Odisha Studio x", language_code="or",
+                         category="MARKETING", body="ନମସ୍କାର, +91 7291988625", status="AWAITING_APPROVAL",
+                         origin="agent", generation={})
+    db.add(t)
+    db.commit()
+    template_studio.approve(db, t, "reviewer@eko.co.in")
+    assert sent == {"before": "or", "after": "en_US"}
+
+
+@pytest.mark.parametrize("kind_phrase", [None, "ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ"])
+def test_every_image_prompt_asks_for_a_professional_operator_and_a_real_csp_wall(kind_phrase):
+    for style in image_prompts.STYLES:
+        prompt = image_prompts.build(style, "A scene.", "Punjab", kind_phrase, "pa" if kind_phrase else None)
+        assert "professional attire" in prompt and "saree, kurti or salwar suit" in prompt
+        assert "Not a sage, monk, priest or holy man" in prompt
+        assert "SBI-blue banners" in prompt and "out of focus" in prompt
+
+
+def test_a_sage_looking_operator_fails_the_photo_check(db):
+    FakeGemini.checks = [{**GOOD_CHECK, "operator_professional": False}]
+    [draft] = generate(db)
+    assert draft.generation["photo_check"]["passed"] is False
+    [r] = records(db)
+    assert not r.passed and "did not look like a professional" in r.note

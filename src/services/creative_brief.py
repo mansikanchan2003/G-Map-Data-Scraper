@@ -38,6 +38,8 @@ STATE_LANGUAGES: Dict[str, str] = {
     "andhra pradesh": "te",
     "karnataka": "kn",
     "kerala": "ml",
+    "odisha": "or",
+    "orissa": "or",
 }
 
 # Meta language code -> what the language is called, its script, the Unicode
@@ -52,7 +54,19 @@ LANGUAGES: Dict[str, dict] = {
     "te": {"name": "Telugu", "script": "Telugu", "range": "ఀ-౿", "font": "Noto Sans Telugu"},
     "kn": {"name": "Kannada", "script": "Kannada", "range": "ಀ-೿", "font": "Noto Sans Kannada"},
     "ml": {"name": "Malayalam", "script": "Malayalam", "range": "ഀ-ൿ", "font": "Noto Sans Malayalam"},
+    "or": {"name": "Odia", "script": "Odia", "range": "଀-୿", "font": "Noto Sans Oriya"},
 }
+
+# Languages Meta's templates do not list, and the code they are registered
+# under instead. Meta reads the code as a label, not the script: the team's
+# Hindi templates went in as en_US and were all approved. A template is
+# written, checked and set in its own script whatever it is registered as.
+META_LANGUAGE_FALLBACK: Dict[str, str] = {"or": "en_US"}
+
+
+def meta_language(code: Optional[str]) -> Optional[str]:
+    """The language code a template is registered with at Meta."""
+    return META_LANGUAGE_FALLBACK.get(code, code)
 
 # Every Indic block, so text in the wrong script can be caught — a Punjabi
 # poster already went out with a Hindi heading on it. The danda (। ॥) sits in
