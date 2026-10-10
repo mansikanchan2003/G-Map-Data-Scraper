@@ -42,9 +42,11 @@ def export_google_sheets(
             if filters.get("is_valid") is not None:
                 query = query.filter(Business.is_valid == filters["is_valid"])
             if filters.get("since"):
-                from dateutil.parser import parse
+                # The standard library's parser: dateutil was never installed
+                # on the server, and importing it outside the try failed the
+                # whole export.
                 try:
-                    since_dt = parse(filters["since"])
+                    since_dt = datetime.fromisoformat(str(filters["since"]).replace("Z", "+00:00"))
                     query = query.filter(Business.discovered_at >= since_dt)
                 except Exception:
                     pass

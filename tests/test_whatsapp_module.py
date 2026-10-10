@@ -737,3 +737,39 @@ class TestDynamicUrlButtonSubmission:
         btn = self._components(
             [{"type": "URL", "text": "Apply", "url": "https://kiosk.eko.in/"}])[0]
         assert "example" not in btn
+
+
+def test_an_audience_carries_where_each_business_is_and_what_it_does():
+    """
+    The template agent picks the audience's language from the businesses'
+    state. Contacts with only a name and phone left it guessing, and a
+    Rajasthan audience got English templates.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from src.database import Base
+    from src.models import Business
+    from src.routers import audience
+    from src.services import business_agent
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    try:
+        for i, (district, category) in enumerate([("Jaipur", "Kirana store"), ("Ajmer", "Mobile phone shop")]):
+            db.add(Business(business_id=f"B{i}", job_id="J1", name=f"Shop {i}", phone=f"+91980000001{i}",
+                            category=category, state="Rajasthan", district=district,
+                            source_query="q", dedup_key=f"k{i}"))
+        db.commit()
+        _, contacts = audience._build(db, audience.AudienceFilters(state="Rajasthan"), with_contacts=True)
+        assert {c["state"] for c in contacts} == {"Rajasthan"}
+        assert {c["category"] for c in contacts} == {"Kirana store", "Mobile phone shop"}
+
+        summary = business_agent.summarise(contacts)
+        assert summary["main_state"] == "Rajasthan"
+        assert business_agent.language_for(summary) == "hi"
+        assert {"name", "category", "district", "state"} <= set(summary["usable_fields"])
+    finally:
+        db.close()

@@ -134,7 +134,11 @@ def _build(db: Session, f: AudienceFilters, with_contacts: bool):
         if error or not canonical or canonical in seen:
             continue
         seen.add(canonical)
-        entry = {"name": b.name, "phone": canonical, "business_id": b.business_id}
+        # Where the business is and what it does travel with it: the template
+        # agent reads them to pick the audience's language and to write to
+        # the kind of business, and they fill the template's blanks.
+        entry = {"name": b.name, "phone": canonical, "business_id": b.business_id,
+                 "state": b.state, "district": b.district, "category": b.category}
         (already if canonical in contacted else never).append(entry)
 
     pool = (never + already) if f.include_already_contacted else never

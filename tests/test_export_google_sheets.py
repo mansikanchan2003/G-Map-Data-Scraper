@@ -237,3 +237,21 @@ def test_selected_ids_export(mock_creds, mock_gspread, mock_google_creds, setup_
     assert response.status_code == 200
     data = response.json()
     assert data["rows_exported"] == 1
+
+
+@patch("src.services.google_sheets.gspread.authorize")
+@patch("src.services.google_sheets.Credentials.from_service_account_info")
+def test_since_filter_export(mock_creds, mock_gspread, mock_google_creds, setup_db):
+    """The "since" filter: it imported dateutil, never installed on the server."""
+    mock_client = MagicMock()
+    mock_gspread.return_value = mock_client
+    mock_sheet = MagicMock()
+    mock_client.create.return_value = mock_sheet
+    mock_sheet.sheet1 = MagicMock()
+
+    response = client.post("/api/v1/export/google-sheets", json={
+        "filters": {"since": "2000-01-01T00:00:00Z"},
+        "export_all": False
+    })
+    assert response.status_code == 200
+    assert response.json()["rows_exported"] >= 1
