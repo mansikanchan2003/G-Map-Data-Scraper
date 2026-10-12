@@ -21,7 +21,7 @@ import logging
 import os
 import re
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -86,7 +86,8 @@ UNKNOWN_PIN = "We couldn't find the PIN code {pin}. Please check it and send it 
 HANDOVER_TEXT = "Thank you! One of our team members will contact you shortly to help you further."
 NOT_SERVED_TEXT = (
     "Thank you for sharing your PIN code. We are not available near {pin} yet, "
-    "but we are expanding fast and will reach out to you as soon as we are."
+    "but we are expanding fast and will reach out to you as soon as we are.\n\n"
+    "If you'd like to check another PIN code, just send it here."
 )
 ASK_INVEST = "Are you someone who can invest ₹5 Lakh for the business startup?"
 NOT_INVESTING_TEXT = (
@@ -114,6 +115,37 @@ ALREADY_SUBMITTED = (
     "We have already received your documents, thank you! One of our team "
     "members will reach out to you shortly."
 )
+
+# Answers to messages the bot was not waiting for. Someone who writes should
+# never be met with silence, but nor should they get the same line back
+# every time they type, so these are paced (see _fallback).
+GREETING = (
+    "Hello! 👋 Thank you for contacting Eko.\n\n"
+    "Would you like to start your own business as an Eko Customer Service "
+    "Point? Tap *Interested* to get started."
+)
+START_BUTTON = [{"id": "start:interested", "title": "Interested"}]
+REMIND_PIN = "Please send your 6-digit PIN code, for example 110001."
+REMIND_INVEST = "Please tap *Yes* or *No* below.\n\n" + ASK_INVEST
+REMIND_DOCS = "Please tap *Yes* or *No* below.\n\n" + ASK_DOCS
+REMIND_UPLOAD = "You can upload your documents on this link whenever you're ready."
+NOT_SERVED_AGAIN = (
+    "We are not available near {pin} yet. If you'd like to check another "
+    "PIN code, just send it here."
+)
+ACKNOWLEDGE = (
+    "Thank you for your message! One of our team members will get back to "
+    "you shortly."
+)
+
+# Not more than one such answer in this long, per conversation...
+FALLBACK_GAP = timedelta(minutes=5)
+# ...the greeting to someone who never started not more than once a day...
+GREETING_GAP = timedelta(hours=24)
+# ...and none at all after this many in a row that the bot did not
+# understand. Many businesses have an auto-reply, and two automatic
+# responders answering each other would never stop on their own.
+MAX_FALLBACK_STREAK = 3
 
 YES_NO = lambda prefix: [  # noqa: E731
     {"id": f"{prefix}:yes", "title": "Yes"},
@@ -243,46 +275,131 @@ def _on_pin(db, conv, msg):
         _say(db, conv, NOT_SERVED_TEXT.format(pin=pin))
 
 
+def _only_a_pin(msg: WhatsAppMessage) -> Optional[str]:
+    """A PIN when the message is nothing but one; "500000" mid-sentence may be an amount."""
+    body = re.sub(r"[\s-]", "", msg.body or "")
+    return body if msg.kind == "text" and re.fullmatch(r"[1-9]\d{5}", body) else None
+
+
+def _start(db, conv, msg):
+    if conv.documents_submitted_at:
+        _say(db, conv, ALREADY_SUBMITTED)
+        return
+    # Tapping the button again starts over: whatever was said before, this
+    # is the person asking again.
+    conv.bot_data = {}
+    _move(conv, AWAIT_PIN, pin_attempts=0, trigger=msg.body)
+    _say(db, conv, ASK_PIN)
+
+
+def _fallback(db, conv, body, gap=FALLBACK_GAP, **kw):
+    """
+    Answer a message the bot did not understand, if it has not just done so.
+
+    Paced, and stopped after a few in a row, so that a person typing several
+    lines gets one answer and an auto-reply cannot start an endless exchange.
+    """
+    data = conv.bot_data or {}
+    streak = data.get("fallback_streak", 0)
+    last = data.get("fallback_at")
+    if streak >= MAX_FALLBACK_STREAK:
+        return
+    if last and inbox.now() - datetime.fromisoformat(last) < gap:
+        return
+    conv.bot_data = {**data, "fallback_streak": streak + 1, "fallback_at": inbox.now().isoformat()}
+    _say(db, conv, body, **kw)
+
+
+def _understood(conv):
+    """The person said something the bot could act on; any pacing starts afresh."""
+    data = conv.bot_data or {}
+    if data.get("fallback_streak") or data.get("fallback_at"):
+        conv.bot_data = {k: v for k, v in data.items() if k not in ("fallback_streak", "fallback_at")}
+
+
 def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> None:
-    """React to one inbound message, if the bot has anything to say to it."""
+    """Answer one inbound message. Every message gets a fitting reply, paced."""
     if msg.direction != "IN" or conv.bot_paused:
         return
     cfg = get_settings(db)
     if not cfg["enabled"]:
         return
+    # A reaction is not a message to answer.
+    if msg.kind == "reaction":
+        return
 
-    if msg.kind == "button" and is_trigger(msg.body, cfg["triggers"]):
-        if conv.documents_submitted_at:
-            _say(db, conv, ALREADY_SUBMITTED)
-            return
-        # Tapping the campaign button again starts over: whatever was said
-        # before, this is the person asking again.
-        conv.bot_data = {}
-        _move(conv, AWAIT_PIN, pin_attempts=0, trigger=msg.body)
-        _say(db, conv, ASK_PIN)
+    tapped = (msg.payload or {}).get("id") if msg.kind == "interactive" else None
+    if (msg.kind == "button" and is_trigger(msg.body, cfg["triggers"])) or tapped == START_BUTTON[0]["id"]:
+        _understood(conv)
+        _start(db, conv, msg)
         return
 
     step = conv.bot_step
+
+    # A PIN code is checked whenever one is sent, not only when asked for:
+    # someone told "not in your area" may well try another. Mid-question
+    # only a message that is nothing but a PIN counts, so "yes, 500000"
+    # is not read as one; once the upload link is out, the PIN is settled.
+    if step not in (AWAIT_UPLOAD, SUBMITTED):
+        pin = (_only_a_pin(msg) if step in (AWAIT_INVEST, AWAIT_DOCS)
+               else pincode_coverage.extract_pincode(msg.body) if msg.kind == "text" else None)
+        if pin:
+            _understood(conv)
+            _on_pin(db, conv, msg)
+            return
+
     if step == AWAIT_PIN:
-        _on_pin(db, conv, msg)
+        # _on_pin counts the failed attempts and hands over after a few.
+        if msg.kind == "text":
+            _on_pin(db, conv, msg)
+        else:
+            _fallback(db, conv, REMIND_PIN)
 
     elif step == AWAIT_INVEST:
         answer = _answer(msg, "invest")
         if answer is True:
+            _understood(conv)
             _move(conv, AWAIT_DOCS, can_invest=True)
             _say(db, conv, ASK_DOCS.format(documents=document_list()), buttons=YES_NO("docs"))
         elif answer is False:
+            _understood(conv)
             _move(conv, NOT_INVESTING, can_invest=False)
             _say(db, conv, NOT_INVESTING_TEXT)
+        else:
+            _fallback(db, conv, REMIND_INVEST, buttons=YES_NO("invest"))
 
     elif step in (AWAIT_DOCS, AWAIT_UPLOAD):
         # At AWAIT_UPLOAD a second "Yes" means the link was lost; send it again.
         answer = _answer(msg, "docs")
         if answer is True:
+            _understood(conv)
             _send_upload_link(db, conv)
         elif answer is False and step == AWAIT_DOCS:
+            _understood(conv)
             _move(conv, AWAIT_DOCS, has_documents=False)
             _say(db, conv, DOCS_LATER)
+        elif step == AWAIT_DOCS:
+            _fallback(db, conv, REMIND_DOCS.format(documents=document_list()), buttons=YES_NO("docs"))
+        else:
+            _fallback(db, conv, REMIND_UPLOAD, link={"text": LINK_BUTTON, "url": upload_url(conv)})
+
+    elif step == SUBMITTED:
+        _fallback(db, conv, ALREADY_SUBMITTED)
+
+    elif step == NOT_SERVED:
+        pin = ((conv.bot_data or {}).get("coverage") or {}).get("pincode") or "your area"
+        _fallback(db, conv, NOT_SERVED_AGAIN.format(pin=pin))
+
+    elif step in (NOT_INVESTING, HANDOVER):
+        _fallback(db, conv, ACKNOWLEDGE)
+
+    else:
+        # Never started: someone writing to the number of their own accord,
+        # or answering a campaign with a button other than the trigger.
+        if msg.kind == "button":
+            _fallback(db, conv, ACKNOWLEDGE)
+        else:
+            _fallback(db, conv, GREETING, gap=GREETING_GAP, buttons=START_BUTTON)
 
 
 def documents_submitted(db: Session, conv: WhatsAppConversation) -> WhatsAppMessage:

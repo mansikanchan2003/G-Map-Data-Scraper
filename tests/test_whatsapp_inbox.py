@@ -260,8 +260,10 @@ def test_saying_no_to_investing_ends_politely(db):
     say(db, SERVED_PIN)
     tap(db, "invest:no")
     assert StubMeta.sent[-1][2] == onboarding_bot.NOT_INVESTING_TEXT
+    say(db, "ok thanks")  # answered politely, once
+    assert StubMeta.sent[-1][2] == onboarding_bot.ACKNOWLEDGE
     count = len(StubMeta.sent)
-    say(db, "ok thanks")  # the bot has nothing more to say
+    say(db, "bye")  # not again straight away
     assert len(StubMeta.sent) == count
 
 
@@ -272,10 +274,62 @@ def test_typed_yes_works_like_the_button(db):
     assert "Aadhaar Card" in StubMeta.sent[-1][2]
 
 
-def test_other_buttons_and_chat_do_not_start_the_bot(db):
+def test_another_button_is_acknowledged_without_starting_the_flow(db):
     tap_campaign(db, "Not interested")
-    say(db, "110001")
-    assert StubMeta.sent == []
+    assert [m[2] for m in StubMeta.sent] == [onboarding_bot.ACKNOWLEDGE]
+    assert conv(db).bot_step is None
+
+
+def test_a_pin_sent_out_of_the_blue_is_checked(db):
+    say(db, SERVED_PIN)
+    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_INVEST
+
+
+def test_someone_writing_first_is_greeted_and_can_start(db):
+    say(db, "Hi, what is this about?")
+    kind, _to, body, buttons = StubMeta.sent[-1]
+    assert body == onboarding_bot.GREETING and buttons == onboarding_bot.START_BUTTON
+    say(db, "hello?")  # greeted once a day, not on every line
+    assert len(StubMeta.sent) == 1
+    tap(db, "start:interested")
+    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_PIN
+
+
+def test_after_not_served_a_new_pin_is_checked_again(db, monkeypatch):
+    places = {"400001": (19.07, 72.87), "110017": (28.55, 77.25)}
+    monkeypatch.setattr(pincode_coverage, "_locate_or_none", lambda pin: places.get(pin))
+    tap_campaign(db)
+    say(db, "400001")
+    assert conv(db).bot_step == onboarding_bot.NOT_SERVED
+    say(db, "ok")
+    assert StubMeta.sent[-1][2] == onboarding_bot.NOT_SERVED_AGAIN.format(pin="400001")
+    say(db, "try 110017")
+    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_INVEST
+    assert conv(db).bot_step == onboarding_bot.AWAIT_INVEST
+
+
+def test_an_unclear_answer_gets_the_question_again(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "what does it involve?")
+    kind, _to, body, buttons = StubMeta.sent[-1]
+    assert body == onboarding_bot.REMIND_INVEST and [b["id"] for b in buttons] == ["invest:yes", "invest:no"]
+
+
+def test_an_amount_mid_question_is_not_read_as_a_pin(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "haan, 500000 hai mere paas")
+    assert conv(db).bot_step == onboarding_bot.AWAIT_INVEST
+
+
+def test_replies_stop_after_a_few_it_did_not_understand(db, monkeypatch):
+    # An auto-reply answering the bot's answer must not go on for ever.
+    monkeypatch.setattr(onboarding_bot, "FALLBACK_GAP", timedelta(0))
+    monkeypatch.setattr(onboarding_bot, "GREETING_GAP", timedelta(0))
+    for i in range(6):
+        say(db, f"Thank you for contacting us! ({i})")
+    assert len(StubMeta.sent) == onboarding_bot.MAX_FALLBACK_STREAK
 
 
 def test_a_paused_bot_says_nothing(db):
@@ -343,6 +397,7 @@ def test_reply_refused_once_the_window_has_closed(db, client):
     c = conv(db)
     c.last_inbound_at = inbox.now() - timedelta(hours=25)
     db.commit()
+    StubMeta.sent = []  # the bot's greeting to "hello" is not what is tested here
     r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/messages", json={"message": "Hi"})
     assert r.status_code == 409
     assert StubMeta.sent == []
