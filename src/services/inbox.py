@@ -262,6 +262,10 @@ def backfill_from_leads(db: Session) -> int:
     from src.models.whatsapp import WhatsAppButtonClick, WhatsAppCampaignRecipient, WhatsAppReply
 
     existing = {m for (m,) in db.query(WhatsAppMessage.message_id).all()}
+    # A tap the live webhook has already recorded is in the inbox under its
+    # own id; it is recognised by Meta's id instead.
+    seen_provider = {p for (p,) in db.query(WhatsAppMessage.provider_message_id)
+                     .filter(WhatsAppMessage.provider_message_id.isnot(None)).all()}
     added = 0
 
     taps = (
@@ -271,7 +275,8 @@ def backfill_from_leads(db: Session) -> int:
         .all()
     )
     for click, recipient in taps:
-        if click.click_id in existing or not recipient.phone:
+        if click.click_id in existing or not recipient.phone or (
+                click.provider_message_id and click.provider_message_id in seen_provider):
             continue
         conv = conversation(db, recipient.phone)
         at = aware(click.clicked_at)
@@ -290,7 +295,8 @@ def backfill_from_leads(db: Session) -> int:
         added += 1
 
     for reply in db.query(WhatsAppReply).all():
-        if reply.reply_id in existing:
+        if reply.reply_id in existing or (
+                reply.provider_message_id and reply.provider_message_id in seen_provider):
             continue
         conv = conversation(db, reply.phone)
         at = aware(reply.sent_at)

@@ -485,3 +485,24 @@ def test_a_failed_drive_copy_keeps_the_file_and_says_why(db, client, monkeypatch
     assert doc.drive_file_id is None and "shared drive" in doc.drive_error
     assert __import__("os").path.exists(doc.stored_path)
     assert client.get(f"/api/v1/inbox/documents/{doc.document_id}").content == PDF
+
+
+def test_backfill_skips_a_tap_the_webhook_already_recorded(db):
+    # The live webhook stores the tap under a new id, and the old leads
+    # table keeps its own row for the same tap: copying it again would
+    # break the unique Meta id and stop the whole backfill.
+    campaign_id, recipient_id = uuid.uuid4().hex, uuid.uuid4().hex
+    db.add(WhatsAppCampaign(campaign_id=campaign_id, name="T", data_source_type="scraped",
+                            status="COMPLETED", total_contacts=1))
+    db.add(WhatsAppCampaignRecipient(recipient_id=recipient_id, campaign_id=campaign_id,
+                                     phone=PHONE, status="READ", provider_message_id="wamid.camp"))
+    db.add(WhatsAppButtonClick(click_id=uuid.uuid4().hex, campaign_id=campaign_id,
+                               recipient_id=recipient_id, button_text="Interested",
+                               provider_message_id="wamid.tap1", clicked_at=inbox.now()))
+    db.commit()
+    inbox.record_inbound(db, {"from": PHONE.lstrip("+"), "id": "wamid.tap1", "type": "button",
+                              "button": {"text": "Interested"}}, None)
+    db.commit()
+
+    assert inbox.backfill_from_leads(db) == 0
+    assert db.query(WhatsAppMessage).filter(WhatsAppMessage.provider_message_id == "wamid.tap1").count() == 1
