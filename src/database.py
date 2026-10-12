@@ -113,6 +113,20 @@ def _migrate_db(eng) -> None:
                 conn.execute(text("ALTER TABLE whatsapp_campaign_recipients ADD COLUMN variables JSON"))
                 conn.commit()
 
+    # Where onboarding documents were copied to in Google Drive.
+    for table, cols in (
+        ("onboarding_documents", {"drive_file_id": "VARCHAR(100)", "drive_url": "VARCHAR(500)",
+                                  "drive_error": "VARCHAR(500)"}),
+        ("whatsapp_conversations", {"drive_folder_url": "VARCHAR(500)"}),
+    ):
+        if table in inspector.get_table_names():
+            present = [c["name"] for c in inspector.get_columns(table)]
+            with eng.connect() as conn:
+                for name, ddl in cols.items():
+                    if name not in present:
+                        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+                conn.commit()
+
     if "whatsapp_link_clicks" in inspector.get_table_names():
         columns = [c["name"] for c in inspector.get_columns("whatsapp_link_clicks")]
         if "automated_reason" not in columns:

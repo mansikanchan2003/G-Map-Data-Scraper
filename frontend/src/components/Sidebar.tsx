@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { triggerBatchDiscovery } from '../api';
 import type { NavTab } from './Header';
 import { canOpen } from '../utils/permissions';
+import { fetchInboxSummary } from '../api/inbox';
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -31,6 +32,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [executing, setExecuting] = useState(false);
   const [execFeedback, setExecFeedback] = useState<string | null>(null);
+  // Conversations with something unread, shown beside Inbox so a new message
+  // is noticed from any tab.
+  const [unread, setUnread] = useState(0);
+  const showsInbox = !role || canOpen(role, 'whatsapp-inbox');
+
+  useEffect(() => {
+    if (!showsInbox) return;
+    const load = () => fetchInboxSummary().then(s => setUnread(s.unread_conversations)).catch(() => {});
+    load();
+    const i = setInterval(load, 15000);
+    return () => clearInterval(i);
+  }, [showsInbox]);
 
   const handleExecutePipeline = async () => {
     if (executing) return;
@@ -54,6 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'businesses', label: 'Business Data', icon: 'dataset' },
     { id: 'jobs', label: 'Jobs Monitor', icon: 'sync' },
     { id: 'config', label: 'Configuration', icon: 'tune' },
+    { id: 'whatsapp-inbox', label: 'Inbox', icon: 'forum' },
     { id: 'whatsapp-campaign', label: 'WhatsApp Campaign', icon: 'campaign' },
     { id: 'whatsapp-templates', label: 'Templates', icon: 'chat' },
     { id: 'whatsapp-studio', label: 'Template Studio', icon: 'auto_awesome' },
@@ -155,6 +169,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {item.icon}
                 </span>
                 <span>{item.label}</span>
+                {item.id === 'whatsapp-inbox' && unread > 0 && (
+                  <span className="ml-auto text-[10px] font-bold min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center">
+                    {unread}
+                  </span>
+                )}
               </button>
             );
           })}

@@ -17,7 +17,7 @@ from sqlalchemy.pool import StaticPool
 from src.database import Base
 from src.models import (  # noqa: F401  (registers the tables on Base)
     WhatsAppButtonClick, WhatsAppCampaign, WhatsAppCampaignRecipient,
-    WhatsAppReply,
+    WhatsAppConversation, WhatsAppMessage, WhatsAppReply,
 )
 from src.routers import whatsapp as wa
 
@@ -43,7 +43,8 @@ def db():
         yield session
     finally:
         session.rollback()
-        for model in (WhatsAppReply, WhatsAppButtonClick,
+        # Replies are copied into the inbox too, under the same Meta id.
+        for model in (WhatsAppMessage, WhatsAppConversation, WhatsAppReply, WhatsAppButtonClick,
                       WhatsAppCampaignRecipient, WhatsAppCampaign):
             session.query(model).delete()
         session.commit()

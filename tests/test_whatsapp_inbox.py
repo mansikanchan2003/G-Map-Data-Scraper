@@ -1,0 +1,432 @@
+"""
+The inbox and the onboarding bot.
+
+Inbound messages of every kind are recorded once, however often Meta
+redelivers them. The bot walks someone from an "Interested" tap to uploaded
+documents, says nothing it was not asked for, and stays quiet when paused.
+The upload page accepts only real PDFs and images, and only on a live link.
+"""
+import uuid
+from datetime import timedelta
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from src.database import Base, get_db
+from src.main import app
+from src.models import (  # noqa: F401  (registers the tables on Base)
+    AppSetting, Location, OnboardingDocument, WhatsAppButtonClick, WhatsAppCampaign,
+    WhatsAppCampaignRecipient, WhatsAppConversation, WhatsAppMessage, WhatsAppReply,
+)
+from src.routers.auth import current_user
+from src.routers import onboarding
+from src.services import drive_uploads, inbox, onboarding_bot, pincode_coverage
+
+engine = create_engine(
+    "sqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base.metadata.create_all(bind=engine)
+
+PHONE = "+919000000001"
+SERVED_PIN = "110001"
+
+PDF = b"%PDF-1.4\n%test\n"
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+
+
+class StubMeta:
+    """Stands in for the Cloud API, and remembers what it was asked to send."""
+    sent = []
+    ok = True
+
+    def _result(self):
+        if StubMeta.ok:
+            return True, f"wamid.{uuid.uuid4().hex}", "200", None, None
+        return False, None, "400", "Meta API rejection: test", "131047"
+
+    def send_text_message(self, to, body):
+        StubMeta.sent.append(("text", to, body, None))
+        return self._result()
+
+    def send_button_message(self, to, body, buttons):
+        StubMeta.sent.append(("buttons", to, body, buttons))
+        return self._result()
+
+    def send_link_message(self, to, body, text, url):
+        StubMeta.sent.append(("link", to, body, {"text": text, "url": url}))
+        return self._result()
+
+
+@pytest.fixture(autouse=True)
+def stub_meta(monkeypatch, tmp_path):
+    StubMeta.sent = []
+    StubMeta.ok = True
+    monkeypatch.setattr(inbox, "MetaWhatsAppService", StubMeta)
+    monkeypatch.setattr(onboarding, "DOCS_DIR", str(tmp_path))
+    monkeypatch.setenv("WHATSAPP_BUSINESS_NUMBER", "+91 80000 00000")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://link.example.in")
+    # Nothing in these tests may reach a real geocoder.
+    monkeypatch.setattr(pincode_coverage, "_locate_or_none", lambda pin: None)
+    # Nor a real Google Drive; the copy itself is tested on its own below.
+    monkeypatch.setattr(drive_uploads, "save_in_background", lambda phone: None)
+
+
+@pytest.fixture
+def db():
+    session = TestingSessionLocal()
+    session.add(Location(location_id=uuid.uuid4().hex[:12], pincode=SERVED_PIN,
+                         latitude=28.6328, longitude=77.2197, district="New Delhi", state="Delhi"))
+    session.commit()
+    try:
+        yield session
+    finally:
+        session.rollback()
+        for model in (OnboardingDocument, WhatsAppMessage, WhatsAppConversation, WhatsAppReply,
+                      WhatsAppButtonClick, WhatsAppCampaignRecipient, WhatsAppCampaign,
+                      Location, AppSetting):
+            session.query(model).delete()
+        session.commit()
+        session.close()
+
+
+@pytest.fixture
+def client(db):
+    def override():
+        yield db
+    class Admin:
+        email = "admin@eko.co.in"
+        role = "admin"
+
+    previous = dict(app.dependency_overrides)
+    app.dependency_overrides[get_db] = override
+    app.dependency_overrides[current_user] = lambda: Admin()
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous)
+
+
+_seq = iter(range(10**6))
+
+
+def inbound(db, kind="text", **fields):
+    """Deliver one inbound message the way the webhook does, and let the bot answer it."""
+    message = {"from": PHONE.lstrip("+"), "id": f"wamid.in{next(_seq)}",
+               "timestamp": str(int(inbox.now().timestamp())), "type": kind, **fields}
+    msg = inbox.record_inbound(db, message, "Ravi Kumar")
+    db.commit()
+    if msg is not None:
+        conv = db.query(WhatsAppConversation).filter(WhatsAppConversation.phone == PHONE).one()
+        onboarding_bot.handle(db, conv, msg)
+        db.commit()
+    return msg
+
+
+def tap_campaign(db, text="Interested?"):
+    return inbound(db, "button", button={"text": text, "payload": text})
+
+
+def tap(db, button_id):
+    return inbound(db, "interactive", interactive={
+        "type": "button_reply", "button_reply": {"id": button_id, "title": button_id}})
+
+
+def say(db, text):
+    return inbound(db, "text", text={"body": text})
+
+
+def conv(db):
+    c = db.query(WhatsAppConversation).filter(WhatsAppConversation.phone == PHONE).one()
+    db.refresh(c)
+    return c
+
+
+# --- Recording -------------------------------------------------------------
+
+def test_every_inbound_kind_is_recorded_once(db):
+    message = {"from": "919000000001", "id": "wamid.X", "timestamp": "1760000000",
+               "type": "image", "image": {"id": "m1", "caption": "my shop", "mime_type": "image/jpeg"}}
+    first = inbox.record_inbound(db, message, "Ravi")
+    again = inbox.record_inbound(db, message, "Ravi")
+    db.commit()
+
+    assert first is not None and again is None
+    assert first.phone == PHONE
+    assert first.body == "[Photo] my shop"
+    c = conv(db)
+    assert c.profile_name == "Ravi"
+    assert c.last_inbound_at is not None
+
+
+def test_status_updates_move_inbox_ticks_forward_only(db):
+    inbound(db, "text", text={"body": "hello"})
+    sent = inbox.send(db, PHONE, "Hi!", sent_by="me@eko.co.in")
+    db.commit()
+    pid = sent.provider_message_id
+
+    assert inbox.apply_status(db, {"id": pid, "status": "read"})
+    assert inbox.apply_status(db, {"id": pid, "status": "delivered"})
+    assert sent.status == "READ"
+    assert not inbox.apply_status(db, {"id": "wamid.campaign", "status": "read"})
+
+
+# --- The bot ---------------------------------------------------------------
+
+def test_full_onboarding_flow(db, client):
+    tap_campaign(db)
+    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_PIN
+    assert conv(db).bot_step == onboarding_bot.AWAIT_PIN
+
+    say(db, "my pin is 110 001")
+    kind, _to, body, buttons = StubMeta.sent[-1]
+    assert (kind, body) == ("buttons", onboarding_bot.ASK_INVEST)
+    assert [b["id"] for b in buttons] == ["invest:yes", "invest:no"]
+
+    tap(db, "invest:yes")
+    kind, _to, body, _b = StubMeta.sent[-1]
+    assert kind == "buttons" and "Aadhaar Card" in body
+
+    tap(db, "docs:yes")
+    kind, _to, body, link = StubMeta.sent[-1]
+    assert kind == "link"
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.AWAIT_UPLOAD
+    assert link["url"] == f"https://link.example.in/onboard/{c.upload_token}"
+
+    page = client.get(f"/onboard/{c.upload_token}")
+    assert page.status_code == 200
+    assert "Upload your documents" in page.text and '"state": "open"' in page.text
+
+    # Not everything is in yet.
+    files = f"/onboard/{c.upload_token}/files"
+    assert client.post(files, data={"doc_type": "pan"}, files={"file": ("pan.pdf", PDF)}).status_code == 200
+    assert client.post(f"/onboard/{c.upload_token}/submit").status_code == 400
+
+    for d in onboarding_bot.DOCUMENTS:
+        r = client.post(files, data={"doc_type": d["key"]}, files={"file": (f"{d['key']}.png", PNG)})
+        assert r.status_code == 200, r.text
+    # A re-upload replaces rather than adds.
+    assert db.query(OnboardingDocument).count() == len(onboarding_bot.DOCUMENTS)
+
+    assert client.post(f"/onboard/{c.upload_token}/submit").json() == {"status": "submitted"}
+    assert StubMeta.sent[-1][2] == onboarding_bot.THANKS
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.SUBMITTED and c.documents_submitted_at is not None
+
+    # The inbox shows all of it, and the files can be read back.
+    detail = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}").json()
+    assert detail["bot_step"] == onboarding_bot.SUBMITTED
+    assert len(detail["document_files"]) == len(onboarding_bot.DOCUMENTS)
+    doc_id = detail["document_files"][0]["document_id"]
+    assert client.get(f"/api/v1/inbox/documents/{doc_id}").content in (PDF, PNG)
+
+
+def test_a_pin_within_twenty_km_is_served(db, monkeypatch):
+    # About 9 km from the served PIN.
+    monkeypatch.setattr(pincode_coverage, "_locate_or_none", lambda pin: (28.55, 77.25))
+    tap_campaign(db)
+    say(db, "110017")
+    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_INVEST
+    assert conv(db).bot_data["coverage"]["nearest_pincode"] == SERVED_PIN
+
+
+def test_a_pin_further_away_is_told_we_are_not_there_yet(db, monkeypatch):
+    monkeypatch.setattr(pincode_coverage, "_locate_or_none", lambda pin: (19.07, 72.87))  # Mumbai
+    tap_campaign(db)
+    say(db, "400001")
+    assert "not available near 400001" in StubMeta.sent[-1][2]
+    assert conv(db).bot_step == onboarding_bot.NOT_SERVED
+
+
+def test_no_pin_three_times_hands_over_to_a_person(db):
+    tap_campaign(db)
+    say(db, "hello")
+    assert StubMeta.sent[-1][2] == onboarding_bot.BAD_PIN
+    say(db, "999")
+    say(db, "what?")
+    assert StubMeta.sent[-1][2] == onboarding_bot.HANDOVER_TEXT
+    assert conv(db).bot_step == onboarding_bot.HANDOVER
+
+
+def test_saying_no_to_investing_ends_politely(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    tap(db, "invest:no")
+    assert StubMeta.sent[-1][2] == onboarding_bot.NOT_INVESTING_TEXT
+    count = len(StubMeta.sent)
+    say(db, "ok thanks")  # the bot has nothing more to say
+    assert len(StubMeta.sent) == count
+
+
+def test_typed_yes_works_like_the_button(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "Haan")
+    assert "Aadhaar Card" in StubMeta.sent[-1][2]
+
+
+def test_other_buttons_and_chat_do_not_start_the_bot(db):
+    tap_campaign(db, "Not interested")
+    say(db, "110001")
+    assert StubMeta.sent == []
+
+
+def test_a_paused_bot_says_nothing(db):
+    tap_campaign(db)
+    c = conv(db)
+    c.bot_paused = True
+    db.commit()
+    count = len(StubMeta.sent)
+    say(db, SERVED_PIN)
+    assert len(StubMeta.sent) == count
+
+
+def test_a_switched_off_bot_says_nothing(db):
+    onboarding_bot.save_settings(db, False, ["Interested"])
+    tap_campaign(db)
+    assert StubMeta.sent == []
+
+
+# --- Upload page -----------------------------------------------------------
+
+def _link(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    tap(db, "invest:yes")
+    tap(db, "docs:yes")
+    return conv(db).upload_token
+
+
+def test_only_real_pdfs_and_images_are_accepted(db, client):
+    token = _link(db)
+    r = client.post(f"/onboard/{token}/files", data={"doc_type": "pan"},
+                    files={"file": ("pan.pdf", b"<html>not a pdf</html>")})
+    assert r.status_code == 415
+    r = client.post(f"/onboard/{token}/files", data={"doc_type": "passport"},
+                    files={"file": ("x.pdf", PDF)})
+    assert r.status_code == 400
+
+
+def test_an_expired_or_unknown_link_is_refused(db, client):
+    token = _link(db)
+    c = conv(db)
+    c.upload_token_expires_at = inbox.now() - timedelta(minutes=1)
+    db.commit()
+    assert '"state": "invalid"' in client.get(f"/onboard/{token}").text
+    assert client.post(f"/onboard/{token}/files", data={"doc_type": "pan"},
+                       files={"file": ("pan.pdf", PDF)}).status_code == 404
+    assert '"state": "invalid"' in client.get("/onboard/not-a-token").text
+
+
+# --- Replying from the inbox -----------------------------------------------
+
+def test_reply_inside_the_window_is_sent(db, client):
+    say(db, "Is anyone there?")
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/messages",
+                    json={"message": "  Yes, how can we help?  "})
+    assert r.status_code == 200, r.text
+    assert StubMeta.sent[-1][:3] == ("text", PHONE, "Yes, how can we help?")
+
+    listing = client.get("/api/v1/inbox/conversations").json()
+    assert listing[0]["phone"] == PHONE and listing[0]["last_direction"] == "OUT"
+
+
+def test_reply_refused_once_the_window_has_closed(db, client):
+    say(db, "hello")
+    c = conv(db)
+    c.last_inbound_at = inbox.now() - timedelta(hours=25)
+    db.commit()
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/messages", json={"message": "Hi"})
+    assert r.status_code == 409
+    assert StubMeta.sent == []
+
+
+def test_unread_counts_clear_when_read(db, client):
+    say(db, "one")
+    say(db, "two")
+    assert client.get("/api/v1/inbox/conversations").json()[0]["unread"] == 2
+    client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/read")
+    assert client.get("/api/v1/inbox/conversations").json()[0]["unread"] == 0
+
+
+def test_pin_extraction():
+    assert pincode_coverage.extract_pincode("PIN 560 034 please") == "560034"
+    assert pincode_coverage.extract_pincode("call 9876543210") is None
+    assert pincode_coverage.extract_pincode("012345") is None
+
+
+# --- Google Drive ------------------------------------------------------------
+
+class FakeResponse:
+    def __init__(self, status, body):
+        self.status_code, self._body = status, body
+
+    def json(self):
+        return self._body
+
+
+class FakeDrive:
+    """Answers the two Drive calls made: create a folder, upload a file."""
+    def __init__(self, fail_uploads=False):
+        self.folders, self.uploads, self.fail_uploads = [], [], fail_uploads
+
+    def post(self, url, params=None, json=None, data=None, headers=None, timeout=None):
+        assert params["supportsAllDrives"] == "true"
+        if url == drive_uploads.FILES_URL:
+            self.folders.append(json)
+            return FakeResponse(200, {"id": "folder1", "webViewLink": "https://drive/folder1"})
+        if self.fail_uploads:
+            return FakeResponse(403, {"error": {"errors": [{"reason": "storageQuotaExceeded"}],
+                                                "message": "quota"}})
+        self.uploads.append(data)
+        n = len(self.uploads)
+        return FakeResponse(200, {"id": f"file{n}", "webViewLink": f"https://drive/file{n}"})
+
+
+def _submitted(db, client):
+    token = _link(db)
+    for d in onboarding_bot.DOCUMENTS:
+        client.post(f"/onboard/{token}/files", data={"doc_type": d["key"]},
+                    files={"file": (f"{d['key']}.pdf", PDF)})
+    client.post(f"/onboard/{token}/submit")
+    return conv(db)
+
+
+def test_documents_are_copied_to_drive_and_then_removed_locally(db, client, monkeypatch):
+    c = _submitted(db, client)
+    fake = FakeDrive()
+    monkeypatch.setenv("GOOGLE_DRIVE_FOLDER_ID", "parent")
+    monkeypatch.setenv("GOOGLE_CREDENTIALS_BASE64", "x")
+    monkeypatch.setattr(drive_uploads, "_session", lambda: fake)
+
+    assert drive_uploads.save_conversation(db, c) == len(onboarding_bot.DOCUMENTS)
+    assert fake.folders[0]["parents"] == ["parent"]
+    assert "Ravi Kumar" in fake.folders[0]["name"] and PHONE in fake.folders[0]["name"]
+
+    docs = db.query(OnboardingDocument).all()
+    assert all(d.drive_url and not __import__("os").path.exists(d.stored_path) for d in docs)
+    # The inbox now sends people to Drive for the file.
+    r = client.get(f"/api/v1/inbox/documents/{docs[0].document_id}", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"].startswith("https://drive/")
+    # Running again copies nothing twice.
+    assert drive_uploads.save_conversation(db, c) == 0
+
+
+def test_a_failed_drive_copy_keeps_the_file_and_says_why(db, client, monkeypatch):
+    c = _submitted(db, client)
+    monkeypatch.setenv("GOOGLE_DRIVE_FOLDER_ID", "parent")
+    monkeypatch.setenv("GOOGLE_CREDENTIALS_BASE64", "x")
+    monkeypatch.setattr(drive_uploads, "_session", lambda: FakeDrive(fail_uploads=True))
+
+    assert drive_uploads.save_conversation(db, c) == 0
+    doc = db.query(OnboardingDocument).first()
+    assert doc.drive_file_id is None and "shared drive" in doc.drive_error
+    assert __import__("os").path.exists(doc.stored_path)
+    assert client.get(f"/api/v1/inbox/documents/{doc.document_id}").content == PDF

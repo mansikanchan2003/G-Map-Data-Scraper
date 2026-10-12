@@ -141,6 +141,14 @@ services:
       GOOGLE_CREDENTIALS_BASE64: ${GOOGLE_CREDENTIALS_BASE64:-}
       GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID:-}
       GOOGLE_SHEET_OWNER_EMAIL: ${GOOGLE_SHEET_OWNER_EMAIL:-}
+      # Onboarding documents are copied into a folder of their own inside
+      # this one. It must be in a shared drive, with the service account
+      # above added as Content manager.
+      GOOGLE_DRIVE_FOLDER_ID: ${GOOGLE_DRIVE_FOLDER_ID:-}
+
+      # The WhatsApp inbox and onboarding bot.
+      WHATSAPP_BUSINESS_NUMBER: ${WHATSAPP_BUSINESS_NUMBER:-}
+      ONBOARDING_RADIUS_KM: ${ONBOARDING_RADIUS_KM:-20}
 
       # Campaign link tracking. PUBLIC_BASE_URL must be an address a phone can
       # reach over the internet, otherwise the tracking links will not open.

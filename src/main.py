@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from src.routers import (config, jobs, businesses, discovery, export, runs,
                          whatsapp, tracking, audience, template_studio, insights,
-                         auth as auth_router)
+                         inbox, onboarding, auth as auth_router)
 from src.database import init_db, get_db
 from src.utils.logging import setup_logging
 
@@ -36,6 +36,19 @@ async def lifespan(app: FastAPI):
             db.close()
     except Exception as e:
         logger.error(f"Could not seed the bootstrap admin: {e}")
+
+    # Button taps and replies recorded before the inbox existed, so their
+    # conversations are there from the start. Copies nothing twice.
+    try:
+        from src.database import SessionLocal
+        from src.services.inbox import backfill_from_leads
+        db = SessionLocal()
+        try:
+            backfill_from_leads(db)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Could not copy earlier replies into the inbox: {e}")
     logger.info("Database schema initialized")
 
     # The scraping autopilot. It idles until switched on from the dashboard,
@@ -102,6 +115,8 @@ app.add_middleware(
 #   /api/v1/auth/*               - signing up and signing in
 #   /r/{token}                   - campaign links, opened by recipients
 #   /api/v1/whatsapp/webhook     - called by Meta, verified by signature
+# The onboarding upload page (/onboard/{token}) is outside /api/ altogether;
+# its unguessable, expiring token is what admits the person filling it in.
 # Everything under / that is not an API path falls through to the SPA shell,
 # which has to load for the login page to exist at all.
 PUBLIC_API_PREFIXES = (
@@ -120,7 +135,10 @@ async def require_session(request, call_next):
     path = request.url.path
     is_api = path.startswith("/api/") or path in ("/docs", "/redoc", "/openapi.json")
 
-    if is_api and not any(path.startswith(p) for p in PUBLIC_API_PREFIXES):
+    # A CORS preflight never carries the cookie and changes nothing; refusing
+    # it made every JSON POST fail from the separately served dev frontend.
+    if (is_api and request.method != "OPTIONS"
+            and not any(path.startswith(p) for p in PUBLIC_API_PREFIXES)):
         from src.database import SessionLocal
         from src.services import auth_service
 
@@ -161,6 +179,10 @@ app.include_router(tracking.router)
 app.include_router(audience.router)
 app.include_router(template_studio.router)
 app.include_router(insights.router)
+app.include_router(inbox.router)
+# The document upload page, opened from WhatsApp by people with no account.
+# Outside /api/, so the session gate never applies to it.
+app.include_router(onboarding.router)
 
 
 @app.get("/health", tags=["Health"])

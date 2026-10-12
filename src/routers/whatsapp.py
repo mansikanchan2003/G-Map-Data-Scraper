@@ -24,9 +24,10 @@ from src.schemas.whatsapp import (
     WhatsAppTemplateSubmitRequest, WhatsAppTemplateSubmitResponse,
     WhatsAppTemplateSyncResponse
 )
+from src.models.inbox import WhatsAppMessage
 from src.models.user import User
 from src.routers.auth import current_user
-from src.services import auth_service, notifier, pricing
+from src.services import auth_service, inbox, notifier, onboarding_bot, pricing
 from src.services.whatsapp_normalizer import WhatsAppNormalizer
 from src.services.meta_whatsapp_service import MetaWhatsAppService
 # We will import whatsapp_service here later for campaign execution.
@@ -1152,17 +1153,29 @@ async def receive_webhook(request: Request, background: BackgroundTasks,
 
     payload = await request.json()
     leads: list = []
+    # Inbound messages new to the inbox, for the onboarding bot to answer.
+    received: list = []
 
     try:
         for entry in payload.get("entry", []):
             for change in entry.get("changes", []):
                 value = change.get("value", {})
                 for status in value.get("statuses", []):
-                    _apply_status_event(db, status)
+                    # A message sent from the inbox, or else a campaign send.
+                    if not inbox.apply_status(db, status):
+                        _apply_status_event(db, status)
+                # The name each sender set in WhatsApp, keyed by their number.
+                names = {
+                    c.get("wa_id"): (c.get("profile") or {}).get("name")
+                    for c in value.get("contacts", [])
+                }
                 for message in value.get("messages", []):
                     lead = _apply_inbound_message(db, message)
                     if lead:
                         leads.append(lead)
+                    stored = inbox.record_inbound(db, message, names.get(message.get("from")))
+                    if stored:
+                        received.append(stored.message_id)
         db.commit()
 
         # After the commit and outside the response: a slow mail server must
@@ -1171,6 +1184,8 @@ async def receive_webhook(request: Request, background: BackgroundTasks,
             background.add_task(
                 notifier.notify_button_click, auth_service.BOOTSTRAP_ADMIN, lead
             )
+        if received:
+            background.add_task(onboarding_bot.run, received)
 
     except Exception as e:
         logger.error(f"Error processing webhook payload: {str(e)}")
@@ -1440,6 +1455,14 @@ def reply_to_lead(
         sent_by=user.email,
     )
     db.add(reply)
+    # Shown in the inbox thread as well, under the same id so the startup
+    # backfill does not copy it a second time.
+    inbox.conversation(db, phone).last_message_at = inbox.now()
+    db.add(WhatsAppMessage(
+        message_id=reply.reply_id, phone=phone, direction="OUT", kind="text",
+        body=body, status=reply.status, provider_message_id=provider_id,
+        error_reason=reply.error_reason, sent_by=user.email, created_at=inbox.now(),
+    ))
     db.commit()
     db.refresh(reply)
 

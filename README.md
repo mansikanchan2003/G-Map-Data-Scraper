@@ -294,6 +294,42 @@ app never sees who opens it and cannot grant or revoke anything.
 - **Per-campaign execution log** with Meta's own error codes, visible in the
   dashboard rather than only in container logs.
 
+### Inbox and the onboarding bot
+
+**Inbox** lists everyone who has written to the business number: a typed
+message, a quick-reply tap, a photo. Each thread also shows the campaign
+messages that reached that number, so a reply is read under what it answers.
+A typed reply can be sent only within 24 hours of the person's last message,
+which is Meta's rule; after that the box says why it is closed instead.
+
+**The onboarding bot** starts when someone taps a trigger button on a
+campaign (default "Interested", set under Inbox → Bot):
+
+1. It asks for their PIN code.
+2. The PIN is served if it is on our location list or within
+   `ONBOARDING_RADIUS_KM` (20 km) of one. A PIN not on the list is placed on
+   the map through OpenStreetMap, falling back to India Post; only the PIN
+   is sent. Outside the area, they are told so politely.
+3. "Can you invest ₹5 Lakh?" — Yes / No.
+4. The documents needed, and "Do you have them?" — Yes / No.
+5. A link to the upload page, `/onboard/{token}`, which is public, Eko
+   branded and lapses after 7 days. Files are checked by their contents
+   (PDF, JPG or PNG, up to 5 MB each).
+6. On submit the page returns them to the WhatsApp chat, the bot thanks
+   them, and the admin is emailed.
+
+It answers only what it asked; anything else waits for a person. **Pause the
+bot here** in a thread hands that conversation to whoever is replying, and
+the switch under Inbox → Bot turns it off everywhere.
+
+**Documents go to Google Drive**, one folder per person, inside
+`GOOGLE_DRIVE_FOLDER_ID`, using the same service account as the live sheet.
+The folder must be in a **shared drive** with that service account as
+Content manager: a service account has no storage of its own, so a folder in
+someone's My Drive is refused. Once Drive holds a file the server copy is
+deleted. If the copy fails the file stays on the server, the reason is shown
+in the thread, and **Try again** retries it.
+
 ### Dashboard
 - Light and dark themes, remembered per browser.
 - Campaign history with a detail view: delivery counters, failure reasons

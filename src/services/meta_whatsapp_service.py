@@ -132,6 +132,71 @@ class MetaWhatsAppService:
 
         Returns the same tuple as send_template_message.
         """
+        return self._send_session_message(to_phone, {
+            "type": "text",
+            # Left off so a bare link does not turn the message into a
+            # link preview card, which is not what someone typing a reply means.
+            "text": {"preview_url": False, "body": body},
+        })
+
+    def send_button_message(
+        self,
+        to_phone: str,
+        body: str,
+        buttons: list,
+    ) -> Tuple[bool, Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """
+        Sends a message with up to three reply buttons.
+
+        `buttons` is [{"id": ..., "title": ...}]. A tap comes back as an
+        inbound "interactive" message carrying the id, so the id is what the
+        caller matches on, never the title. Like a text message, this is only
+        accepted inside the 24-hour window.
+        """
+        return self._send_session_message(to_phone, {
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "body": {"text": body},
+                "action": {"buttons": [
+                    # Meta caps a reply button's title at 20 characters.
+                    {"type": "reply", "reply": {"id": b["id"], "title": b["title"][:20]}}
+                    for b in buttons[:3]
+                ]},
+            },
+        })
+
+    def send_link_message(
+        self,
+        to_phone: str,
+        body: str,
+        button_text: str,
+        url: str,
+    ) -> Tuple[bool, Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """
+        Sends a message with one button that opens a URL.
+
+        Tidier than a bare link in the text, and the link is not previewed.
+        Only accepted inside the 24-hour window.
+        """
+        return self._send_session_message(to_phone, {
+            "type": "interactive",
+            "interactive": {
+                "type": "cta_url",
+                "body": {"text": body},
+                "action": {
+                    "name": "cta_url",
+                    "parameters": {"display_text": button_text[:20], "url": url},
+                },
+            },
+        })
+
+    def _send_session_message(
+        self,
+        to_phone: str,
+        message: dict,
+    ) -> Tuple[bool, Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """Sends a non-template message and returns the send_template_message tuple."""
         if os.environ.get("MOCK_WHATSAPP_API", "false").lower() == "true":
             import uuid
             if "500" in to_phone:
@@ -150,10 +215,7 @@ class MetaWhatsAppService:
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
             "to": to_phone.lstrip('+'),
-            "type": "text",
-            # Left off so a bare link does not turn the message into a
-            # link preview card, which is not what someone typing a reply means.
-            "text": {"preview_url": False, "body": body},
+            **message,
         }
 
         try:
@@ -173,14 +235,14 @@ class MetaWhatsAppService:
             error_code = str(error_code) if error_code is not None else None
 
             logger.error(
-                f"Meta text send failed status={response.status_code} code={error_code} msg={error_msg}"
+                f"Meta {message['type']} send failed status={response.status_code} code={error_code} msg={error_msg}"
             )
             return False, None, str(response.status_code), f"Meta API rejection: {error_msg}", error_code
 
         except requests.exceptions.Timeout:
             return False, None, None, "Network timeout", None
         except Exception as e:
-            logger.exception("Failed to send WhatsApp text message")
+            logger.exception(f"Failed to send WhatsApp {message.get('type')} message")
             return False, None, None, f"Provider error: {self._redact(str(e))}", None
 
     def billed_total(self, days: int = 30) -> Dict[str, Any]:
