@@ -181,7 +181,9 @@ def submit(token: str, background: BackgroundTasks, db: Session = Depends(get_db
         return {"status": "submitted"}
 
     have = {d.doc_type for d in db.query(OnboardingDocument).filter(OnboardingDocument.phone == conv.phone).all()}
-    missing = [d["label"] for d in onboarding_bot.DOCUMENTS if d["key"] not in have]
+    # Only the required documents hold up a submission; the rest are sent
+    # if the person has them.
+    missing = [d["label"] for d in onboarding_bot.REQUIRED_DOCUMENTS if d["key"] not in have]
     if missing:
         raise HTTPException(status_code=400, detail="Please upload: " + ", ".join(missing))
 
@@ -195,7 +197,7 @@ def submit(token: str, background: BackgroundTasks, db: Session = Depends(get_db
     background.add_task(notifier.notify_documents_submitted, auth_service.BOOTSTRAP_ADMIN, {
         "name": conv.profile_name, "phone": conv.phone,
         "pincode": ((conv.bot_data or {}).get("coverage") or {}).get("pincode"),
-        "documents": [d["label"] for d in onboarding_bot.DOCUMENTS],
+        "documents": [d["label"] for d in onboarding_bot.DOCUMENTS if d["key"] in have],
     })
     return {"status": "submitted"}
 
@@ -233,6 +235,9 @@ PAGE = """<!doctype html>
   .doc .info { flex: 1; min-width: 0; }
   .doc .name { font-weight: 600; }
   .doc .hint, .doc .file { font-size: .82rem; color: var(--muted); overflow-wrap: anywhere; }
+  .tag { display: inline-block; font-size: .7rem; font-weight: 700; border-radius: 999px; padding: 1px 8px; margin-top: 3px; }
+  .tag.req { background: #fdecea; color: #a93226; }
+  .tag.opt { background: var(--page); color: var(--muted); }
   .doc .file.ok { color: var(--ok); font-weight: 600; }
   .doc .file.err { color: var(--err); font-weight: 600; }
   .num { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--page);
@@ -285,7 +290,7 @@ if (CFG.state === 'invalid') {
 } else {
   const uploaded = Object.assign({}, CFG.uploaded);
   app.innerHTML = `<h1>Upload your documents</h1>
-    <p class="lead">Please upload each document below, then tap Submit.</p>
+    <p class="lead">The first three are required. Please add the others too if you have them, then tap Submit.</p>
     <span class="accepted">Accepted formats: ${esc(CFG.accepted)}</span>
     <div id="docs"></div>
     <div class="banner" id="msg" role="alert"></div>
@@ -297,6 +302,7 @@ if (CFG.state === 'invalid') {
     row.className = 'doc';
     row.innerHTML = `<div class="num">${i + 1}</div>
       <div class="info"><div class="name">${esc(d.label)}</div>
+        <span class="tag ${d.required ? 'req' : 'opt'}">${d.required ? 'Required' : 'Optional'}</span>
         <div class="hint">${d.hint ? esc(d.hint) : ''}</div><div class="file" aria-live="polite"></div></div>
       <label class="pick"><input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
         aria-label="Upload ${esc(d.label)}"><span class="btn btn-outline">Upload</span></label>`;
@@ -338,11 +344,11 @@ if (CFG.state === 'invalid') {
   });
 
   function refresh() {
-    const left = CFG.documents.filter(d => !uploaded[d.key]).length;
+    const left = CFG.documents.filter(d => d.required && !uploaded[d.key]).length;
     const b = document.getElementById('submit');
     if (!b) return;
     b.disabled = left > 0;
-    b.textContent = left ? `Submit documents (${left} left)` : 'Submit documents';
+    b.textContent = left ? `Submit documents (${left} required left)` : 'Submit documents';
   }
   refresh();
 

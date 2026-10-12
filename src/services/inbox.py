@@ -57,6 +57,29 @@ def normalize_phone(raw: Optional[str]) -> str:
     return f"+{digits}" if digits else ""
 
 
+def campaign_phones(db: Session, phones: Optional[list] = None) -> set:
+    """
+    The numbers an AutoGMap campaign has reached.
+
+    The business number is shared with other teams and their own outreach,
+    so being in the inbox says nothing about where someone came from. A
+    campaign message Meta accepted for the number does.
+    """
+    from src.models.whatsapp import WhatsAppCampaignRecipient
+
+    query = db.query(WhatsAppCampaignRecipient.phone).filter(
+        WhatsAppCampaignRecipient.provider_message_id.isnot(None))
+    if phones is not None:
+        if not phones:
+            return set()
+        query = query.filter(WhatsAppCampaignRecipient.phone.in_(phones))
+    return {p for (p,) in query.distinct().all()}
+
+
+def from_campaign(db: Session, phone: str) -> bool:
+    return phone in campaign_phones(db, [phone])
+
+
 def window_expires_at(conv: WhatsAppConversation) -> Optional[datetime]:
     last = aware(conv.last_inbound_at)
     return last + REPLY_WINDOW if last else None

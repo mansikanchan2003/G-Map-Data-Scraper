@@ -16,6 +16,8 @@ export interface ConversationSummary {
   bot_step_label: string | null;
   bot_paused: boolean;
   documents: number;
+  /** Reached by an AutoGMap campaign; the bot answers no one else. */
+  from_campaign: boolean;
 }
 
 export interface ThreadMessage {
@@ -66,7 +68,7 @@ export interface BotSettings {
   enabled: boolean;
   triggers: string[];
   radius_km: number;
-  documents: { key: string; label: string; hint: string | null }[];
+  documents: { key: string; label: string; hint: string | null; required: boolean }[];
   public_base_url_set: boolean;
   drive_configured: boolean;
   /** The address the Drive folder has to be shared with. */

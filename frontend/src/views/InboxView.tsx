@@ -300,6 +300,10 @@ const BotSettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
             <div className="rounded border border-slate-800 bg-slate-950 p-3 text-slate-400 leading-relaxed">
               <div className="text-slate-300 font-semibold mb-1">What it does</div>
+              <p className="mb-1.5">
+                It answers only people an AutoGMap campaign reached. Everyone else who writes to this
+                shared number is shown here but left for a person.
+              </p>
               <ol className="list-decimal pl-4 space-y-0.5">
                 <li>Asks for their PIN code.</li>
                 <li>Checks it is one of our PINs or within {settings.radius_km} km of one.</li>
@@ -309,7 +313,14 @@ const BotSettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               </ol>
               <div className="text-slate-300 font-semibold mt-3 mb-1">Documents asked for</div>
               <ul className="list-disc pl-4 space-y-0.5">
-                {settings.documents.map(d => <li key={d.key}>{d.label}</li>)}
+                {settings.documents.map(d => (
+                  <li key={d.key}>
+                    {d.label}
+                    <span className={d.required ? 'text-rose-400 ml-1' : 'text-slate-500 ml-1'}>
+                      · {d.required ? 'required' : 'optional'}
+                    </span>
+                  </li>
+                ))}
               </ul>
             </div>
 
@@ -396,7 +407,12 @@ const Details: React.FC<{
 
       <section>
         <h3 className="text-[10px] font-mono-code uppercase tracking-wider text-slate-500 mb-1.5">Onboarding bot</h3>
-        {conv.bot_step ? (
+        {!conv.from_campaign ? (
+          <p className="text-slate-500">
+            Not from an AutoGMap campaign, so the bot does not reply. This number is shared with
+            other teams; reply here by hand if it is ours to answer.
+          </p>
+        ) : conv.bot_step ? (
           <>
             <Row label="Step" value={<BotChip step={conv.bot_step} label={conv.bot_step_label} paused={false} />} />
             {coverage?.pincode && <Row label="PIN code" value={<span className="font-mono-code">{coverage.pincode}</span>} />}
@@ -416,19 +432,23 @@ const Details: React.FC<{
         ) : (
           <p className="text-slate-500">Not started. It starts when they tap a trigger button on a campaign.</p>
         )}
-        <button data-edit onClick={togglePause} disabled={busy}
-          className={`mt-2 w-full inline-flex items-center justify-center gap-1.5 px-2 py-1.5 rounded border font-semibold cursor-pointer disabled:opacity-50 ${
-            conv.bot_paused
-              ? 'border-sky-800 bg-sky-950 text-sky-300 hover:bg-sky-900'
-              : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
-          <span className="material-symbols-outlined text-[16px]">{conv.bot_paused ? 'play_arrow' : 'pause'}</span>
-          {conv.bot_paused ? 'Let the bot answer again' : 'Pause the bot here'}
-        </button>
-        <p className="text-slate-500 mt-1">
-          {conv.bot_paused
-            ? 'Paused: the bot will not answer this person until you resume it.'
-            : 'Pause it to take this conversation over by hand.'}
-        </p>
+        {conv.from_campaign && (
+          <>
+            <button data-edit onClick={togglePause} disabled={busy}
+              className={`mt-2 w-full inline-flex items-center justify-center gap-1.5 px-2 py-1.5 rounded border font-semibold cursor-pointer disabled:opacity-50 ${
+                conv.bot_paused
+                  ? 'border-sky-800 bg-sky-950 text-sky-300 hover:bg-sky-900'
+                  : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+              <span className="material-symbols-outlined text-[16px]">{conv.bot_paused ? 'play_arrow' : 'pause'}</span>
+              {conv.bot_paused ? 'Let the bot answer again' : 'Pause the bot here'}
+            </button>
+            <p className="text-slate-500 mt-1">
+              {conv.bot_paused
+                ? 'Paused: the bot will not answer this person until you resume it.'
+                : 'Pause it to take this conversation over by hand.'}
+            </p>
+          </>
+        )}
       </section>
 
       <section>
@@ -503,7 +523,7 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
   const [listError, setListError] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | 'unread' | 'bot' | 'docs'>('all');
+  const [filter, setFilter] = useState<'all' | 'autogmap' | 'unread' | 'bot' | 'docs'>('all');
   const [selected, setSelected] = useState<string | null>(() => {
     // A link such as #inbox/919876543210 opens that conversation.
     const m = window.location.hash.match(/^#inbox\/(\d+)/);
@@ -626,7 +646,8 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
   };
 
   const shown = useMemo(() => conversations.filter(c =>
-    filter === 'unread' ? c.unread > 0
+    filter === 'autogmap' ? c.from_campaign
+    : filter === 'unread' ? c.unread > 0
       : filter === 'bot' ? !!c.bot_step && BOT_WAITING.includes(c.bot_step) && !c.bot_paused
         : filter === 'docs' ? c.documents > 0
           : true,
@@ -670,7 +691,7 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
               className="w-full bg-slate-950 border border-slate-800 rounded pl-8 pr-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-sky-600" />
           </div>
           <div className="flex gap-1 overflow-x-auto">
-            {([['all', 'All'], ['unread', 'Unread'], ['bot', 'With bot'], ['docs', 'Documents']] as const).map(([k, label]) => (
+            {([['all', 'All'], ['autogmap', 'From AutoGMap'], ['unread', 'Unread'], ['bot', 'With bot'], ['docs', 'Documents']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setFilter(k)}
                 className={`text-[11px] px-2 py-1 rounded-full border whitespace-nowrap cursor-pointer ${
                   filter === k ? 'border-sky-600 bg-sky-950 text-sky-300' : 'border-slate-800 text-slate-400 hover:text-slate-200'}`}>
@@ -720,8 +741,14 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
                           </span>
                         )}
                       </span>
-                      {(c.bot_step || c.documents > 0) && (
-                        <span className="flex items-center gap-1.5 mt-1">
+                      {(c.from_campaign || c.bot_step || c.documents > 0) && (
+                        <span className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          {c.from_campaign && (
+                            <span title="Reached by an AutoGMap campaign"
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-amber-800 bg-amber-950/60 text-amber-300 text-[10px] font-semibold whitespace-nowrap">
+                              <span className="material-symbols-outlined text-[12px]">campaign</span>AutoGMap
+                            </span>
+                          )}
                           <BotChip step={c.bot_step} label={c.bot_step_label} paused={c.bot_paused} />
                           {c.documents > 0 && (
                             <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-400">

@@ -62,14 +62,27 @@ STEP_LABELS = {
     HANDOVER: "Needs a person",
 }
 
-# The documents asked for on the upload page and listed in the chat.
+# The documents asked for on the upload page and listed in the chat, in the
+# order SBI's CSP onboarding lists them. The required ones must be uploaded
+# before the page can be submitted; the rest are uploaded if the person has
+# them. Keys are kept for documents that existed before, so files already
+# uploaded keep their names.
 DOCUMENTS = [
-    {"key": "aadhaar", "label": "Aadhaar Card", "hint": "Front and back, in one file"},
-    {"key": "pan", "label": "PAN Card", "hint": None},
-    {"key": "photo", "label": "Passport-size photograph", "hint": None},
-    {"key": "bank", "label": "Cancelled cheque or bank passbook", "hint": "The page with your name and account number"},
-    {"key": "shop", "label": "Photo of your shop or outlet", "hint": None},
+    {"key": "pan", "label": "PAN Card (Self Attested)", "hint": None, "required": True},
+    {"key": "aadhaar", "label": "Aadhaar Card (Self Attested)", "hint": "Front and back, in one file", "required": True},
+    {"key": "photo", "label": "Passport Size Photo", "hint": None, "required": True},
+    {"key": "cibil", "label": "Full CIBIL Report", "hint": None, "required": False},
+    {"key": "police", "label": "Police Verification Certificate (valid) / Application Receipt (Self Attested)",
+     "hint": None, "required": False},
+    {"key": "voter_dl", "label": "Voter Card / Driving Licence", "hint": None, "required": False},
+    {"key": "iibf", "label": "IIBF Certificate (if available)", "hint": None, "required": False},
+    {"key": "edu_12", "label": "Education Certificate — Class XII (Self Attested)", "hint": None, "required": False},
+    {"key": "bank", "label": "SBI Savings/Current Account Statement or Passbook copy (Self Attested)",
+     "hint": None, "required": False},
+    {"key": "edu_higher", "label": "Education Certificate — Above Class XII (Self Attested)",
+     "hint": None, "required": False},
 ]
+REQUIRED_DOCUMENTS = [d for d in DOCUMENTS if d["required"]]
 
 # A PIN asked for this many times without a usable answer goes to a person.
 MAX_PIN_ATTEMPTS = 3
@@ -154,7 +167,14 @@ YES_NO = lambda prefix: [  # noqa: E731
 
 
 def document_list() -> str:
-    return "\n".join(f"{i}. {d['label']}" for i, d in enumerate(DOCUMENTS, start=1))
+    """The documents as the chat lists them: the required ones first, then the rest."""
+    required = [d for d in DOCUMENTS if d["required"]]
+    optional = [d for d in DOCUMENTS if not d["required"]]
+    lines = ["*Required:*"] + [f"{i}. {d['label']}" for i, d in enumerate(required, start=1)]
+    if optional:
+        lines += ["", "*Also needed, if you have them:*"]
+        lines += [f"{i}. {d['label']}" for i, d in enumerate(optional, start=len(required) + 1)]
+    return "\n".join(lines)
 
 
 # --- Settings ---------------------------------------------------------------
@@ -323,6 +343,11 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
         return
     cfg = get_settings(db)
     if not cfg["enabled"]:
+        return
+    # The number is shared with other teams, who talk to people of their
+    # own. The bot speaks only to people an AutoGMap campaign reached; every
+    # other conversation is still shown in the inbox, and left to a person.
+    if not inbox.from_campaign(db, conv.phone):
         return
     # A reaction is not a message to answer.
     if msg.kind == "reaction":

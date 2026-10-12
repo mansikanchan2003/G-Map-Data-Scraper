@@ -91,6 +91,13 @@ def db():
     session = TestingSessionLocal()
     session.add(Location(location_id=uuid.uuid4().hex[:12], pincode=SERVED_PIN,
                          latitude=28.6328, longitude=77.2197, district="New Delhi", state="Delhi"))
+    # The bot answers only people a campaign reached, so the test number
+    # was sent one; the test that it ignores others uses another number.
+    campaign_id = uuid.uuid4().hex
+    session.add(WhatsAppCampaign(campaign_id=campaign_id, name="Delhi CSP", data_source_type="scraped",
+                                 status="COMPLETED", total_contacts=1))
+    session.add(WhatsAppCampaignRecipient(recipient_id=uuid.uuid4().hex, campaign_id=campaign_id,
+                                          phone=PHONE, status="READ", provider_message_id="wamid.campaign.base"))
     session.commit()
     try:
         yield session
@@ -564,3 +571,41 @@ def test_an_unknown_file_type_is_only_ever_downloaded(db, client):
     assert r.status_code == 200
     assert r.headers["content-disposition"].startswith("attachment")
     assert r.headers["content-type"] == "application/octet-stream"
+
+
+# --- Only people an AutoGMap campaign reached --------------------------------
+
+OTHER = "+919000000002"
+
+
+def test_the_bot_leaves_people_from_elsewhere_alone(db, client):
+    # Someone writing to the shared number who was never sent our campaign.
+    msg = inbox.record_inbound(db, {"from": OTHER.lstrip("+"), "id": "wamid.other1", "type": "button",
+                                    "button": {"text": "Interested"}}, "Someone else")
+    db.commit()
+    onboarding_bot.handle(db, inbox.conversation(db, OTHER), msg)
+    db.commit()
+    assert StubMeta.sent == []
+
+    # Still shown in the inbox, just not marked as ours.
+    listing = {c["phone"]: c for c in client.get("/api/v1/inbox/conversations").json()}
+    assert listing[OTHER]["from_campaign"] is False
+
+
+def test_people_a_campaign_reached_are_marked_from_autogmap(db, client):
+    say(db, "hello")
+    listing = {c["phone"]: c for c in client.get("/api/v1/inbox/conversations").json()}
+    assert listing[PHONE]["from_campaign"] is True
+    assert client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}").json()["from_campaign"] is True
+
+
+def test_only_the_required_documents_hold_up_submitting(db, client):
+    token = _link(db)
+    for d in onboarding_bot.REQUIRED_DOCUMENTS[:-1]:
+        client.post(f"/onboard/{token}/files", data={"doc_type": d["key"]}, files={"file": ("a.pdf", PDF)})
+    r = client.post(f"/onboard/{token}/submit")
+    assert r.status_code == 400 and onboarding_bot.REQUIRED_DOCUMENTS[-1]["label"] in r.json()["detail"]
+
+    last = onboarding_bot.REQUIRED_DOCUMENTS[-1]
+    client.post(f"/onboard/{token}/files", data={"doc_type": last["key"]}, files={"file": ("a.pdf", PDF)})
+    assert client.post(f"/onboard/{token}/submit").json() == {"status": "submitted"}

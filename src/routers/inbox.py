@@ -45,6 +45,9 @@ class ConversationSummary(BaseModel):
     bot_step_label: Optional[str] = None
     bot_paused: bool = False
     documents: int = 0
+    # Reached by an AutoGMap campaign. Only these does the bot answer; the
+    # number is shared, and everyone else is another team's to handle.
+    from_campaign: bool = False
 
 
 class ThreadMessage(BaseModel):
@@ -156,7 +159,7 @@ def _unread(db: Session, convs: list) -> dict:
     return counts
 
 
-def _summary(conv, name, last, unread, docs) -> dict:
+def _summary(conv, name, last, unread, docs, from_campaign=False) -> dict:
     return dict(
         phone=conv.phone,
         name=conv.profile_name or name,
@@ -169,6 +172,7 @@ def _summary(conv, name, last, unread, docs) -> dict:
         bot_step_label=onboarding_bot.STEP_LABELS.get(conv.bot_step),
         bot_paused=bool(conv.bot_paused),
         documents=docs,
+        from_campaign=from_campaign,
     )
 
 
@@ -208,9 +212,11 @@ def list_conversations(
                 .group_by(OnboardingDocument.phone).all())
     names = _names(db, phones)
     unread = _unread(db, convs)
+    ours = inbox.campaign_phones(db, phones)
 
     return [ConversationSummary(**_summary(
         c, names.get(c.phone), last_by_phone.get(c.phone), unread.get(c.phone, 0), docs.get(c.phone, 0),
+        c.phone in ours,
     )) for c in convs]
 
 
@@ -268,7 +274,8 @@ def get_conversation(digits: str, db: Session = Depends(get_db)):
              .order_by(OnboardingDocument.uploaded_at.asc()).all())
     labels = {d["key"]: d["label"] for d in onboarding_bot.DOCUMENTS}
 
-    summary = _summary(conv, names.get(conv.phone), None, _unread(db, [conv]).get(conv.phone, 0), len(files))
+    summary = _summary(conv, names.get(conv.phone), None, _unread(db, [conv]).get(conv.phone, 0), len(files),
+                       any(m.kind == "campaign" for m in messages))
     summary["last_message"] = last.body if last else None
     summary["last_direction"] = last.direction if last else None
 
