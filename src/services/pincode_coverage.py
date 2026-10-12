@@ -11,6 +11,8 @@ Only the PIN code is sent to the geocoder, never anything about the person.
 import logging
 import os
 import re
+import threading
+import time
 from functools import lru_cache
 from typing import Optional, Tuple
 
@@ -41,7 +43,21 @@ def extract_pincode(text: Optional[str]) -> Optional[str]:
     return match.group(1) if match else None
 
 
+# OpenStreetMap's geocoder allows one request a second and answers 429 to
+# anything faster. A sync placing several PINs, or the bot and a sync at
+# once, would otherwise exceed it.
+_MIN_INTERVAL = 1.1
+_last_call = 0.0
+_pace = threading.Lock()
+
+
 def _nominatim(params: dict) -> Optional[Tuple[float, float]]:
+    global _last_call
+    with _pace:
+        wait = _last_call + _MIN_INTERVAL - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _last_call = time.monotonic()
     resp = requests.get(
         NOMINATIM_URL,
         params={**params, "format": "json", "limit": 1, "countrycodes": "in"},

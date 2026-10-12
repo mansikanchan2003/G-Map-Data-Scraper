@@ -69,3 +69,18 @@ def test_rows_that_cannot_be_placed_are_reported_not_dropped(sheets):
     assert "could not be found" in skipped["999999"]
     assert "looks wrong" in skipped["400001"]
     assert sheets.query(Location).filter(Location.pincode.in_(["999999", "400001"])).count() == 0
+
+
+def test_a_pin_already_in_the_database_is_not_looked_up_again(sheets, monkeypatch):
+    # Added from the dashboard with its own coordinates; the sheet has none.
+    sheets.add(Location(location_id="dash160055", pincode="160055", latitude=30.70, longitude=76.71,
+                        state="Punjab"))
+    sheets.commit()
+    looked_up = []
+    monkeypatch.setattr(pincode_coverage, "_locate_or_none", lambda pin: looked_up.append(pin))
+
+    config_loader.sync_config(sheets)
+
+    assert "160055" not in looked_up
+    assert sheets.query(Location).filter(Location.pincode == "160055").count() == 1
+    assert sheets.query(Location).filter(Location.pincode == "160055").one().district == "MOHALI"

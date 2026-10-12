@@ -59,6 +59,18 @@ def sync_config(db: Session) -> dict:
 
             precision = None
             if lat is None or lng is None:
+                # Most such rows are PINs added from the dashboard, which
+                # already have coordinates in the database. Looking those up
+                # again would add each a second time at a slightly different
+                # point, so only a PIN the database has never seen is placed.
+                known = db.query(Location).filter(Location.pincode == str(pincode).strip()).all()
+                if known:
+                    for existing in known:
+                        if not existing.district and district: existing.district = district
+                        if not existing.state and state: existing.state = state
+                        if not existing.tehsil and tehsil: existing.tehsil = tehsil
+                        if not existing.anchor_name and anchor_name: existing.anchor_name = anchor_name
+                    continue
                 # A PIN typed into the sheet without coordinates used to be
                 # dropped without a word, so it never reached the server.
                 # It is placed from the PIN code instead, and checked against
