@@ -245,6 +245,41 @@ class MetaWhatsAppService:
             logger.exception(f"Failed to send WhatsApp {message.get('type')} message")
             return False, None, None, f"Provider error: {self._redact(str(e))}", None
 
+    def download_media(self, media_id: str) -> Tuple[Optional[bytes], Optional[str], Optional[str]]:
+        """
+        Fetches a file someone sent us: (content, mime type, error).
+
+        A webhook carries only the media's id. The id resolves to a URL that
+        lapses within minutes and itself needs the access token, and Meta
+        keeps the file for about 30 days, so it is fetched as soon as it
+        arrives rather than when someone first opens the conversation.
+        """
+        if os.environ.get("MOCK_WHATSAPP_API", "false").lower() == "true":
+            return None, None, "Media is not fetched in mock mode"
+        if not self.is_configured():
+            return None, None, "WhatsApp Meta API is not configured"
+
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        try:
+            meta = requests.get(
+                f"https://graph.facebook.com/{self.api_version}/{media_id}",
+                headers=headers, timeout=15,
+            )
+            info = meta.json()
+            if meta.status_code != 200 or not info.get("url"):
+                err = (info.get("error") or {}).get("message") or f"HTTP {meta.status_code}"
+                return None, None, self._redact(f"Could not look up the media: {err}")
+            # Meta's media host refuses a request without a user agent.
+            resp = requests.get(info["url"], headers={**headers, "User-Agent": "AutoGMap/1.0"}, timeout=60)
+            if resp.status_code != 200:
+                return None, None, f"Could not download the media: HTTP {resp.status_code}"
+            return resp.content, info.get("mime_type") or resp.headers.get("Content-Type"), None
+        except requests.exceptions.Timeout:
+            return None, None, "Timed out downloading the media"
+        except Exception as e:
+            logger.exception("Failed to download WhatsApp media")
+            return None, None, self._redact(f"Media download failed: {e}")
+
     def billed_total(self, days: int = 30) -> Dict[str, Any]:
         """
         What Meta says this account has been billed over the last `days`.

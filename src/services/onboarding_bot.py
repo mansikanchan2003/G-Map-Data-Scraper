@@ -121,8 +121,8 @@ ALREADY_SUBMITTED = (
 # every time they type, so these are paced (see _fallback).
 GREETING = (
     "Hello! 👋 Thank you for contacting Eko.\n\n"
-    "Would you like to start your own business as an Eko Customer Service "
-    "Point? Tap *Interested* to get started."
+    "Would you like to start your own business as an SBI Customer Service "
+    "Point, with Eko? Tap *Interested* to get started."
 )
 START_BUTTON = [{"id": "start:interested", "title": "Interested"}]
 REMIND_PIN = "Please send your 6-digit PIN code, for example 110001."

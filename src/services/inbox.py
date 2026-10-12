@@ -10,6 +10,7 @@ Campaign template sends are not copied in. They already live in
 whatsapp_campaign_recipients, and the thread reads them from there.
 """
 import logging
+import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -223,6 +224,70 @@ def send(
     if not ok:
         logger.warning(f"inbox event=SEND_FAILED phone=...{phone[-4:]} by={sent_by} reason={msg.error_reason}")
     return msg
+
+
+MEDIA_DIR = os.environ.get("INBOX_MEDIA_DIR", os.path.join("data", "inbox_media"))
+MEDIA_KINDS = tuple(_MEDIA_LABELS)
+
+_EXTENSIONS = {
+    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+    "video/mp4": "mp4", "video/3gpp": "3gp", "audio/ogg": "ogg", "audio/mpeg": "mp3",
+    "audio/mp4": "m4a", "audio/aac": "aac", "audio/amr": "amr", "application/pdf": "pdf",
+}
+
+
+def fetch_media(msg: WhatsAppMessage) -> Optional[str]:
+    """
+    Download the file an inbound message carries, and note where it was kept.
+
+    Returns the reason when it could not be fetched; that is recorded too, so
+    the thread can say so rather than show a broken image.
+    """
+    payload = dict(msg.payload or {})
+    if msg.direction != "IN" or msg.kind not in MEDIA_KINDS or payload.get("stored"):
+        return None
+    media_id = payload.get("media_id")
+    if not media_id:
+        return "Meta sent no media id"
+
+    content, mime, error = MetaWhatsAppService().download_media(media_id)
+    if content is None:
+        msg.payload = {**payload, "fetch_error": (error or "Unknown error")[:300]}
+        return error
+
+    mime = (mime or payload.get("mime_type") or "application/octet-stream").split(";")[0].strip()
+    name = payload.get("filename") or ""
+    ext = _EXTENSIONS.get(mime) or (os.path.splitext(name)[1].lstrip(".")[:8] if name else "") or "bin"
+    folder = os.path.join(MEDIA_DIR, re.sub(r"\D", "", msg.phone))
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"{msg.message_id}.{re.sub(r'[^A-Za-z0-9]', '', ext) or 'bin'}")
+    with open(path, "wb") as fh:
+        fh.write(content)
+    msg.payload = {**{k: v for k, v in payload.items() if k != "fetch_error"},
+                   "stored": path, "mime_type": mime, "size": len(content)}
+    return None
+
+
+def fetch_media_in_background(message_ids: list) -> None:
+    """Runs after the webhook has answered, in its own session."""
+    from src.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        for message_id in message_ids:
+            msg = db.query(WhatsAppMessage).filter(WhatsAppMessage.message_id == message_id).first()
+            if msg is None or msg.kind not in MEDIA_KINDS:
+                continue
+            try:
+                error = fetch_media(msg)
+                db.commit()
+                if error:
+                    logger.warning(f"inbox event=MEDIA_NOT_FETCHED message_id={message_id} reason={error}")
+            except Exception:
+                db.rollback()
+                logger.exception(f"inbox event=MEDIA_FETCH_FAILED message_id={message_id}")
+    finally:
+        db.close()
 
 
 # How far along each outbound stage sits, so a late "delivered" cannot

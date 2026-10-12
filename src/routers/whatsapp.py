@@ -1185,6 +1185,9 @@ async def receive_webhook(request: Request, background: BackgroundTasks,
                 notifier.notify_button_click, auth_service.BOOTSTRAP_ADMIN, lead
             )
         if received:
+            # Photos, videos and documents are fetched while Meta still has
+            # them; the id in the webhook is all it sends.
+            background.add_task(inbox.fetch_media_in_background, received)
             background.add_task(onboarding_bot.run, received)
 
     except Exception as e:

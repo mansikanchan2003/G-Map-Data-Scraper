@@ -222,9 +222,16 @@ def inbox_summary(db: Session = Depends(get_db)):
     return {"unread_conversations": sum(1 for n in unread.values() if n)}
 
 
+def _public_payload(m: WhatsAppMessage):
+    """The payload as the page may see it: whether a file is held, never where."""
+    if not isinstance(m.payload, dict) or "stored" not in m.payload:
+        return m.payload
+    return {**{k: v for k, v in m.payload.items() if k != "stored"}, "available": True}
+
+
 def _thread(db: Session, phone: str) -> List[ThreadMessage]:
     items = [ThreadMessage(
-        id=m.message_id, direction=m.direction, kind=m.kind, body=m.body, payload=m.payload,
+        id=m.message_id, direction=m.direction, kind=m.kind, body=m.body, payload=_public_payload(m),
         status=m.status, error_reason=m.error_reason, sent_by=m.sent_by, created_at=inbox.aware(m.created_at),
     ) for m in db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == phone).all()]
 
@@ -393,3 +400,46 @@ def save_to_drive(digits: str, db: Session = Depends(get_db)):
     if failed:
         raise HTTPException(status_code=502, detail=f"{failed} file(s) could not be copied to Drive")
     return {"copied": copied, "folder_url": conv.drive_folder_url}
+
+
+# Shown in the page itself; anything else is only ever downloaded, so a file
+# someone sent cannot run as a page on our domain.
+_INLINE_TYPES = {
+    "image/jpeg", "image/png", "image/webp", "image/gif",
+    "video/mp4", "video/3gpp",
+    "audio/ogg", "audio/mpeg", "audio/mp4", "audio/aac", "audio/amr",
+    "application/pdf",
+}
+
+
+@router.get("/media/{message_id}")
+def get_media(message_id: str, download: bool = False, db: Session = Depends(get_db)):
+    """
+    A photo, video, voice note or document someone sent.
+
+    Normally fetched from Meta when it arrived; if that failed, or it arrived
+    before this existed, it is fetched now, while Meta still keeps it.
+    """
+    msg = db.query(WhatsAppMessage).filter(WhatsAppMessage.message_id == message_id).first()
+    if msg is None or msg.kind not in inbox.MEDIA_KINDS:
+        raise HTTPException(status_code=404, detail="No such file")
+
+    path = (msg.payload or {}).get("stored")
+    if not path or not os.path.isfile(path):
+        if path:  # held once, since lost: fetch it again
+            msg.payload = {k: v for k, v in msg.payload.items() if k != "stored"}
+        error = inbox.fetch_media(msg)
+        db.commit()
+        if error:
+            raise HTTPException(status_code=404, detail=f"This file could not be fetched from WhatsApp: {error}")
+        path = msg.payload["stored"]
+
+    mime = (msg.payload or {}).get("mime_type") or "application/octet-stream"
+    inline = mime in _INLINE_TYPES and not download
+    name = (msg.payload or {}).get("filename") or os.path.basename(path)
+    return FileResponse(
+        path, media_type=mime if inline else "application/octet-stream", filename=name,
+        content_disposition_type="inline" if inline else "attachment",
+        headers={"X-Content-Type-Options": "nosniff",
+                 "Content-Security-Policy": "default-src 'none'; sandbox"},
+    )

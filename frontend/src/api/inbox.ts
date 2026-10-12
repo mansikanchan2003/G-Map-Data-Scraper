@@ -115,5 +115,9 @@ export const saveBotSettings = (enabled: boolean, triggers: string[]) =>
 export const saveDocumentsToDrive = (phone: string) =>
   call<{ copied: number; folder_url: string | null }>(`/conversations/${digits(phone)}/drive`, { method: 'POST' });
 
+/** A photo, video, voice note or document someone sent. */
+export const mediaUrl = (messageId: string, download = false) =>
+  `${base()}/media/${messageId}${download ? '?download=true' : ''}`;
+
 export const documentUrl = (id: string, download = false) =>
   `${base()}/documents/${id}${download ? '?download=true' : ''}`;

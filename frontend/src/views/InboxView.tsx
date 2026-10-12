@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchBotSettings, fetchConversation, fetchConversations, markConversationRead,
-  saveBotSettings, saveDocumentsToDrive, sendInboxMessage, setBotPaused, documentUrl,
+  saveBotSettings, saveDocumentsToDrive, sendInboxMessage, setBotPaused, documentUrl, mediaUrl,
   type BotSettings, type ConversationDetail, type ConversationSummary, type ThreadMessage,
 } from '../api/inbox';
 
@@ -99,6 +99,65 @@ const Ticks: React.FC<{ status: string | null }> = ({ status }) => {
   );
 };
 
+/** WhatsApp's *bold* and _italic_, so a message reads here as it does on the phone. */
+const formatted = (text: string): React.ReactNode[] =>
+  text.split(/(\*[^*\n]+\*|_[^_\n]+_)/g).map((part, i) => {
+    if (/^\*[^*\n]+\*$/.test(part)) return <strong key={i}>{part.slice(1, -1)}</strong>;
+    if (/^_[^_\n]+_$/.test(part)) return <em key={i}>{part.slice(1, -1)}</em>;
+    return part;
+  });
+
+const MEDIA_KINDS = ['image', 'video', 'audio', 'document', 'sticker'];
+
+/** A file someone sent, shown the way WhatsApp would show it. */
+const Media: React.FC<{ m: ThreadMessage }> = ({ m }) => {
+  const [failed, setFailed] = useState(false);
+  const p = m.payload || {};
+  const src = mediaUrl(m.id);
+  const label = (m.body || '').match(/^\[([^\]]+)\]/)?.[1] || 'File';
+
+  if (failed || p.fetch_error && !p.available) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-slate-400">
+        <span className="material-symbols-outlined text-[18px]">broken_image</span>
+        <span>{label} could not be loaded from WhatsApp{p.fetch_error ? `: ${p.fetch_error}` : '.'}</span>
+      </div>
+    );
+  }
+  if (m.kind === 'image' || m.kind === 'sticker') {
+    return (
+      <a href={src} target="_blank" rel="noreferrer" className="block">
+        <img src={src} alt={label} loading="lazy" onError={() => setFailed(true)}
+          className={`rounded-md bg-slate-800 ${m.kind === 'sticker' ? 'w-32 h-32 object-contain bg-transparent' : 'max-h-80 w-auto max-w-full object-contain'}`} />
+      </a>
+    );
+  }
+  if (m.kind === 'video') {
+    return <video src={src} controls preload="metadata" onError={() => setFailed(true)} className="rounded-md max-h-80 w-full bg-black" />;
+  }
+  if (m.kind === 'audio') {
+    return <audio src={src} controls preload="metadata" onError={() => setFailed(true)} className="w-64 max-w-full" />;
+  }
+  const name = p.filename || 'Document';
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-950/60 px-2.5 py-2 w-60 max-w-full">
+      <span className="material-symbols-outlined text-[22px] text-slate-400">
+        {(p.mime_type || '').includes('pdf') ? 'picture_as_pdf' : 'description'}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm text-slate-100 truncate">{name}</div>
+        {p.size && <div className="text-[10px] text-slate-500">{sizeLabel(p.size)}</div>}
+      </div>
+      <a href={src} target="_blank" rel="noreferrer" title="Open" className="text-sky-400 hover:text-sky-300 shrink-0">
+        <span className="material-symbols-outlined text-[18px]">open_in_new</span>
+      </a>
+      <a href={mediaUrl(m.id, true)} title="Download" className="text-sky-400 hover:text-sky-300 shrink-0">
+        <span className="material-symbols-outlined text-[18px]">download</span>
+      </a>
+    </div>
+  );
+};
+
 const Bubble: React.FC<{ m: ThreadMessage }> = ({ m }) => {
   const out = m.direction === 'OUT';
   const tapped = m.direction === 'IN' && (m.kind === 'button' || m.kind === 'interactive');
@@ -136,9 +195,19 @@ const Bubble: React.FC<{ m: ThreadMessage }> = ({ m }) => {
             <span className="material-symbols-outlined text-[16px]">touch_app</span>
             Tapped “{m.body}”
           </div>
+        ) : m.direction === 'IN' && MEDIA_KINDS.includes(m.kind) ? (
+          <div className="flex flex-col gap-1.5">
+            <Media m={m} />
+            {/* The caption, without the "[Photo]" label the list preview uses. */}
+            {(m.body || '').replace(/^\[[^\]]+\]\s*/, '') && m.kind !== 'document' && (
+              <div className="text-sm text-slate-100 whitespace-pre-wrap break-words select-text">
+                {formatted((m.body || '').replace(/^\[[^\]]+\]\s*/, ''))}
+              </div>
+            )}
+          </div>
         ) : (
           <div className="text-sm text-slate-100 whitespace-pre-wrap break-words select-text">
-            {m.body || (m.kind === 'campaign' ? 'Template message' : '')}
+            {m.body ? formatted(m.body) : (m.kind === 'campaign' ? 'Template message' : '')}
           </div>
         )}
         {buttons.length > 0 && (

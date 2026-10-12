@@ -58,6 +58,13 @@ class StubMeta:
         StubMeta.sent.append(("buttons", to, body, buttons))
         return self._result()
 
+    media = {}
+
+    def download_media(self, media_id):
+        if media_id in StubMeta.media:
+            return StubMeta.media[media_id] + (None,)
+        return None, None, "Media not found"
+
     def send_link_message(self, to, body, text, url):
         StubMeta.sent.append(("link", to, body, {"text": text, "url": url}))
         return self._result()
@@ -67,7 +74,9 @@ class StubMeta:
 def stub_meta(monkeypatch, tmp_path):
     StubMeta.sent = []
     StubMeta.ok = True
+    StubMeta.media = {}
     monkeypatch.setattr(inbox, "MetaWhatsAppService", StubMeta)
+    monkeypatch.setattr(inbox, "MEDIA_DIR", str(tmp_path / "media"))
     monkeypatch.setattr(onboarding, "DOCS_DIR", str(tmp_path))
     monkeypatch.setenv("WHATSAPP_BUSINESS_NUMBER", "+91 80000 00000")
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://link.example.in")
@@ -506,3 +515,52 @@ def test_backfill_skips_a_tap_the_webhook_already_recorded(db):
 
     assert inbox.backfill_from_leads(db) == 0
     assert db.query(WhatsAppMessage).filter(WhatsAppMessage.provider_message_id == "wamid.tap1").count() == 1
+
+
+# --- Photos, videos and documents people send --------------------------------
+
+def _photo(db, media_id="m1", caption="my shop"):
+    msg = inbox.record_inbound(db, {"from": PHONE.lstrip("+"), "id": f"wamid.{media_id}", "type": "image",
+                                    "image": {"id": media_id, "mime_type": "image/jpeg", "caption": caption}},
+                               "Ravi")
+    db.commit()
+    return msg
+
+
+def test_a_photo_is_fetched_and_shown_in_the_thread(db, client):
+    StubMeta.media["m1"] = (PNG, "image/png")
+    msg = _photo(db)
+    inbox.fetch_media(msg)
+    db.commit()
+
+    detail = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}").json()
+    shown = next(m for m in detail["messages"] if m["id"] == msg.message_id)
+    # The page learns the file is there, never where it is on the server.
+    assert shown["payload"]["available"] is True and "stored" not in shown["payload"]
+
+    r = client.get(f"/api/v1/inbox/media/{msg.message_id}")
+    assert r.status_code == 200 and r.content == PNG
+    assert r.headers["content-type"] == "image/png"
+    assert r.headers["content-disposition"].startswith("inline")
+
+
+def test_a_file_not_fetched_on_arrival_is_fetched_when_opened(db, client):
+    msg = _photo(db, "m2")
+    assert inbox.fetch_media(msg) == "Media not found"
+    db.commit()
+    StubMeta.media["m2"] = (PNG, "image/jpeg")
+
+    r = client.get(f"/api/v1/inbox/media/{msg.message_id}")
+    assert r.status_code == 200 and r.content == PNG
+
+
+def test_an_unknown_file_type_is_only_ever_downloaded(db, client):
+    StubMeta.media["d1"] = (b"<html><script>alert(1)</script></html>", "text/html")
+    msg = inbox.record_inbound(db, {"from": PHONE.lstrip("+"), "id": "wamid.d1", "type": "document",
+                                    "document": {"id": "d1", "filename": "page.html", "mime_type": "text/html"}},
+                               None)
+    db.commit()
+    r = client.get(f"/api/v1/inbox/media/{msg.message_id}")
+    assert r.status_code == 200
+    assert r.headers["content-disposition"].startswith("attachment")
+    assert r.headers["content-type"] == "application/octet-stream"
