@@ -13,11 +13,26 @@ def generate_category_id(category_name: str) -> str:
     s = category_name.encode('utf-8')
     return hashlib.sha256(s).hexdigest()[:12]
 
+def _geocode_pin(pincode: str, state):
+    """(lat, lng) for a PIN with no coordinates in the sheet, or the reason there are none."""
+    from src.services import geo_bounds, pincode_coverage
+
+    coords = pincode_coverage._locate_or_none(pincode)
+    if coords is None:
+        return "No coordinates in the sheet, and the PIN code could not be found on the map"
+    problem = geo_bounds.check(state, coords[0], coords[1])
+    if problem:
+        return f"No coordinates in the sheet, and the PIN code's lookup looks wrong: {problem}"
+    return coords
+
+
 def sync_config(db: Session) -> dict:
     logger.info("Starting configuration sync...")
     
     locations_added = 0
     categories_added = 0
+    # Rows that could not be loaded, and why, so none disappears silently.
+    skipped = []
 
     # 1. Load Locations
     try:
@@ -39,14 +54,29 @@ def sync_config(db: Session) -> dict:
             tehsil = str(row[5]).strip() if len(row) > 5 and row[5] is not None else None
             anchor_name = str(row[6]).strip() if len(row) > 6 and row[6] is not None else None
             
-            if not pincode or lat is None or lng is None:
+            if not pincode:
                 continue
-                
+
+            precision = None
+            if lat is None or lng is None:
+                # A PIN typed into the sheet without coordinates used to be
+                # dropped without a word, so it never reached the server.
+                # It is placed from the PIN code instead, and checked against
+                # its state so a lookup that lands elsewhere is not saved.
+                found = _geocode_pin(str(pincode).strip(), state)
+                if isinstance(found, str):
+                    skipped.append({"pincode": str(pincode).strip(), "reason": found})
+                    logger.warning(f"Skipped pincode {pincode}: {found}")
+                    continue
+                lat, lng = found
+                precision = "pin_geocoded"
+
             try:
                 lat = float(lat)
                 lng = float(lng)
             except ValueError:
                 logger.warning(f"Invalid coordinates for pincode {pincode}: lat={lat}, lng={lng}")
+                skipped.append({"pincode": str(pincode).strip(), "reason": "Latitude/Longitude are not numbers"})
                 continue
 
             loc_id = generate_location_id(lat, lng, str(pincode).strip())
@@ -66,7 +96,8 @@ def sync_config(db: Session) -> dict:
                     district=district,
                     state=state,
                     tehsil=tehsil,
-                    anchor_name=anchor_name
+                    anchor_name=anchor_name,
+                    coordinate_precision=precision,
                 )
                 db.add(loc)
                 locations_added += 1
@@ -128,7 +159,8 @@ def sync_config(db: Session) -> dict:
     return {
         "locations": {
             "total_in_db": total_locations,
-            "new": locations_added
+            "new": locations_added,
+            "skipped": skipped,
         },
         "categories": {
             "total_in_db": total_categories,

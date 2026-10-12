@@ -141,14 +141,14 @@ export interface DiscoveryStatus {
 
 export interface ConfigSyncResult {
   locations: {
-    total_in_excel: number;
+    total_in_db: number;
     new: number;
-    existing: number;
+    /** Sheet rows that could not be loaded, and why. */
+    skipped: { pincode: string; reason: string }[];
   };
   categories: {
-    total_in_excel: number;
+    total_in_db: number;
     new: number;
-    existing: number;
   };
   message: string;
 }

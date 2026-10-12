@@ -61,7 +61,9 @@ export const ConfigView: React.FC = () => {
     setFeedback(null);
     try {
       const res = await syncConfiguration();
-      setFeedback(`Config Synced: ${res.locations.total_in_excel} locations (${res.locations.new} new), ${res.categories.total_in_excel} categories (${res.categories.new} new).`);
+      const skipped = res.locations.skipped || [];
+      setFeedback(`Config Synced: ${res.locations.total_in_db} locations (${res.locations.new} new), ${res.categories.total_in_db} categories (${res.categories.new} new).`
+        + (skipped.length ? ` Not loaded: ${skipped.map(s => `${s.pincode} (${s.reason})`).join('; ')}.` : ''));
       loadLocations(1);
       loadCategories(1);
     } catch (err: any) {
