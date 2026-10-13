@@ -488,6 +488,7 @@ def _on_pin(db, conv, msg):
         return
 
     coverage = {k: result.get(k) for k in ("pincode", "nearest_pincode", "distance_km", "place")}
+    coverage["served"] = result["status"] == "served"
     if result["status"] == "served":
         _move(conv, AWAIT_EDUCATION, coverage=coverage)
         _say(db, conv, _t(db, conv, "ask_education"), buttons=education_buttons(_lang(db, conv)))

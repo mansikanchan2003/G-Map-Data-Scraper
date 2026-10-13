@@ -113,6 +113,33 @@ def locate(pin: str) -> Optional[Tuple[float, float]]:
     raise LookupError(pin)
 
 
+def geography(db: Session, pin: str) -> Optional[dict]:
+    """
+    The state, district and tehsil a PIN code belongs to, or None if unknown.
+
+    Our own location list first, since it carries current district names;
+    then India Post, whose "Block" is the tehsil. A failed lookup returns
+    None rather than raising, so a caller can try again later.
+    """
+    loc = db.query(Location).filter(Location.pincode == pin).first()
+    if loc and (loc.state or loc.district):
+        return {"state": loc.state, "district": loc.district, "tehsil": loc.tehsil or loc.anchor_name}
+    try:
+        resp = requests.get(INDIA_POST_URL.format(pin=pin), timeout=6, headers={"User-Agent": USER_AGENT})
+        resp.raise_for_status()
+        data = resp.json()
+        offices = ((data[0] or {}).get("PostOffice") or []) if data else []
+    except Exception as exc:
+        logger.warning(f"pincode event=GEOGRAPHY_FAILED pin={pin} error={exc}")
+        return None
+    if not offices:
+        return None
+    # A PIN's post offices share a district and state; the sub-office names the block best.
+    office = next((o for o in offices if o.get("BranchType") != "Branch Post Office"), offices[0])
+    block = office.get("Block") if office.get("Block") not in (None, "", "NA") else None
+    return {"state": office.get("State"), "district": office.get("District"), "tehsil": block}
+
+
 def _locate_or_none(pin: str) -> Optional[Tuple[float, float]]:
     try:
         return locate(pin)

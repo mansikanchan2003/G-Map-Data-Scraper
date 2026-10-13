@@ -68,6 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'jobs', label: 'Jobs Monitor', icon: 'sync' },
     { id: 'config', label: 'Configuration', icon: 'tune' },
     { id: 'whatsapp-inbox', label: 'Inbox', icon: 'forum' },
+    { id: 'applications', label: 'Applications', icon: 'assignment_ind' },
     { id: 'whatsapp-campaign', label: 'WhatsApp Campaign', icon: 'campaign' },
     { id: 'whatsapp-templates', label: 'Templates', icon: 'chat' },
     { id: 'whatsapp-studio', label: 'Template Studio', icon: 'auto_awesome' },
