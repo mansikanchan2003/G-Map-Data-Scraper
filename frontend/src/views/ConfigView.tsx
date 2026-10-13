@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { LocationItem, CategoryItem, PaginatedResponse, ApiError } from '../types/api';
 import { fetchConfigLocations, fetchConfigCategories, syncConfiguration, generateJobQueue, deleteLocation } from '../api';
 import { AddLocationForm } from '../components/AddLocationForm';
+import { BranchPinsPanel } from '../components/BranchPinsPanel';
 
 export const ConfigView: React.FC = () => {
   const [locations, setLocations] = useState<LocationItem[]>([]);
@@ -209,6 +210,8 @@ export const ConfigView: React.FC = () => {
           <p>{error.message}</p>
         </div>
       )}
+
+      <BranchPinsPanel />
 
       {/* SPLIT TWO-PANEL LAYOUT (DARK THEME) */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 lg:p-6 min-h-0">

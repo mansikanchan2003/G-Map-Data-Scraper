@@ -17,6 +17,43 @@ router = APIRouter(prefix="/api/v1/config", tags=["Configuration"])
 def sync_configuration(db: Session = Depends(get_db)):
     return config_loader.sync_config(db)
 
+
+# --- SBI branch PINs ---------------------------------------------------------
+# PINs targeted because an SBI branch there wants CSP operators. They are
+# ordinary target locations for scraping; see src/services/sbi_branches.py.
+
+class SbiBranchIn(BaseModel):
+    branch_code: str = Field(..., min_length=1, max_length=10)
+    branch_name: str = Field(..., min_length=1, max_length=120)
+    pincode: str = Field(..., pattern=r"^\d{6}$")
+    ifsc: Optional[str] = Field(None, max_length=11)
+    town: Optional[str] = Field(None, max_length=120)
+    district: Optional[str] = Field(None, max_length=100)
+    state: Optional[str] = Field(None, max_length=100)
+    tehsil: Optional[str] = Field(None, max_length=100)
+    address: Optional[str] = Field(None, max_length=300)
+    circle: Optional[str] = Field(None, max_length=60)
+    network: Optional[str] = Field(None, max_length=20)
+    module: Optional[str] = Field(None, max_length=60)
+    region: Optional[str] = Field(None, max_length=20)
+    note: Optional[str] = Field(None, max_length=300)
+
+
+class SbiBranchesIn(BaseModel):
+    branches: list[SbiBranchIn] = Field(..., min_length=1, max_length=500)
+
+
+@router.get("/branch-pins")
+def get_branch_pins(db: Session = Depends(get_db)):
+    from src.services import sbi_branches
+    return sbi_branches.branch_pins(db)
+
+
+@router.post("/branch-pins")
+def add_branch_pins(payload: SbiBranchesIn, db: Session = Depends(get_db)):
+    from src.services import sbi_branches
+    return sbi_branches.add_branches(db, [b.model_dump() for b in payload.branches])
+
 @router.get("/locations", response_model=Pagination[LocationResponse])
 def get_locations(
     page: int = Query(1, ge=1),

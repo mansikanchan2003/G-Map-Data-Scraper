@@ -1,4 +1,5 @@
 from .location import Location
+from .sbi_branch import SbiBranch
 from .category import Category
 from .job import Job
 from .business import Business
@@ -13,6 +14,7 @@ from .whatsapp import WhatsAppAccount, WhatsAppTemplate, WhatsAppCampaign, Whats
 
 __all__ = [
     "Location",
+    "SbiBranch",
     "Category",
     "Job",
     "Business",

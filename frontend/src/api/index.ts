@@ -387,6 +387,45 @@ export async function deleteLocation(locationId: string): Promise<{ status: stri
   return request(`/api/v1/config/locations/${locationId}`, { method: 'DELETE' });
 }
 
+export interface SbiBranch {
+  branch_code: string;
+  branch_name: string;
+  ifsc?: string | null;
+  pincode: string;
+  town?: string | null;
+  district?: string | null;
+  state?: string | null;
+  tehsil?: string | null;
+  address?: string | null;
+  circle?: string | null;
+  network?: string | null;
+  module?: string | null;
+  region?: string | null;
+  note?: string | null;
+}
+
+/** A PIN targeted because SBI branches there want CSP operators. */
+export interface BranchPin {
+  pincode: string;
+  location: {
+    location_id: string;
+    anchor_name?: string | null;
+    district?: string | null;
+    state?: string | null;
+    tehsil?: string | null;
+    latitude: number;
+    longitude: number;
+    radius_km: number;
+  } | null;
+  branches: SbiBranch[];
+  jobs: { total: number; completed: number; pending: number; failed: number };
+  businesses_saved: number;
+}
+
+export async function fetchBranchPins(): Promise<BranchPin[]> {
+  return request<BranchPin[]>('/api/v1/config/branch-pins');
+}
+
 export async function syncConfiguration(): Promise<ConfigSyncResult> {
   return request<ConfigSyncResult>('/api/v1/config/sync', { method: 'POST' });
 }
