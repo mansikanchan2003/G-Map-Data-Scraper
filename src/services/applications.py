@@ -280,7 +280,10 @@ def _conversation(db: Session, phone: str) -> WhatsAppConversation:
 
 def add_comment(db: Session, phone: str, body: str, author: str) -> ApplicationComment:
     _conversation(db, phone)
-    comment = ApplicationComment(comment_id=uuid.uuid4().hex, phone=phone, body=body.strip(), author=author)
+    # Stamped here to the microsecond, so comments added in quick succession
+    # keep their order.
+    comment = ApplicationComment(comment_id=uuid.uuid4().hex, phone=phone, body=body.strip(), author=author,
+                                 created_at=inbox.now())
     db.add(comment)
     db.commit()
     return comment

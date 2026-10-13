@@ -59,6 +59,9 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
 
   const leads = useMemo(() => items.filter(a => a.submitted)
     .sort((a, b) => (b.submitted_at || '').localeCompare(a.submitted_at || '')), [items]);
+  // Opens the application at its comment history, with the box ready to type in.
+  const [commentFocus, setCommentFocus] = useState<string | null>(null);
+  const openComments = (phone: string) => { setOpen(phone); setCommentFocus(phone); };
   const openRow = (phone: string) => {
     setFilter('all'); setStage(''); setSearch(''); setOpen(phone);
     setTimeout(() => document.getElementById(`app-${phone}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
@@ -239,13 +242,23 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
                     <td className="px-3 py-2 text-xs whitespace-nowrap">
                       {a.submitted ? <span className="text-amber-300">{formatDateTime(a.submitted_at)}</span> : <span className="text-slate-500">—</span>}
                     </td>
-                    <td className="px-3 py-2 text-xs text-slate-300 max-w-[220px]">
-                      {a.comments.length ? (
-                        <span className="block truncate" title={a.comments[a.comments.length - 1].body}>
-                          {a.comments[a.comments.length - 1].body}
-                          {a.comments.length > 1 && <span className="text-slate-500"> (+{a.comments.length - 1})</span>}
-                        </span>
-                      ) : <span className="text-slate-500">—</span>}
+                    <td className="px-3 py-2 text-xs text-slate-300 min-w-[200px] max-w-[260px]">
+                      {a.comments.length ? (() => {
+                        const last = a.comments[a.comments.length - 1];
+                        return (
+                          <button onClick={() => openComments(a.phone)} className="block w-full text-left" title={last.body}>
+                            <span className="block truncate text-slate-200">{last.body}</span>
+                            <span className="block text-[10.5px] text-slate-500">
+                              {formatDateTime(last.created_at)} · {last.author}
+                              {a.comments.length > 1 && <span className="text-sky-400"> · {a.comments.length} comments</span>}
+                            </span>
+                          </button>
+                        );
+                      })() : <span className="text-slate-500">—</span>}
+                      {!readOnly && !showRemoved && (
+                        <button onClick={() => openComments(a.phone)}
+                          className="mt-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300">+ Add comment</button>
+                      )}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap text-right">
                       <button onClick={() => setOpen(open === a.phone ? null : a.phone)}
@@ -262,7 +275,8 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
                   </tr>
                   {open === a.phone && (
                     <tr><td colSpan={14} className="px-3 pb-4 pt-1 bg-slate-950/60">
-                      <ApplicationDetails app={a} readOnly={readOnly} onChanged={load} />
+                      <ApplicationDetails app={a} readOnly={readOnly} onChanged={load}
+                        focusComment={commentFocus === a.phone} onFocused={() => setCommentFocus(null)} />
                     </td></tr>
                   )}
                 </React.Fragment>
@@ -328,14 +342,25 @@ const Field: React.FC<{ label: string; value: React.ReactNode }> = ({ label, val
   </div>
 );
 
-const ApplicationDetails: React.FC<{ app: Application; readOnly?: boolean; onChanged: () => void }> = ({ app, readOnly, onChanged }) => {
+const ApplicationDetails: React.FC<{
+  app: Application; readOnly?: boolean; onChanged: () => void; focusComment?: boolean; onFocused?: () => void;
+}> = ({ app, readOnly, onChanged, focusComment, onFocused }) => {
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const box = React.useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!focusComment) return;
+    box.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    box.current?.focus();
+    onFocused?.();
+  }, [focusComment]);
 
   const add = async () => {
     if (!draft.trim()) return;
     setSaving(true);
-    try { await addApplicationComment(app.phone, draft.trim()); setDraft(''); onChanged(); }
+    // The box empties and keeps focus, ready for the next comment.
+    try { await addApplicationComment(app.phone, draft.trim()); setDraft(''); onChanged(); box.current?.focus(); }
     catch (e: any) { alert(e.message); }
     finally { setSaving(false); }
   };
@@ -380,27 +405,35 @@ const ApplicationDetails: React.FC<{ app: Application; readOnly?: boolean; onCha
       </div>
 
       <div>
-        <div className="text-xs font-semibold text-slate-300 mb-1.5">Comments</div>
-        <div className="space-y-1.5">
-          {app.comments.map(c => (
-            <div key={c.comment_id} className="px-3 py-2 rounded bg-slate-900 border border-slate-800 text-sm">
-              <div className="flex justify-between gap-2 text-[11px] text-slate-500">
-                <span>{c.author} · {formatDateTime(c.created_at)}</span>
-                {!readOnly && <button onClick={() => drop(c.comment_id)} className="text-rose-400 hover:text-rose-300">Delete</button>}
-              </div>
-              <div className="text-slate-200 whitespace-pre-wrap mt-0.5">{c.body}</div>
-            </div>
-          ))}
-          {!app.comments.length && <div className="text-sm text-slate-500">No comments yet.</div>}
+        <div className="text-xs font-semibold text-slate-300 mb-1.5">
+          Comment history {app.comments.length > 0 && <span className="text-slate-500 font-normal">({app.comments.length}, oldest first)</span>}
         </div>
+        <ol className="space-y-1.5">
+          {app.comments.map((c, i) => (
+            <li key={c.comment_id} className="flex gap-2.5 px-3 py-2 rounded bg-slate-900 border border-slate-800 text-sm">
+              <span className="shrink-0 h-5 w-5 rounded-full bg-slate-800 text-[10.5px] text-slate-300 flex items-center justify-center font-semibold">{i + 1}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between gap-2 text-[11px]">
+                  <span><span className="text-sky-300 font-semibold">{formatDateTime(c.created_at)}</span>
+                    <span className="text-slate-500"> · {c.author}</span></span>
+                  {!readOnly && <button onClick={() => drop(c.comment_id)} className="text-rose-400 hover:text-rose-300">Delete</button>}
+                </div>
+                <div className="text-slate-200 whitespace-pre-wrap mt-0.5">{c.body}</div>
+              </div>
+            </li>
+          ))}
+          {!app.comments.length && <li className="text-sm text-slate-500">No comments yet.</li>}
+        </ol>
         {!readOnly && (
           <div className="flex gap-2 mt-2">
-            <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={2} maxLength={2000}
-              placeholder="Add a comment for the team (the applicant does not see it)"
+            <textarea ref={box} value={draft} onChange={e => setDraft(e.target.value)} rows={2} maxLength={2000}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) add(); }}
+              placeholder={app.comments.length ? 'Add another comment, e.g. what happened on the call (Ctrl+Enter to save)'
+                : 'Add a comment for the team (the applicant does not see it)'}
               className="flex-1 px-3 py-2 rounded border border-slate-700 bg-slate-900 text-sm text-slate-200 outline-none" />
             <button onClick={add} disabled={saving || !draft.trim()}
               className="self-end h-9 px-4 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-40">
-              {saving ? 'Saving…' : 'Add'}
+              {saving ? 'Saving…' : app.comments.length ? 'Add another' : 'Add'}
             </button>
           </div>
         )}

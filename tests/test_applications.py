@@ -238,3 +238,13 @@ def test_digits_inside_a_csp_code_are_not_a_pin(client):
     db.close()
     _, apps = _by_phone(client)
     assert apps["+919000000006"]["pincode"] == "425414"
+
+
+def test_several_comments_are_kept_in_order_each_with_its_date(client):
+    for body in ("Reached him, asked for CIBIL", "Called back: CIBIL sent, will submit tonight", "Submitted, forwarded to SBI"):
+        assert client.post("/api/v1/applications/919000000002/comments", json={"body": body}).status_code == 200
+    _, apps = _by_phone(client)
+    comments = apps["+919000000002"]["comments"]
+    assert [c["body"] for c in comments] == ["Reached him, asked for CIBIL",
+                                             "Called back: CIBIL sent, will submit tonight", "Submitted, forwarded to SBI"]
+    assert all(c["created_at"] and c["author"] == "Reviewer" for c in comments)
