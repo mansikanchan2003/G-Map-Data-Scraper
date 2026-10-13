@@ -77,12 +77,13 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
   }, [items, filter, search, stage]);
 
   const exportCsv = () => {
-    const head = ['Name', 'Phone', 'Category (persona)', 'PIN code', 'State', 'District', 'Tehsil', 'Qualification', 'Verdict', 'Not qualified because', 'Franchise background',
-      'Can invest ₹5 lakh', 'Stage', 'Documents', 'Required documents', 'Submitted at', 'Campaign', 'Comments'];
-    const rows = shown.map(a => [a.name, a.phone, a.category, a.pincode, a.state, a.district, a.tehsil, a.qualification, a.verdict, a.not_qualified_reasons.join('; '),
+    const head = ['Name', 'Phone', 'Category (persona)', 'Qualification', 'Verdict', 'Not qualified because', 'Franchise background',
+      'Can invest ₹5 lakh', 'Stage', 'Documents', 'Required documents', 'Submitted at', 'Campaign', 'Comments', 'PIN code', 'State', 'District', 'Tehsil'];
+    const rows = shown.map(a => [a.name, a.phone, a.category, a.qualification, a.verdict, a.not_qualified_reasons.join('; '),
       yesNo(a.franchise_background), yesNo(a.can_invest), a.stage, `${a.documents_count}/${a.documents_total}`,
       a.required_documents_done ? 'Done' : 'Missing', a.submitted_at ? formatDateTime(a.submitted_at) : '',
-      a.source?.campaign, a.comments.map(c => `${c.author}: ${c.body}`).join(' | ')]);
+      a.source?.campaign, a.comments.map(c => `${formatDateTime(c.created_at)} ${c.author}: ${c.body}`).join(' | '),
+      a.pincode, a.state, a.district, a.tehsil]);
     const csv = [head, ...rows].map(r => r.map(csvCell).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
@@ -193,7 +194,7 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
           <table className="w-full text-sm select-text">
             <thead className="bg-slate-950 text-[10.5px] uppercase tracking-wider text-slate-400">
               <tr>
-                {['Name', 'Phone', 'Category (persona)', 'PIN code', 'State', 'District', 'Tehsil', 'Qualification', 'Verdict', 'Stage', 'Documents', 'Submitted', 'Comments', ''].map(h => (
+                {['Name', 'Phone', 'Category (persona)', 'Qualification', 'Verdict', 'Stage', 'Documents', 'Submitted', 'Comments', 'PIN code', 'State', 'District', 'Tehsil', ''].map(h => (
                   <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -217,15 +218,6 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
                         ? <span className="px-2 py-0.5 rounded bg-indigo-950/50 border border-indigo-800 text-indigo-200">{a.category}</span>
                         : <span className="text-slate-500" title="Not reached through a campaign from Business Data">—</span>}
                     </td>
-                    <td className="px-3 py-2 font-mono text-xs text-slate-200 whitespace-nowrap">
-                      {a.pincode || <span className="text-slate-500">—</span>}
-                      {a.pincode_unchecked && (
-                        <div className="font-sans text-[10px] text-amber-400/90" title="Typed in the chat, but the bot could not find it on the map and asked again">unchecked</div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-slate-300 whitespace-nowrap">{a.state || '—'}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300 whitespace-nowrap">{a.district || '—'}</td>
-                    <td className="px-3 py-2 text-xs text-slate-300 whitespace-nowrap">{a.tehsil || '—'}</td>
                     <td className="px-3 py-2 text-slate-300 whitespace-nowrap">{a.qualification || '—'}</td>
                     <td className="px-3 py-2">
                       <span className={`inline-block px-2 py-0.5 rounded border text-[11px] font-semibold whitespace-nowrap ${VERDICT_STYLE[a.verdict]}`}
@@ -260,6 +252,15 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
                           className="mt-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300">+ Add comment</button>
                       )}
                     </td>
+                    <td className="px-3 py-2 font-mono text-xs text-slate-200 whitespace-nowrap">
+                      {a.pincode || <span className="text-slate-500">—</span>}
+                      {a.pincode_unchecked && (
+                        <div className="font-sans text-[10px] text-amber-400/90" title="Typed in the chat, but the bot could not find it on the map and asked again">unchecked</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-slate-300 whitespace-nowrap">{a.state || '—'}</td>
+                    <td className="px-3 py-2 text-xs text-slate-300 whitespace-nowrap">{a.district || '—'}</td>
+                    <td className="px-3 py-2 text-xs text-slate-300 whitespace-nowrap">{a.tehsil || '—'}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-right">
                       <button onClick={() => setOpen(open === a.phone ? null : a.phone)}
                         className="px-2 py-1 rounded border border-slate-700 text-xs text-sky-300 hover:bg-slate-800">
