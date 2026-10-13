@@ -372,7 +372,7 @@ def _write(client: GeminiClient, prompt: str, angles: List[str], language_code: 
 
     out = []
     for angle_key, variant in zip(angles, variants):
-        variant = _clean(variant)
+        variant = studio.set_fixed_labels(_clean(variant), language_code)
         errors = validate(variant, language_code, allowed)
         errors += [f"unsupported claim: {c}" for c in studio._unsupported_claims(client, variant)]
         first_errors = list(errors)
@@ -383,10 +383,13 @@ def _write(client: GeminiClient, prompt: str, angles: List[str], language_code: 
                 f"\n\nKeep its angle ({angle_key}: {creative_brief.ANGLES[angle_key]}). Return the corrected "
                 'variant in the same JSON shape, as {"variants": [ ... one item ... ]}.'
             )
-            again = _clean((client.generate_json(repair, temperature=0.4).get("variants") or [{}])[0])
+            again = studio.set_fixed_labels(
+                _clean((client.generate_json(repair, temperature=0.4).get("variants") or [{}])[0]), language_code)
             errors = validate(again, language_code, allowed)
             errors += [f"unsupported claim: {c}" for c in studio._unsupported_claims(client, again)]
             variant = again
+            errors = studio.fix_scripts(client, variant, language_code, errors,
+                                        lambda v: validate(v, language_code, allowed))
         variant["angle_key"] = angle_key
         variant["_errors"] = errors
         variant["_first_errors"] = first_errors

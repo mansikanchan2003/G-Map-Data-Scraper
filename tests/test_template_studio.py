@@ -951,3 +951,59 @@ def test_the_writer_is_told_each_variants_shape_and_what_not_to_repeat(db):
     prompt = FakeGemini.prompts[-1]
     headline = f'{PA_POSTER["headline_line1"]} / {PA_POSTER["headline_line2"]}'
     assert "HEADLINES ALREADY USED" in prompt and headline in prompt
+
+
+# --- the poster in one script ------------------------------------------------
+
+def test_every_fixed_label_is_in_its_own_script():
+    for code, labels in creative_brief.POSTER_LABELS.items():
+        for key, text in labels.items():
+            assert creative_brief.script_problems(text, code) == [], (code, key, text)
+
+
+def test_fixed_labels_replace_what_the_model_wrote():
+    # The labels a Gujarati draft reached Meta with: the bank in Hindi, the
+    # contact labels in Punjabi.
+    variant = {"poster": {**copy.deepcopy(PA_POSTER), "bank_name": "भारतीय स्टेट बैंक",
+                          "phone_label": "ਕੌਲ / WhatsApp:", "web_label": "ਹੋਰ ਜਾਣਕਾਰੀ:"}}
+    template_studio.set_fixed_labels(variant, "gu")
+    poster = variant["poster"]
+    assert poster["bank_name"] == "ભારતીય સ્ટેટ બેંક"
+    assert poster["phone_label"] == "કૉલ / WhatsApp:" and poster["web_label"] == "ઓનલાઇન અરજી:"
+    for key in ("sign_title", "bank_name", "phone_label", "web_label"):
+        assert creative_brief.script_problems(poster[key], "gu") == []
+
+
+class ScriptFixer:
+    """Answers a script fix by rewriting the named fields; records what it was asked."""
+
+    def __init__(self, fixes):
+        self.fixes, self.asked = fixes, []
+
+    def generate_json(self, prompt, temperature=1.0):
+        values = json.loads(prompt.split("VALUES:\n", 1)[1].split("\n\nAnswer", 1)[0])
+        self.asked.append(sorted(values))
+        return {k: self.fixes.get(k, v) for k, v in values.items()}
+
+
+def test_only_the_fields_in_the_wrong_script_are_sent_back():
+    variant = {"body": "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ", "poster": copy.deepcopy(PA_POSTER)}
+    variant["poster"]["benefits"][4]["text"] = "ਕਾਰੋਬਾਰ ਵਧਾओ"  # one Devanagari letter
+    check = lambda v: [f"poster.benefits[{i}] {p}" for i, b in enumerate(v["poster"]["benefits"])
+                       for p in creative_brief.script_problems(b["text"], "pa")]
+    errors = check(variant) + ["unsupported claim: x — y"]
+    client = ScriptFixer({"poster.benefits[4]": "ਕਾਰੋਬਾਰ ਵਧਾਓ"})
+
+    left = template_studio.fix_scripts(client, variant, "pa", errors, check)
+    assert client.asked == [["poster.benefits[4]"]]
+    assert variant["poster"]["benefits"][4]["text"] == "ਕਾਰੋਬਾਰ ਵਧਾਓ"
+    assert left == ["unsupported claim: x — y"]  # the claim is not the script fix's to clear
+
+
+def test_a_script_fix_that_does_not_take_is_tried_once_more_then_shown():
+    variant = {"poster": {**copy.deepcopy(PA_POSTER), "callout": "ਹਰ ਮਹੀਨੇ कमाई"}}
+    check = lambda v: [f"poster.callout {p}" for p in creative_brief.script_problems(v["poster"]["callout"], "pa")]
+    client = ScriptFixer({})  # hands the text back unchanged
+    left = template_studio.fix_scripts(client, variant, "pa", check(variant), check)
+    assert len(client.asked) == template_studio.SCRIPT_FIX_TRIES
+    assert left and left[0].startswith("poster.callout contains Devanagari")

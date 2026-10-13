@@ -496,6 +496,99 @@ def clean_poster(poster: Optional[dict], fix) -> None:
             b["text"] = fix(b.get("text"))
 
 
+def set_fixed_labels(variant: dict, language_code: str) -> dict:
+    """Puts the language's fixed poster labels in place of what the model wrote."""
+    labels = creative_brief.POSTER_LABELS.get(language_code)
+    poster = variant.get("poster")
+    if labels and isinstance(poster, dict):
+        poster.update(labels)
+    return variant
+
+
+# How script_problems' findings read: "<field> contains Gurmukhi characters
+# (...) in a Gujarati template" or "<field> has no Gujarati text".
+_SCRIPT_PROBLEM = re.compile(r"^(\S+) (?:contains \S+ characters \(|has no \S+ text)")
+# The script fixes asked for after the general repair, before a draft is shown.
+SCRIPT_FIX_TRIES = 2
+
+
+def _field_get(variant: dict, path: str):
+    if path.startswith("poster.benefits["):
+        i = int(path[len("poster.benefits["):-1])
+        benefits = (variant.get("poster") or {}).get("benefits") or []
+        return benefits[i].get("text") if i < len(benefits) and isinstance(benefits[i], dict) else None
+    if path.startswith("poster."):
+        return (variant.get("poster") or {}).get(path[len("poster."):])
+    return variant.get(path)
+
+
+def _field_set(variant: dict, path: str, text: str) -> None:
+    if path.startswith("poster.benefits["):
+        i = int(path[len("poster.benefits["):-1])
+        benefits = (variant.get("poster") or {}).get("benefits") or []
+        if i < len(benefits) and isinstance(benefits[i], dict):
+            benefits[i]["text"] = text
+    elif path.startswith("poster."):
+        variant.setdefault("poster", {})[path[len("poster."):]] = text
+    else:
+        variant[path] = text
+
+
+def script_fields(errors: List[str]) -> List[str]:
+    """The fields that wrong-script findings name, in order, once each."""
+    seen = []
+    for e in errors:
+        m = _SCRIPT_PROBLEM.match(e)
+        if m and m.group(1) not in seen:
+            seen.append(m.group(1))
+    return seen
+
+
+def fix_scripts(client: GeminiClient, variant: dict, language_code: str, errors: List[str], validate) -> List[str]:
+    """
+    Rewrites only the fields still in the wrong script, and returns the
+    problems left.
+
+    The general repair resends the whole variant with every problem listed,
+    and wrong letters survived it: a Gujarati poster reached Meta with Hindi
+    and Punjabi in it. Asked about a handful of fields and nothing else, the
+    model fixes them. Anything else in the answer is ignored.
+    """
+    lang = creative_brief.LANGUAGES.get(language_code)
+    if not lang:
+        return errors
+    for attempt in range(SCRIPT_FIX_TRIES):
+        fields = [f for f in script_fields(errors) if isinstance(_field_get(variant, f), str)]
+        if not fields:
+            break
+        wrong = {f: _field_get(variant, f) for f in fields}
+        prompt = (
+            f"Each value below should be written in {lang['name']}, in {lang['script']} script, but has "
+            f"letters from another script in it (Hindi, Punjabi, Bengali...) or none of {lang['script']}. "
+            f"Rewrite each value entirely in {lang['name']} ({lang['script']} script), keeping its meaning, "
+            "its length and any *asterisks*, emoji, numbers, phone numbers and {{blanks}} exactly as they are. "
+            "Only these words may stay in Latin letters: Eko, SBI, Kiosk, CSP, Customer Service Point, "
+            "WhatsApp, PMJDY, PMJJBY, PMSBY, APY.\n\nPROBLEMS:\n"
+            + "\n".join(f"- {e}" for e in errors if script_fields([e]))
+            + "\n\nVALUES:\n" + json.dumps(wrong, ensure_ascii=False, indent=1)
+            + '\n\nAnswer with JSON only: an object with the same keys and the rewritten values.'
+        )
+        try:
+            answer = client.generate_json(prompt, temperature=0.2)
+        except GeminiError as e:
+            logger.warning(f"template_studio event=SCRIPT_FIX_SKIPPED reason={e}")
+            break
+        for f in fields:
+            text = answer.get(f) if isinstance(answer, dict) else None
+            if isinstance(text, str) and text.strip():
+                _field_set(variant, f, text.replace("\\n", "\n").strip())
+        claims = [e for e in errors if e.startswith("unsupported claim:")]
+        errors = validate(variant) + claims
+        logger.info(f"template_studio event=SCRIPT_FIX attempt={attempt + 1} fields={len(fields)} "
+                    f"left={len(script_fields(errors))}")
+    return errors
+
+
 def _letters(text: str) -> str:
     """
     Text reduced to letters, vowel signs and digits, for comparing wording.
@@ -630,7 +723,7 @@ def _write_copy(client: GeminiClient, prompt: str, angles: List[str], language_c
 
     fixed = []
     for angle_key, variant in zip(angles, variants):
-        variant = _clean(variant)
+        variant = set_fixed_labels(_clean(variant), language_code)
         errors = validate_copy(variant, language_code)
         errors += [f"unsupported claim: {c}" for c in _unsupported_claims(client, variant)]
         first_errors = list(errors)
@@ -643,10 +736,13 @@ def _write_copy(client: GeminiClient, prompt: str, angles: List[str], language_c
                 f"\n\nKeep its angle ({angle_key}: {creative_brief.ANGLES[angle_key]}). "
                 "Return the corrected variant in the same JSON shape, as {\"variants\": [ ... one item ... ]}."
             )
-            again = _clean((client.generate_json(repair, temperature=0.4).get("variants") or [{}])[0])
+            again = set_fixed_labels(
+                _clean((client.generate_json(repair, temperature=0.4).get("variants") or [{}])[0]), language_code)
             errors = validate_copy(again, language_code)
             errors += [f"unsupported claim: {c}" for c in _unsupported_claims(client, again)]
             variant = again
+            errors = fix_scripts(client, variant, language_code, errors,
+                                 lambda v: validate_copy(v, language_code))
         # The assignment is authoritative, whatever key the model echoed.
         variant["angle_key"] = angle_key
         variant["_errors"] = errors

@@ -163,6 +163,27 @@ BENEFIT_ICONS: Dict[str, str] = {
 }
 
 
+# The poster's fixed labels, written once per language instead of by the
+# model. They are the same on every poster, and they are where the model
+# slipped into other scripts: a Gujarati poster went out with the bank's name
+# in Hindi and "Call / WhatsApp:" in Punjabi. Languages missing here are
+# still written by the model and checked like any other text.
+POSTER_LABELS: Dict[str, Dict[str, str]] = {
+    "hi": {"sign_title": "ग्राहक सेवा केंद्र", "bank_name": "भारतीय स्टेट बैंक",
+           "phone_label": "कॉल / WhatsApp:", "web_label": "ऑनलाइन आवेदन:"},
+    "mr": {"sign_title": "ग्राहक सेवा केंद्र", "bank_name": "भारतीय स्टेट बँक",
+           "phone_label": "कॉल / WhatsApp:", "web_label": "ऑनलाइन अर्ज:"},
+    "pa": {"sign_title": "ਗਾਹਕ ਸੇਵਾ ਕੇਂਦਰ", "bank_name": "ਭਾਰਤੀ ਸਟੇਟ ਬੈਂਕ",
+           "phone_label": "ਕਾਲ / WhatsApp:", "web_label": "ਆਨਲਾਈਨ ਅਪਲਾਈ:"},
+    "gu": {"sign_title": "ગ્રાહક સેવા કેન્દ્ર", "bank_name": "ભારતીય સ્ટેટ બેંક",
+           "phone_label": "કૉલ / WhatsApp:", "web_label": "ઓનલાઇન અરજી:"},
+    "bn": {"sign_title": "গ্রাহক সেবা কেন্দ্র", "bank_name": "ভারতীয় স্টেট ব্যাংক",
+           "phone_label": "কল / WhatsApp:", "web_label": "অনলাইন আবেদন:"},
+    "or": {"sign_title": "ଗ୍ରାହକ ସେବା କେନ୍ଦ୍ର", "bank_name": "ଭାରତୀୟ ଷ୍ଟେଟ ବ୍ୟାଙ୍କ",
+           "phone_label": "କଲ / WhatsApp:", "web_label": "ଅନଲାଇନ ଆବେଦନ:"},
+}
+
+
 def language_for_state(state: Optional[str]) -> Optional[str]:
     """Meta language code for a state, or None when no language is set for it."""
     return STATE_LANGUAGES.get((state or "").strip().lower())
