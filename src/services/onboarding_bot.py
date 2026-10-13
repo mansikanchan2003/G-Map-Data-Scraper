@@ -160,7 +160,7 @@ GREETING_GAP = timedelta(hours=24)
 MAX_FALLBACK_STREAK = 3
 
 # Kept across a restart of either flow: what the person already told us.
-_REMEMBERED = ("lang", "campaign_lang", "webinar")
+_REMEMBERED = ("lang", "lang_campaign", "campaign_lang", "webinar")
 
 
 def YES_NO(prefix: str, lang: str = "en") -> list:
@@ -233,11 +233,17 @@ def language_of_template(template) -> str:
     if template is None:
         return "en"
     code = (template.language_code or "").split("_")[0].lower()
+    # A regional code says it outright. Only en/en_US needs the text read,
+    # because that is what Odia, and the team's early Hindi, were registered as.
+    if code in MESSAGES and code != "en":
+        return code
+    # The script most of the text is in. Not any letter at all: a Gujarati
+    # template with one stray Punjabi letter in it was taken for Punjabi.
     body = template.body or ""
-    for lang, lo, hi in _SCRIPTS:
-        if any(lo <= ch <= hi for ch in body):
-            # Marathi and Hindi share a script; the registered code decides.
-            return "mr" if lang == "hi" and code == "mr" else lang
+    counts = {lang: sum(1 for ch in body if lo <= ch <= hi) for lang, lo, hi in _SCRIPTS}
+    lang, n = max(counts.items(), key=lambda kv: kv[1])
+    if n >= 5:
+        return lang
     return code if code in MESSAGES else "en"
 
 
@@ -259,15 +265,35 @@ def campaign_language(db: Session, phone: str) -> str:
 
 
 def _campaign_lang(db, conv) -> str:
+    """
+    The language of the newest campaign this person was sent.
+
+    Read afresh rather than kept: a Gujarati campaign sent after an English
+    one must be answered as Gujarati, not as whatever was true earlier.
+    """
+    lang = campaign_language(db, conv.phone)
+    if (conv.bot_data or {}).get("campaign_lang") != lang:
+        conv.bot_data = {**(conv.bot_data or {}), "campaign_lang": lang}
+    return lang
+
+
+def _chosen_lang(db, conv) -> Optional[str]:
+    """
+    The language the person chose, while it still applies.
+
+    A choice is made between English, Hindi and the language of the campaign
+    in front of them. Once a campaign in another language arrives, that
+    choice no longer covers it, and they are asked again.
+    """
     data = conv.bot_data or {}
-    if not data.get("campaign_lang"):
-        conv.bot_data = {**data, "campaign_lang": campaign_language(db, conv.phone)}
-    return conv.bot_data["campaign_lang"]
+    if data.get("lang") and data.get("lang_campaign") == _campaign_lang(db, conv):
+        return data["lang"]
+    return None
 
 
 def _lang(db, conv) -> str:
     """The language to answer in: the one chosen, else the campaign's."""
-    return (conv.bot_data or {}).get("lang") or _campaign_lang(db, conv)
+    return _chosen_lang(db, conv) or _campaign_lang(db, conv)
 
 
 def language_options(campaign_lang: str) -> list:
@@ -376,7 +402,7 @@ def _start(db, conv, msg, flow: str):
     # us (their language, their webinar answer) is kept.
     kept = {k: v for k, v in (conv.bot_data or {}).items() if k in _REMEMBERED}
     conv.bot_data = {**kept, "trigger": msg.body}
-    if kept.get("lang"):
+    if _chosen_lang(db, conv):
         _begin(db, conv, flow)
     else:
         _ask_language(db, conv, flow)
@@ -501,7 +527,8 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
         code = _language_answer(msg)
         if code:
             _understood(conv)
-            conv.bot_data = {**(conv.bot_data or {}), "lang": code}
+            conv.bot_data = {**(conv.bot_data or {}), "lang": code,
+                             "lang_campaign": _campaign_lang(db, conv)}
             _begin(db, conv, (conv.bot_data or {}).get("next") or ONBOARD)
         else:
             _ask_language_again(db, conv)

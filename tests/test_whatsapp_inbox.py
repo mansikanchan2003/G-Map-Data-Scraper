@@ -713,3 +713,25 @@ def test_every_language_has_every_message_and_short_buttons():
     for label in campaign_buttons.WEBINAR.values():
         assert len(label) <= 20 and campaign_buttons.is_webinar(label)
     assert not campaign_buttons.is_webinar("Interested")
+
+
+def test_a_new_campaign_in_another_language_asks_again(db, told):
+    # Chose Hindi while the newest campaign was English...
+    tap_campaign(db, text=campaign_buttons.WEBINAR["en"], lang="hi")
+    tap(db, "webinar:yes")
+    # ...then a Punjabi campaign arrives, and its button is tapped.
+    _punjabi_campaign(db)
+    tap_campaign(db, text=campaign_buttons.WEBINAR["pa"], lang=None)
+    kind, _to, body, buttons = StubMeta.sent[-1]
+    assert [b["id"] for b in buttons] == ["lang:en", "lang:hi", "lang:pa"]
+    tap(db, "lang:pa")
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["pa"]["webinar_ask"]
+
+
+def test_one_stray_letter_does_not_change_a_templates_language():
+    class T:
+        language_code = "en_US"
+        body = "નમસ્તે, આ ગુજરાતી સંદેશ છે ਰ"
+    assert onboarding_bot.language_of_template(T()) == "gu"
+    T.language_code = "gu"
+    assert onboarding_bot.language_of_template(T()) == "gu"
