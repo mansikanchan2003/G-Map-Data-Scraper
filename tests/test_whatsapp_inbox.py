@@ -159,6 +159,12 @@ def tap(db, button_id):
         "type": "button_reply", "button_reply": {"id": button_id, "title": button_id}})
 
 
+def qualify(db, education="12", franchise="no"):
+    """Answer the education and franchise questions that follow a served PIN."""
+    tap(db, f"edu:{education}")
+    tap(db, f"franchise:{franchise}")
+
+
 def say(db, text):
     return inbound(db, "text", text={"body": text})
 
@@ -207,8 +213,20 @@ def test_full_onboarding_flow(db, client):
 
     say(db, "my pin is 110 001")
     kind, _to, body, buttons = StubMeta.sent[-1]
+    assert (kind, body) == ("buttons", onboarding_bot.ASK_EDUCATION)
+    assert [b["id"] for b in buttons] == ["edu:12", "edu:grad", "edu:other"]
+    assert [b["title"] for b in buttons] == ["12th/Diploma", "Graduate/Post-Grad", "Other"]
+
+    tap(db, "edu:grad")
+    kind, _to, body, buttons = StubMeta.sent[-1]
+    assert body == onboarding_bot.ASK_FRANCHISE and "franchise background means" in body
+    assert [b["id"] for b in buttons] == ["franchise:yes", "franchise:no"]
+
+    tap(db, "franchise:yes")
+    kind, _to, body, buttons = StubMeta.sent[-1]
     assert (kind, body) == ("buttons", onboarding_bot.ASK_INVEST)
     assert [b["id"] for b in buttons] == ["invest:yes", "invest:no"]
+    assert conv(db).bot_data["education"] == "grad" and conv(db).bot_data["franchise"] is True
 
     tap(db, "invest:yes")
     kind, _to, body, _b = StubMeta.sent[-1]
@@ -254,7 +272,7 @@ def test_a_pin_within_twenty_km_is_served(db, monkeypatch):
     monkeypatch.setattr(pincode_coverage, "_locate_or_none", lambda pin: (28.55, 77.25))
     tap_campaign(db)
     say(db, "110017")
-    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_INVEST
+    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_EDUCATION
     assert conv(db).bot_data["coverage"]["nearest_pincode"] == SERVED_PIN
 
 
@@ -279,6 +297,7 @@ def test_no_pin_three_times_hands_over_to_a_person(db):
 def test_saying_no_to_investing_ends_politely(db):
     tap_campaign(db)
     say(db, SERVED_PIN)
+    qualify(db)
     tap(db, "invest:no")
     assert StubMeta.sent[-1][2] == onboarding_bot.NOT_INVESTING_TEXT
     say(db, "ok thanks")  # answered politely, once
@@ -291,6 +310,7 @@ def test_saying_no_to_investing_ends_politely(db):
 def test_typed_yes_works_like_the_button(db):
     tap_campaign(db)
     say(db, SERVED_PIN)
+    qualify(db)
     say(db, "Haan")
     assert "Aadhaar Card" in StubMeta.sent[-1][2]
 
@@ -303,7 +323,7 @@ def test_another_button_is_acknowledged_without_starting_the_flow(db):
 
 def test_a_pin_sent_out_of_the_blue_is_checked(db):
     say(db, SERVED_PIN)
-    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_INVEST
+    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_EDUCATION
 
 
 def test_someone_writing_first_is_greeted_and_can_start(db):
@@ -327,13 +347,14 @@ def test_after_not_served_a_new_pin_is_checked_again(db, monkeypatch):
     say(db, "ok")
     assert StubMeta.sent[-1][2] == onboarding_bot.NOT_SERVED_AGAIN.format(pin="400001")
     say(db, "try 110017")
-    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_INVEST
-    assert conv(db).bot_step == onboarding_bot.AWAIT_INVEST
+    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_EDUCATION
+    assert conv(db).bot_step == onboarding_bot.AWAIT_EDUCATION
 
 
 def test_an_unclear_answer_gets_the_question_again(db):
     tap_campaign(db)
     say(db, SERVED_PIN)
+    qualify(db)
     say(db, "what does it involve?")
     kind, _to, body, buttons = StubMeta.sent[-1]
     assert body == onboarding_bot.REMIND_INVEST and [b["id"] for b in buttons] == ["invest:yes", "invest:no"]
@@ -342,6 +363,7 @@ def test_an_unclear_answer_gets_the_question_again(db):
 def test_an_amount_mid_question_is_not_read_as_a_pin(db):
     tap_campaign(db)
     say(db, SERVED_PIN)
+    qualify(db)
     say(db, "haan, 500000 hai mere paas")
     assert conv(db).bot_step == onboarding_bot.AWAIT_INVEST
 
@@ -376,6 +398,7 @@ def test_a_switched_off_bot_says_nothing(db):
 def _link(db):
     tap_campaign(db)
     say(db, SERVED_PIN)
+    qualify(db)
     tap(db, "invest:yes")
     tap(db, "docs:yes")
     return conv(db).upload_token
@@ -647,6 +670,10 @@ def test_the_campaigns_own_language_is_offered_and_used(db):
     assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["pa"]["ask_pin"]
     say(db, SERVED_PIN)
     kind, _to, body, buttons = StubMeta.sent[-1]
+    assert body == bot_messages.MESSAGES["pa"]["ask_education"]
+    assert [b["title"] for b in buttons] == ["12ਵੀਂ/ਡਿਪਲੋਮਾ", "ਗ੍ਰੈਜੂਏਟ/ਪੀਜੀ", "ਹੋਰ"]
+    qualify(db)
+    kind, _to, body, buttons = StubMeta.sent[-1]
     assert body == bot_messages.MESSAGES["pa"]["ask_invest"]
     assert [b["title"] for b in buttons] == ["ਹਾਂ", "ਨਹੀਂ"]
 
@@ -735,3 +762,50 @@ def test_one_stray_letter_does_not_change_a_templates_language():
     assert onboarding_bot.language_of_template(T()) == "gu"
     T.language_code = "gu"
     assert onboarding_bot.language_of_template(T()) == "gu"
+
+
+# --- Education and franchise, before the investment question ----------------
+
+def test_below_12th_is_told_politely_and_the_flow_ends(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    tap(db, "edu:other")
+    assert StubMeta.sent[-1][2] == onboarding_bot.NOT_ELIGIBLE_TEXT
+    assert "12th" in StubMeta.sent[-1][2]
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.NOT_ELIGIBLE and c.bot_data["education"] == "other"
+    count = len(StubMeta.sent)
+    tap(db, "invest:yes")  # an old button tapped later does not slip past
+    assert conv(db).bot_step == onboarding_bot.NOT_ELIGIBLE
+    assert all("Aadhaar" not in m[2] for m in StubMeta.sent[count:])
+
+
+def test_a_franchise_no_still_goes_on(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    tap(db, "edu:12")
+    tap(db, "franchise:no")
+    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_INVEST
+    assert conv(db).bot_data["franchise"] is False
+
+
+def test_typed_education_counts(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "Graduate")
+    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_FRANCHISE
+
+
+def test_an_unclear_education_answer_gets_the_buttons_again(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "why do you ask?")
+    kind, _to, body, buttons = StubMeta.sent[-1]
+    assert body == onboarding_bot.ASK_EDUCATION
+    assert [b["id"] for b in buttons] == ["edu:12", "edu:grad", "edu:other"]
+
+
+def test_every_language_has_short_education_buttons():
+    for lang, msgs in bot_messages.MESSAGES.items():
+        for k in ("edu_12", "edu_grad", "edu_other"):
+            assert len(msgs[k]) <= 20, (lang, k, msgs[k])

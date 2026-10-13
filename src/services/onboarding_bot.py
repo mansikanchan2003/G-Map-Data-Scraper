@@ -3,7 +3,11 @@ The onboarding bot: what happens after someone taps a campaign's buttons.
 
     tap "Interested"        -> choose a language: English / Hindi / theirs
       language chosen       -> ask for their PIN code
-      PIN within our area   -> "Can you invest 5 lakh?"            [Yes] [No]
+      PIN within our area   -> "How far have you studied?"
+                                 [12th/Diploma] [Graduate/Post-Grad] [Other]
+      Other                 -> "Sorry, at least 12th or a Diploma is needed" (ends)
+      12th or Graduate      -> "Do you have a franchise background?" [Yes] [No]
+      either answer         -> "Can you invest 5 lakh?"            [Yes] [No]
       Yes                   -> the documents needed, "Have them?"   [Yes] [No]
       Yes                   -> a link to the upload page
       documents submitted   -> "Thank you, our team will reach out"
@@ -56,6 +60,9 @@ DEFAULT_SETTINGS = {
 # Steps.
 CHOOSE_LANG = "CHOOSE_LANG"
 AWAIT_PIN = "AWAIT_PIN"
+AWAIT_EDUCATION = "AWAIT_EDUCATION"
+AWAIT_FRANCHISE = "AWAIT_FRANCHISE"
+NOT_ELIGIBLE = "NOT_ELIGIBLE"
 AWAIT_INVEST = "AWAIT_INVEST"
 AWAIT_DOCS = "AWAIT_DOCS"
 AWAIT_UPLOAD = "AWAIT_UPLOAD"
@@ -71,6 +78,9 @@ WEBINAR_AVAILABILITY = "WEBINAR_AVAILABILITY"
 STEP_LABELS = {
     CHOOSE_LANG: "Choosing a language",
     AWAIT_PIN: "Waiting for PIN code",
+    AWAIT_EDUCATION: "Asked about education",
+    AWAIT_FRANCHISE: "Asked about franchise",
+    NOT_ELIGIBLE: "Below 12th — not eligible",
     AWAIT_INVEST: "Asked about investment",
     AWAIT_DOCS: "Asked about documents",
     AWAIT_UPLOAD: "Upload link sent",
@@ -146,6 +156,21 @@ WEBINAR_ASK = _EN["webinar_ask"]
 WEBINAR_YES = _EN["webinar_yes"]
 WEBINAR_NO = _EN["webinar_no"]
 WEBINAR_NOTED = _EN["webinar_noted"]
+ASK_EDUCATION = _EN["ask_education"]
+NOT_ELIGIBLE_TEXT = _EN["not_eligible"]
+ASK_FRANCHISE = _EN["ask_franchise"]
+
+# The education answers. Only 12th/Diploma and above can open an SBI CSP;
+# "other" ends the conversation with a polite no.
+EDUCATION_LEVELS = ("12", "grad", "other")
+_EDU_KEYS = {"12": "edu_12", "grad": "edu_grad", "other": "edu_other"}
+# Typed rather than tapped. Checked after the button labels themselves.
+_EDU_TYPED = {
+    "12": {"12", "12th", "12thpass", "diploma", "intermediate", "inter", "hsc", "12vi"},
+    "grad": {"graduate", "graduation", "postgraduate", "pg", "ba", "bsc", "bcom", "ma", "msc", "mcom",
+             "mba", "btech", "degree", "graduatepostgrad"},
+    "other": {"other", "10th", "10", "below12", "none"},
+}
 
 START_INTERESTED = "start:interested"
 START_WEBINAR = "start:webinar"
@@ -360,6 +385,26 @@ def _answer(msg: WhatsAppMessage, prefix: str) -> Optional[bool]:
     return None
 
 
+def education_buttons(lang: str) -> list:
+    return [{"id": f"edu:{level}", "title": bot_messages.text(lang, _EDU_KEYS[level])}
+            for level in EDUCATION_LEVELS]
+
+
+def _education_answer(msg: WhatsAppMessage) -> Optional[str]:
+    """12, grad or other, by button or typed; None if this is not an answer."""
+    if msg.kind == "interactive":
+        tapped = (msg.payload or {}).get("id") or ""
+        level = tapped.split(":", 1)[1] if tapped.startswith("edu:") else None
+        return level if level in EDUCATION_LEVELS else None
+    if msg.kind == "text":
+        typed = campaign_buttons.key(msg.body)
+        for level in EDUCATION_LEVELS:
+            labels = {campaign_buttons.key(m[_EDU_KEYS[level]]) for m in MESSAGES.values()}
+            if typed in labels or typed in _EDU_TYPED[level]:
+                return level
+    return None
+
+
 def _ask_language(db, conv, flow: str):
     options = language_options(_campaign_lang(db, conv))
     prompts = []
@@ -444,8 +489,8 @@ def _on_pin(db, conv, msg):
 
     coverage = {k: result.get(k) for k in ("pincode", "nearest_pincode", "distance_km", "place")}
     if result["status"] == "served":
-        _move(conv, AWAIT_INVEST, coverage=coverage)
-        _say(db, conv, _t(db, conv, "ask_invest"), buttons=YES_NO("invest", _lang(db, conv)))
+        _move(conv, AWAIT_EDUCATION, coverage=coverage)
+        _say(db, conv, _t(db, conv, "ask_education"), buttons=education_buttons(_lang(db, conv)))
     else:
         _move(conv, NOT_SERVED, coverage=coverage)
         _say(db, conv, _t(db, conv, "not_served", pin=pin))
@@ -552,7 +597,8 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
     # only a message that is nothing but a PIN counts, so "yes, 500000"
     # is not read as one; once the upload link is out, the PIN is settled.
     if step not in (AWAIT_UPLOAD, SUBMITTED):
-        pin = (_only_a_pin(msg) if step in (AWAIT_INVEST, AWAIT_DOCS, AWAIT_WEBINAR)
+        pin = (_only_a_pin(msg) if step in (AWAIT_EDUCATION, AWAIT_FRANCHISE, AWAIT_INVEST,
+                                             AWAIT_DOCS, AWAIT_WEBINAR)
                else pincode_coverage.extract_pincode(msg.body) if msg.kind == "text" else None)
         if pin:
             _understood(conv)
@@ -567,6 +613,31 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
             _on_pin(db, conv, msg)
         else:
             _fallback(db, conv, _t(db, conv, "bad_pin"))
+
+    elif step == AWAIT_EDUCATION:
+        level = _education_answer(msg)
+        if level == "other":
+            _understood(conv)
+            _move(conv, NOT_ELIGIBLE, education=level)
+            _say(db, conv, _t(db, conv, "not_eligible"))
+        elif level:
+            _understood(conv)
+            _move(conv, AWAIT_FRANCHISE, education=level)
+            _say(db, conv, _t(db, conv, "ask_franchise"), buttons=YES_NO("franchise", lang))
+        else:
+            _fallback(db, conv, _t(db, conv, "ask_education"), buttons=education_buttons(lang))
+
+    elif step == AWAIT_FRANCHISE:
+        # Either answer goes on to the investment question; it is recorded
+        # for the team, not used to turn anyone away.
+        answer = _answer(msg, "franchise")
+        if answer is not None:
+            _understood(conv)
+            _move(conv, AWAIT_INVEST, franchise=answer)
+            _say(db, conv, _t(db, conv, "ask_invest"), buttons=YES_NO("invest", lang))
+        else:
+            _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n" + _t(db, conv, "ask_franchise"),
+                      buttons=YES_NO("franchise", lang))
 
     elif step == AWAIT_INVEST:
         answer = _answer(msg, "invest")
@@ -620,6 +691,9 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
     elif step == NOT_SERVED:
         pin = ((conv.bot_data or {}).get("coverage") or {}).get("pincode") or "—"
         _fallback(db, conv, _t(db, conv, "not_served_again", pin=pin))
+
+    elif step == NOT_ELIGIBLE:
+        _fallback(db, conv, _t(db, conv, "not_eligible"))
 
     elif step in (NOT_INVESTING, HANDOVER, WEBINAR_CONFIRMED, WEBINAR_AVAILABILITY):
         _fallback(db, conv, _t(db, conv, "acknowledge"))

@@ -20,7 +20,7 @@ const THREAD_POLL_MS = 5000;
 
 // Steps where the bot is still waiting for an answer, so it may reply on its
 // own; at any other step the conversation is a person's to handle.
-const BOT_WAITING = ['CHOOSE_LANG', 'AWAIT_PIN', 'AWAIT_INVEST', 'AWAIT_DOCS', 'AWAIT_UPLOAD', 'AWAIT_WEBINAR', 'AWAIT_AVAILABILITY'];
+const BOT_WAITING = ['CHOOSE_LANG', 'AWAIT_PIN', 'AWAIT_EDUCATION', 'AWAIT_FRANCHISE', 'AWAIT_INVEST', 'AWAIT_DOCS', 'AWAIT_UPLOAD', 'AWAIT_WEBINAR', 'AWAIT_AVAILABILITY'];
 
 const LANGUAGE_NAMES: Record<string, string> = {
   en: 'English', hi: 'Hindi', mr: 'Marathi', pa: 'Punjabi', gu: 'Gujarati', bn: 'Bengali',
@@ -313,6 +313,8 @@ const BotSettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 <li>Asks them to choose English, Hindi or their campaign's language, and speaks it from then on.</li>
                 <li>Asks for their PIN code.</li>
                 <li>Checks it is one of our PINs or within {settings.radius_km} km of one.</li>
+                <li>Asks how far they have studied: 12th/Diploma, Graduate/Post-Grad or Other. Other is told politely that at least 12th or a Diploma is needed, and the flow ends.</li>
+                <li>Asks whether they have a franchise background — Yes / No. Either answer goes on.</li>
                 <li>Asks whether they can invest ₹5 Lakh — Yes / No.</li>
                 <li>Lists the documents needed and asks if they have them — Yes / No.</li>
                 <li>Sends the upload link; after they submit, thanks them.</li>
@@ -436,6 +438,12 @@ const Details: React.FC<{
               <Row label="Nearest of ours" value={`${coverage.nearest_pincode} · ${coverage.distance_km} km`} />
             )}
             {coverage?.place && <Row label="Area" value={coverage.place} />}
+            {conv.bot_data?.education && (
+              <Row label="Education" value={({ '12': '12th/Diploma', grad: 'Graduate/Post-Grad', other: 'Below 12th (not eligible)' } as Record<string, string>)[conv.bot_data.education] || conv.bot_data.education} />
+            )}
+            {conv.bot_data?.franchise !== undefined && (
+              <Row label="Franchise background" value={conv.bot_data.franchise ? 'Yes' : 'No'} />
+            )}
             {conv.bot_data?.can_invest !== undefined && (
               <Row label="Can invest ₹5L" value={conv.bot_data.can_invest ? 'Yes' : 'No'} />
             )}
