@@ -683,8 +683,19 @@ const studioCall = async <T>(path: string, init?: RequestInit): Promise<T> => {
     ...init,
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.detail || `Request failed (${res.status})`);
+  if (!res.ok) throw new Error(errorText(json.detail) || `Request failed (${res.status})`);
   return json as T;
+};
+
+/** FastAPI's detail is a string, or for a refused field a list of {loc, msg}. */
+const errorText = (detail: unknown): string => {
+  if (!detail) return '';
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((d: any) => [Array.isArray(d?.loc) ? d.loc.slice(1).join('.') : '', d?.msg]
+      .filter(Boolean).join(': ')).join('; ');
+  }
+  return JSON.stringify(detail);
 };
 
 /** Where a draft's uploaded header image is served, from its header_content. */

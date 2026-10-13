@@ -416,3 +416,13 @@ def test_poster_problems_are_named():
 def test_a_phrase_from_the_poster_headline_is_allowed():
     v = variant(image_phrase=HI_POSTER["headline_line2"])
     assert ba.validate(v, "hi", ["name", "category", "state"]) == []
+
+
+def test_an_older_page_asking_for_three_is_not_refused():
+    # A page loaded before one-draft-a-round still sends count 3; it must
+    # get its one draft rather than a 422.
+    from src.routers.template_studio import BusinessDraftRequest, GenerateRequest
+
+    assert BusinessDraftRequest(rows=[{"name": "A"}], count=3).count == 3
+    assert GenerateRequest(state="Gujarat", count=3).count == 3
+    assert ba.MAX_VARIANTS == 1 and studio.MAX_VARIANTS == 1

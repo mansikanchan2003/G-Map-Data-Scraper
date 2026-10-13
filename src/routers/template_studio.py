@@ -51,7 +51,9 @@ class StudioDraft(BaseModel):
 
 class GenerateRequest(BaseModel):
     state: str
-    count: int = Field(1, ge=1, le=template_studio.MAX_VARIANTS)
+    # Older pages still ask for several; one is made whatever is asked
+    # (see MAX_VARIANTS), rather than refusing the request.
+    count: int = Field(1, ge=1, le=10)
     brief: Optional[str] = Field(None, max_length=1000)
 
 
@@ -143,7 +145,7 @@ def generate(req: GenerateRequest, background: BackgroundTasks, db: Session = De
     if not GeminiClient().is_configured():
         raise HTTPException(status_code=503, detail="GEMINI_API_KEY is not set on the server.")
 
-    rows = template_studio.create_placeholders(db, req.state, req.count, req.brief)
+    rows = template_studio.create_placeholders(db, req.state, min(req.count, template_studio.MAX_VARIANTS), req.brief)
     background.add_task(
         template_studio.run_generation, [r.template_id for r in rows], req.state, req.brief
     )
@@ -303,7 +305,8 @@ class BusinessDraftRequest(BaseModel):
     # One dict per business, keyed by the export's headers (name, category,
     # district, state...). Only the details are read; nothing is sent.
     rows: List[dict] = Field(..., min_length=1, max_length=business_agent.MAX_ROWS)
-    count: int = Field(1, ge=1, le=business_agent.MAX_VARIANTS)
+    # Older pages still ask for three; one is made whatever is asked.
+    count: int = Field(1, ge=1, le=10)
     brief: Optional[str] = Field(None, max_length=1000)
     # Defaults to the language of the businesses' main state.
     language: Optional[str] = None
@@ -330,7 +333,7 @@ def write_business_drafts(req: BusinessDraftRequest, background: BackgroundTasks
     if not link_target.startswith(("http://", "https://")):
         raise HTTPException(status_code=422, detail="The link must be a full web address starting with https://.")
 
-    rows = business_agent.create_placeholders(db, summary, req.count, req.brief, language,
+    rows = business_agent.create_placeholders(db, summary, min(req.count, business_agent.MAX_VARIANTS), req.brief, language,
                                               link_target, req.source_name)
     background.add_task(business_agent.run_generation, [r.template_id for r in rows])
     logger.info(f"template_studio event=BUSINESS_ROUND by={user.email} rows={summary['rows']} "
