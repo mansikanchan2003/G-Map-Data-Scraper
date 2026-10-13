@@ -10,6 +10,7 @@ import type {
 import { WhatsAppPreview } from '../components/WhatsAppPreview';
 import { SheetTemplateBuilder } from '../components/SheetTemplateBuilder';
 import { BusinessTemplateAgent } from '../components/BusinessTemplateAgent';
+import { ApproveAnyway, CheckerNotes } from '../components/CheckerNotes';
 import { formatDateTime } from '../utils/datetime';
 import { SignNote } from '../components/SignNote';
 import { PhotoPromptRecord } from '../components/PhotoPromptRecord';
@@ -372,9 +373,7 @@ const DraftCard: React.FC<{
         {check && !check.passed && (check.issues || []).length > 0 && (
           <div className="text-xs text-amber-300">Photo: {check.issues!.join('; ')}</div>
         )}
-        {(gen.copy_warnings || []).length > 0 && (
-          <div className="text-xs text-amber-300">Copy checker: {gen.copy_warnings!.join('; ')}</div>
-        )}
+        <CheckerNotes notes={gen.copy_warnings} />
         {gen.error && draft.status !== 'GENERATION_FAILED' && !waiting && <div className="text-xs text-rose-300">{gen.error}</div>}
         {draft.review_note && (
           <div className="text-xs text-slate-400">
@@ -517,6 +516,8 @@ const EditModal: React.FC<{ draft: StudioDraft; onClose: () => void; onSaved: (w
 const ApproveModal: React.FC<{ draft: StudioDraft; onClose: () => void; onDone: (msg: string, ok: boolean) => void }> = ({ draft, onClose, onDone }) => {
   const [category, setCategory] = useState('MARKETING');
   const [sending, setSending] = useState(false);
+  const problems = ((draft.generation || {}) as any).copy_warnings?.length ?? 0;
+  const [anyway, setAnyway] = useState(false);
 
   const approve = async () => {
     setSending(true);
@@ -543,9 +544,15 @@ const ApproveModal: React.FC<{ draft: StudioDraft; onClose: () => void; onDone: 
           <option value="UTILITY">Utility</option>
         </select>
       </label>
+      {problems > 0 && (
+        <div className="mb-4 space-y-2">
+          <CheckerNotes notes={((draft.generation || {}) as any).copy_warnings} />
+          <ApproveAnyway count={problems} checked={anyway} onChange={setAnyway} />
+        </div>
+      )}
       <div className="flex justify-end gap-2">
         <button onClick={onClose} className="h-8 px-3 bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded">Cancel</button>
-        <button onClick={approve} disabled={sending} className="h-8 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded disabled:opacity-50">
+        <button onClick={approve} disabled={sending || (problems > 0 && !anyway)} className="h-8 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded disabled:opacity-50">
           {sending ? 'Submitting...' : 'Approve & submit'}
         </button>
       </div>

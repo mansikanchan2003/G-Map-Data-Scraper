@@ -189,6 +189,17 @@ def edit_draft(template_id: str, edit: DraftEdit, db: Session = Depends(get_db))
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=422, detail=f"Could not apply the edit: {e}")
+    # What the draft shows, and what holds up Approve, follows the edit: the
+    # checks are run again on the new text. A claim the fact check flagged
+    # stays flagged while its words are still there; it cannot be re-checked
+    # without the model, so it is only cleared by removing it.
+    gen = dict(tmpl.generation or {})
+    written = " ".join([tmpl.body or ""] + [str(v) for v in (gen.get("poster") or {}).values()])
+    claims = [w for w in gen.get("copy_warnings") or []
+              if w.startswith("unsupported claim:") and w.split(":", 1)[1].split(" — ")[0].strip() in written]
+    gen["copy_warnings"] = list(warnings) + [c for c in claims if c not in warnings]
+    tmpl.generation = gen
+    db.commit()
     db.refresh(tmpl)
     return {"draft": StudioDraft.model_validate(tmpl), "warnings": warnings}
 

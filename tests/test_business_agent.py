@@ -240,6 +240,34 @@ def test_an_edit_is_checked_without_a_poster(db):
     assert d.generation["variables"] == ["name", "district"]
 
 
+def test_an_edit_refreshes_the_problems_shown_and_keeps_live_claims(db):
+    from fastapi.testclient import TestClient
+    from src.database import get_db
+    from src.main import app
+
+    d = make_round(db, count=1)[0]
+    gen = dict(d.generation)
+    gen["copy_warnings"] = [
+        "body contains Gurmukhi characters (ਰ) in a Hindi template",
+        "unsupported claim: सबसे बड़ा बैंक — not in the fact sheet",
+        "unsupported claim: पुरानी पंक्ति — not in the fact sheet",
+    ]
+    d.generation = gen
+    db.commit()
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        body = GOOD_BODY + " सबसे बड़ा बैंक"
+        r = TestClient(app).patch(f"/api/v1/whatsapp/studio/drafts/{d.template_id}", json={"body": body})
+        assert r.status_code == 200, r.text
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+    db.refresh(d)
+    notes = d.generation["copy_warnings"]
+    assert not any("Gurmukhi" in n for n in notes), "fixed script problems are cleared"
+    assert any("सबसे बड़ा बैंक" in n for n in notes), "a claim still in the text stays"
+    assert not any("पुरानी पंक्ति" in n for n in notes), "a claim no longer in the text goes"
+
+
 def test_business_drafts_are_kept_out_of_the_poster_list(db):
     from fastapi.testclient import TestClient
     from src.database import get_db

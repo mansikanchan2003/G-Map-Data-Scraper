@@ -3,6 +3,7 @@ import {
   approveStudioDraft, editStudioDraft, fetchBusinessDrafts, fetchSheetSettings, fetchStudioStatus,
   rejectStudioDraft, requestNewPhoto, stashAudience, studioMediaUrl, writeBusinessDrafts,
 } from '../api/whatsapp';
+import { ApproveAnyway, CheckerNotes } from './CheckerNotes';
 import type { SheetSettings, StudioDraft } from '../api/whatsapp';
 import { LANGUAGES, readSheet } from './SheetTemplateBuilder';
 import type { Sheet } from './SheetTemplateBuilder';
@@ -241,6 +242,8 @@ const DraftCard: React.FC<{
   // template's language): the bot answers a tap by its label.
   const quickReplies = (d.buttons || []).filter(b => b.type === 'QUICK_REPLY').map(b => b.text);
   const [category, setCategory] = useState('MARKETING');
+  const problems = g.copy_warnings?.length ?? 0;
+  const [anyway, setAnyway] = useState(false);
   const [reason, setReason] = useState('');
 
   const act = async (fn: () => Promise<void>) => {
@@ -311,6 +314,7 @@ const DraftCard: React.FC<{
             </div>
           )}
           <SignNote generation={g} />
+          <CheckerNotes notes={g.copy_warnings} />
           {g.photo_error && <div className="text-xs text-amber-300">No photo: {g.photo_error}. The message can be sent without one.</div>}
           {g.angle && <div className="text-xs text-slate-300"><span className="text-slate-500">Idea it tests: </span>{g.angle}</div>}
           {g.learned && (
@@ -357,9 +361,6 @@ const DraftCard: React.FC<{
               {d.body.includes('{{link}}') && <> · {'{{link}}'} opens <span className="font-mono-code break-all">{g.link_target}</span>{g.tracked ? ', tracked per business' : ', untracked'}</>}
             </div>
           )}
-          {(g.copy_warnings?.length ?? 0) > 0 && (
-            <div className="text-xs text-amber-300">Checker notes: {g.copy_warnings!.join('; ')}</div>
-          )}
           {d.status === 'REJECTED' && g.rejected_reason && (
             <div className="text-xs text-rose-300">Meta’s reason: {g.rejected_reason.replace(/_/g, ' ').toLowerCase()}</div>
           )}
@@ -371,11 +372,12 @@ const DraftCard: React.FC<{
 
       {d.status === 'AWAITING_APPROVAL' && mode === 'approve' && (
         <div className="flex flex-wrap items-center gap-2">
+          <div className="w-full"><ApproveAnyway count={problems} checked={anyway} onChange={setAnyway} /></div>
           <select value={category} onChange={e => setCategory(e.target.value)} className={inputCls}>
             <option value="MARKETING">Marketing</option>
             <option value="UTILITY">Utility</option>
           </select>
-          <button onClick={approve} disabled={busy} className={`${btn} bg-emerald-600 hover:bg-emerald-500 text-white`}>
+          <button onClick={approve} disabled={busy || (problems > 0 && !anyway)} className={`${btn} bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50`}>
             {busy ? 'Submitting…' : 'Approve and submit to Meta'}
           </button>
           <button onClick={() => setMode('view')} className={`${btn} bg-slate-800 text-slate-200`}>Cancel</button>
