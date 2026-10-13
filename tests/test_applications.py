@@ -193,3 +193,23 @@ def test_a_pin_the_bot_could_not_place_comes_from_the_chat(client):
     assert asked["district"] == "Surendranagar"
     checked = apps["+919000000001"]
     assert checked["pincode"] == "363520" and checked["pincode_unchecked"] is False
+
+
+def test_the_persona_is_the_category_the_business_was_found_as(client):
+    from src.models import Business
+    from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
+    db = TestingSessionLocal()
+    db.add(Business(business_id="B1", job_id="J1", name="Patel Xerox", phone="+919000000001", category="Copy shop",
+                    state="Gujarat", district="Surendranagar", source_query="q", dedup_key="k1"))
+    db.add(WhatsAppCampaign(campaign_id="C1", name="Gujarat copy shops", data_source_type="scraped", status="COMPLETED"))
+    db.add(WhatsAppCampaign(campaign_id="C2", name="Sheet upload", data_source_type="upload", status="COMPLETED"))
+    db.add(WhatsAppCampaignRecipient(recipient_id="R1", campaign_id="C1", phone="+919000000001", business_id="B1",
+                                     status="DELIVERED", provider_message_id="wamid.1"))
+    db.add(WhatsAppCampaignRecipient(recipient_id="R2", campaign_id="C2", phone="+919000000002", name="Sunita",
+                                     variables={"Category": "Kiosk"}, status="SENT", provider_message_id="wamid.2"))
+    db.commit()
+    db.close()
+    _, apps = _by_phone(client)
+    assert apps["+919000000001"]["category"] == "Copy shop"
+    assert apps["+919000000002"]["category"] == "Kiosk"  # from the uploaded sheet's column
+    assert apps["+919000000003"]["category"] is None    # not reached by a campaign

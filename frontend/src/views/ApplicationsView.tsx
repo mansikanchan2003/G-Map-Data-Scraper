@@ -70,13 +70,13 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
     const pick = FILTERS.find(f => f.key === filter)!.pick;
     return items.filter(a => pick(a)
       && (!stage || a.stage === stage)
-      && (!q || [a.name, a.phone, a.pincode, a.state, a.district, a.tehsil, a.source?.campaign].some(v => (v || '').toLowerCase().includes(q))));
+      && (!q || [a.name, a.phone, a.pincode, a.state, a.district, a.tehsil, a.category, a.source?.campaign].some(v => (v || '').toLowerCase().includes(q))));
   }, [items, filter, search, stage]);
 
   const exportCsv = () => {
-    const head = ['Name', 'Phone', 'PIN code', 'State', 'District', 'Tehsil', 'Qualification', 'Verdict', 'Not qualified because', 'Franchise background',
+    const head = ['Name', 'Phone', 'Category (persona)', 'PIN code', 'State', 'District', 'Tehsil', 'Qualification', 'Verdict', 'Not qualified because', 'Franchise background',
       'Can invest ₹5 lakh', 'Stage', 'Documents', 'Required documents', 'Submitted at', 'Campaign', 'Comments'];
-    const rows = shown.map(a => [a.name, a.phone, a.pincode, a.state, a.district, a.tehsil, a.qualification, a.verdict, a.not_qualified_reasons.join('; '),
+    const rows = shown.map(a => [a.name, a.phone, a.category, a.pincode, a.state, a.district, a.tehsil, a.qualification, a.verdict, a.not_qualified_reasons.join('; '),
       yesNo(a.franchise_background), yesNo(a.can_invest), a.stage, `${a.documents_count}/${a.documents_total}`,
       a.required_documents_done ? 'Done' : 'Missing', a.submitted_at ? formatDateTime(a.submitted_at) : '',
       a.source?.campaign, a.comments.map(c => `${c.author}: ${c.body}`).join(' | ')]);
@@ -172,7 +172,7 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
 
         {/* Search, stage and export. */}
         <div className="flex flex-wrap items-center gap-2">
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, phone, PIN, state, district, tehsil or campaign"
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, phone, PIN, area, category or campaign"
             className="flex-1 min-w-[220px] h-9 px-3 rounded border border-slate-700 bg-slate-900 text-sm text-slate-200 outline-none" />
           <select value={stage} onChange={e => setStage(e.target.value)}
             className="h-9 px-2 rounded border border-slate-700 bg-slate-900 text-sm text-slate-200">
@@ -190,16 +190,16 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
           <table className="w-full text-sm select-text">
             <thead className="bg-slate-950 text-[10.5px] uppercase tracking-wider text-slate-400">
               <tr>
-                {['Name', 'Phone', 'PIN code', 'State', 'District', 'Tehsil', 'Qualification', 'Verdict', 'Stage', 'Documents', 'Submitted', 'Comments', ''].map(h => (
+                {['Name', 'Phone', 'Category (persona)', 'PIN code', 'State', 'District', 'Tehsil', 'Qualification', 'Verdict', 'Stage', 'Documents', 'Submitted', 'Comments', ''].map(h => (
                   <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
               {loading && !items.length ? (
-                <tr><td colSpan={13} className="px-3 py-10 text-center text-slate-500">Loading applications…</td></tr>
+                <tr><td colSpan={14} className="px-3 py-10 text-center text-slate-500">Loading applications…</td></tr>
               ) : !shown.length ? (
-                <tr><td colSpan={13} className="px-3 py-10 text-center text-slate-500">
+                <tr><td colSpan={14} className="px-3 py-10 text-center text-slate-500">
                   {showRemoved ? 'No removed applications.' : 'No applications match.'}
                 </td></tr>
               ) : shown.map(a => (
@@ -209,6 +209,11 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
                       <div className="font-semibold text-slate-100">{a.name || '—'}</div>
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-slate-300 whitespace-nowrap">{a.phone}</td>
+                    <td className="px-3 py-2 text-xs whitespace-nowrap">
+                      {a.category
+                        ? <span className="px-2 py-0.5 rounded bg-indigo-950/50 border border-indigo-800 text-indigo-200">{a.category}</span>
+                        : <span className="text-slate-500" title="Not reached through a campaign from Business Data">—</span>}
+                    </td>
                     <td className="px-3 py-2 font-mono text-xs text-slate-200 whitespace-nowrap">
                       {a.pincode || <span className="text-slate-500">—</span>}
                       {a.pincode_unchecked && (
@@ -256,7 +261,7 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
                     </td>
                   </tr>
                   {open === a.phone && (
-                    <tr><td colSpan={13} className="px-3 pb-4 pt-1 bg-slate-950/60">
+                    <tr><td colSpan={14} className="px-3 pb-4 pt-1 bg-slate-950/60">
                       <ApplicationDetails app={a} readOnly={readOnly} onChanged={load} />
                     </td></tr>
                   )}

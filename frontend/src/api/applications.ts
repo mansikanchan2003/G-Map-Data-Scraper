@@ -33,6 +33,8 @@ export interface Application {
   /** The nearest of our target PINs, from the bot's check. */
   place: string | null;
   distance_km: number | null;
+  /** The persona: the business's Google Maps category, from the campaign that reached them. */
+  category: string | null;
   qualification: string | null;
   franchise_background: boolean | null;
   can_invest: boolean | null;

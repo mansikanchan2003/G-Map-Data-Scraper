@@ -97,8 +97,12 @@ def _sources(db: Session, phones: List[str]) -> Dict[str, Dict]:
     )
     out = {}
     for r, c, b in rows:  # later campaigns overwrite earlier ones
+        sheet = {str(k).strip().lower(): v for k, v in (r.variables or {}).items()} if isinstance(r.variables, dict) else {}
+        # The business's Google Maps category, the persona it was found as; for
+        # a campaign sent from an uploaded sheet, the sheet's own category column.
+        category = (b.category if b else None) or sheet.get("category") or sheet.get("persona")
         out[r.phone] = {"campaign": c.name, "business_name": (b.name if b else None) or r.name,
-                        "category": b.category if b else None, "district": b.district if b else None,
+                        "category": category, "district": b.district if b else None,
                         "state": b.state if b else None}
     return out
 
@@ -212,6 +216,7 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
             # The nearest of our target PINs and how far it is, from the bot's check.
             "place": coverage.get("place"),
             "distance_km": coverage.get("distance_km"),
+            "category": (sources.get(conv.phone) or {}).get("category"),
             "qualification": QUALIFICATION.get(data.get("education")),
             "franchise_background": data.get("franchise"),
             "can_invest": data.get("can_invest"),
