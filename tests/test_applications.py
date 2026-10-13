@@ -38,7 +38,10 @@ PEOPLE = {
     "+919000000006": ("Asked for PIN", bot.AWAIT_PIN, {"pin_attempts": 0}, False),
     "+919000000007": ("Webinar only", bot.WEBINAR_CONFIRMED, {"webinar": {"answer": "yes"}}, False),
     "+919000000008": ("Never in the bot", None, None, False),
+    # In the bot, but no AutoGMap campaign reached them: another team's contact.
+    "+919000000009": ("Existing CSP", bot.AWAIT_PIN, {"pin_attempts": 0}, False),
 }
+NOT_OURS = {"+919000000009"}
 
 
 GEO = {"363520": {"state": "Gujarat", "district": "Surendranagar", "tehsil": "Chotila"},
@@ -60,6 +63,12 @@ def client(monkeypatch):
         db.add(WhatsAppConversation(phone=phone, profile_name=name, bot_step=step, bot_data=data,
                                     last_message_at=now, documents_submitted_at=now if submitted else None))
     db.flush()
+    from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
+    db.add(WhatsAppCampaign(campaign_id="C0", name="Earlier campaign", data_source_type="scraped", status="COMPLETED",
+                            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc)))
+    for i, phone in enumerate(p for p in PEOPLE if p not in NOT_OURS):
+        db.add(WhatsAppCampaignRecipient(recipient_id=f"R0-{i}", campaign_id="C0", phone=phone, status="DELIVERED",
+                                         provider_message_id=f"wamid.0.{i}"))
     for key in ("pan", "aadhaar", "photo", "cibil"):
         db.add(OnboardingDocument(document_id=f"d-{key}", phone="+919000000001", doc_type=key,
                                   original_name=f"{key}.pdf", stored_path=f"/x/{key}.pdf",
@@ -213,3 +222,19 @@ def test_the_persona_is_the_category_the_business_was_found_as(client):
     assert apps["+919000000001"]["category"] == "Copy shop"
     assert apps["+919000000002"]["category"] == "Kiosk"  # from the uploaded sheet's column
     assert apps["+919000000003"]["category"] is None    # not reached by a campaign
+
+
+def test_someone_no_campaign_reached_is_not_an_application(client):
+    stats, apps = _by_phone(client)
+    assert "+919000000009" not in apps and stats["total"] == 6
+
+
+def test_digits_inside_a_csp_code_are_not_a_pin(client):
+    db = TestingSessionLocal()
+    for i, body in enumerate(["425414", "Aapka CSP code?", "1A851679"]):
+        db.add(WhatsAppMessage(message_id=f"c{i}", phone="+919000000006", direction="IN", kind="text", body=body,
+                               created_at=datetime(2026, 10, 13, 11, i, tzinfo=timezone.utc)))
+    db.commit()
+    db.close()
+    _, apps = _by_phone(client)
+    assert apps["+919000000006"]["pincode"] == "425414"

@@ -12,6 +12,7 @@ Qualification, as the team defined it:
 - Not qualified: the PIN is outside our area, education is below 12th, or
   they cannot invest. Someone part-way through is none of these yet.
 """
+import re
 import time
 import uuid
 from typing import Dict, List, Optional
@@ -130,10 +131,20 @@ def _typed_pins(db: Session, convs: List[WhatsAppConversation]) -> Dict[str, str
             .order_by(WhatsAppMessage.created_at.desc()).all())
     for phone, body in rows:
         if phone not in found:
-            pin = pincode_coverage.extract_pincode(body)
+            pin = _standalone_pin(body)
             if pin:
                 found[phone] = pin
     return found
+
+
+# Six digits standing on their own ("363520", "363 520", "pin 363520"), not
+# inside a longer code: "1A851679" is a CSP code, not PIN 851679.
+_STANDALONE_PIN = re.compile(r"(?<![0-9A-Za-z])([1-9][0-9]{5})(?![0-9A-Za-z])")
+
+
+def _standalone_pin(text: Optional[str]) -> Optional[str]:
+    match = _STANDALONE_PIN.search(re.sub(r"(?<=\d)[\s-](?=\d)", "", text or ""))
+    return match.group(1) if match else None
 
 
 def _fill_geography(db: Session, convs: List[WhatsAppConversation], typed: Dict[str, str]) -> None:
@@ -174,9 +185,15 @@ def _iso(value) -> Optional[str]:
 def list_applications(db: Session, removed: bool = False) -> Dict:
     """Every application with its qualification, stage, documents and comments, and the totals."""
     removals = {r.phone: r for r in db.query(ApplicationRemoval).all()}
-    convs = [c for c in db.query(WhatsAppConversation)
-             .filter((WhatsAppConversation.bot_step.isnot(None)) | (WhatsAppConversation.documents_submitted_at.isnot(None)))
-             .all() if is_application(c) and ((c.phone in removals) == removed)]
+    candidates = [c for c in db.query(WhatsAppConversation)
+                  .filter((WhatsAppConversation.bot_step.isnot(None)) | (WhatsAppConversation.documents_submitted_at.isnot(None)))
+                  .all() if is_application(c)]
+    # Only people an AutoGMap campaign reached, as the bot itself now answers
+    # only them: the business number is shared, and before that rule the bot
+    # also took in other teams' contacts (an existing CSP asking about his
+    # balance showed up as an application).
+    ours = inbox.campaign_phones(db, [c.phone for c in candidates])
+    convs = [c for c in candidates if c.phone in ours and ((c.phone in removals) == removed)]
     phones = [c.phone for c in convs]
     typed = _typed_pins(db, convs)
     _fill_geography(db, convs, typed)
