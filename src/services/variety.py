@@ -63,6 +63,10 @@ def plan(db: Session, count: int) -> List[dict]:
               .filter(WhatsAppTemplate.origin == "agent")
               .order_by(WhatsAppTemplate.created_at.desc()).limit(60)]
     used = {k: Counter(g.get(k) for g in recent if g.get(k)) for k in ("layout", "shot", "operator", "shape")}
+    # Drafts made before layouts were recorded all had the classic poster.
+    # Left uncounted, classic looked unused and was picked again: the first
+    # draft after the change came out in the very structure it replaced.
+    used["layout"]["classic"] += sum(1 for g in recent if not g.get("layout") and g.get("poster"))
     layouts = _least_used(list(LAYOUTS), used["layout"], count)
     shots = _least_used(list(SHOTS), used["shot"], count)
     operators = _least_used(list(OPERATORS), used["operator"], count)

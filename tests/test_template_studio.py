@@ -922,6 +922,16 @@ def test_the_next_round_uses_what_was_used_least(db):
     assert first["shape"] != second["shape"]
 
 
+def test_drafts_from_before_layouts_were_recorded_count_as_classic(db):
+    # Every draft made before the layout was saved had the classic poster;
+    # the next one must not be classic again.
+    for _ in range(3):
+        db.add(WhatsAppTemplate(template_id=uuid.uuid4().hex, name="old", body="x", origin="agent",
+                                status="AWAITING_APPROVAL", generation={"poster": {"headline": "x"}}))
+    db.commit()
+    assert variety.plan(db, 1)[0]["layout"] != "classic"
+
+
 def test_the_layout_shot_and_operator_reach_the_poster_and_the_photo(db, monkeypatch):
     used = []
     monkeypatch.setattr(template_studio.poster_renderer, "render",
