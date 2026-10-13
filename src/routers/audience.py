@@ -9,9 +9,9 @@ campaign builder receives a finished contact list rather than a raw export.
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from src.database import get_db
@@ -28,7 +28,22 @@ ALL = "All"
 CONTACTED_STATUSES = ("SENT", "DELIVERED", "READ")
 
 
+class Place(BaseModel):
+    """A district or tehsil, named with the levels above it: names repeat across states."""
+    state: Optional[str] = None
+    district: Optional[str] = None
+    tehsil: Optional[str] = None
+
+
 class AudienceFilters(BaseModel):
+    # Any number of each. A district narrows only its own state, and a tehsil
+    # only its own district: Gujarat and Punjab with Rajkot picked is Rajkot
+    # and the whole of Punjab, not Rajkot alone.
+    states: List[str] = Field(default_factory=list)
+    districts: List[Place] = Field(default_factory=list)
+    tehsils: List[Place] = Field(default_factory=list)
+    # One of each, as the picker sent before it took several. Still read, so
+    # a page loaded before the change keeps working.
     state: Optional[str] = ALL
     district: Optional[str] = ALL
     tehsil: Optional[str] = ALL
@@ -41,6 +56,9 @@ class AudienceFilters(BaseModel):
 class GeoOption(BaseModel):
     value: str
     businesses: int
+    # The levels above, so the same district name in two states stays two options.
+    state: Optional[str] = None
+    district: Optional[str] = None
 
 
 class AudienceOptions(BaseModel):
@@ -63,15 +81,53 @@ class AudiencePreview(AudienceSummary):
     contacts: List[dict] = []
 
 
+def _picked(value: Optional[str]) -> Optional[str]:
+    return value if value and value != ALL else None
+
+
+def _selection(f: AudienceFilters):
+    """The picked states, (state, district) pairs and (state, district, tehsil) triples."""
+    states = {s for s in f.states if _picked(s)}
+    districts = {(p.state, p.district) for p in f.districts if _picked(p.district)}
+    tehsils = {(p.state, p.district, p.tehsil) for p in f.tehsils if _picked(p.tehsil)}
+    state, district, tehsil = _picked(f.state), _picked(f.district), _picked(f.tehsil)
+    if state:
+        states.add(state)
+    if district:
+        districts.add((state, district))
+    if tehsil:
+        tehsils.add((state, district, tehsil))
+    return states, districts, tehsils
+
+
+def _place(state: Optional[str], district: Optional[str] = None, tehsil: Optional[str] = None):
+    parts = [Business.state == state] if state else []
+    if district:
+        parts.append(Business.district == district)
+    if tehsil:
+        parts.append(Business.tehsil == tehsil)
+    return and_(*parts)
+
+
 def _geo_filtered(query, f: AudienceFilters):
-    """Narrow a business query to the selected geography."""
-    if f.state and f.state != ALL:
-        query = query.filter(Business.state == f.state)
-    if f.district and f.district != ALL:
-        query = query.filter(Business.district == f.district)
-    if f.tehsil and f.tehsil != ALL:
-        query = query.filter(Business.tehsil == f.tehsil)
-    return query
+    """
+    Narrow a business query to the selected geography.
+
+    Each pick at a lower level replaces its parent with itself: a state with
+    districts picked in it means just those districts, a district with
+    tehsils picked means just those tehsils. A parent with nothing picked
+    under it is taken whole. Nothing picked at all is everywhere.
+    """
+    states, districts, tehsils = _selection(f)
+    narrowed_districts = {(s, d) for s, d, _ in tehsils}
+    narrowed_states = {s for s, _ in districts} | {s for s, _, _ in tehsils}
+
+    conditions = [_place(s, d, t) for s, d, t in tehsils]
+    conditions += [_place(s, d) for s, d in districts if (s, d) not in narrowed_districts]
+    conditions += [_place(s) for s in states if s not in narrowed_states]
+    if not conditions:
+        return query
+    return query.filter(or_(*conditions))
 
 
 def _contacted_phones(db: Session) -> set:
@@ -93,6 +149,8 @@ def _contacted_phones(db: Session) -> set:
 
 @router.get("/options", response_model=AudienceOptions)
 def audience_options(
+    states: List[str] = Query(default=[]),
+    districts: List[str] = Query(default=[], description='Picked districts as "state|district"'),
     state: Optional[str] = ALL,
     district: Optional[str] = ALL,
     db: Session = Depends(get_db),
@@ -100,19 +158,36 @@ def audience_options(
     """
     Geography available to choose from, with business counts.
 
-    Districts and tehsils narrow to the level above them, so the three
-    dropdowns behave as a cascade.
+    Districts are those of the picked states (every one when none is
+    picked), and tehsils those of the picked districts, or else of the
+    picked states. Each option names the levels above it.
     """
-    def counts(column, filters: AudienceFilters):
-        q = db.query(column, func.count(Business.business_id)).filter(column.isnot(None))
-        q = _geo_filtered(q, filters)
-        rows = q.group_by(column).order_by(func.count(Business.business_id).desc()).all()
-        return [GeoOption(value=v, businesses=c) for v, c in rows if v]
+    picked_states = {s for s in states if _picked(s)}
+    if _picked(state):
+        picked_states.add(state)
+    picked_districts = set()
+    for key in districts:
+        s, _, d = key.partition("|")
+        if d:
+            picked_districts.add((s or None, d))
+    if _picked(district):
+        picked_districts.add((_picked(state), district))
+
+    def counts(columns, where):
+        q = db.query(*columns, func.count(Business.business_id)).filter(columns[-1].isnot(None))
+        if where is not None:
+            q = q.filter(where)
+        return q.group_by(*columns).order_by(func.count(Business.business_id).desc()).all()
+
+    in_states = or_(*[Business.state == s for s in picked_states]) if picked_states else None
+    in_districts = (or_(*[_place(s, d) for s, d in picked_districts]) if picked_districts else in_states)
 
     return AudienceOptions(
-        states=counts(Business.state, AudienceFilters()),
-        districts=counts(Business.district, AudienceFilters(state=state)),
-        tehsils=counts(Business.tehsil, AudienceFilters(state=state, district=district)),
+        states=[GeoOption(value=v, businesses=c) for v, c in counts([Business.state], None) if v],
+        districts=[GeoOption(value=d, businesses=c, state=s)
+                   for s, d, c in counts([Business.state, Business.district], in_states) if d],
+        tehsils=[GeoOption(value=t, businesses=c, state=s, district=d)
+                 for s, d, t, c in counts([Business.state, Business.district, Business.tehsil], in_districts) if t],
     )
 
 
@@ -167,8 +242,7 @@ def audience_preview(filters: AudienceFilters, db: Session = Depends(get_db)):
     """The contacts a campaign would be created with, ready to hand over."""
     summary, contacts = _build(db, filters, with_contacts=True)
     logger.info(
-        f"audience event=AUDIENCE_SELECTED state={filters.state} district={filters.district} "
-        f"tehsil={filters.tehsil} limit={filters.limit} "
+        f"audience event=AUDIENCE_SELECTED selection={_selection(filters)} limit={filters.limit} "
         f"include_contacted={filters.include_already_contacted} sendable={summary['sendable']}"
     )
     return AudiencePreview(**summary, contacts=contacts)

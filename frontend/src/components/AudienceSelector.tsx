@@ -6,7 +6,9 @@ import {
   stashAudience,
   type AudienceOptions,
   type AudienceSummary,
+  type AudiencePlace,
 } from '../api/whatsapp';
+import { GeoMultiSelect, type GeoChoice } from './GeoMultiSelect';
 
 interface Props {
   isOpen: boolean;
@@ -15,7 +17,14 @@ interface Props {
   onReady: () => void;
 }
 
-const ALL = 'All';
+// A pick's key names the levels above it ("Gujarat|Rajkot"), since the same
+// district or tehsil name can exist in two places.
+const SEP = '|';
+const toPlace = (key: string, level: 'district' | 'tehsil'): AudiencePlace => {
+  const [state, district, tehsil] = key.split(SEP);
+  return level === 'district' ? { state, district } : { state, district, tehsil };
+};
+const under = (key: string, parent: string) => key.startsWith(parent + SEP);
 
 /**
  * Chooses who a campaign goes to, before the builder opens.
@@ -27,9 +36,9 @@ const ALL = 'All';
  */
 export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) => {
   const [options, setOptions] = useState<AudienceOptions | null>(null);
-  const [state, setState] = useState(ALL);
-  const [district, setDistrict] = useState(ALL);
-  const [tehsil, setTehsil] = useState(ALL);
+  const [states, setStates] = useState<string[]>([]);
+  const [districts, setDistricts] = useState<string[]>([]);
+  const [tehsils, setTehsils] = useState<string[]>([]);
   const [includeContacted, setIncludeContacted] = useState(false);
   const [limitEnabled, setLimitEnabled] = useState(false);
   const [limit, setLimit] = useState<number>(100);
@@ -39,19 +48,28 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
   const [building, setBuilding] = useState(false);
 
   const filters = {
-    state,
-    district,
-    tehsil,
+    states,
+    districts: districts.map(k => toPlace(k, 'district')),
+    tehsils: tehsils.map(k => toPlace(k, 'tehsil')),
     limit: limitEnabled ? limit : null,
     include_already_contacted: includeContacted,
   };
 
-  // Districts and tehsils depend on the level above, so options reload when
-  // the parent selection changes.
+  // Districts and tehsils depend on the levels above, so options reload when
+  // those change. A pick no longer offered (its state was unticked) is
+  // dropped rather than left working out of sight.
   useEffect(() => {
     if (!isOpen) return;
-    fetchAudienceOptions(state, district).then(setOptions).catch(() => setOptions(null));
-  }, [isOpen, state, district]);
+    fetchAudienceOptions(states, districts.map(k => toPlace(k, 'district')))
+      .then(opts => {
+        setOptions(opts);
+        const offeredDistricts = new Set(opts.districts.map(o => [o.state, o.value].join(SEP)));
+        const offeredTehsils = new Set(opts.tehsils.map(o => [o.state, o.district, o.value].join(SEP)));
+        setDistricts(ds => ds.filter(k => offeredDistricts.has(k)));
+        setTehsils(ts => ts.filter(k => offeredTehsils.has(k)));
+      })
+      .catch(() => setOptions(null));
+  }, [isOpen, states.join(), districts.join()]);
 
   const refreshSummary = useCallback(async () => {
     setLoading(true);
@@ -62,7 +80,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
     } finally {
       setLoading(false);
     }
-  }, [state, district, tehsil, includeContacted, limitEnabled, limit]);
+  }, [states.join(), districts.join(), tehsils.join(), includeContacted, limitEnabled, limit]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -72,11 +90,37 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
 
   if (!isOpen) return null;
 
+  // Several states show more than one state's districts, so each district
+  // then says which state it is in; tehsils always say their district.
+  const manyStates = new Set((options?.districts || []).map(o => o.state)).size > 1;
+  const stateChoices: GeoChoice[] = (options?.states || []).map(o => ({ key: o.value, label: o.value, count: o.businesses }));
+  const districtChoices: GeoChoice[] = (options?.districts || []).map(o => ({
+    key: [o.state, o.value].join(SEP), label: o.value, sub: manyStates ? o.state : null, count: o.businesses,
+  }));
+  const tehsilChoices: GeoChoice[] = (options?.tehsils || []).map(o => ({
+    key: [o.state, o.district, o.value].join(SEP), label: o.value, sub: o.district, count: o.businesses,
+  }));
+
+  const nameOf = (key: string) => key.split(SEP).pop() as string;
+  const list = (keys: string[]) => keys.length <= 3 ? keys.map(nameOf).join(', ') : `${keys.slice(0, 2).map(nameOf).join(', ')} +${keys.length - 2}`;
   const scopeLabel = [
-    tehsil !== ALL ? tehsil : null,
-    district !== ALL ? district : null,
-    state !== ALL ? state : 'All states',
+    tehsils.length ? list(tehsils) : null,
+    districts.length ? list(districts) : null,
+    states.length ? list(states) : 'All states',
   ].filter(Boolean).join(' · ');
+
+  // Unticking a place unticks what was picked inside it.
+  const changeStates = (next: string[]) => {
+    const dropped = states.filter(s => !next.includes(s));
+    setStates(next);
+    setDistricts(ds => ds.filter(k => !dropped.some(s => under(k, s))));
+    setTehsils(ts => ts.filter(k => !dropped.some(s => under(k, s))));
+  };
+  const changeDistricts = (next: string[]) => {
+    const dropped = districts.filter(d => !next.includes(d));
+    setDistricts(next);
+    setTehsils(ts => ts.filter(k => !dropped.some(d => under(k, d))));
+  };
 
   const handleContinue = async () => {
     setBuilding(true);
@@ -109,25 +153,6 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
     }
   };
 
-  const Dropdown = ({ label, value, onChange, opts, disabled }: any) => (
-    <div className="flex flex-col gap-1">
-      <label className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">{label}</label>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        disabled={disabled}
-        className="bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 outline-none disabled:opacity-50"
-      >
-        <option value={ALL}>All {label.toLowerCase()}s</option>
-        {(opts || []).map((o: any) => (
-          <option key={o.value} value={o.value}>
-            {o.value} ({o.businesses.toLocaleString()})
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4">
       <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl">
@@ -143,16 +168,16 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
 
         <div className="p-6 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Dropdown
-              label="State" value={state} opts={options?.states}
-              onChange={(v: string) => { setState(v); setDistrict(ALL); setTehsil(ALL); }}
-            />
-            <Dropdown
-              label="District" value={district} opts={options?.districts}
-              onChange={(v: string) => { setDistrict(v); setTehsil(ALL); }}
-            />
-            <Dropdown label="Tehsil" value={tehsil} opts={options?.tehsils} onChange={setTehsil} />
+            <GeoMultiSelect label="State" plural="states" choices={stateChoices}
+              selected={states} onChange={changeStates} />
+            <GeoMultiSelect label="District" plural="districts" choices={districtChoices}
+              selected={districts} onChange={changeDistricts} />
+            <GeoMultiSelect label="Tehsil" plural="tehsils" choices={tehsilChoices}
+              selected={tehsils} onChange={setTehsils} />
           </div>
+          <p className="text-[11px] text-slate-500 -mt-2">
+            Pick as many as you like. A district narrows only its own state, and a tehsil only its own district.
+          </p>
 
           {/* What this selection adds up to */}
           <div className="bg-slate-950 border border-slate-800 rounded-lg p-4">

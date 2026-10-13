@@ -554,20 +554,81 @@ def test_delete_reports_a_reason_instead_of_a_bare_500():
 
 # --- Campaign audience selection --------------------------------------------
 
-def test_audience_geo_filters_combine():
-    """State, district and tehsil narrow the pool together, and All is a no-op."""
-    from src.routers.audience import _geo_filtered, AudienceFilters
+def _audience_db():
+    """Businesses in two states, with a district name both states share."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from src.database import Base
     from src.models import Business
 
-    q = MagicMock()
-    q.filter.return_value = q
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    rows = [("Gujarat", "Rajkot", "Jasdan"), ("Gujarat", "Rajkot", "Vinchhiya"), ("Gujarat", "Amreli", "Babra"),
+            ("Punjab", "Ludhiana", "Samrala"), ("Punjab", "Ludhiana", "Jagraon"), ("Punjab", "Mohali", "Mohali"),
+            ("Haryana", "Sirsa", "Ellenabad"), ("Haryana", "Amreli", "Nowhere")]
+    for i, (state, district, tehsil) in enumerate(rows):
+        db.add(Business(business_id=f"B{i}", job_id="J1", name=f"{tehsil} shop", phone=f"+9198000000{i:02d}",
+                        category="Copy shop", state=state, district=district, tehsil=tehsil,
+                        source_query="q", dedup_key=f"k{i}"))
+    db.commit()
+    return db
 
-    _geo_filtered(q, AudienceFilters(state="All", district="All", tehsil="All"))
-    assert q.filter.call_count == 0, "'All' must not restrict anything"
 
-    q.reset_mock()
-    _geo_filtered(q, AudienceFilters(state="Haryana", district="SIRSA", tehsil="Ellenabad"))
-    assert q.filter.call_count == 3, "each chosen level adds a condition"
+def _tehsils(db, **filters):
+    from src.models import Business
+    from src.routers.audience import AudienceFilters, _geo_filtered
+    return sorted(b.tehsil for b in _geo_filtered(db.query(Business), AudienceFilters(**filters)))
+
+
+def test_audience_nothing_picked_is_everywhere():
+    db = _audience_db()
+    assert len(_tehsils(db)) == 8
+    assert len(_tehsils(db, state="All", district="All", tehsil="All")) == 8
+
+
+def test_audience_several_states_are_all_reached():
+    db = _audience_db()
+    assert _tehsils(db, states=["Gujarat", "Punjab"]) == ["Babra", "Jagraon", "Jasdan", "Mohali", "Samrala", "Vinchhiya"]
+
+
+def test_audience_a_district_narrows_only_its_own_state():
+    # Gujarat and Punjab with Rajkot picked: Rajkot, and the whole of Punjab.
+    db = _audience_db()
+    got = _tehsils(db, states=["Gujarat", "Punjab"], districts=[{"state": "Gujarat", "district": "Rajkot"}])
+    assert got == ["Jagraon", "Jasdan", "Mohali", "Samrala", "Vinchhiya"]
+
+
+def test_audience_a_tehsil_narrows_only_its_own_district():
+    db = _audience_db()
+    got = _tehsils(db, states=["Gujarat", "Punjab"],
+                   districts=[{"state": "Gujarat", "district": "Rajkot"}, {"state": "Punjab", "district": "Ludhiana"}],
+                   tehsils=[{"state": "Punjab", "district": "Ludhiana", "tehsil": "Samrala"}])
+    assert got == ["Jasdan", "Samrala", "Vinchhiya"]
+
+
+def test_audience_a_district_name_in_two_states_stays_apart():
+    db = _audience_db()
+    assert _tehsils(db, districts=[{"state": "Gujarat", "district": "Amreli"}]) == ["Babra"]
+
+
+def test_audience_the_old_single_picks_still_work():
+    db = _audience_db()
+    assert _tehsils(db, state="Punjab", district="Ludhiana", tehsil="Jagraon") == ["Jagraon"]
+    assert _tehsils(db, state="Gujarat") == ["Babra", "Jasdan", "Vinchhiya"]
+
+
+def test_audience_options_follow_the_picked_states_and_districts():
+    from src.routers.audience import audience_options
+    db = _audience_db()
+    opts = audience_options(states=["Gujarat", "Haryana"], districts=[], state="All", district="All", db=db)
+    assert {(o.state, o.value) for o in opts.districts} == {
+        ("Gujarat", "Rajkot"), ("Gujarat", "Amreli"), ("Haryana", "Sirsa"), ("Haryana", "Amreli")}
+    opts = audience_options(states=["Gujarat"], districts=["Gujarat|Rajkot"], state="All", district="All", db=db)
+    assert sorted(o.value for o in opts.tehsils) == ["Jasdan", "Vinchhiya"]
+    assert {o.district for o in opts.tehsils} == {"Rajkot"}
+    assert len(opts.states) == 3  # states are always all offered
 
 
 def test_contacted_means_a_message_went_out():

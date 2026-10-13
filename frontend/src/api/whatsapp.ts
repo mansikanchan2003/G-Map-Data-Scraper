@@ -405,6 +405,9 @@ export const submitTemplate = async (
 export interface GeoOption {
   value: string;
   businesses: number;
+  /** The levels above: the same district name can exist in two states. */
+  state?: string | null;
+  district?: string | null;
 }
 
 export interface AudienceOptions {
@@ -413,10 +416,18 @@ export interface AudienceOptions {
   tehsils: GeoOption[];
 }
 
+/** A district or tehsil, named with the levels above it. */
+export interface AudiencePlace {
+  state?: string | null;
+  district?: string | null;
+  tehsil?: string | null;
+}
+
 export interface AudienceFilters {
-  state: string;
-  district: string;
-  tehsil: string;
+  /** Any number of each; a district narrows only its own state, a tehsil only its own district. */
+  states: string[];
+  districts: AudiencePlace[];
+  tehsils: AudiencePlace[];
   limit?: number | null;
   include_already_contacted: boolean;
 }
@@ -435,10 +446,12 @@ export interface AudiencePreview extends AudienceSummary {
 }
 
 export const fetchAudienceOptions = async (
-  state = 'All',
-  district = 'All'
+  states: string[] = [],
+  districts: AudiencePlace[] = []
 ): Promise<AudienceOptions> => {
-  const params = new URLSearchParams({ state, district });
+  const params = new URLSearchParams();
+  states.forEach(s => params.append('states', s));
+  districts.forEach(d => params.append('districts', `${d.state ?? ''}|${d.district ?? ''}`));
   const res = await fetch(`${API_BASE}/audience/options?${params}`, { credentials: 'include' });
   if (!res.ok) throw new Error('Failed to load audience options');
   return res.json();
