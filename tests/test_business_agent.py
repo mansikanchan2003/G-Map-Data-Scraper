@@ -157,7 +157,9 @@ def test_a_round_writes_drafts_that_wait_for_review(db):
     assert d.meta_template_name is None, "nothing reaches Meta before Approve"
     assert d.generation["variables"] == ["name", "category"]
     assert "{{link}}" in d.body, "the tracked link is in the message itself"
-    assert [b["type"] for b in d.buttons] == ["QUICK_REPLY"], "no Apply button"
+    # No Apply button; the two fixed quick replies the bot listens for.
+    assert [b["type"] for b in d.buttons] == ["QUICK_REPLY", "QUICK_REPLY"], "no Apply button"
+    assert d.buttons[0]["text"] == "Interested"
     assert {x.generation["angle_key"] for x in drafts} == {"extra_income", "community_respect"} \
         or len({x.generation["angle_key"] for x in drafts}) == 2
     assert "festive tone" in FakeGemini.prompts[0]
@@ -201,7 +203,7 @@ def test_approving_submits_with_the_businesses_own_examples(db):
     assert body["example"] == {"body_text": [["Ankush Battery & Solar", "Battery store",
                                               "https://indev.eko.in/autogmap/r/0123456789abcdef"]]}
     buttons = next(c for c in captured["components"] if c["type"] == "BUTTONS")["buttons"]
-    assert [b["type"] for b in buttons] == ["QUICK_REPLY"]
+    assert [b["type"] for b in buttons] == ["QUICK_REPLY", "QUICK_REPLY"]
 
 
 def test_a_scraped_audience_is_filled_from_each_business(db):

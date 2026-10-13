@@ -38,7 +38,7 @@ from src.models.whatsapp import (
     WhatsAppButtonClick, WhatsAppCampaign, WhatsAppCampaignRecipient,
     WhatsAppLinkClick, WhatsAppTemplate, HUMAN_LINK_CLICK,
 )
-from src.services import creative_brief, image_prompts, poster_renderer, variety
+from src.services import campaign_buttons, creative_brief, image_prompts, poster_renderer, variety
 from src.services.gemini_client import GeminiClient, GeminiError, ImageUnavailable
 
 logger = logging.getLogger("gmap_scraper.template_studio")
@@ -56,7 +56,9 @@ PHOTO_PENDING = "PHOTO_PENDING"
 # not sendable, and kept out of the Templates list and the campaign picker.
 DRAFT_STATUSES = (GENERATING, AWAITING_APPROVAL, GENERATION_FAILED, REJECTED, PHOTO_PENDING)
 
-MAX_VARIANTS = 4
+# One draft a round: each costs free image allowance, so one good one beats
+# several alike (the user's choice, 2026-10-13).
+MAX_VARIANTS = 1
 # One image each, so a draft costs at most two: the free FLUX allowance is
 # about three runs a day per account. A photo the check dislikes is kept with
 # its problems listed, and "New photo" asks for another.
@@ -463,7 +465,6 @@ Answer with JSON only, in this shape:
   "body": "the WhatsApp message in {lang['name']}, at most {BODY_LIMIT} characters, no URLs",
   "footer": "at most {FOOTER_LIMIT} characters, e.g. the equivalent of 'Team Eko'",
   "apply_button": "button label meaning 'Apply now', at most 20 characters",
-  "callback_button": "button label meaning 'Call me back', at most 20 characters",
 {poster_spec(lang['name'])},
   "image_phrase": "2 to 5 words copied exactly from your headline or body, in {lang['name']} — the line that will be printed on a sign in the photo",
   "photo_scene": "in English: who is in the photo and what is happening — the kiosk operator (age, gender; in professional attire — a shirt or T-shirt for a man, a saree, kurti or salwar suit for a woman; never a sage or holy man) seated behind the counter with a laptop and a fingerprint scanner, serving one or two customers typical of {state} (for example taking a thumbprint, counting cash, handing over a passbook); the setting (village or small town); the mood that suits the angle. Not a phone or tablet demo. No text, signs or logos."
@@ -543,7 +544,7 @@ def validate_copy(variant: dict, language_code: str) -> List[str]:
     poster = variant.get("poster") or {}
     body = variant.get("body") or ""
 
-    for key in ("angle", "body", "footer", "apply_button", "callback_button", "photo_scene"):
+    for key in ("angle", "body", "footer", "apply_button", "photo_scene"):
         if not (variant.get(key) or "").strip():
             errors.append(f"{key} is missing")
 
@@ -559,7 +560,7 @@ def validate_copy(variant: dict, language_code: str) -> List[str]:
         errors.append(DOUBLE_ASTERISK)
     if len(variant.get("footer") or "") > FOOTER_LIMIT:
         errors.append(f"footer is longer than {FOOTER_LIMIT} characters")
-    for key in ("apply_button", "callback_button"):
+    for key in ("apply_button",):
         if len(variant.get(key) or "") > BUTTON_TEXT_LIMIT:
             errors.append(f"{key} is longer than {BUTTON_TEXT_LIMIT} characters")
 
@@ -576,8 +577,7 @@ def validate_copy(variant: dict, language_code: str) -> List[str]:
 
     # Script: everything a recipient reads must be in the state's script.
     texts = {"body": body, "footer": variant.get("footer"),
-             "apply_button": variant.get("apply_button"),
-             "callback_button": variant.get("callback_button")}
+             "apply_button": variant.get("apply_button")}
     if phrase:
         texts["image_phrase"] = phrase
     for name, text in texts.items():
@@ -1024,9 +1024,11 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
                 first_errors = variant.pop("_first_errors", [])
                 tmpl.body = (variant.get("body") or "").strip()
                 tmpl.footer = (variant.get("footer") or "").strip() or None
+                # The quick replies are fixed, not written: the bot answers
+                # a tap by its label. See campaign_buttons.
                 tmpl.buttons = [
                     {"type": "URL", "text": (variant.get("apply_button") or "").strip(), "url": _apply_url()},
-                    {"type": "QUICK_REPLY", "text": (variant.get("callback_button") or "").strip()},
+                    *campaign_buttons.quick_replies(language_code),
                 ]
                 tmpl.generation = {
                     **(tmpl.generation or {}),
@@ -1139,10 +1141,10 @@ def update_draft(db: Session, tmpl: WhatsAppTemplate, body: Optional[str], foote
     if buttons:
         current = list(tmpl.buttons or [])
         for b in current:
+            # Only the Apply label is the reviewer's to change; the quick
+            # replies are what the bot listens for.
             if b.get("type") == "URL" and buttons.get("apply_button"):
                 b["text"] = buttons["apply_button"].strip()
-            if b.get("type") == "QUICK_REPLY" and buttons.get("callback_button"):
-                b["text"] = buttons["callback_button"].strip()
         tmpl.buttons = current
     if poster:
         merged = {**(gen.get("poster") or {}), **poster}
@@ -1156,7 +1158,7 @@ def update_draft(db: Session, tmpl: WhatsAppTemplate, body: Optional[str], foote
     buttons_now = {b.get("type"): b.get("text") for b in (tmpl.buttons or [])}
     return validate_copy({
         "angle": gen.get("angle"), "body": tmpl.body, "footer": tmpl.footer or "",
-        "apply_button": buttons_now.get("URL"), "callback_button": buttons_now.get("QUICK_REPLY"),
+        "apply_button": buttons_now.get("URL"),
         "photo_scene": gen.get("photo_scene"), "poster": gen.get("poster") or {},
     }, tmpl.language_code)
 

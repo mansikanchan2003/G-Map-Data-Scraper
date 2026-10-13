@@ -51,7 +51,7 @@ class StudioDraft(BaseModel):
 
 class GenerateRequest(BaseModel):
     state: str
-    count: int = Field(2, ge=1, le=template_studio.MAX_VARIANTS)
+    count: int = Field(1, ge=1, le=template_studio.MAX_VARIANTS)
     brief: Optional[str] = Field(None, max_length=1000)
 
 
@@ -303,7 +303,7 @@ class BusinessDraftRequest(BaseModel):
     # One dict per business, keyed by the export's headers (name, category,
     # district, state...). Only the details are read; nothing is sent.
     rows: List[dict] = Field(..., min_length=1, max_length=business_agent.MAX_ROWS)
-    count: int = Field(2, ge=1, le=business_agent.MAX_VARIANTS)
+    count: int = Field(1, ge=1, le=business_agent.MAX_VARIANTS)
     brief: Optional[str] = Field(None, max_length=1000)
     # Defaults to the language of the businesses' main state.
     language: Optional[str] = None

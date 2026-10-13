@@ -164,3 +164,30 @@ def notify_documents_submitted(admin_email: str, details: dict) -> bool:
         f"WhatsApp: https://wa.me/{phone}",
     ]
     return _send(admin_email, f"AutoGMap: {who} submitted onboarding documents", "\n".join(lines) + "\n")
+
+
+def notify_webinar(admin_email: str, details: dict) -> bool:
+    """
+    Tell the admin someone answered the webinar invitation.
+
+    The bot has promised them the link and timing on WhatsApp, so somebody
+    has to know to send it, and when they said they could come.
+    """
+    phone = (details.get("phone") or "").lstrip("+")
+    who = details.get("name") or details.get("phone") or "Someone"
+    lines = [
+        f"{who} answered the webinar invitation on WhatsApp.",
+        "",
+        f"Phone        {details.get('phone')}",
+        f"Answer       {details.get('answer')}",
+    ]
+    if details.get("availability"):
+        lines.append(f"Available    {details['availability']}")
+    if details.get("language"):
+        lines.append(f"Language     {details['language']}")
+    lines += [
+        "",
+        "Send them the webinar link and timing on WhatsApp, as the bot promised.",
+        f"WhatsApp: https://wa.me/{phone}",
+    ]
+    return _send(admin_email, f"AutoGMap: webinar — {who}", "\n".join(lines) + "\n")

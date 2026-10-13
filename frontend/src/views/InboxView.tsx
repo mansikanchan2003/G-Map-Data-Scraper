@@ -20,7 +20,12 @@ const THREAD_POLL_MS = 5000;
 
 // Steps where the bot is still waiting for an answer, so it may reply on its
 // own; at any other step the conversation is a person's to handle.
-const BOT_WAITING = ['AWAIT_PIN', 'AWAIT_INVEST', 'AWAIT_DOCS', 'AWAIT_UPLOAD'];
+const BOT_WAITING = ['CHOOSE_LANG', 'AWAIT_PIN', 'AWAIT_INVEST', 'AWAIT_DOCS', 'AWAIT_UPLOAD', 'AWAIT_WEBINAR', 'AWAIT_AVAILABILITY'];
+
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: 'English', hi: 'Hindi', mr: 'Marathi', pa: 'Punjabi', gu: 'Gujarati', bn: 'Bengali',
+  ta: 'Tamil', te: 'Telugu', kn: 'Kannada', ml: 'Malayalam', or: 'Odia',
+};
 
 const errMsg = (e: unknown) => (e as { message?: string })?.message || 'Something went wrong';
 
@@ -305,12 +310,17 @@ const BotSettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 shared number is shown here but left for a person.
               </p>
               <ol className="list-decimal pl-4 space-y-0.5">
+                <li>Asks them to choose English, Hindi or their campaign's language, and speaks it from then on.</li>
                 <li>Asks for their PIN code.</li>
                 <li>Checks it is one of our PINs or within {settings.radius_km} km of one.</li>
                 <li>Asks whether they can invest ₹5 Lakh — Yes / No.</li>
                 <li>Lists the documents needed and asks if they have them — Yes / No.</li>
                 <li>Sends the upload link; after they submit, thanks them.</li>
               </ol>
+              <p className="mt-1.5">
+                The <span className="text-slate-300">Webinar</span> button instead asks if they can join tomorrow's
+                webinar; a yes, or the time they suggest, is emailed to you so the link can be sent.
+              </p>
               <div className="text-slate-300 font-semibold mt-3 mb-1">Documents asked for</div>
               <ul className="list-disc pl-4 space-y-0.5">
                 {settings.documents.map(d => (
@@ -415,6 +425,12 @@ const Details: React.FC<{
         ) : conv.bot_step ? (
           <>
             <Row label="Step" value={<BotChip step={conv.bot_step} label={conv.bot_step_label} paused={false} />} />
+            {conv.bot_data?.lang && <Row label="Language" value={LANGUAGE_NAMES[conv.bot_data.lang] || conv.bot_data.lang} />}
+            {conv.bot_data?.webinar && (
+              <Row label="Webinar" value={conv.bot_data.webinar.answer === 'yes'
+                ? 'Coming tomorrow'
+                : `Available: ${conv.bot_data.webinar.availability || '—'}`} />
+            )}
             {coverage?.pincode && <Row label="PIN code" value={<span className="font-mono-code">{coverage.pincode}</span>} />}
             {coverage?.nearest_pincode && coverage.nearest_pincode !== coverage.pincode && (
               <Row label="Nearest of ours" value={`${coverage.nearest_pincode} · ${coverage.distance_km} km`} />

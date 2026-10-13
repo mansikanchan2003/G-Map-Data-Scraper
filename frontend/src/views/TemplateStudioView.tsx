@@ -93,7 +93,8 @@ export const TemplateStudioView: React.FC = () => {
   const [showRules, setShowRules] = useState(false);
 
   const [state, setState] = useState('');
-  const [count, setCount] = useState(2);
+  // One draft a round: each one spends free image allowance.
+  const count = 1;
   const [brief, setBrief] = useState('');
   const [generating, setGenerating] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
@@ -154,7 +155,7 @@ export const TemplateStudioView: React.FC = () => {
       setBrief('');
       setTab('working');
       await loadDrafts();
-      say('ok', `The agent is writing ${count} ${selectedState?.language || ''} variant(s) for ${state}. Each takes a minute or two.`);
+      say('ok', `The agent is writing one ${selectedState?.language || ''} draft for ${state}. It takes a minute or two.`);
     } catch (e: any) {
       say('error', e.message);
     } finally {
@@ -238,13 +239,6 @@ export const TemplateStudioView: React.FC = () => {
                 {s.state} — {s.language || 'no language set'}
               </option>
             ))}
-          </select>
-        </label>
-        <label className="text-xs text-slate-400 flex flex-col gap-1">
-          Variants
-          <select value={count} onChange={e => setCount(Number(e.target.value))}
-            className="h-9 px-2 bg-slate-950 border border-slate-700 rounded text-sm text-slate-100">
-            {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}</option>)}
           </select>
         </label>
         <label className="text-xs text-slate-400 flex flex-col gap-1 flex-1 min-w-[260px]">

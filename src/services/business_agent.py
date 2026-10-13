@@ -32,14 +32,16 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from src.models.whatsapp import WhatsAppTemplate
-from src.services import creative_brief, image_prompts, sheet_templates, variety
+from src.services import campaign_buttons, creative_brief, image_prompts, sheet_templates, variety
 from src.services.gemini_client import GeminiClient, GeminiError, ImageUnavailable
 from src.services import template_studio as studio
 
 logger = logging.getLogger("gmap_scraper.business_agent")
 
 KIND = "business"
-MAX_VARIANTS = 3
+# One draft a round, to spare the free image allowance (the user's choice,
+# 2026-10-13).
+MAX_VARIANTS = 1
 MAX_ROWS = 20000
 
 # The business details a template may leave blank for a campaign to fill,
@@ -279,8 +281,7 @@ Answer with JSON only:
   "image_phrase": "2 to 5 words copied exactly from your headline or body, in {lang}, with no blank in them — the line printed on a sign in the photo",
   "photo_scene": "in English: who is in the photo and what is happening — a kiosk operator in professional attire (a shirt or T-shirt for a man, a saree, kurti or salwar suit for a woman; never a sage or holy man) seated behind the counter of a business like these, with a laptop and a fingerprint scanner, serving one or two local customers (for example taking a thumbprint, counting cash, handing over a passbook); the setting; the mood that suits the angle. No text, signs or logos: the sign is added separately.",
   "body": "the message in {lang}, at most {studio.BODY_LIMIT} characters, with blanks as {{{{name}}}} and {{{{link}}}}, no web address of your own",
-  "footer": "at most {studio.FOOTER_LIMIT} characters, e.g. the equivalent of 'Team Eko'",
-  "callback_button": "button label meaning 'Call me back', at most 20 characters"
+  "footer": "at most {studio.FOOTER_LIMIT} characters, e.g. the equivalent of 'Team Eko'"
 }}]}}"""
 
 
@@ -288,7 +289,7 @@ def validate(variant: dict, language_code: str, allowed: List[str]) -> List[str]
     """Everything wrong with one variant; empty when it can be used."""
     errors = []
     body = variant.get("body") or ""
-    for key in ("angle", "body", "callback_button"):
+    for key in ("angle", "body"):
         if not (variant.get(key) or "").strip():
             errors.append(f"{key} is missing")
     if len(body) > studio.BODY_LIMIT:
@@ -319,8 +320,6 @@ def validate(variant: dict, language_code: str, allowed: List[str]) -> List[str]
 
     if len(variant.get("footer") or "") > studio.FOOTER_LIMIT:
         errors.append(f"footer is longer than {studio.FOOTER_LIMIT} characters")
-    if len(variant.get("callback_button") or "") > studio.BUTTON_TEXT_LIMIT:
-        errors.append(f"callback_button is longer than {studio.BUTTON_TEXT_LIMIT} characters")
 
     poster = variant.get("poster") or {}
     if language_code in creative_brief.LANGUAGES:
@@ -344,8 +343,7 @@ def validate(variant: dict, language_code: str, allowed: List[str]) -> List[str]
     if language_code in creative_brief.LANGUAGES:
         # Blanks are filled with English values, so they are left out of the
         # script check rather than counted as stray Latin.
-        texts = {"body": TOKEN.sub("", body), "footer": variant.get("footer"),
-                 "callback_button": variant.get("callback_button")}
+        texts = {"body": TOKEN.sub("", body), "footer": variant.get("footer")}
         if phrase:
             texts["image_phrase"] = phrase
         for name, text in texts.items():
@@ -477,9 +475,8 @@ def run_generation(template_ids: List[str]) -> None:
             used = blanks_in(body)
             tmpl.body = body
             tmpl.footer = (variant.get("footer") or "").strip() or None
-            tmpl.buttons = [
-                {"type": "QUICK_REPLY", "text": (variant.get("callback_button") or "").strip()},
-            ]
+            # Fixed, not written: the bot answers a tap by its label.
+            tmpl.buttons = campaign_buttons.quick_replies(language_code)
             tmpl.generation = {
                 **tmpl.generation,
                 "angle": variant.get("angle"),
@@ -543,14 +540,10 @@ def update(db: Session, tmpl: WhatsAppTemplate, body: Optional[str], footer: Opt
         for b in current:
             if b.get("type") == "URL" and buttons.get("apply_button"):
                 b["text"] = buttons["apply_button"].strip()
-            if b.get("type") == "QUICK_REPLY" and buttons.get("callback_button"):
-                b["text"] = buttons["callback_button"].strip()
         tmpl.buttons = current
     tmpl.generation = gen
     db.commit()
-    labels = {b.get("type"): b.get("text") for b in (tmpl.buttons or [])}
-    problems = validate({"angle": gen.get("angle"), "body": tmpl.body, "footer": tmpl.footer or "",
-                         "callback_button": labels.get("QUICK_REPLY")},
+    problems = validate({"angle": gen.get("angle"), "body": tmpl.body, "footer": tmpl.footer or ""},
                         tmpl.language_code, gen.get("allowed_fields") or ["name"])
     phrase = gen.get("image_phrase")
     written = " ".join([tmpl.body or ""] + [str(v) for v in (gen.get("poster") or {}).values() if isinstance(v, str)])

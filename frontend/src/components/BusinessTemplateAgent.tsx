@@ -41,7 +41,8 @@ export const BusinessTemplateAgent: React.FC = () => {
   const [ready, setReady] = useState<{ ready: boolean; error: string | null } | null>(null);
   const [settings, setSettings] = useState<SheetSettings | null>(null);
   const [sheet, setSheet] = useState<Sheet | null>(null);
-  const [count, setCount] = useState(2);
+  // One draft a round: each one spends free image allowance.
+  const count = 1;
   const [brief, setBrief] = useState('');
   const [language, setLanguage] = useState('');
   const [linkTarget, setLinkTarget] = useState('');
@@ -176,12 +177,6 @@ export const BusinessTemplateAgent: React.FC = () => {
 
             <div className="flex flex-wrap items-end gap-4">
               <label className="text-xs text-slate-400 flex flex-col gap-1">
-                Variants
-                <select value={count} onChange={e => setCount(Number(e.target.value))} className={inputCls}>
-                  {[1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </label>
-              <label className="text-xs text-slate-400 flex flex-col gap-1">
                 Language
                 <select value={language} onChange={e => setLanguage(e.target.value)} className={inputCls}>
                   <option value="">From the businesses' state</option>
@@ -242,8 +237,9 @@ const DraftCard: React.FC<{
   const [busy, setBusy] = useState(false);
   const [body, setBody] = useState(d.body);
   const [footer, setFooter] = useState(d.footer || '');
-  const callButton = (d.buttons || []).find(b => b.type === 'QUICK_REPLY');
-  const [callLabel, setCallLabel] = useState(callButton?.text || '');
+  // The quick replies are fixed (Interested, and the webinar one in the
+  // template's language): the bot answers a tap by its label.
+  const quickReplies = (d.buttons || []).filter(b => b.type === 'QUICK_REPLY').map(b => b.text);
   const [category, setCategory] = useState('MARKETING');
   const [reason, setReason] = useState('');
 
@@ -253,7 +249,7 @@ const DraftCard: React.FC<{
   };
 
   const save = () => act(async () => {
-    const out = await editStudioDraft(d.template_id, { body, footer, callback_button: callLabel });
+    const out = await editStudioDraft(d.template_id, { body, footer });
     setMode('view');
     onChanged();
     say(out.warnings.length ? 'error' : 'ok', out.warnings.length
@@ -335,7 +331,11 @@ const DraftCard: React.FC<{
               </div>
               <div className="flex flex-wrap gap-2">
                 <input value={footer} onChange={e => setFooter(e.target.value)} placeholder="Footer" className={`${inputCls} flex-1`} />
-                <input value={callLabel} onChange={e => setCallLabel(e.target.value)} placeholder="Call-back button" className={`${inputCls} w-40`} />
+                {quickReplies.length > 0 && (
+                  <span className="text-[11px] text-slate-500 self-center">
+                    Buttons (fixed, for the bot): {quickReplies.join(' · ')}
+                  </span>
+                )}
               </div>
               <div className="flex gap-2">
                 <button onClick={save} disabled={busy} className={`${btn} bg-emerald-600 hover:bg-emerald-500 text-white`}>Save</button>

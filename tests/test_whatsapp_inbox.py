@@ -18,12 +18,12 @@ from sqlalchemy.pool import StaticPool
 from src.database import Base, get_db
 from src.main import app
 from src.models import (  # noqa: F401  (registers the tables on Base)
-    AppSetting, Location, OnboardingDocument, WhatsAppButtonClick, WhatsAppCampaign,
+    AppSetting, Location, OnboardingDocument, WhatsAppButtonClick, WhatsAppCampaign, WhatsAppTemplate,
     WhatsAppCampaignRecipient, WhatsAppConversation, WhatsAppMessage, WhatsAppReply,
 )
 from src.routers.auth import current_user
 from src.routers import onboarding
-from src.services import drive_uploads, inbox, onboarding_bot, pincode_coverage
+from src.services import bot_messages, campaign_buttons, drive_uploads, inbox, onboarding_bot, pincode_coverage
 
 engine = create_engine(
     "sqlite:///:memory:",
@@ -105,7 +105,7 @@ def db():
         session.rollback()
         for model in (OnboardingDocument, WhatsAppMessage, WhatsAppConversation, WhatsAppReply,
                       WhatsAppButtonClick, WhatsAppCampaignRecipient, WhatsAppCampaign,
-                      Location, AppSetting):
+                      WhatsAppTemplate, Location, AppSetting):
             session.query(model).delete()
         session.commit()
         session.close()
@@ -145,8 +145,13 @@ def inbound(db, kind="text", **fields):
     return msg
 
 
-def tap_campaign(db, text="Interested?"):
-    return inbound(db, "button", button={"text": text, "payload": text})
+def tap_campaign(db, text="Interested?", lang="en"):
+    """Tap a campaign button and, when the bot asks, choose a language."""
+    msg = inbound(db, "button", button={"text": text, "payload": text})
+    c = db.query(WhatsAppConversation).filter(WhatsAppConversation.phone == PHONE).first()
+    if lang and c is not None and c.bot_step == onboarding_bot.CHOOSE_LANG:
+        tap(db, f"lang:{lang}")
+    return msg
 
 
 def tap(db, button_id):
@@ -304,10 +309,12 @@ def test_a_pin_sent_out_of_the_blue_is_checked(db):
 def test_someone_writing_first_is_greeted_and_can_start(db):
     say(db, "Hi, what is this about?")
     kind, _to, body, buttons = StubMeta.sent[-1]
-    assert body == onboarding_bot.GREETING and buttons == onboarding_bot.START_BUTTON
+    assert "Thank you for contacting Eko" in body
+    assert [b["id"] for b in buttons] == [onboarding_bot.START_INTERESTED, onboarding_bot.START_WEBINAR]
     say(db, "hello?")  # greeted once a day, not on every line
     assert len(StubMeta.sent) == 1
     tap(db, "start:interested")
+    tap(db, "lang:en")
     assert StubMeta.sent[-1][2] == onboarding_bot.ASK_PIN
 
 
@@ -609,3 +616,100 @@ def test_only_the_required_documents_hold_up_submitting(db, client):
     last = onboarding_bot.REQUIRED_DOCUMENTS[-1]
     client.post(f"/onboard/{token}/files", data={"doc_type": last["key"]}, files={"file": ("a.pdf", PDF)})
     assert client.post(f"/onboard/{token}/submit").json() == {"status": "submitted"}
+
+
+# --- Language, and the webinar ----------------------------------------------
+
+def _punjabi_campaign(db):
+    """Send PHONE a campaign whose template is written in Punjabi."""
+    template_id, campaign_id = uuid.uuid4().hex, uuid.uuid4().hex
+    db.add(WhatsAppTemplate(template_id=template_id, name="Punjab", body="ਸਤ ਸ੍ਰੀ ਅਕਾਲ {{1}}",
+                            language_code="pa", buttons=campaign_buttons.quick_replies("pa")))
+    db.add(WhatsAppCampaign(campaign_id=campaign_id, name="Punjab", template_id=template_id,
+                            data_source_type="scraped", status="COMPLETED", total_contacts=1))
+    db.add(WhatsAppCampaignRecipient(recipient_id=uuid.uuid4().hex, campaign_id=campaign_id,
+                                     phone=PHONE, status="READ", provider_message_id="wamid.punjab"))
+    db.commit()
+
+
+def test_interested_first_asks_the_language(db):
+    tap_campaign(db, lang=None)
+    kind, _to, body, buttons = StubMeta.sent[-1]
+    assert kind == "buttons" and [b["id"] for b in buttons] == ["lang:en", "lang:hi"]
+    assert conv(db).bot_step == onboarding_bot.CHOOSE_LANG
+
+
+def test_the_campaigns_own_language_is_offered_and_used(db):
+    _punjabi_campaign(db)
+    tap_campaign(db, lang=None)
+    assert [b["id"] for b in StubMeta.sent[-1][3]] == ["lang:en", "lang:hi", "lang:pa"]
+    tap(db, "lang:pa")
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["pa"]["ask_pin"]
+    say(db, SERVED_PIN)
+    kind, _to, body, buttons = StubMeta.sent[-1]
+    assert body == bot_messages.MESSAGES["pa"]["ask_invest"]
+    assert [b["title"] for b in buttons] == ["ਹਾਂ", "ਨਹੀਂ"]
+
+
+def test_a_typed_language_name_counts(db):
+    tap_campaign(db, lang=None)
+    say(db, "Hindi")
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["hi"]["ask_pin"]
+
+
+@pytest.fixture
+def told(monkeypatch):
+    from src.services import notifier
+    calls = []
+    monkeypatch.setattr(notifier, "notify_webinar", lambda to, details: calls.append(details))
+    return calls
+
+
+def test_webinar_yes(db, told):
+    tap_campaign(db, text=campaign_buttons.WEBINAR["en"], lang="hi")
+    kind, _to, body, buttons = StubMeta.sent[-1]
+    assert body == bot_messages.MESSAGES["hi"]["webinar_ask"]
+    assert [b["id"] for b in buttons] == ["webinar:yes", "webinar:no"]
+    tap(db, "webinar:yes")
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["hi"]["webinar_yes"]
+    assert "7291988625" in StubMeta.sent[-1][2]
+    assert conv(db).bot_step == onboarding_bot.WEBINAR_CONFIRMED
+    assert told and told[0]["phone"] == PHONE
+
+
+def test_webinar_no_asks_when_and_records_it(db, told):
+    tap_campaign(db, text=campaign_buttons.WEBINAR["en"], lang="en")
+    tap(db, "webinar:no")
+    assert StubMeta.sent[-1][2] == onboarding_bot.WEBINAR_NO
+    say(db, "Saturday after 4 pm")
+    assert StubMeta.sent[-1][2] == onboarding_bot.WEBINAR_NOTED
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.WEBINAR_AVAILABILITY
+    assert c.bot_data["webinar"]["availability"] == "Saturday after 4 pm"
+    assert told[-1]["availability"] == "Saturday after 4 pm"
+
+
+def test_the_webinar_button_in_a_regional_language_is_recognised(db):
+    _punjabi_campaign(db)
+    tap_campaign(db, text=campaign_buttons.WEBINAR["pa"], lang="pa")
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["pa"]["webinar_ask"]
+
+
+def test_the_language_is_remembered_for_the_next_flow(db, told):
+    tap_campaign(db, text=campaign_buttons.WEBINAR["en"], lang="hi")
+    tap(db, "webinar:yes")
+    count = len(StubMeta.sent)
+    tap_campaign(db, lang=None)  # Interested, after the webinar
+    assert len(StubMeta.sent) == count + 1
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["hi"]["ask_pin"]
+
+
+def test_every_language_has_every_message_and_short_buttons():
+    keys = set(bot_messages.MESSAGES["en"])
+    for lang, msgs in bot_messages.MESSAGES.items():
+        assert set(msgs) == keys, lang
+        for k in ("yes", "no", "link_button"):
+            assert len(msgs[k]) <= 20, (lang, k)
+    for label in campaign_buttons.WEBINAR.values():
+        assert len(label) <= 20 and campaign_buttons.is_webinar(label)
+    assert not campaign_buttons.is_webinar("Interested")
