@@ -240,7 +240,7 @@ const DraftCard: React.FC<{
   const [body, setBody] = useState(d.body);
   const [footer, setFooter] = useState(d.footer || '');
   const [posterFields, setPosterFields] = useState<Partial<StudioPoster>>({ ...(g.poster || {}) });
-  // The quick replies are fixed (Interested, and the webinar one in the
+  // The quick replies are fixed (Interested, and the personal guidance one in the
   // template's language): the bot answers a tap by its label.
   const quickReplies = (d.buttons || []).filter(b => b.type === 'QUICK_REPLY').map(b => b.text);
   const [category, setCategory] = useState('MARKETING');

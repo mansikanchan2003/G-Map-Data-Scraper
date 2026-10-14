@@ -344,8 +344,8 @@ const BotSettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 you press Question resolved. Voice notes are transcribed and answered in the language spoken.
               </p>
               <p className="mt-1.5">
-                The <span className="text-slate-300">Webinar</span> button instead asks if they can join tomorrow's
-                webinar; a yes, or the time they suggest, is emailed to you so the link can be sent.
+                The <span className="text-slate-300">Personal Guidance</span> button instead asks if they can join a
+                personal guidance session tomorrow; a yes, or the time they suggest, is emailed to you so the link can be sent.
               </p>
               <div className="text-slate-300 font-semibold mt-3 mb-1">Documents asked for</div>
               <ul className="list-disc pl-4 space-y-0.5">
@@ -453,7 +453,7 @@ const Details: React.FC<{
             <Row label="Step" value={<BotChip step={conv.bot_step} label={conv.bot_step_label} paused={false} />} />
             {conv.bot_data?.lang && <Row label="Language" value={LANGUAGE_NAMES[conv.bot_data.lang] || conv.bot_data.lang} />}
             {conv.bot_data?.webinar && (
-              <Row label="Webinar" value={conv.bot_data.webinar.answer === 'yes'
+              <Row label="Personal guidance" value={conv.bot_data.webinar.answer === 'yes'
                 ? 'Coming tomorrow'
                 : `Available: ${conv.bot_data.webinar.availability || '—'}`} />
             )}

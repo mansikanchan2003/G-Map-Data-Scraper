@@ -12,9 +12,9 @@ The onboarding bot: what happens after someone taps a campaign's buttons.
       Yes                   -> a link to the upload page
       documents submitted   -> "Thank you, our team will reach out"
 
-    tap "Webinar Chahiye"   -> choose a language
-      language chosen       -> "Available for the webinar tomorrow?" [Yes] [No]
-      Yes                   -> "Our team will send the link and timing"
+    tap "Personal Guidance Chahiye" -> choose a language
+      language chosen       -> "Available for personal guidance tomorrow?" [Yes] [No]
+      Yes                   -> "Our team will contact you soon"
       No                    -> "When would suit you?" -> noted, team told
 
 The webinar button is written in the campaign's own language, so every
@@ -89,10 +89,10 @@ STEP_LABELS = {
     NOT_SERVED: "Outside our area",
     NOT_INVESTING: "Cannot invest",
     HANDOVER: "Needs a person",
-    AWAIT_WEBINAR: "Asked about webinar",
-    AWAIT_AVAILABILITY: "Asked webinar availability",
-    WEBINAR_CONFIRMED: "Webinar confirmed",
-    WEBINAR_AVAILABILITY: "Webinar time shared",
+    AWAIT_WEBINAR: "Asked about personal guidance",
+    AWAIT_AVAILABILITY: "Asked guidance availability",
+    WEBINAR_CONFIRMED: "Personal guidance confirmed",
+    WEBINAR_AVAILABILITY: "Guidance time shared",
 }
 
 # Which flow a language choice leads into.
@@ -789,7 +789,7 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
             _understood(conv)
             _move(conv, WEBINAR_CONFIRMED, webinar={"answer": "yes", "at": inbox.now().isoformat()})
             _say(db, conv, _t(db, conv, "webinar_yes"))
-            _tell_team(conv, "Confirmed for tomorrow's webinar")
+            _tell_team(conv, "Confirmed for personal guidance tomorrow")
         elif answer is False:
             _understood(conv)
             _move(conv, AWAIT_AVAILABILITY)
@@ -817,7 +817,7 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
         if msg.kind == "button":
             _fallback(db, conv, _t(db, conv, "acknowledge"))
         else:
-            webinar = campaign_buttons.webinar_label(lang)
+            webinar = campaign_buttons.webinar_title(lang)
             _fallback(db, conv, _t(db, conv, "greeting", webinar=webinar), gap=GREETING_GAP,
                       buttons=[{"id": START_INTERESTED, "title": campaign_buttons.INTERESTED},
                                {"id": START_WEBINAR, "title": webinar}])

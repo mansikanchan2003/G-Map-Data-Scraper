@@ -744,8 +744,15 @@ def test_every_language_has_every_message_and_short_buttons():
         assert set(msgs) == keys, lang
         for k in ("yes", "no", "link_button"):
             assert len(msgs[k]) <= 20, (lang, k)
-    for label in campaign_buttons.WEBINAR.values():
-        assert len(label) <= 20 and campaign_buttons.is_webinar(label)
+    for lang, label in campaign_buttons.WEBINAR.items():
+        # A template's button may be 25 characters; one the bot sends, 20.
+        assert len(label) <= 25 and campaign_buttons.is_webinar(label)
+        title = campaign_buttons.webinar_title(lang)
+        assert len(title) <= 20 and title.split()[0] == label.split()[0]
+    # Buttons on templates approved before the rename still start the flow.
+    for label in campaign_buttons.OLD_WEBINAR.values():
+        assert campaign_buttons.is_webinar(label)
+    assert campaign_buttons.is_webinar("પર્સનલ ગાઇડન્સ જોઈએ")
     assert not campaign_buttons.is_webinar("Interested")
 
 
@@ -1133,3 +1140,17 @@ def test_a_hindi_note_is_written_out_by_the_hindi_model(monkeypatch):
     monkeypatch.setattr(transcribe, "_audio", lambda path: None)
     assert transcribe.transcribe("x.ogg")["text"] == "मुझे सवाल पूछना है"
     assert used == [transcribe.HINDI_MODEL]
+
+
+def test_a_draft_with_the_old_webinar_button_is_submitted_with_the_new_one():
+    from types import SimpleNamespace
+
+    from src.services import whatsapp_service
+
+    draft = SimpleNamespace(
+        language_code="gu", header_type=None, header_content=None, body="Hello", footer=None,
+        buttons=[{"type": "QUICK_REPLY", "text": "Interested"},
+                 {"type": "QUICK_REPLY", "text": campaign_buttons.OLD_WEBINAR["gu"]}])
+    components = whatsapp_service.build_meta_components(draft)
+    buttons = next(c for c in components if c["type"] == "BUTTONS")["buttons"]
+    assert [b["text"] for b in buttons] == ["Interested", "પર્સનલ ગાઇડન્સ જોઈએ"]

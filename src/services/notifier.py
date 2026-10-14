@@ -168,15 +168,15 @@ def notify_documents_submitted(admin_email: str, details: dict) -> bool:
 
 def notify_webinar(admin_email: str, details: dict) -> bool:
     """
-    Tell the admin someone answered the webinar invitation.
+    Tell the admin someone answered the personal guidance invitation.
 
-    The bot has promised them the link and timing on WhatsApp, so somebody
-    has to know to send it, and when they said they could come.
+    The bot has promised them a call from the team, so somebody has to know
+    to contact them, and when they said they could.
     """
     phone = (details.get("phone") or "").lstrip("+")
     who = details.get("name") or details.get("phone") or "Someone"
     lines = [
-        f"{who} answered the webinar invitation on WhatsApp.",
+        f"{who} answered the personal guidance invitation on WhatsApp.",
         "",
         f"Phone        {details.get('phone')}",
         f"Answer       {details.get('answer')}",
@@ -187,7 +187,7 @@ def notify_webinar(admin_email: str, details: dict) -> bool:
         lines.append(f"Language     {details['language']}")
     lines += [
         "",
-        "Send them the webinar link and timing on WhatsApp, as the bot promised.",
+        "Contact them soon, as the bot promised: call or WhatsApp.",
         f"WhatsApp: https://wa.me/{phone}",
     ]
-    return _send(admin_email, f"AutoGMap: webinar — {who}", "\n".join(lines) + "\n")
+    return _send(admin_email, f"AutoGMap: personal guidance — {who}", "\n".join(lines) + "\n")

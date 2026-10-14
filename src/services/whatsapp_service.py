@@ -14,6 +14,7 @@ from src.models.whatsapp import (
 from src.services.whatsapp_normalizer import WhatsAppNormalizer
 from src.services.meta_whatsapp_service import MetaWhatsAppService
 from src.services.creative_brief import meta_language
+from src.services import campaign_buttons
 
 logger = logging.getLogger("gmap_scraper.whatsapp_campaign")
 
@@ -136,7 +137,12 @@ def build_meta_components(template, header_handle: str = None) -> list:
     for btn in (template.buttons or []):
         btn_type = btn.get("type")
         if btn_type == "QUICK_REPLY":
-            buttons.append({"type": "QUICK_REPLY", "text": btn.get("text")})
+            text = btn.get("text")
+            # A draft written before "Webinar Chahiye" became "Personal
+            # Guidance Chahiye" goes to Meta with the current label.
+            if campaign_buttons.is_webinar(text):
+                text = campaign_buttons.webinar_label(template.language_code)
+            buttons.append({"type": "QUICK_REPLY", "text": text})
         elif btn_type == "URL":
             url = (btn.get("url") or "").strip()
             if not url:
