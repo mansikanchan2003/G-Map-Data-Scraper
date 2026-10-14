@@ -1053,3 +1053,34 @@ def test_a_voice_note_that_cannot_be_transcribed_is_kept(db, monkeypatch):
     msg = _voice(db, "v2")
     assert "model unavailable" in msg.payload["transcript_error"]
     assert msg.payload.get("stored")              # still there to listen to
+
+
+def test_a_voice_note_the_bot_cannot_act_on_always_needs_a_person(db, heard):
+    tap_campaign(db)
+    say(db, SERVED_PIN)                  # waiting for education
+    heard.update(text="Mam nadzieje", language="hi")   # a wrong transcript
+    _voice(db, "v9")
+    c = conv(db)
+    assert c.needs_attention and c.attention_reason.startswith("Voice note")
+    assert StubMeta.sent[-1][2].startswith(bot_messages.MESSAGES["hi"]["question_ack"])
+
+
+def test_wanting_to_ask_counts_as_a_question(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "ok")                        # a plain reply, paced
+    say(db, "Mujhe kuch puchna hai")     # straight after: still answered and marked
+    assert conv(db).needs_attention
+    assert StubMeta.sent[-1][2].startswith(bot_messages.MESSAGES["en"]["question_ack"])
+
+
+def test_the_language_is_chosen_among_the_bots_own():
+    from src.services import transcribe
+
+    class Model:
+        def detect_language(self, audio):
+            return "pl", 0.46, [("pl", 0.46), ("ru", 0.13), ("en", 0.05), ("hi", 0.04), ("ur", 0.03)]
+    # Polish and Russian are not options; Urdu counts as Hindi, which then leads.
+    assert transcribe.choose_language(Model(), None)[0] == "hi"
+    # The conversation's own language is preferred when the scores are close.
+    assert transcribe.choose_language(Model(), None, fallback_language="en")[0] == "en"

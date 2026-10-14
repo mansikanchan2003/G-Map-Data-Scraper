@@ -565,10 +565,15 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, **kw):
     data = conv.bot_data or {}
     streak = data.get("fallback_streak", 0)
     last = data.get("fallback_at")
-    said = message_text(_CURRENT.get())
-    asked = looks_like_question(said)
+    current = _CURRENT.get()
+    said = message_text(current)
+    # A voice note the bot could not act on is always left for a person: a
+    # machine transcript of a short note can be wrong, and only someone
+    # listening can tell what was asked.
+    voice = getattr(current, "voice", False) or getattr(current, "kind", None) == "audio"
+    asked = looks_like_question(said) or voice
     if asked:
-        flag(conv, said)
+        flag(conv, f"Voice note: {said}" if voice and said else ("Voice note" if voice else said))
         ack = _t(db, conv, "question_ack")
         body = ack if body == _t(db, conv, "acknowledge") else f"{ack}\n\n{body}"
     if streak >= MAX_FALLBACK_STREAK:
@@ -602,6 +607,8 @@ def _tell_team(conv, what: str, availability: Optional[str] = None):
 class _Spoken:
     """A voice note read as the text it was transcribed to, for the bot's purposes only."""
 
+    voice = True
+
     def __init__(self, msg, text):
         self.message_id, self.direction, self.phone = msg.message_id, msg.direction, msg.phone
         self.kind, self.body, self.payload = "text", text, msg.payload
@@ -630,9 +637,11 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
     try:
         cfg = get_settings(db)
         if conv.bot_paused or not cfg["enabled"]:
-            # Nobody automatic will answer, so a question is left for a person.
-            if looks_like_question(message_text(msg)):
-                flag(conv, message_text(msg))
+            # Nobody automatic will answer, so a question or a voice note is
+            # left for a person.
+            voice = getattr(msg, "voice", False) or msg.kind == "audio"
+            if voice or looks_like_question(message_text(msg)):
+                flag(conv, message_text(msg) or "Voice note")
             return
         _handle(db, conv, msg, cfg)
     finally:

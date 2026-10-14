@@ -850,6 +850,13 @@ for _lang, _line in _QUESTION_ACK.items():
 QUESTION_WORDS = {
     "what", "how", "why", "when", "where", "which", "who", "whom", "whose", "can", "could", "will",
     "is", "are", "do", "does", "much", "many", "cost", "price", "fee", "fees", "charge", "charges",
+    # Saying they want to ask, rather than asking: "mujhe kuch puchna hai".
+    "ask", "question", "questions", "query", "doubt", "doubts", "help", "explain", "know", "details",
+    "puchna", "poochna", "puchhna", "puchni", "poochni", "puchne", "poochne", "puchhne", "puchh", "pooch", "sawal", "sawaal", "jaanna",
+    "janna", "jankari", "jaankari", "samjhao", "batao", "bataiye", "madad",
+    "पूछना", "पूछनी", "पूछने", "पूछ", "सवाल", "प्रश्न", "जानना", "जानकारी", "समझाइए", "बताइए", "बताओ", "मदद",
+    "પૂછવું", "પ્રશ્ન", "સવાલ", "જાણવું", "માહિતી", "મદદ",
+    "ਪੁੱਛਣਾ", "ਸਵਾਲ", "ਜਾਣਨਾ", "ਜਾਣਕਾਰੀ", "ਮਦਦ",
     "salary", "earn", "earning", "income", "commission", "kya", "kaise", "kyu", "kyun", "kyon", "kab",
     "kaha", "kahan", "kitna", "kitne", "kitni", "kaun", "kaunsa", "kon", "konsa",
     "क्या", "कैसे", "क्यों", "कब", "कहाँ", "कहां", "कितना", "कितने", "कितनी", "कौन", "कौनसा",

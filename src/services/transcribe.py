@@ -2,17 +2,18 @@
 Voice notes, turned into text with Whisper, so the bot can answer them.
 
 Runs OpenAI's open Whisper model on this server through faster-whisper: no
-account, no per-minute charge. The model ("small" by default, WHISPER_MODEL)
+account, no per-minute charge. The model ("medium" by default, WHISPER_MODEL)
 is downloaded once into WHISPER_CACHE_DIR, under data/ so a redeploy keeps
-it, and loaded on the first voice note. It takes about a gigabyte of memory
-inside the backend's limit; "medium" understands Indian languages better but
-takes about two, and is slower on CPU.
+it, and loaded on the first voice note. On the user's own 4-second Hindi
+note (2026-10-14) "small" wrote nonsense, "medium" came closest, and
+"large-v3-turbo" was no better while taking twice the memory. None is
+reliable on short Indian-language notes, which is why the bot leaves any
+voice note it cannot act on for a person (onboarding_bot._fallback).
 
-Whisper names the language it heard, and the bot answers in it. It often
-calls spoken Hindi "Urdu" and writes it in Urdu script; such a note is
-transcribed again as Hindi. Odia is not among Whisper's languages, so an
-Odia voice note is transcribed as whatever it sounds closest to, and the
-conversation's own language is used instead when Whisper is unsure.
+The language is chosen among the bot's own (Indian languages and English),
+not left to Whisper, which heard a short Hindi note as Polish; see
+choose_language. Odia is not among Whisper's languages, so an Odia note is
+transcribed in the nearest one it knows.
 """
 import logging
 import os
@@ -21,11 +22,9 @@ from typing import Optional
 
 logger = logging.getLogger("gmap_scraper.transcribe")
 
-MODEL = os.environ.get("WHISPER_MODEL", "small")
+MODEL = os.environ.get("WHISPER_MODEL", "medium")
 CACHE_DIR = os.environ.get("WHISPER_CACHE_DIR", os.path.join("data", "whisper"))
 THREADS = int(os.environ.get("WHISPER_THREADS", "4"))
-# Below this, Whisper's guess at the language is not trusted.
-SURE = 0.6
 
 # Whisper's language codes the bot can answer in.
 BOT_LANGUAGES = {"en", "hi", "mr", "pa", "gu", "bn", "ta", "te", "kn", "ml"}
@@ -47,24 +46,45 @@ def _load():
     return _model
 
 
-def _run(path: str, language: Optional[str]):
-    segments, info = _load().transcribe(path, language=language, beam_size=5, vad_filter=True)
-    text = " ".join(s.text.strip() for s in segments).strip()
-    return text, info.language, float(info.language_probability or 0)
+def _audio(path: str):
+    from faster_whisper.audio import decode_audio
+    return decode_audio(path, sampling_rate=16000)
+
+
+def choose_language(model, audio, fallback_language: Optional[str] = None) -> tuple:
+    """
+    (language, probability) for a voice note, chosen among the bot's languages.
+
+    Left to itself Whisper picks from a hundred languages, and on a short
+    Hindi note it chose Polish. Its scores are kept for Indian languages and
+    English only, Urdu counted as Hindi (Whisper hears spoken Hindi as Urdu
+    and writes it in Urdu script), and the conversation's own language is
+    preferred when the scores are close.
+    """
+    _lang, _prob, scores = model.detect_language(audio)
+    kept: dict = {}
+    for lang, p in scores:
+        lang = "hi" if lang == "ur" else lang
+        if lang in BOT_LANGUAGES:
+            kept[lang] = kept.get(lang, 0.0) + p
+    if fallback_language in BOT_LANGUAGES:
+        kept[fallback_language] = kept.get(fallback_language, 0.0) * 1.5 + 0.05
+    if not kept:
+        return (fallback_language if fallback_language in BOT_LANGUAGES else "hi"), 0.0
+    best = max(kept, key=kept.get)
+    return best, round(kept[best], 2)
 
 
 def transcribe(path: str, fallback_language: Optional[str] = None) -> dict:
     """
     {"text", "language", "probability"} for one audio file.
 
-    `language` is a code the bot speaks, or None when Whisper heard a
-    language it does not. `fallback_language` is the conversation's own,
-    used when Whisper is not sure what it heard.
+    The language is always one the bot speaks: chosen by choose_language,
+    then the note is transcribed in it.
     """
-    text, lang, prob = _run(path, None)
-    if lang == "ur":
-        # Spoken Hindi, mostly; written out again in Devanagari.
-        text, lang, prob = _run(path, "hi")[0], "hi", prob
-    elif prob < SURE and fallback_language in BOT_LANGUAGES and fallback_language != lang:
-        text, lang = _run(path, fallback_language)[0], fallback_language
-    return {"text": text, "language": lang if lang in BOT_LANGUAGES else None, "probability": round(prob, 2)}
+    model = _load()
+    audio = _audio(path)
+    lang, prob = choose_language(model, audio, fallback_language)
+    segments, _info = model.transcribe(audio, language=lang, beam_size=5, vad_filter=True)
+    text = " ".join(s.text.strip() for s in segments).strip()
+    return {"text": text, "language": lang, "probability": prob}
