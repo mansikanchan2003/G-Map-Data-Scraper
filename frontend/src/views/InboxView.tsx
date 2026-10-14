@@ -215,7 +215,7 @@ const Bubble: React.FC<{ m: ThreadMessage }> = ({ m }) => {
             {m.kind === 'audio' && m.payload?.transcript && (
               <div className="text-sm text-slate-200 whitespace-pre-wrap break-words select-text border-l-2 border-sky-700 pl-2">
                 <span className="block text-[10px] text-sky-400 font-semibold mb-0.5">
-                  Transcript{m.payload.language ? ` · ${LANGUAGE_NAMES[m.payload.language] || m.payload.language}` : ''}
+                  Machine transcript{m.payload.language ? ` · ${LANGUAGE_NAMES[m.payload.language] || m.payload.language}` : ''} · may be wrong, listen to be sure
                 </span>
                 {m.payload.transcript}
               </div>

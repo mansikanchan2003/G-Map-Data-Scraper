@@ -2,13 +2,18 @@
 Voice notes, turned into text with Whisper, so the bot can answer them.
 
 Runs OpenAI's open Whisper model on this server through faster-whisper: no
-account, no per-minute charge. The model ("medium" by default, WHISPER_MODEL)
+account, no per-minute charge. The model ("small" by default, WHISPER_MODEL)
 is downloaded once into WHISPER_CACHE_DIR, under data/ so a redeploy keeps
 it, and loaded on the first voice note. On the user's own 4-second Hindi
 note (2026-10-14) "small" wrote nonsense, "medium" came closest, and
 "large-v3-turbo" was no better while taking twice the memory. None is
 reliable on short Indian-language notes, which is why the bot leaves any
 voice note it cannot act on for a person (onboarding_bot._fallback).
+
+"small" stays the default because "medium" does not fit beside a scraping
+batch's Chromium inside the backend's 4 GB memory limit: loading it during
+a batch was killed for lack of memory, twice. WHISPER_MODEL=medium is for
+when that limit (BACKEND_MEMORY_LIMIT) is raised.
 
 The language is chosen among the bot's own (Indian languages and English),
 not left to Whisper, which heard a short Hindi note as Polish; see
@@ -22,7 +27,7 @@ from typing import Optional
 
 logger = logging.getLogger("gmap_scraper.transcribe")
 
-MODEL = os.environ.get("WHISPER_MODEL", "medium")
+MODEL = os.environ.get("WHISPER_MODEL", "small")
 CACHE_DIR = os.environ.get("WHISPER_CACHE_DIR", os.path.join("data", "whisper"))
 THREADS = int(os.environ.get("WHISPER_THREADS", "4"))
 
