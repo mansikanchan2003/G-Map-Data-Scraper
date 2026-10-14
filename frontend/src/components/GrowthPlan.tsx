@@ -1,214 +1,434 @@
 import React, { useEffect, useState } from 'react';
+import { getApiBaseUrl } from '../api';
 import { fetchGrowthPlan, type CreativeRow, type GrowthPlan as Plan, type GrowthRow } from '../api/insights';
 import { formatDateTime } from '../utils/datetime';
 
 /**
  * The lead goal at the top of Campaign Insights: leads so far against the
- * target, where people drop out on the way, who to call, where and whom to
- * message next, and what kind of template to make. The template agents are
- * given the same plan each time they write.
+ * target, what to do today, where people drop out on the way, who to call,
+ * where and whom to message next, and what the templates that worked had in
+ * common. The template agents are given the same plan each time they write.
+ *
+ * Colours come from the theme ramps (slate, sky, emerald, rose, amber,
+ * purple), which the light theme redefines, so the page reads in both. The
+ * goal banner keeps Eko's own teal and gold in either theme.
  */
 
-const pct = (v: number | null | undefined) => (v == null ? '—' : `${(v * 100).toFixed(v < 0.1 ? 1 : 0)}%`);
+const pct = (v: number | null | undefined) => (v == null ? '—' : `${(v * 100).toFixed(v > 0 && v < 0.1 ? 1 : 0)}%`);
 const num = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString('en-IN'));
+const Icon: React.FC<{ name: string; className?: string }> = ({ name, className = '' }) =>
+  <span className={`material-symbols-outlined ${className}`}>{name}</span>;
 
-const IMPACT: Record<string, string> = {
-  high: 'bg-emerald-900/30 border-emerald-700/50 text-emerald-300',
-  medium: 'bg-sky-900/30 border-sky-700/50 text-sky-300',
-  low: 'bg-slate-800 border-slate-700 text-slate-400',
+const mediaUrl = (headerContent: string | null) => {
+  try {
+    const d = JSON.parse(headerContent || '');
+    return d.media_id ? `${getApiBaseUrl()}/api/v1/whatsapp/media/${d.media_id}` : null;
+  } catch { return null; }
 };
 
-const EVIDENCE: Record<string, { label: string; cls: string; title: string }> = {
-  strong: { label: 'Proven', cls: 'text-emerald-300', title: 'The difference holds even allowing for chance.' },
-  likely: { label: 'Likely', cls: 'text-sky-300', title: 'A big difference, not yet certain.' },
-  no_difference: { label: 'No difference', cls: 'text-slate-400', title: 'No clearer than the rest.' },
-  too_early: { label: 'Too early', cls: 'text-amber-300', title: 'Not enough people yet to tell.' },
-  untried: { label: 'Not tried', cls: 'text-violet-300', title: 'Never messaged: worth a small test.' },
-};
+// ---------------------------------------------------------------------------
+// Evidence: how firm a result is, and which way it went.
+// ---------------------------------------------------------------------------
 
-const Evidence: React.FC<{ c: string; direction?: string; campaigns?: number }> = ({ c, direction, campaigns }) => {
-  const e = EVIDENCE[c] || EVIDENCE.too_early;
-  // A firm verdict says which way it went: proven worse is a warning, not a win.
+const Chip: React.FC<{ c: string; direction?: string; campaigns?: number }> = ({ c, direction, campaigns }) => {
   const firm = c === 'strong' || c === 'likely';
-  const worse = firm && direction === 'worse';
-  const label = firm && direction === 'better' ? `${e.label} better` : worse ? `${e.label} worse` : e.label;
-  const cls = worse ? 'text-rose-300' : e.cls;
+  const word = c === 'strong' ? 'Proven' : 'Likely';
+  let label = 'Too early', cls = 'bg-amber-950 text-amber-300 border-amber-800/60', title = 'Not enough people yet to tell.';
+  if (firm && direction === 'better') { label = `${word} better`; cls = 'bg-emerald-950 text-emerald-300 border-emerald-800/60'; title = 'Better than the rest, beyond chance.'; }
+  else if (firm && direction === 'worse') { label = `${word} worse`; cls = 'bg-rose-950 text-rose-300 border-rose-800/60'; title = 'Worse than the rest, beyond chance.'; }
+  else if (c === 'no_difference') { label = 'No difference'; cls = 'bg-slate-950 text-slate-400 border-slate-800'; title = 'No clearer than the rest.'; }
+  else if (c === 'untried') { label = 'Not tried'; cls = 'bg-purple-950 text-purple-300 border-purple-800/60'; title = 'Never messaged: worth a small test.'; }
   return (
-    <span className={`text-[11px] font-semibold whitespace-nowrap ${cls}`} title={e.title}>
-      {label}
+    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+      <span title={title} className={`px-2 py-0.5 rounded-full border text-[10.5px] font-semibold ${cls}`}>{label}</span>
       {campaigns === 1 && c !== 'untried' && (
-        <span className="ml-1 font-normal text-slate-500"
+        <span className="text-[10.5px] text-slate-500"
           title="All from one campaign: its place, timing and template went together, so which of them mattered cannot be told yet.">
-          · 1 campaign
+          1 campaign
         </span>
       )}
     </span>
   );
 };
 
-const Section: React.FC<{ title: string; subtitle?: React.ReactNode; children: React.ReactNode }> = ({ title, subtitle, children }) => (
-  <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-    <h3 className="text-sm font-semibold text-slate-100">{title}</h3>
-    {subtitle && <div className="text-xs text-slate-500 mt-0.5 mb-3">{subtitle}</div>}
-    {!subtitle && <div className="mb-3" />}
-    {children}
-  </div>
+const Card: React.FC<{ icon: string; title: string; subtitle?: React.ReactNode; tint?: string; children: React.ReactNode; className?: string }> =
+  ({ icon, title, subtitle, tint = 'bg-sky-950 text-sky-300', children, className = '' }) => (
+  <section className={`rounded-xl border border-slate-800 bg-slate-900 shadow-sm ${className}`}>
+    <header className="flex items-start gap-3 px-5 pt-4 pb-3">
+      <span className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center ${tint}`}><Icon name={icon} className="text-[20px]" /></span>
+      <div className="min-w-0">
+        <h3 className="text-[15px] font-semibold text-slate-100 leading-tight">{title}</h3>
+        {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+      </div>
+    </header>
+    <div className="px-5 pb-5">{children}</div>
+  </section>
 );
 
-const GoalCard: React.FC<{ plan: Plan }> = ({ plan }) => {
-  const g = plan.goal;
-  const done = Math.min(100, (g.leads / Math.max(g.target, 1)) * 100);
-  const deadline = new Date(`${g.deadline}T00:00:00+05:30`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+// ---------------------------------------------------------------------------
+// The goal banner
+// ---------------------------------------------------------------------------
+
+const Ring: React.FC<{ value: number; target: number }> = ({ value, target }) => {
+  const r = 52, c = 2 * Math.PI * r;
+  const done = Math.min(1, value / Math.max(target, 1));
   return (
-    <div className="rounded-lg border border-emerald-800/50 bg-gradient-to-br from-emerald-950/40 to-slate-900 p-5">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="text-xs uppercase tracking-wider text-emerald-300/80 font-semibold">Lead goal</div>
-          <div className="mt-1 text-3xl font-semibold text-slate-50 tabular-nums">
-            {g.leads} <span className="text-slate-500 text-xl">/ {g.target} leads</span>
-          </div>
-          <div className="text-xs text-slate-400 mt-1">
-            by {deadline} · a lead is someone a campaign reached who submitted their documents
-          </div>
-        </div>
-        <div className="grid grid-cols-3 gap-5 text-right">
-          <div><div className="text-xl font-semibold text-slate-100 tabular-nums">{g.days_left}</div><div className="text-[11px] text-slate-500">days left</div></div>
-          <div><div className="text-xl font-semibold text-slate-100 tabular-nums">{g.still_needed}</div><div className="text-[11px] text-slate-500">still needed</div></div>
-          <div><div className="text-xl font-semibold text-slate-100 tabular-nums">{g.per_day_needed ?? '—'}</div><div className="text-[11px] text-slate-500">per day needed</div></div>
-        </div>
-      </div>
-      <div className="mt-4 h-2 rounded-full bg-slate-800 overflow-hidden">
-        <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${done}%` }} />
-      </div>
-      <div className="mt-2 text-[11px] text-slate-500">
-        {g.leads_per_1000 != null
-          ? <>{g.leads_per_1000} leads per 1,000 messages so far{g.messages_needed ? <>, so about {num(g.messages_needed)} more messages at this rate</> : null}.</>
-          : <>No lead yet from {num(g.messages_sent)} campaign messages, so nothing can be projected; the plan below works from the steps before a lead.</>}
-        {g.lead_list.length > 0 && <> Leads: {g.lead_list.map(l => `${l.name || l.phone} (${formatDateTime(l.submitted_at)})`).join(', ')}.</>}
+    <div className="relative h-36 w-36 shrink-0">
+      <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90">
+        <circle cx="60" cy="60" r={r} fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="10" />
+        <circle cx="60" cy="60" r={r} fill="none" stroke="#f9ab10" strokeWidth="10" strokeLinecap="round"
+          strokeDasharray={`${Math.max(done * c, value ? 0 : 0.001)} ${c}`} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
+        <div className="text-4xl font-bold tabular-nums leading-none">{value}</div>
+        <div className="text-[11px] mt-1 text-white/70">of {target} leads</div>
       </div>
     </div>
   );
 };
 
-const NextSteps: React.FC<{ plan: Plan }> = ({ plan }) => (
-  <Section title="What to do next" subtitle="Most effective first. Worked out afresh from every campaign each time this page opens.">
-    <ol className="space-y-3">
-      {plan.next_steps.map((s, i) => (
-        <li key={i} className="flex gap-3">
-          <span className="mt-0.5 h-6 w-6 shrink-0 rounded-full bg-slate-800 text-slate-300 text-xs font-semibold flex items-center justify-center">{i + 1}</span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-slate-100">{s.title}</span>
-              <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${IMPACT[s.impact]}`}>{s.impact} impact</span>
-            </div>
-            <div className="text-xs text-slate-300 mt-0.5">{s.detail}</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Why: {s.why}</div>
-          </div>
-        </li>
-      ))}
-    </ol>
-  </Section>
-);
+const STAGE_SHORT: Record<string, string> = {
+  engaged: 'Replied or tapped', interested: 'Started applying', qualified: 'Qualified', lead: 'Submitted documents',
+};
 
-const Funnel: React.FC<{ plan: Plan }> = ({ plan }) => {
-  const steps = plan.funnel.steps;
-  const max = Math.max(1, ...steps.filter(s => s.key !== 'sent').map(s => s.count));
-  const leak = plan.funnel.biggest_leak;
+const Goal: React.FC<{ plan: Plan }> = ({ plan }) => {
+  const g = plan.goal;
+  const deadline = new Date(`${g.deadline}T00:00:00+05:30`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' });
+  const stages = plan.stages;
+  const stat = (icon: string, value: React.ReactNode, label: string) => (
+    <div className="rounded-lg bg-white/10 px-4 py-3 min-w-[110px]">
+      <div className="flex items-center gap-1.5 text-white/70 text-[11px]"><Icon name={icon} className="text-[15px]" />{label}</div>
+      <div className="text-2xl font-semibold text-white tabular-nums mt-0.5">{value}</div>
+    </div>
+  );
   return (
-    <Section title="From message to lead" subtitle="How many people reached each step, and how many of those before them got through.">
-      <div className="space-y-1.5">
-        {steps.map(s => (
-          <div key={s.key} className={`grid grid-cols-[minmax(130px,1.2fr)_3fr_auto] items-center gap-3 text-xs ${leak?.step === s.key ? 'text-rose-200' : 'text-slate-300'}`}>
-            <span className="truncate">{s.label}</span>
-            <div className="h-2.5 rounded-sm bg-slate-800 overflow-hidden">
-              {s.key !== 'sent' && <div className={`h-full ${leak?.step === s.key ? 'bg-rose-500' : 'bg-sky-500'}`} style={{ width: `${(s.count / max) * 100}%` }} />}
-            </div>
-            <span className="tabular-nums whitespace-nowrap text-right min-w-[150px]">
-              {num(s.count)}
-              {s.from_previous != null && <span className="text-slate-500"> · {pct(s.from_previous)}</span>}
-              {s.of_tracked != null && <span className="text-slate-600" title="Measured on campaigns sent after delivery reports began"> of {num(s.of_tracked)}</span>}
-              {s.waiting > 0 && <span className="text-amber-300/80" title="Asked, not answered yet"> · {s.waiting} deciding</span>}
-            </span>
+    <section className="rounded-2xl overflow-hidden shadow-md text-white"
+      style={{ background: 'linear-gradient(120deg, #0a3543 0%, #16435a 55%, #1d5a6e 100%)' }}>
+      <div className="p-6 flex flex-col lg:flex-row lg:items-center gap-6">
+        <Ring value={g.leads} target={g.target} />
+        <div className="flex-1 min-w-0">
+          <div className="text-[11px] uppercase tracking-[0.14em] font-semibold" style={{ color: '#f9ab10' }}>Road to {g.target} leads</div>
+          <h2 className="text-2xl font-semibold mt-1 leading-snug">
+            {g.still_needed ? <>{g.still_needed} more lead{g.still_needed === 1 ? '' : 's'} by {deadline}</> : <>Goal reached 🎉</>}
+          </h2>
+          <p className="text-sm text-white/75 mt-1 max-w-2xl">
+            A lead is someone a campaign reached who submitted their documents.{' '}
+            {g.leads_per_1000 != null
+              ? <>So far {g.leads_per_1000} per 1,000 messages{g.messages_needed ? <>, so about {num(g.messages_needed)} more messages at this rate</> : null}.</>
+              : <>None yet from {num(g.messages_sent)} messages, so the plan works from the steps before a lead.</>}
+          </p>
+          <div className="flex flex-wrap gap-3 mt-4">
+            {stat('event', g.days_left, 'days left')}
+            {stat('flag', g.still_needed, 'still needed')}
+            {stat('speed', g.per_day_needed ?? '—', 'needed per day')}
           </div>
-        ))}
+        </div>
+        <div className="lg:w-64 shrink-0">
+          <div className="text-[11px] uppercase tracking-wider text-white/60 font-semibold mb-2">The way to a lead</div>
+          <ol className="space-y-1.5">
+            {stages.map((s, i) => (
+              <li key={s.key} className="flex items-center gap-2.5">
+                <span className={`h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-bold ${i === stages.length - 1 ? 'text-[#0a3543]' : 'bg-white/15 text-white'}`}
+                  style={i === stages.length - 1 ? { background: '#f9ab10' } : undefined}>{i + 1}</span>
+                <span className="flex-1 text-sm text-white/85 truncate" title={s.label}>{STAGE_SHORT[s.key] || s.label}</span>
+                <span className="text-sm font-semibold tabular-nums">{num(s.count)}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
       </div>
-      {leak && (
-        <div className="mt-3 rounded border border-rose-800/50 bg-rose-950/30 p-3 text-xs text-rose-100">
-          <span className="font-semibold">Biggest drop: {leak.label}.</span> {leak.to} of {leak.from} got through. {leak.advice}
+      {g.lead_list.length > 0 && (
+        <div className="px-6 py-2.5 bg-black/15 text-xs text-white/80">
+          <Icon name="verified" className="text-[15px] align-middle mr-1" />
+          Leads: {g.lead_list.map(l => `${l.name || l.phone} (${formatDateTime(l.submitted_at)})`).join(' · ')}
         </div>
       )}
-    </Section>
+    </section>
   );
 };
 
-const WarmPeople: React.FC<{ plan: Plan }> = ({ plan }) => (
-  <Section title="Call these people first" subtitle="Part-way to applying and not ruled out: the quickest leads there are.">
-    {plan.warm_people.length === 0 ? <div className="text-xs text-slate-500">Nobody part-way right now.</div> : (
-      <table className="w-full text-xs">
-        <tbody>
-          {plan.warm_people.map(p => (
-            <tr key={p.phone} className="border-t border-slate-800 first:border-0">
-              <td className="py-1.5 pr-2 text-slate-100">{p.name || '—'}</td>
-              <td className="py-1.5 pr-2 font-mono text-slate-300 select-text">{p.phone}</td>
-              <td className="py-1.5 pr-2 text-slate-400">{p.stage}</td>
-              <td className="py-1.5 text-slate-500 whitespace-nowrap">{p.last_message_at ? formatDateTime(p.last_message_at) : ''}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    )}
-  </Section>
-);
+// ---------------------------------------------------------------------------
+// What to do now
+// ---------------------------------------------------------------------------
 
-const TargetTable: React.FC<{ title: string; rows: GrowthRow[]; stage: string }> = ({ title, rows, stage }) => (
-  <div className="min-w-0">
-    <div className="text-xs font-semibold text-slate-300 mb-1.5">{title}</div>
-    <table className="w-full text-xs">
-      <thead className="text-slate-500 text-left">
-        <tr>
-          <th className="py-1 font-semibold">Name</th>
-          <th className="py-1 font-semibold text-right" title={`Reached, and how many went on to “${stage}”`}>Went on</th>
-          <th className="py-1 font-semibold text-right" title="Businesses with a mobile number not yet messaged">Left</th>
-          <th className="py-1 font-semibold text-right">Evidence</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(r => (
-          <tr key={r.name} className="border-t border-slate-800 text-slate-300">
-            <td className="py-1.5 pr-2 text-slate-100 truncate max-w-[180px]" title={r.name}>{r.name}</td>
-            <td className="py-1.5 text-right tabular-nums whitespace-nowrap">{r.sent ? <>{r.success} of {num(r.sent)}</> : '—'}</td>
-            <td className="py-1.5 text-right tabular-nums">{num(r.left)}</td>
-            <td className="py-1.5 text-right"><Evidence c={r.confidence} direction={r.direction} /></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
-
-const CREATIVE_LABELS: Record<string, string> = {
-  angle: 'Message angle', layout: 'Poster layout', image_headline: 'Headline on the image',
-  language_match: 'Language', body_length: 'Message length', time_of_day: 'Time sent (IST)', weekday: 'Day sent',
+const IMPACT: Record<string, { bar: string; tag: string; tint: string; label: string }> = {
+  high: { bar: 'bg-emerald-500', tag: 'bg-emerald-950 text-emerald-300 border-emerald-800/60', tint: 'bg-emerald-950 text-emerald-300', label: 'High impact' },
+  medium: { bar: 'bg-sky-500', tag: 'bg-sky-950 text-sky-300 border-sky-800/60', tint: 'bg-sky-950 text-sky-300', label: 'Medium impact' },
+  low: { bar: 'bg-slate-600', tag: 'bg-slate-950 text-slate-400 border-slate-800', tint: 'bg-slate-950 text-slate-400', label: 'Low impact' },
 };
 
-const CreativeTable: React.FC<{ dim: string; rows: CreativeRow[] }> = ({ dim, rows }) => (
-  <div className="min-w-0">
-    <div className="text-xs font-semibold text-slate-300 mb-1.5">{CREATIVE_LABELS[dim] || dim}</div>
-    {rows.length === 0 ? <div className="text-[11px] text-slate-500">No results yet.</div> : (
-      <table className="w-full text-xs">
-        <tbody>
-          {rows.slice(0, 4).map(r => (
-            <tr key={r.value} className="border-t border-slate-800 first:border-0 text-slate-300">
-              <td className="py-1.5 pr-2 text-slate-100 truncate max-w-[200px]" title={r.value}>{r.value}</td>
-              <td className="py-1.5 text-right tabular-nums whitespace-nowrap">{r.success} of {num(r.sent)} <span className="text-slate-500">({pct(r.rate)})</span></td>
-              <td className="py-1.5 pl-2 text-right"><Evidence c={r.confidence} direction={r.direction} campaigns={r.campaigns} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    )}
-  </div>
+const NextSteps: React.FC<{ plan: Plan }> = ({ plan }) => (
+  <Card icon="checklist" title="What to do next" tint="bg-emerald-950 text-emerald-300"
+    subtitle="Most effective first, worked out afresh from every campaign whenever this page opens.">
+    <div className="space-y-3">
+      {plan.next_steps.map((s, i) => {
+        const im = IMPACT[s.impact] || IMPACT.low;
+        return (
+          <article key={i} className="relative overflow-hidden rounded-lg border border-slate-800 bg-slate-950/60 pl-5 pr-4 py-3.5">
+            <span className={`absolute left-0 top-0 bottom-0 w-1 ${im.bar}`} />
+            <div className="flex items-start gap-3">
+              <span className={`h-8 w-8 shrink-0 rounded-full flex items-center justify-center ${im.tint}`}>
+                <Icon name={s.icon || 'arrow_forward'} className="text-[18px]" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-semibold text-slate-500 tabular-nums">{String(i + 1).padStart(2, '0')}</span>
+                  <h4 className="text-sm font-semibold text-slate-100">{s.title}</h4>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${im.tag}`}>{im.label}</span>
+                </div>
+                <p className="text-[13px] text-slate-300 mt-1 leading-relaxed">{s.detail}</p>
+                <p className="text-[11.5px] text-slate-500 mt-1.5 flex gap-1"><Icon name="info" className="text-[14px]" />{s.why}</p>
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  </Card>
 );
+
+// ---------------------------------------------------------------------------
+// From message to lead
+// ---------------------------------------------------------------------------
+
+const Funnel: React.FC<{ plan: Plan }> = ({ plan }) => {
+  const steps = plan.funnel.steps;
+  const leak = plan.funnel.biggest_leak;
+  const max = Math.max(1, ...steps.map(s => s.count));
+  // Counts run from thousands down to a handful: a log scale keeps every step visible.
+  const width = (n: number) => `${Math.max(4, (Math.log10(n + 1) / Math.log10(max + 1)) * 100)}%`;
+  return (
+    <Card icon="filter_alt" title="From message to lead" tint="bg-sky-950 text-sky-300"
+      subtitle="How many reached each step, and what share of the step before got through.">
+      <ol>
+        {steps.map((s, i) => {
+          const isLeak = leak?.step === s.key;
+          return (
+            <li key={s.key}>
+              {i > 0 && s.from_previous != null && (
+                <div className={`flex items-center gap-1 pl-[42%] h-5 text-[10.5px] font-semibold ${isLeak ? 'text-rose-400' : 'text-slate-500'}`}>
+                  <Icon name="south" className="text-[13px]" />{pct(s.from_previous)}
+                  {s.of_tracked != null && <span className="font-normal text-slate-500">of {num(s.of_tracked)} tracked</span>}
+                </div>
+              )}
+              <div className="grid grid-cols-[40%_1fr] items-center gap-3">
+                <span className={`text-[13px] truncate text-right ${isLeak ? 'text-rose-300 font-semibold' : 'text-slate-300'}`} title={s.label}>{s.label}</span>
+                <div className="flex items-center gap-2">
+                  <div className={`h-6 rounded-md flex items-center px-2 ${isLeak ? 'bg-rose-500' : i === steps.length - 1 ? 'bg-amber-400' : 'bg-sky-500'}`}
+                    style={{ width: width(s.count), opacity: isLeak ? 1 : 0.35 + 0.65 * (1 - i / steps.length) }}>
+                    <span className="text-[11px] font-semibold text-white tabular-nums">{num(s.count)}</span>
+                  </div>
+                  {s.waiting > 0 && (
+                    <span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-950 text-amber-300 whitespace-nowrap" title="Asked, not answered yet">
+                      {s.waiting} deciding
+                    </span>
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      {leak && (
+        <div className="mt-4 rounded-lg border border-rose-800/60 bg-rose-950 p-3.5 flex gap-3">
+          <Icon name="warning" className="text-rose-400 text-[20px]" />
+          <div className="text-[13px] text-rose-200">
+            <div className="font-semibold text-rose-300">Biggest drop: {leak.label}</div>
+            <div className="mt-0.5">Only {leak.to} of {leak.from} got through. {leak.advice}</div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Who to call
+// ---------------------------------------------------------------------------
+
+const initials = (name: string | null, phone: string) =>
+  (name || '').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase() || phone.slice(-2);
+
+const CallList: React.FC<{ plan: Plan }> = ({ plan }) => (
+  <Card icon="call" title="Call these people first" tint="bg-amber-950 text-amber-300"
+    subtitle="Part-way to applying and not ruled out: the quickest leads there are.">
+    {plan.warm_people.length === 0 ? (
+      <div className="text-sm text-slate-500 py-6 text-center">Nobody part-way right now.</div>
+    ) : (
+      <ul className="divide-y divide-slate-800">
+        {plan.warm_people.map(p => (
+          <li key={p.phone} className="flex items-center gap-3 py-2.5">
+            <span className="h-9 w-9 shrink-0 rounded-full bg-sky-950 text-sky-300 text-xs font-bold flex items-center justify-center">
+              {initials(p.name, p.phone)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-slate-100 truncate">{p.name || p.phone}</div>
+              <div className="text-[11.5px] text-slate-500 flex flex-wrap gap-x-2">
+                <span className="font-mono select-text">{p.phone}</span>
+                {p.last_message_at && <span>· {formatDateTime(p.last_message_at)}</span>}
+              </div>
+            </div>
+            <span className="hidden sm:inline text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 whitespace-nowrap">{p.stage}</span>
+            <a href={`#inbox/${p.phone.replace(/\D/g, '')}`} title="Open the chat"
+              className="h-8 w-8 rounded-full border border-slate-800 text-slate-400 hover:text-sky-300 hover:bg-slate-950 flex items-center justify-center">
+              <Icon name="chat" className="text-[18px]" />
+            </a>
+            <a href={`tel:${p.phone}`} title="Call"
+              className="h-8 w-8 rounded-full bg-emerald-500 text-white hover:opacity-90 flex items-center justify-center">
+              <Icon name="call" className="text-[18px]" />
+            </a>
+          </li>
+        ))}
+      </ul>
+    )}
+  </Card>
+);
+
+// ---------------------------------------------------------------------------
+// Where and whom to message
+// ---------------------------------------------------------------------------
+
+const TargetList: React.FC<{ title: string; icon: string; rows: GrowthRow[] }> = ({ title, icon, rows }) => {
+  const tried = rows.filter(r => r.confidence !== 'untried');
+  const untried = rows.filter(r => r.confidence === 'untried');
+  const top = Math.max(0.0001, ...tried.map(r => r.rate || 0));
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+        <Icon name={icon} className="text-[16px]" />{title}
+      </div>
+      <ul className="space-y-2.5">
+        {tried.map(r => (
+          <li key={r.name}>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-100 truncate flex-1" title={r.name}>{r.name}</span>
+              <Chip c={r.confidence} direction={r.direction} />
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="h-1.5 flex-1 rounded-full bg-slate-800 overflow-hidden">
+                <div className={`h-full rounded-full ${r.direction === 'worse' ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                  style={{ width: `${((r.rate || 0) / top) * 100}%` }} />
+              </div>
+              <span className="text-[11.5px] text-slate-400 tabular-nums whitespace-nowrap w-24 text-right">{r.success} of {num(r.sent)}</span>
+              <span className={`text-[11px] tabular-nums whitespace-nowrap w-20 text-right ${r.left ? 'text-sky-300 font-semibold' : 'text-slate-500'}`}>
+                {r.left ? `${num(r.left)} left` : 'all sent'}
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {untried.length > 0 && (
+        <div className="mt-4">
+          <div className="text-[11px] font-semibold text-purple-300 mb-1.5">Worth a small test</div>
+          <div className="flex flex-wrap gap-1.5">
+            {untried.map(r => (
+              <span key={r.name} className="text-[11.5px] px-2.5 py-1 rounded-full border border-purple-800/60 bg-purple-950 text-purple-300">
+                {r.name} <span className="opacity-70">· {num(r.left)}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const Targets: React.FC<{ plan: Plan }> = ({ plan }) => (
+  <Card icon="travel_explore" title="Where and whom to message next" tint="bg-purple-950 text-purple-300"
+    subtitle={<>Judged on “{plan.judged_on_label}”. Bars show how many of those reached went on; “left” is businesses with a mobile number not yet messaged ({num(plan.targets.reachable_left)} in all).</>}>
+    <div className="grid gap-8 lg:grid-cols-2">
+      <TargetList title="Districts" icon="location_on" rows={plan.targets.districts} />
+      <TargetList title="Categories" icon="storefront" rows={plan.targets.categories} />
+    </div>
+  </Card>
+);
+
+// ---------------------------------------------------------------------------
+// What the templates that worked had in common
+// ---------------------------------------------------------------------------
+
+const RECIPE_LABELS: Record<string, string> = {
+  angle: 'Angle', layout: 'Layout', image_headline: 'Image headline', language: 'Language',
+  time_of_day: 'Sent', weekday: 'Day',
+};
+const CREATIVE_LABELS: Record<string, string> = {
+  angle: 'Message angle', layout: 'Poster layout', image_headline: 'Headline on the image',
+  language_match: 'Language', time_of_day: 'Time sent (IST)', weekday: 'Day sent',
+};
+
+const Compare: React.FC<{ dim: string; rows: CreativeRow[] }> = ({ dim, rows }) => {
+  const top = Math.max(0.0001, ...rows.map(r => r.rate));
+  return (
+    <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3.5 min-w-0">
+      <div className="text-xs font-semibold text-slate-400 mb-2">{CREATIVE_LABELS[dim] || dim}</div>
+      {rows.length === 0 ? <div className="text-[12px] text-slate-500">No results yet.</div> : (
+        <ul className="space-y-2">
+          {rows.slice(0, 3).map(r => (
+            <li key={r.value}>
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] text-slate-100 truncate flex-1" title={r.value}>{r.value}</span>
+                <span className="text-[11.5px] text-slate-400 tabular-nums">{pct(r.rate)}</span>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <div className="h-1.5 flex-1 rounded-full bg-slate-800 overflow-hidden">
+                  <div className={`h-full rounded-full ${r.direction === 'worse' ? 'bg-rose-500' : 'bg-sky-500'}`} style={{ width: `${(r.rate / top) * 100}%` }} />
+                </div>
+                <Chip c={r.confidence} direction={r.direction} campaigns={r.campaigns} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+const Creative: React.FC<{ plan: Plan }> = ({ plan }) => {
+  const c = plan.creative;
+  const show = c.showcase;
+  const img = show ? mediaUrl(show.header_content) : null;
+  return (
+    <Card icon="auto_awesome" title="What the templates that worked had in common" tint="bg-amber-950 text-amber-300"
+      subtitle={<>Judged on “{plan.judged_on_label}”. The template agents read this before writing each new template.</>}>
+      {show && (
+        <div className="rounded-xl border border-amber-800/60 bg-amber-950/60 p-4 mb-5 flex flex-col md:flex-row gap-5">
+          {img && (
+            <img src={img} alt="" className="w-full md:w-64 aspect-[3/2] object-cover rounded-lg border border-slate-800 bg-slate-950 shrink-0" />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] uppercase tracking-wider font-semibold text-amber-300">Best template so far</div>
+            <div className="text-lg font-semibold text-slate-100 mt-0.5 truncate">{show.template}</div>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-1">
+              <span className="text-3xl font-bold text-slate-100 tabular-nums">{pct(show.rate)}</span>
+              <span className="text-sm text-slate-400">{show.success} of {num(show.sent)} went on</span>
+              <Chip c={show.confidence} direction={show.direction} />
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {Object.entries(show.recipe).filter(([, v]) => v && !String(v).startsWith('No ')).map(([k, v]) => (
+                <span key={k} className="text-[11.5px] px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-slate-300 max-w-full truncate">
+                  <span className="text-slate-500">{RECIPE_LABELS[k] || k}:</span> {v}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {['angle', 'layout', 'image_headline', 'language_match', 'time_of_day', 'weekday'].map(d =>
+          <Compare key={d} dim={d} rows={(c[d] as CreativeRow[]) || []} />)}
+      </div>
+      {(c.untried_angles.length > 0 || c.untried_layouts.length > 0) && (
+        <div className="mt-4 flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] font-semibold text-purple-300 mr-1">Not tried yet:</span>
+          {c.untried_angles.map(a => <span key={a} className="text-[11.5px] px-2.5 py-1 rounded-full border border-purple-800/60 bg-purple-950 text-purple-300">{a}</span>)}
+          {c.untried_layouts.map(l => <span key={l} className="text-[11.5px] px-2.5 py-1 rounded-full border border-purple-800/60 bg-purple-950 text-purple-300">{l} layout</span>)}
+        </div>
+      )}
+    </Card>
+  );
+};
+
+// ---------------------------------------------------------------------------
 
 export const GrowthPlan: React.FC = () => {
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -216,42 +436,23 @@ export const GrowthPlan: React.FC = () => {
 
   useEffect(() => { fetchGrowthPlan().then(setPlan).catch(e => setError(e.message)); }, []);
 
-  if (error) return <div className="mb-6 p-3 rounded border border-rose-600/50 bg-rose-900/20 text-rose-200 text-sm">Growth plan: {error}</div>;
-  if (!plan) return <div className="mb-6 text-sm text-slate-500">Working out the growth plan…</div>;
+  if (error) return <div className="p-3 rounded-lg border border-rose-800/60 bg-rose-950 text-rose-300 text-sm">Growth plan: {error}</div>;
+  if (!plan) return (
+    <div className="rounded-2xl h-48 animate-pulse" style={{ background: 'linear-gradient(120deg, #0a3543, #16435a)' }} />
+  );
 
-  const stage = plan.judged_on_label;
   return (
-    <div className="mb-8 space-y-4">
-      <GoalCard plan={plan} />
-      <div className="grid gap-4 xl:grid-cols-2">
+    <div className="space-y-5">
+      <Goal plan={plan} />
+      <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
         <NextSteps plan={plan} />
-        <div className="space-y-4">
+        <div className="space-y-5 min-w-0">
           <Funnel plan={plan} />
-          <WarmPeople plan={plan} />
+          <CallList plan={plan} />
         </div>
       </div>
-      <Section title="Where and whom to message next"
-        subtitle={<>Judged on “{stage}”, the furthest step with enough people to compare. Places and categories that answered come first, then the biggest untried ones. {num(plan.targets.reachable_left)} businesses with a mobile number have not been messaged yet.</>}>
-        <div className="grid gap-6 lg:grid-cols-2">
-          <TargetTable title="Districts" rows={plan.targets.districts} stage={stage} />
-          <TargetTable title="Categories" rows={plan.targets.categories} stage={stage} />
-        </div>
-      </Section>
-      <Section title="What the templates that worked had in common"
-        subtitle={<>Judged on “{stage}”. “1 campaign” means the result could equally be that campaign's place or timing. The template agents read this before writing.</>}>
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {['angle', 'layout', 'image_headline', 'language_match', 'time_of_day', 'weekday'].map(d =>
-            <CreativeTable key={d} dim={d} rows={(plan.creative[d] as CreativeRow[]) || []} />)}
-        </div>
-        {(plan.creative.untried_angles.length > 0 || plan.creative.untried_layouts.length > 0) && (
-          <div className="mt-4 text-xs text-slate-400">
-            <span className="text-violet-300 font-semibold">Not tried yet:</span>{' '}
-            {plan.creative.untried_angles.length > 0 && <>angles {plan.creative.untried_angles.join(', ')}</>}
-            {plan.creative.untried_angles.length > 0 && plan.creative.untried_layouts.length > 0 && '; '}
-            {plan.creative.untried_layouts.length > 0 && <>poster layouts {plan.creative.untried_layouts.join(', ')}</>}.
-          </div>
-        )}
-      </Section>
+      <Targets plan={plan} />
+      <Creative plan={plan} />
     </div>
   );
 };

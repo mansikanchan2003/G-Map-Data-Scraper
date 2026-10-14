@@ -294,6 +294,27 @@ def targets(db: Session, book: dict) -> dict:
     }
 
 
+def _showcase(book: dict) -> Optional[dict]:
+    """The template that moved the most people, with its creative, if any moved."""
+    rows = [r for r in _ranked(book, "template") if r["success"] and r["sent"] >= 10]
+    if not rows:
+        return None
+    best = max(rows, key=lambda r: (r["success_rate"], r["sent"]))
+    fact = next(f for f in book["_facts"] if f["template"] == best["values"]["template"])
+    from src.models.whatsapp import WhatsAppTemplate
+
+    db = book.get("_db")
+    t = (db.query(WhatsAppTemplate).filter(WhatsAppTemplate.template_id == fact["template_id"]).first()
+         if db is not None and fact["template_id"] else None)
+    header, body = (t.header_content, t.body) if t else (None, None)
+    return {
+        "template": best["values"]["template"], "sent": best["sent"], "success": best["success"],
+        "rate": best["success_rate"], "confidence": best["confidence"], "direction": best["direction"],
+        "header_content": header, "body": (body or "")[:400],
+        "recipe": {k: fact[k] for k in ("angle", "layout", "image_headline", "language", "time_of_day", "weekday")},
+    }
+
+
 CREATIVE_DIMS = ("angle", "layout", "image_headline", "header", "body_length", "language_match",
                  "time_of_day", "weekday")
 
@@ -318,6 +339,7 @@ def creative(book: dict) -> dict:
                     for r in rows[:6]]
     used_angles = {r["value"] for r in out["angle"]}
     used_layouts = {r["value"].lower() for r in out["layout"]}
+    out["showcase"] = _showcase(book)
     out["untried_angles"] = [k.replace("_", " ") for k in creative_brief.ANGLES
                              if k.replace("_", " ") not in used_angles][:6]
     out["untried_layouts"] = [l for l in LAYOUTS if l not in used_layouts]
@@ -330,6 +352,7 @@ def next_steps(g: dict, f: dict, warm: List[dict], t: dict, c: dict, book: dict)
     if warm:
         names = ", ".join(p["name"] or p["phone"] for p in warm[:5])
         steps.append({
+            "icon": "call",
             "title": f"Call the {len(warm)} people already part-way to applying",
             "detail": f"They are qualified so far and stopped mid-way ({names}{'…' if len(warm) > 5 else ''}). "
                       "A call or a WhatsApp message from the team is the quickest way to a lead.",
@@ -339,6 +362,7 @@ def next_steps(g: dict, f: dict, warm: List[dict], t: dict, c: dict, book: dict)
     if f["biggest_leak"]:
         leak = f["biggest_leak"]
         steps.append({
+            "icon": "trending_down",
             "title": f"Fix the biggest drop: {leak['label'].lower()}",
             "detail": leak["advice"],
             "why": f"Only {leak['to']} of {leak['from']} people get past this step "
@@ -349,6 +373,7 @@ def next_steps(g: dict, f: dict, warm: List[dict], t: dict, c: dict, book: dict)
     if good_places:
         top = good_places[:3]
         steps.append({
+            "icon": "location_on",
             "title": "Send next to the places that answered",
             "detail": "; ".join(f"{d['name']}: {d['success']} of {d['sent']} reached went on, "
                                 f"{d['left']} businesses not yet messaged" for d in top),
@@ -360,6 +385,7 @@ def next_steps(g: dict, f: dict, warm: List[dict], t: dict, c: dict, book: dict)
     good_cats = [x for x in t["categories"] if x["success"] and x["left"]]
     if good_cats:
         steps.append({
+            "icon": "storefront",
             "title": "Target the categories that answered",
             "detail": "; ".join(f"{x['name']}: {x['success']} of {x['sent']}, {x['left']} left" for x in good_cats[:4]),
             "why": "These owners responded; more of the same kind are waiting.",
@@ -368,6 +394,7 @@ def next_steps(g: dict, f: dict, warm: List[dict], t: dict, c: dict, book: dict)
     untried = [x for x in t["categories"] if x["confidence"] == "untried"][:3]
     if untried:
         steps.append({
+            "icon": "science",
             "title": "Test new categories in small batches",
             "detail": "Send 50–100 messages each to " + ", ".join(f"{x['name']} ({x['left']} available)" for x in untried)
                       + " to learn whether they answer.",
@@ -376,6 +403,7 @@ def next_steps(g: dict, f: dict, warm: List[dict], t: dict, c: dict, book: dict)
         })
     if c["untried_angles"] or c["untried_layouts"]:
         steps.append({
+            "icon": "palette",
             "title": "Try a new kind of template",
             "detail": ("Angles not used yet: " + ", ".join(c["untried_angles"][:4]) + ". " if c["untried_angles"] else "")
                       + ("Poster layouts not used yet: " + ", ".join(c["untried_layouts"]) + "." if c["untried_layouts"] else ""),
@@ -384,6 +412,7 @@ def next_steps(g: dict, f: dict, warm: List[dict], t: dict, c: dict, book: dict)
         })
     if g["still_needed"] and g["messages_needed"]:
         steps.append({
+            "icon": "send",
             "title": f"Send about {g['messages_needed']:,} more messages, or convert better",
             "detail": f"At today's rate ({g['leads_per_1000']} leads per 1,000 messages) the remaining "
                       f"{g['still_needed']} leads need about {g['messages_needed']:,} messages in {g['days_left']} days.",
@@ -398,6 +427,7 @@ def plan(db: Session) -> dict:
     facts = ci.load_facts(db)
     book = ci.playbook(db, facts)
     book["_facts"] = facts
+    book["_db"] = db
     people = _people(db)
     g = goal(db, people, facts)
     f = funnel(db, people, facts)

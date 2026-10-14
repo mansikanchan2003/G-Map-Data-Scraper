@@ -199,8 +199,19 @@ export interface GrowthPlan {
     best_pairs: { district: string; category: string; left: number }[];
     reachable_left: number;
   };
-  creative: Record<string, CreativeRow[]> & { untried_angles: string[]; untried_layouts: string[] };
-  next_steps: { title: string; detail: string; why: string; impact: 'high' | 'medium' | 'low' }[];
+  creative: Record<string, any> & {
+    untried_angles: string[];
+    untried_layouts: string[];
+    /** The template that moved the most people, with its image and what it was made of. */
+    showcase: {
+      template: string; sent: number; success: number; rate: number;
+      confidence: Confidence; direction: 'better' | 'worse' | 'none';
+      header_content: string | null; body: string;
+      recipe: Record<string, string>;
+    } | null;
+  };
+  /** icon: a Material Symbols name. */
+  next_steps: { title: string; detail: string; why: string; impact: 'high' | 'medium' | 'low'; icon?: string }[];
 }
 
 export const fetchGrowthPlan = () => call<GrowthPlan>('/growth');

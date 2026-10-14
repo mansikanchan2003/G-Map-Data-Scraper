@@ -59,7 +59,7 @@ const RateBar: React.FC<{ row: SegmentStats; max: number }> = ({ row, max }) => 
 };
 
 const Card: React.FC<{ title: string; subtitle?: React.ReactNode; children: React.ReactNode; right?: React.ReactNode }> = ({ title, subtitle, children, right }) => (
-  <section className="rounded-lg border border-slate-800 bg-slate-900 mb-6">
+  <section className="rounded-xl border border-slate-800 bg-slate-900 shadow-sm mb-6">
     <div className="p-4 border-b border-slate-800 flex items-start justify-between gap-4">
       <div>
         <h2 className="text-sm font-semibold text-slate-100">{title}</h2>
@@ -122,6 +122,8 @@ const mediaUrl = (headerContent: string | null) => {
 
 // ---------------------------------------------------------------------------
 
+type Tab = 'plan' | 'deep' | 'campaigns' | 'history';
+
 export const CampaignInsightsView: React.FC = () => {
   const [book, setBook] = useState<Playbook | null>(null);
   const [dims, setDims] = useState<DimensionInfo[]>([]);
@@ -130,6 +132,10 @@ export const CampaignInsightsView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openCampaign, setOpenCampaign] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>(() => {
+    try { return (localStorage.getItem('insights-tab') as Tab) || 'plan'; } catch { return 'plan'; }
+  });
+  useEffect(() => { try { localStorage.setItem('insights-tab', tab); } catch { /* private window */ } }, [tab]);
 
   const labels = useMemo(() => Object.fromEntries(dims.map(d => [d.key, d.label])), [dims]);
 
@@ -152,45 +158,71 @@ export const CampaignInsightsView: React.FC = () => {
     try { await takeSnapshot(); setHistory(await fetchInsightHistory()); } catch (e: any) { setError(e.message); }
   };
 
+  const tabs: { key: Tab; label: string; icon: string }[] = [
+    { key: 'plan', label: 'Plan', icon: 'flag' },
+    { key: 'deep', label: 'Deep dive', icon: 'query_stats' },
+    { key: 'campaigns', label: 'Campaigns', icon: 'campaign' },
+    { key: 'history', label: 'History', icon: 'history' },
+  ];
+
   return (
-    <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-950 text-slate-100 p-6 overflow-y-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Campaign Insights</h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            The lead goal and what to do next, then what has worked across every campaign
-            {book?.judged_on_label ? <> (judged on “{book.judged_on_label}”)</> : null}.
-          </p>
+    <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-950 text-slate-100 overflow-y-auto">
+      <div className="px-6 pt-6 max-w-[1500px] w-full mx-auto">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Campaign Insights</h1>
+            <p className="text-sm text-slate-500 mt-1">
+              The lead goal, what to do next, and what has worked across every campaign.
+            </p>
+          </div>
+          <button onClick={load} disabled={loading}
+            className="h-9 px-3.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-sm font-medium rounded-lg flex items-center gap-1.5 disabled:opacity-50 shadow-sm">
+            <span className={`material-symbols-outlined text-[18px] ${loading ? 'animate-spin' : ''}`}>sync</span>
+            {loading ? 'Analysing…' : 'Refresh'}
+          </button>
         </div>
-        <button onClick={load} disabled={loading}
-          className="h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-mono-code font-semibold rounded flex items-center gap-1.5 disabled:opacity-50">
-          <span className={`material-symbols-outlined text-[16px] ${loading ? 'animate-spin' : ''}`}>sync</span>
-          {loading ? 'Analysing...' : 'Refresh'}
-        </button>
+        <nav className="mt-5 flex gap-1 border-b border-slate-800 overflow-x-auto no-scrollbar">
+          {tabs.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`-mb-px px-4 py-2.5 text-sm font-medium flex items-center gap-1.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${tab === t.key
+                ? 'border-sky-500 text-slate-100' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
+              <span className="material-symbols-outlined text-[18px]">{t.icon}</span>{t.label}
+              {t.key === 'campaigns' && campaigns.length > 0 && (
+                <span className="ml-0.5 text-[10.5px] px-1.5 rounded-full bg-slate-800 text-slate-400">{campaigns.length}</span>
+              )}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      {error && <div className="mb-4 p-3 rounded border border-rose-600/50 bg-rose-900/20 text-rose-200 text-sm">{error}</div>}
-      <GrowthPlan key={book?.computed_at || 'plan'} />
-      {book && <Readiness book={book} />}
-      {book && <Kpis book={book} />}
-      {book && <WhatWorks book={book} />}
-      {book && <WinningTemplates book={book} />}
-      {book && (
-        <Card title="Best combinations"
-          subtitle={`Pairs of factors — template × state, category × time of day, and every other pair — that responded better than the rest, on at least ${book.thresholds.min_sent} sends each.`}>
-          {book.combinations.length === 0 ? (
-            <div className="text-sm text-slate-500">
-              No combination stands out yet. They appear here once a pair of factors beats the rest on enough responses.
-            </div>
-          ) : (
-            <SegmentTable rows={book.combinations} dims={Object.keys(book.combinations[0].values)}
-              labels={labels} />
-          )}
-        </Card>
-      )}
-      {dims.length > 0 && <Explore dims={dims} labels={labels} />}
-      <CampaignList rows={campaigns} open={openCampaign} onOpen={setOpenCampaign} labels={labels} />
-      <History rows={history} labels={labels} onSnapshot={snapshot} />
+      <div className="px-6 py-6 max-w-[1500px] w-full mx-auto">
+        {error && <div className="mb-4 p-3 rounded-lg border border-rose-800/60 bg-rose-950 text-rose-300 text-sm">{error}</div>}
+        {tab === 'plan' && <GrowthPlan key={book?.computed_at || 'plan'} />}
+        {tab === 'deep' && (
+          <>
+            {book && <Readiness book={book} />}
+            {book && <Kpis book={book} />}
+            {book && <WhatWorks book={book} />}
+            {book && <WinningTemplates book={book} />}
+            {book && (
+              <Card title="Best combinations"
+                subtitle={`Pairs of factors — template × state, category × time of day, and every other pair — that did better than the rest, on at least ${book.thresholds.min_sent} sends each.`}>
+                {book.combinations.length === 0 ? (
+                  <div className="text-sm text-slate-500">
+                    No combination stands out yet. They appear here once a pair of factors beats the rest on enough people.
+                  </div>
+                ) : (
+                  <SegmentTable rows={book.combinations} dims={Object.keys(book.combinations[0].values)}
+                    labels={labels} />
+                )}
+              </Card>
+            )}
+            {dims.length > 0 && <Explore dims={dims} labels={labels} />}
+          </>
+        )}
+        {tab === 'campaigns' && <CampaignList rows={campaigns} open={openCampaign} onOpen={setOpenCampaign} labels={labels} />}
+        {tab === 'history' && <History rows={history} labels={labels} onSnapshot={snapshot} />}
+      </div>
     </div>
   );
 };
@@ -228,8 +260,9 @@ const Kpis: React.FC<{ book: Playbook }> = ({ book }) => {
       <Tile label="Messages sent" value={num(o.sent)} />
       <Tile label="Delivered" value={o.tracked ? num(o.delivered) : '—'} note={`reported for ${pct(book.coverage.with_delivery_report)} of sends`} />
       <Tile label="Read" value={o.tracked ? num(o.read) : '—'} note={o.read_rate != null ? `${pct(o.read_rate)} of delivered` : undefined} />
-      <Tile label="Responded" value={num(o.responded)} note={`${num(o.visited)} link visits · ${num(o.tapped)} taps`} />
-      <Tile label="Response rate" value={pct(o.response_rate, 2)} note="responses per message sent" />
+      <Tile label={book.judged_on_label || 'Responded'} value={num(o.success ?? o.responded)}
+        note={`${num(o.visited)} link visits · ${num(o.tapped)} taps · replies included`} />
+      <Tile label="Rate" value={pct(rateOf(o), 2)} note={`“${(book.judged_on_label || 'responses').toLowerCase()}” per message sent`} />
     </div>
   );
 };
@@ -262,14 +295,14 @@ const WhatWorks: React.FC<{ book: Playbook }> = ({ book }) => {
                       <>
                         <div className="text-slate-100 mt-0.5 break-words">{pick.values[key]}</div>
                         <div className="flex items-center gap-1.5 mt-1">
-                          <span className="tabular-nums text-slate-300">{pct(pick.response_rate, 2)}</span>
+                          <span className="tabular-nums text-slate-300">{pct(rateOf(pick), 2)}</span>
                           <span className="text-slate-600">of {num(pick.sent)}</span>
                           <Badge c={d.best ? d.best.confidence : 'too_early'} />
                         </div>
                       </>
                     ) : <div className="text-slate-600 mt-0.5">No data</div>}
                     {d.worst && (
-                      <div className="text-[11px] text-rose-300/80 mt-0.5">Weakest: {d.worst.values[key]} ({pct(d.worst.response_rate, 2)})</div>
+                      <div className="text-[11px] text-rose-300/80 mt-0.5">Weakest: {d.worst.values[key]} ({pct(rateOf(d.worst), 2)})</div>
                     )}
                   </div>
                 );
@@ -283,7 +316,7 @@ const WhatWorks: React.FC<{ book: Playbook }> = ({ book }) => {
 };
 
 const WinningTemplates: React.FC<{ book: Playbook }> = ({ book }) => (
-  <Card title="Templates people responded to most"
+  <Card title="Templates that moved people most"
     subtitle="Ranked by the low end of their response range, so a lucky small send does not outrank a steady large one. Use these as the reference for new templates and images.">
     {book.winning_templates.length === 0 ? <div className="text-sm text-slate-500">No campaigns yet.</div> : (
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -298,7 +331,7 @@ const WinningTemplates: React.FC<{ book: Playbook }> = ({ book }) => (
                   <span className="text-slate-100 font-semibold truncate">{i + 1}. {t.values.template}</span>
                   <Badge c={t.confidence} />
                 </div>
-                <div className="text-slate-400">{pct(t.response_rate, 2)} response · {num(t.responded)} of {num(t.sent)} sent</div>
+                <div className="text-slate-400">{pct(rateOf(t), 2)} · {num(t.success ?? t.responded)} of {num(t.sent)} went on</div>
                 {t.body && <details><summary className="cursor-pointer text-slate-500 hover:text-slate-300">Message</summary>
                   <div className="mt-1 whitespace-pre-wrap text-slate-400 max-h-48 overflow-y-auto">{t.body}</div></details>}
               </div>
