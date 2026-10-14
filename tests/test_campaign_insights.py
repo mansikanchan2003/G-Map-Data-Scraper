@@ -103,8 +103,11 @@ def test_the_planted_effect_is_found(db, planted):
     assert book["by_dimension"]["category"]["best"]["values"]["category"] == "Insurance agent"
     top = book["combinations"][0]["values"]
     assert set(top.values()) >= {"A", "Insurance agent"} or set(top.values()) >= {"Insurance agent", "Punjabi"}
-    assert book["recipe"]["template"] == {"value": "A", "confidence": "strong",
-                                          "response_rate": book["by_dimension"]["template"]["best"]["response_rate"]}
+    recipe = book["recipe"]["template"]
+    assert (recipe["value"], recipe["confidence"]) == ("A", "strong")
+    assert recipe["success_rate"] == book["by_dimension"]["template"]["best"]["success_rate"]
+    # With no conversations yet, a link visit is as far as anyone got.
+    assert book["judged_on"] == "engaged"
 
 
 def test_every_combination_can_be_explored(db, planted):

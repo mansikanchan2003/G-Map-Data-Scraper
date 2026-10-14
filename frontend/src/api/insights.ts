@@ -17,6 +17,15 @@ export interface SegmentStats {
   responded: number;
   /** Link visits + button taps, per message sent. */
   response_rate: number;
+  /** People who replied or tapped, started applying, qualified, submitted. */
+  engaged?: number;
+  interested?: number;
+  qualified?: number;
+  lead?: number;
+  /** The stage this row is judged on (Playbook.judged_on), its count and rate. */
+  outcome?: Stage;
+  success?: number;
+  success_rate?: number;
   ci_low: number;
   ci_high: number;
   tracked: boolean;
@@ -26,6 +35,8 @@ export interface SegmentStats {
   confidence: Confidence;
   direction: 'better' | 'worse' | 'none';
 }
+
+export type Stage = 'engaged' | 'interested' | 'qualified' | 'lead';
 
 export interface DimensionSummary {
   label: string;
@@ -38,6 +49,9 @@ export interface DimensionSummary {
 
 export interface Playbook {
   computed_at: string;
+  /** Segments are ranked and judged on how many reached this stage. */
+  judged_on?: Stage;
+  judged_on_label?: string;
   overall: SegmentStats;
   campaigns: number;
   test_campaigns_excluded: number;
@@ -130,3 +144,63 @@ export const takeSnapshot = () => call<{ snapshot_id: string }>('/snapshot', { m
 export const exploreInsights = (dims: string[], minSent: number) =>
   call<{ dims: string[]; overall: SegmentStats | null; rows: SegmentStats[] }>(
     `/explore?dims=${encodeURIComponent(dims.join(','))}&min_sent=${minSent}`);
+
+// --- The growth plan: leads against the goal, and what to do next -----------
+
+export interface GrowthRow {
+  name: string;
+  sent: number;
+  success: number;
+  rate: number | null;
+  confidence: Confidence | 'untried';
+  direction: 'better' | 'worse' | 'none';
+  /** Businesses with a mobile number there that no campaign has messaged. */
+  left: number;
+}
+
+export interface CreativeRow {
+  value: string;
+  sent: number;
+  success: number;
+  rate: number;
+  confidence: Confidence;
+  direction: 'better' | 'worse' | 'none';
+  /** How many campaigns this rests on; one means it may be the place or time. */
+  campaigns: number;
+}
+
+export interface GrowthPlan {
+  computed_at: string;
+  goal: {
+    target: number;
+    deadline: string;
+    leads: number;
+    still_needed: number;
+    days_left: number;
+    per_day_needed: number | null;
+    on_track: boolean;
+    messages_sent: number;
+    leads_per_1000: number | null;
+    messages_needed: number | null;
+    lead_list: { name: string | null; phone: string; submitted_at: string }[];
+  };
+  funnel: {
+    steps: { key: string; label: string; count: number; from_previous: number | null; waiting: number; of_tracked?: number }[];
+    biggest_leak: { step: string; label: string; lost: number; from: number; to: number; advice: string } | null;
+  };
+  warm_people: { name: string | null; phone: string; stage: string; last_message_at: string | null }[];
+  judged_on: Stage;
+  judged_on_label: string;
+  stages: { key: Stage; label: string; count: number }[];
+  targets: {
+    judged_on: Stage;
+    districts: GrowthRow[];
+    categories: GrowthRow[];
+    best_pairs: { district: string; category: string; left: number }[];
+    reachable_left: number;
+  };
+  creative: Record<string, CreativeRow[]> & { untried_angles: string[]; untried_layouts: string[] };
+  next_steps: { title: string; detail: string; why: string; impact: 'high' | 'medium' | 'low' }[];
+}
+
+export const fetchGrowthPlan = () => call<GrowthPlan>('/growth');

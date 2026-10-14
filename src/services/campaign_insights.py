@@ -8,10 +8,14 @@ state, district, tehsil), when it was sent (IST time of day, weekday) and what
 happened (sent, delivered, read, responded). Any dimension, or any combination
 of them, is then just a grouping of those facts.
 
-The measure of success is the RESPONSE RATE: recipients who visited the
-tracked link or tapped a button, per message sent. It is the one outcome
-recorded for every campaign — delivered and read only exist once the webhook
-is live — so it is the only one comparable across all of them.
+The goal is LEADS: people a campaign reached who went on to submit their
+documents. Each fact also carries how far that person got on the way there
+(STAGES: replied or tapped, started applying, qualified, lead), credited to
+the campaign that reached them last before they first wrote back. Leads are
+few, so the playbook judges on the deepest stage that has enough events to
+compare (judged_on), and moves down the ladder to leads as they come in.
+A campaign report still uses the RESPONSE RATE (link visits and button taps
+per message sent), the one outcome recorded for every campaign.
 
 Small samples lie, and most segments are small, so every rate carries a 95%
 Wilson interval and a confidence label. A segment is called better or worse
@@ -29,6 +33,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from src.models import Business
+from src.models.inbox import WhatsAppConversation, WhatsAppMessage
 from src.services import creative_brief
 from src.models.whatsapp import (
     WhatsAppButtonClick, WhatsAppCampaign, WhatsAppCampaignRecipient,
@@ -111,6 +116,9 @@ DIMENSIONS: Dict[str, dict] = {
     "header": {"label": "Header media", "group": "Template"},
     "buttons": {"label": "Buttons", "group": "Template"},
     "body_length": {"label": "Message length", "group": "Template"},
+    "angle": {"label": "Message angle", "group": "Template"},
+    "layout": {"label": "Poster layout", "group": "Template"},
+    "image_headline": {"label": "Headline on the image", "group": "Template"},
     "language": {"label": "Message language", "group": "Template"},
     "language_match": {"label": "Language vs recipient's state", "group": "Template"},
     "state": {"label": "State", "group": "Location"},
@@ -123,6 +131,16 @@ DIMENSIONS: Dict[str, dict] = {
 
 # The groups the user asked about, in the order the page shows them.
 GROUPS = ["Template", "Location", "Category", "Timing"]
+
+# How far someone got after a campaign reached them, nearest the goal last.
+# Each is a 0/1 key on a fact.
+STAGES = [
+    ("engaged", "Replied or tapped"),
+    ("interested", "Started applying"),
+    ("qualified", "Qualified (area, education, ₹5 lakh)"),
+    ("lead", "Lead: documents submitted"),
+]
+STAGE_LABELS = dict(STAGES)
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +160,17 @@ def is_unknown(value) -> bool:
 def test_campaign_ids(db: Session) -> set:
     return {c.campaign_id for c in db.query(WhatsAppCampaign).all()
             if (c.total_contacts or 0) < TEST_CAMPAIGN_MAX}
+
+
+def team_phones(db: Session) -> set:
+    """Numbers the team tests on: everyone a test campaign (under 10 people) went to."""
+    from src.services import inbox
+
+    tests = test_campaign_ids(db)
+    if not tests:
+        return set()
+    return {inbox.normalize_phone(p) for (p,) in db.query(WhatsAppCampaignRecipient.phone)
+            .filter(WhatsAppCampaignRecipient.campaign_id.in_(tests))}
 
 
 def load_facts(db: Session, campaign_ids: Optional[Iterable[str]] = None,
@@ -203,7 +232,10 @@ def load_facts(db: Session, campaign_ids: Optional[Iterable[str]] = None,
             "body_length": _body_length(t.body),
             "language": _LANG_NAMES.get(lang, lang),
             "_lang": lang,
+            **_creative(t),
         }
+
+    outcomes = _outcomes(db, recipients)
 
     facts = []
     for r in recipients:
@@ -211,6 +243,7 @@ def load_facts(db: Session, campaign_ids: Optional[Iterable[str]] = None,
         info = template_info.get(c.template_id if c else None) or {
             "template": "(deleted template)", "header": "Unknown", "buttons": "Unknown",
             "body_length": "Unknown", "language": "Unknown", "_lang": None, "_tracked_link": False,
+            "angle": "Unknown", "layout": "Unknown", "image_headline": "Unknown",
         }
         b = by_id.get(r.business_id) if r.business_id else by_phone.get(r.phone)
         state = (b.state if b else None) or "Unknown"
@@ -233,6 +266,10 @@ def load_facts(db: Session, campaign_ids: Optional[Iterable[str]] = None,
             "district": (b.district if b else None) or "Unknown",
             "tehsil": (b.tehsil if b else None) or "Unknown",
             "category": (b.category if b else None) or "Unknown (uploaded list)",
+            "sent_time": _aware(r.sent_at).isoformat(),
+            # When Meta first reported on it, if it ever did.
+            "report_time": min((_aware(t).isoformat() for t in (r.delivered_at, r.read_at, r.failed_at) if t),
+                               default=None),
             "time_of_day": _time_of_day(sent_ist.hour),
             "weekday": sent_ist.strftime("%A"),
             "sent": 1,
@@ -242,10 +279,100 @@ def load_facts(db: Session, campaign_ids: Optional[Iterable[str]] = None,
             "visited": int(r.recipient_id in visited),
             "tapped": int(r.recipient_id in tapped),
             "responded": int(r.recipient_id in responded),
+            **_funnel(outcomes.get(r.recipient_id), r.recipient_id in responded),
             "failure_code": r.failure_code,
             "tracked_link": info["_tracked_link"],
         })
     return facts
+
+
+def _creative(t: WhatsAppTemplate) -> dict:
+    """What a template's creative was: its angle, poster layout and headline."""
+    g = t.generation or {}
+    poster = g.get("poster") if isinstance(g.get("poster"), dict) else {}
+    angle = g.get("angle_key") or g.get("angle")
+    headline = " ".join(x for x in (poster.get("headline_line1"), poster.get("headline_line2")) if x).strip()
+    if (t.header_type or "").upper() != "IMAGE":
+        layout = "No image"
+    elif g.get("layout"):
+        layout = str(g["layout"]).replace("_", " ").title()
+    elif poster:
+        layout = "Classic"       # posters made before layouts were recorded
+    else:
+        layout = "Own image (uploaded)"
+    return {
+        "angle": str(angle).replace("_", " ") if angle else "Written by hand",
+        "layout": layout,
+        "image_headline": headline or ("No poster text recorded" if layout != "No image" else "No image"),
+    }
+
+
+def _outcomes(db: Session, recipients: list) -> Dict[str, dict]:
+    """
+    How far each person got, against the recipient row credited with it.
+
+    Someone may be reached by several campaigns. The credit goes to the last
+    one sent before they first wrote back or tapped, as that is the message
+    they answered.
+    """
+    from src.services import applications, inbox
+
+    # The team's own numbers also get real campaigns; what they do is testing.
+    team = team_phones(db)
+    by_phone: Dict[str, list] = {}
+    for r in recipients:
+        phone = inbox.normalize_phone(r.phone)
+        if phone not in team:
+            by_phone.setdefault(phone, []).append(r)
+    phones = list(by_phone)
+    convs, first_in = {}, {}
+    for chunk in _chunks(phones, 500):
+        for c in db.query(WhatsAppConversation).filter(WhatsAppConversation.phone.in_(chunk)):
+            convs[c.phone] = c
+        for phone, at in (db.query(WhatsAppMessage.phone, WhatsAppMessage.created_at)
+                          .filter(WhatsAppMessage.phone.in_(chunk), WhatsAppMessage.direction == "IN")):
+            first_in.setdefault(phone, []).append(_aware(at))
+
+    out = {}
+    for phone, conv in convs.items():
+        rows = sorted((r for r in by_phone.get(phone, []) if r.sent_at), key=lambda r: _aware(r.sent_at))
+        if not rows:
+            continue
+        start = _aware(rows[0].sent_at)
+        replies = sorted(t for t in first_in.get(phone, []) if t and t >= start)
+        if not replies:
+            continue
+        credited = [r for r in rows if _aware(r.sent_at) <= replies[0]][-1]
+        data = conv.bot_data or {}
+        q = applications.qualify(conv)
+        out[credited.recipient_id] = {
+            "engaged": 1,
+            "interested": int(applications.is_application(conv)),
+            "qualified": int(q["strongly_qualified"] or conv.documents_submitted_at is not None),
+            "lead": int(conv.documents_submitted_at is not None),
+            "_why_not": q["not_qualified_reasons"],
+            "_step": conv.bot_step,
+            "_guidance": bool(data.get("webinar")),
+        }
+    return out
+
+
+def _funnel(outcome: Optional[dict], responded: bool) -> dict:
+    o = outcome or {}
+    return {
+        "engaged": int(bool(o.get("engaged")) or responded),
+        "interested": o.get("interested", 0),
+        "qualified": o.get("qualified", 0),
+        "lead": o.get("lead", 0),
+    }
+
+
+def judged_on(facts: List[dict]) -> str:
+    """The stage nearest a lead that has enough events to compare segments on."""
+    for key, _label in reversed(STAGES):
+        if sum(f.get(key, 0) for f in facts) >= MIN_RESPONSES:
+            return key
+    return "engaged"
 
 
 def _chunks(items: list, size: int):
@@ -268,18 +395,31 @@ def wilson(k: int, n: int, z: float = 1.96) -> Tuple[float, float]:
     return max(0.0, centre - half), min(1.0, centre + half)
 
 
-def _stats(rows: List[dict]) -> dict:
+COUNTED = ("delivered", "read", "failed", "visited", "tapped", "responded",
+           "engaged", "interested", "qualified", "lead")
+
+
+def _stats(rows: List[dict], outcome: str = "responded") -> dict:
     sent = len(rows)
-    out = {k: sum(r[k] for r in rows) for k in ("delivered", "read", "failed", "visited", "tapped", "responded")}
+    out = {k: sum(r.get(k, 0) for r in rows) for k in COUNTED}
     out["sent"] = sent
     out["response_rate"] = out["responded"] / sent if sent else 0.0
-    out["ci_low"], out["ci_high"] = wilson(out["responded"], sent)
+    _score(out, outcome)
     # Delivery and read rates only mean something where Meta reported at all.
     reported = out["delivered"] + out["failed"]
     out["tracked"] = reported > 0
     out["delivery_rate"] = out["delivered"] / reported if reported else None
     out["read_rate"] = out["read"] / out["delivered"] if out["delivered"] else None
     return out
+
+
+def _score(out: dict, outcome: str) -> None:
+    """The success measure a segment is ranked and judged on, with its interval."""
+    n = out["sent"]
+    out["outcome"] = outcome
+    out["success"] = out.get(outcome, 0)
+    out["success_rate"] = out["success"] / n if n else 0.0
+    out["ci_low"], out["ci_high"] = wilson(out["success"], n)
 
 
 def _verdict(seg: dict, rest: dict) -> Tuple[str, str]:
@@ -291,21 +431,22 @@ def _verdict(seg: dict, rest: dict) -> Tuple[str, str]:
     too_early — not enough sends or responses to say anything
     """
     if (seg["sent"] < MIN_SENT or rest["sent"] < MIN_SENT
-            or seg["responded"] + rest["responded"] < MIN_RESPONSES):
+            or seg["success"] + rest["success"] < MIN_RESPONSES):
         return "too_early", "none"
     if seg["ci_low"] > rest["ci_high"]:
         return "strong", "better"
     if seg["ci_high"] < rest["ci_low"]:
         return "strong", "worse"
-    base = rest["response_rate"]
-    if seg["responded"] >= MIN_SEGMENT_RESPONSES and base and abs(seg["response_rate"] - base) / base >= 0.5:
-        return "likely", "better" if seg["response_rate"] > base else "worse"
+    base = rest["success_rate"]
+    if seg["success"] >= MIN_SEGMENT_RESPONSES and base and abs(seg["success_rate"] - base) / base >= 0.5:
+        return "likely", "better" if seg["success_rate"] > base else "worse"
     return "no_difference", "none"
 
 
-def aggregate(facts: List[dict], dims: Tuple[str, ...], min_sent: int = 1) -> List[dict]:
-    """Groups facts by a combination of dimensions and scores each group."""
-    overall = _stats(facts) if facts else None
+def aggregate(facts: List[dict], dims: Tuple[str, ...], min_sent: int = 1,
+              outcome: str = "responded") -> List[dict]:
+    """Groups facts by a combination of dimensions and scores each group on `outcome`."""
+    overall = _stats(facts, outcome) if facts else None
     groups: Dict[tuple, List[dict]] = {}
     for f in facts:
         groups.setdefault(tuple(f[d] for d in dims), []).append(f)
@@ -314,15 +455,15 @@ def aggregate(facts: List[dict], dims: Tuple[str, ...], min_sent: int = 1) -> Li
     for key, rows in groups.items():
         if len(rows) < min_sent:
             continue
-        seg = _stats(rows)
+        seg = _stats(rows, outcome)
         rest_rows_count = len(facts) - len(rows)
         rest = _stats_from_totals(overall, seg) if rest_rows_count else None
         confidence, direction = _verdict(seg, rest) if rest else ("too_early", "none")
-        base = rest["response_rate"] if rest else 0.0
+        base = rest["success_rate"] if rest else 0.0
         out.append({
             "values": dict(zip(dims, key)),
             **seg,
-            "lift": (seg["response_rate"] - base) / base if base else None,
+            "lift": (seg["success_rate"] - base) / base if base else None,
             "confidence": confidence,
             "direction": direction,
         })
@@ -333,10 +474,10 @@ def aggregate(facts: List[dict], dims: Tuple[str, ...], min_sent: int = 1) -> Li
 
 
 def _stats_from_totals(overall: dict, seg: dict) -> dict:
-    rest = {k: overall[k] - seg[k] for k in ("sent", "delivered", "read", "failed", "visited", "tapped", "responded")}
+    rest = {k: overall[k] - seg[k] for k in ("sent",) + COUNTED}
     n = rest["sent"]
     rest["response_rate"] = rest["responded"] / n if n else 0.0
-    rest["ci_low"], rest["ci_high"] = wilson(rest["responded"], n)
+    _score(rest, overall["outcome"])
     return rest
 
 
@@ -346,11 +487,12 @@ def _stats_from_totals(overall: dict, seg: dict) -> dict:
 
 def playbook(db: Session, facts: Optional[List[dict]] = None) -> dict:
     facts = load_facts(db) if facts is None else facts
-    overall = _stats(facts) if facts else _stats([])
+    outcome = judged_on(facts)
+    overall = _stats(facts, outcome) if facts else _stats([], outcome)
 
     by_dimension = {}
     for dim in DIMENSIONS:
-        rows = aggregate(facts, (dim,))
+        rows = aggregate(facts, (dim,), outcome=outcome)
         # "Unknown" is shown in the tables but never recommended: it is a gap
         # in the data, not a place or a category anyone can target.
         ranked = [r for r in rows if r["sent"] >= MIN_SENT and not is_unknown(r["values"][dim])]
@@ -372,7 +514,7 @@ def playbook(db: Session, facts: Optional[List[dict]] = None) -> dict:
     for a, b in itertools.combinations(DIMENSIONS, 2):
         if {a, b} <= {"state", "district", "tehsil"}:
             continue  # a district already names its state
-        for row in aggregate(facts, (a, b), min_sent=MIN_SENT):
+        for row in aggregate(facts, (a, b), min_sent=MIN_SENT, outcome=outcome):
             if row["direction"] == "better" and not any(is_unknown(v) for v in row["values"].values()):
                 combos.append(row)
     combos.sort(key=lambda r: (0 if r["confidence"] == "strong" else 1, -r["ci_low"]))
@@ -380,7 +522,8 @@ def playbook(db: Session, facts: Optional[List[dict]] = None) -> dict:
     # The templates people responded to most, with their creative, so the
     # next ones can be modelled on them.
     winners = []
-    for row in [r for r in aggregate(facts, ("template",)) if not is_unknown(r["values"]["template"])][:6]:
+    for row in [r for r in aggregate(facts, ("template",), outcome=outcome)
+                if not is_unknown(r["values"]["template"])][:6]:
         tid = next((f["template_id"] for f in facts if f["template"] == row["values"]["template"]), None)
         t = db.query(WhatsAppTemplate).filter(WhatsAppTemplate.template_id == tid).first() if tid else None
         winners.append({**row, "template_id": tid,
@@ -388,15 +531,20 @@ def playbook(db: Session, facts: Optional[List[dict]] = None) -> dict:
                         "body": t.body if t else None})
 
     recipe = {}
-    for dim in ("template", "state", "category", "time_of_day", "weekday", "language_match"):
+    for dim in ("template", "angle", "layout", "state", "district", "category", "time_of_day", "weekday",
+                "language_match"):
         entry = by_dimension[dim]
         pick = entry["best"] or entry["leader"]
         if pick:
             recipe[dim] = {"value": pick["values"][dim], "confidence": pick["confidence"]
-                           if entry["best"] else "too_early", "response_rate": pick["response_rate"]}
+                           if entry["best"] else "too_early", "response_rate": pick["response_rate"],
+                           "success_rate": pick["success_rate"], "sent": pick["sent"], "success": pick["success"]}
 
     return {
         "computed_at": datetime.now(timezone.utc).isoformat(),
+        "judged_on": outcome,
+        "judged_on_label": STAGE_LABELS[outcome],
+        "stages": [{"key": k, "label": label, "count": sum(f.get(k, 0) for f in facts)} for k, label in STAGES],
         "overall": overall,
         "campaigns": len({f["campaign_id"] for f in facts}),
         "test_campaigns_excluded": len(test_campaign_ids(db)),

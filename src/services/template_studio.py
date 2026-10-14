@@ -295,8 +295,12 @@ def _review_history(db: Session, state: str) -> dict:
         if key:
             tried_keys[key] = tried_keys.get(key, 0) + 1
     language_code = creative_brief.language_for_state(state)
+    from src.services import growth_plan
+
     return {"rejected": rejected, "approved": [a for a in approved if a], "tried": tried,
             "tried_keys": tried_keys,
+            # The lead goal and what has moved people towards it, read afresh.
+            "growth": growth_plan.agent_brief(db),
             "mistakes": past_mistakes(db, language_code) if language_code else [],
             "photos": image_prompts.lessons(db)}
 
@@ -449,6 +453,8 @@ RULES:
 
 {GRAMMAR_HEADING.format(lang=lang['name'])}
 {refs}
+
+{history.get('growth') or ''}
 
 HOW TEMPLATES HAVE PERFORMED (response = link visits + button taps):
 {chr(10).join(perf_lines) or '- no campaign data yet'}

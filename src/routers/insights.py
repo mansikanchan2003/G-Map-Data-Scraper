@@ -58,8 +58,9 @@ def explore(
                             detail=f"Choose 1–3 of: {', '.join(ci.DIMENSIONS)}" +
                                    (f" (unknown: {', '.join(unknown)})" if unknown else ""))
     facts = ci.load_facts(db)
-    return {"dims": keys, "overall": ci._stats(facts) if facts else None,
-            "rows": ci.aggregate(facts, tuple(keys), min_sent=min_sent)[:200]}
+    outcome = ci.judged_on(facts)
+    return {"dims": keys, "judged_on": outcome, "overall": ci._stats(facts, outcome) if facts else None,
+            "rows": ci.aggregate(facts, tuple(keys), min_sent=min_sent, outcome=outcome)[:200]}
 
 
 @router.get("/campaigns")
@@ -143,3 +144,13 @@ def take_snapshot(db: Session = Depends(get_db)):
     """Records the playbook now — used to seed the history from past campaigns."""
     snap = ci.record_snapshot(db, "manual")
     return {"snapshot_id": snap.snapshot_id, "campaigns": snap.campaigns, "recipients": snap.recipients}
+
+
+@router.get("/growth")
+def growth(db: Session = Depends(get_db)):
+    """
+    The lead goal, where people drop out on the way to a lead, and what to do
+    next: who to call, where and whom to message, what to make.
+    """
+    from src.services import growth_plan
+    return growth_plan.plan(db)

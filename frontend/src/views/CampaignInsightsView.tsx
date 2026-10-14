@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { GrowthPlan } from '../components/GrowthPlan';
 import {
   exploreInsights, fetchCampaignInsights, fetchCampaignReport, fetchDimensions,
   fetchInsightHistory, fetchPlaybook, takeSnapshot,
@@ -40,17 +41,19 @@ const Badge: React.FC<{ c: Confidence }> = ({ c }) => {
   );
 };
 
-/** Response rate as a bar with its 95% range, scaled to the table's largest range. */
+/** The rate a row is judged on (how many went on, per message), with its 95% range. */
+const rateOf = (row: SegmentStats) => row.success_rate ?? row.response_rate;
+
 const RateBar: React.FC<{ row: SegmentStats; max: number }> = ({ row, max }) => {
   const scale = (v: number) => `${Math.min(100, (v / (max || 1)) * 100)}%`;
   return (
     <div className="flex items-center gap-2 min-w-[160px]"
-      title={`${pct(row.response_rate, 2)} — 95% range ${pct(row.ci_low, 2)} to ${pct(row.ci_high, 2)}`}>
+      title={`${pct(rateOf(row), 2)} — 95% range ${pct(row.ci_low, 2)} to ${pct(row.ci_high, 2)}`}>
       <div className="relative h-3 flex-1 rounded-sm bg-slate-800">
-        <div className="absolute inset-y-0 left-0 rounded-sm bg-sky-500" style={{ width: scale(row.response_rate) }} />
+        <div className="absolute inset-y-0 left-0 rounded-sm bg-sky-500" style={{ width: scale(rateOf(row)) }} />
         <div className="absolute top-1/2 h-px bg-slate-300" style={{ left: scale(row.ci_low), width: `calc(${scale(row.ci_high)} - ${scale(row.ci_low)})` }} />
       </div>
-      <span className="text-slate-200 tabular-nums w-14 text-right">{pct(row.response_rate, 2)}</span>
+      <span className="text-slate-200 tabular-nums w-14 text-right">{pct(rateOf(row), 2)}</span>
     </div>
   );
 };
@@ -85,7 +88,7 @@ const SegmentTable: React.FC<{ rows: SegmentStats[]; dims: string[]; labels: Rec
         <thead className="text-slate-500 text-left">
           <tr>
             {dims.map(d => <th key={d} className="px-2 py-1.5 font-semibold">{labels[d] || d}</th>)}
-            {['Sent', 'Delivered', 'Read', 'Responded', 'Response rate (95% range)', 'vs rest', 'Verdict'].map(h =>
+            {['Sent', 'Delivered', 'Read', 'Went on', 'Rate (95% range)', 'vs rest', 'Verdict'].map(h =>
               <th key={h} className="px-2 py-1.5 font-semibold whitespace-nowrap">{h}</th>)}
           </tr>
         </thead>
@@ -97,7 +100,7 @@ const SegmentTable: React.FC<{ rows: SegmentStats[]; dims: string[]; labels: Rec
               <td className="px-2 py-1.5 tabular-nums">{num(r.sent)}</td>
               <td className="px-2 py-1.5 tabular-nums">{r.tracked ? num(r.delivered) : <span className="text-slate-600">not tracked</span>}</td>
               <td className="px-2 py-1.5 tabular-nums">{r.tracked ? num(r.read) : '—'}</td>
-              <td className="px-2 py-1.5 tabular-nums">{num(r.responded)}</td>
+              <td className="px-2 py-1.5 tabular-nums" title="How many reached the stage this page is judged on">{num(r.success ?? r.responded)}</td>
               <td className="px-2 py-1.5"><RateBar row={r} max={max} /></td>
               <td className="px-2 py-1.5 tabular-nums">{r.confidence === 'too_early' ? '—' : lift(r.lift)}</td>
               <td className="px-2 py-1.5"><Badge c={r.confidence} /></td>
@@ -155,7 +158,8 @@ export const CampaignInsightsView: React.FC = () => {
         <div>
           <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Campaign Insights</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            How each campaign did, what made the difference, and what has worked across all of them.
+            The lead goal and what to do next, then what has worked across every campaign
+            {book?.judged_on_label ? <> (judged on “{book.judged_on_label}”)</> : null}.
           </p>
         </div>
         <button onClick={load} disabled={loading}
@@ -166,6 +170,7 @@ export const CampaignInsightsView: React.FC = () => {
       </div>
 
       {error && <div className="mb-4 p-3 rounded border border-rose-600/50 bg-rose-900/20 text-rose-200 text-sm">{error}</div>}
+      <GrowthPlan key={book?.computed_at || 'plan'} />
       {book && <Readiness book={book} />}
       {book && <Kpis book={book} />}
       {book && <WhatWorks book={book} />}
@@ -194,7 +199,9 @@ export const CampaignInsightsView: React.FC = () => {
 
 const Readiness: React.FC<{ book: Playbook }> = ({ book }) => {
   const c = book.coverage;
-  const lowResponses = c.responses < book.thresholds.min_responses;
+  // How many went on to the stage the page is judged on (replies included).
+  const went = book.overall?.success ?? c.responses;
+  const lowResponses = went < book.thresholds.min_responses;
   const lowTracking = c.with_delivery_report < 0.5;
   if (!lowResponses && !lowTracking) return null;
   return (
@@ -204,7 +211,7 @@ const Readiness: React.FC<{ book: Playbook }> = ({ book }) => {
         Still learning — most conclusions below are marked “Too early”
       </div>
       <ul className="list-disc pl-5 space-y-0.5 text-amber-200/90 text-xs">
-        {lowResponses && <li>{c.responses} customer response(s) so far. A factor needs about {book.thresholds.min_responses} responses in its comparison before anything can be said about it.</li>}
+        {lowResponses && <li>{went} customer(s) so far reached “{book.judged_on_label || 'a response'}”. A factor needs about {book.thresholds.min_responses} of them in its comparison before anything can be said about it.</li>}
         {lowTracking && <li>Meta reported delivery for {pct(c.with_delivery_report)} of messages — campaigns sent before the webhook went live have none. Delivered and read counts cover only the rest.</li>}
         {book.test_campaigns_excluded > 0 && <li>{book.test_campaigns_excluded} test campaign(s) (under {book.thresholds.test_campaign_max} recipients) are left out, so the team's own taps do not count as customer behaviour.</li>}
         <li>Every campaign from here adds to the record, and the verdicts update automatically.</li>

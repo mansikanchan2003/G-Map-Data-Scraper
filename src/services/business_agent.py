@@ -166,8 +166,9 @@ def learning(db: Session, state: Optional[str], language_code: str) -> dict:
     try:
         from src.services.campaign_insights import playbook
         book = playbook(db)
+        judged = book.get("judged_on_label") or "response"
         lessons = [
-            f"{dim}: {v['value']} (response {v['response_rate']:.1%}, "
+            f"{dim}: {v['value']} ({judged}: {v.get('success', 0)} of {v.get('sent', 0)}, "
             f"{'evidence: ' + v['confidence'] if v['confidence'] != 'too_early' else 'too early to call'})"
             for dim, v in (book.get("recipe") or {}).items() if v.get("response_rate") is not None
         ]
@@ -183,9 +184,13 @@ def learning(db: Session, state: Optional[str], language_code: str) -> dict:
         for t in bodies.values() if (t.status or "").upper() == "REJECTED"
     ][:6]
 
+    from src.services import growth_plan
+
     return {
         "templates": sent_templates,
         "lessons": lessons,
+        # The lead goal and what has moved people towards it, read afresh.
+        "growth": history.get("growth") or growth_plan.agent_brief(db),
         "overall": overall,
         "history": history,
         "mistakes": studio.past_mistakes(db, language_code),
@@ -258,6 +263,8 @@ RULES:
 
 WHAT PAST TEMPLATES ACHIEVED — learn from it. Response rate = (link visits + button taps) / delivered. Prefer the tone, structure and ideas of templates that drew responses; move away from ones that did not. Results marked untracked or with few sends are weak evidence.
 {chr(10).join(perf) or '- no campaign has been sent yet; rely on the facts and rules'}
+
+{learned.get('growth') or ''}
 
 PLAYBOOK — what Campaign Insights has concluded so far (overall response rate {(learned['overall'].get('response_rate') or 0):.1%}):
 {bullets(learned['lessons'])}
