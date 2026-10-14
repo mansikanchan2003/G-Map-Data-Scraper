@@ -18,8 +18,14 @@ def generate_job_id(location_id: str, category_id: str) -> str:
 def generate_jobs(db: Session) -> dict:
     logger.info("Starting job generation...")
 
+    from src.models.business import PARTNER_PERSONA
+
     locations = db.query(Location).all()
-    categories = db.query(Category).all()
+    # Partner organisation categories are searched at SBI branch PINs only;
+    # see services/partners.py.
+    categories = db.query(Category).filter(
+        (Category.persona.is_(None)) | (Category.persona != PARTNER_PERSONA)
+    ).all()
 
     if not locations or not categories:
         logger.warning("Locations or categories are empty. Cannot generate jobs.")

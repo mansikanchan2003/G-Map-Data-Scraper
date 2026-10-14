@@ -24,6 +24,7 @@ const WhatsAppCampaignView = lazy(() => import('./views/WhatsAppCampaignView').t
 const WhatsAppTemplatesView = lazy(() => import('./views/WhatsAppTemplatesView').then(m => ({ default: m.WhatsAppTemplatesView })));
 const TemplateStudioView = lazy(() => import('./views/TemplateStudioView').then(m => ({ default: m.TemplateStudioView })));
 const CampaignInsightsView = lazy(() => import('./views/CampaignInsightsView').then(m => ({ default: m.CampaignInsightsView })));
+const PartnersView = lazy(() => import('./views/PartnersView').then(m => ({ default: m.PartnersView })));
 const ApplicationsView = lazy(() => import('./views/ApplicationsView').then(m => ({ default: m.ApplicationsView })));
 const InboxView = lazy(() => import('./views/InboxView').then(m => ({ default: m.InboxView })));
 const WhatsAppHistoryView = lazy(() => import('./views/WhatsAppHistoryView').then(m => ({ default: m.WhatsAppHistoryView })));
@@ -60,7 +61,7 @@ export default function App() {
       if (hash === 'admin-approvals') hash = 'approvals';
       // 'approvals' is listed so the email link and a refresh land on the
       // queue; it still renders only for admins.
-      if (['businesses', 'jobs', 'config', 'dashboard', 'whatsapp-campaign', 'whatsapp-templates', 'whatsapp-studio', 'whatsapp-history', 'whatsapp-insights', 'whatsapp-inbox', 'applications', 'approvals'].includes(hash)) {
+      if (['businesses', 'jobs', 'config', 'dashboard', 'whatsapp-campaign', 'whatsapp-templates', 'whatsapp-studio', 'whatsapp-history', 'whatsapp-insights', 'whatsapp-inbox', 'applications', 'partners', 'approvals'].includes(hash)) {
         setActiveTab(hash as NavTab);
       }
     };
@@ -227,6 +228,7 @@ export default function App() {
           {shownTab === 'whatsapp-inbox' && <InboxView readOnly={readOnly} />}
 
           {shownTab === 'applications' && <ApplicationsView readOnly={readOnly} />}
+          {shownTab === 'partners' && <PartnersView />}
 
           {shownTab === 'whatsapp-history' && <WhatsAppHistoryView />}
 

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from src.database import get_db
 from src.models import Business, Job, Location, SbiBranch
+from src.models.business import NOT_PARTNER
 from src.models.whatsapp import WhatsAppCampaignRecipient
 from src.services.whatsapp_normalizer import WhatsAppNormalizer
 
@@ -207,7 +208,7 @@ def audience_options(
         picked_districts.add((_picked(state), district))
 
     def counts(columns, where):
-        q = db.query(*columns, func.count(Business.business_id)).filter(columns[-1].isnot(None))
+        q = db.query(*columns, func.count(Business.business_id)).filter(columns[-1].isnot(None), NOT_PARTNER)
         if where is not None:
             q = q.filter(where)
         return q.group_by(*columns).order_by(func.count(Business.business_id).desc()).all()
@@ -221,7 +222,7 @@ def audience_options(
         db.query(Location.pincode, func.count(Business.business_id))
         .join(Job, Job.location_id == Location.location_id)
         .join(Business, Business.job_id == Job.job_id)
-        .filter(Location.pincode.in_(db.query(SbiBranch.pincode)))
+        .filter(Location.pincode.in_(db.query(SbiBranch.pincode)), NOT_PARTNER)
         .group_by(Location.pincode).all()
     )
     branches = sorted(
@@ -242,7 +243,7 @@ def audience_options(
 
 
 def _build(db: Session, f: AudienceFilters, with_contacts: bool):
-    base = _branch_filtered(_geo_filtered(db.query(Business), f), db, f)
+    base = _branch_filtered(_geo_filtered(db.query(Business).filter(NOT_PARTNER), f), db, f)
 
     total = base.count()
     with_phone_q = base.filter(Business.phone.isnot(None), Business.phone != "")

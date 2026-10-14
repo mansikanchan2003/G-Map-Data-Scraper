@@ -65,6 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const allItems: { id: NavTab; label: string; icon: string }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
     { id: 'businesses', label: 'Business Data', icon: 'dataset' },
+    { id: 'partners', label: 'Partner Organisations', icon: 'handshake' },
     { id: 'jobs', label: 'Jobs Monitor', icon: 'sync' },
     { id: 'config', label: 'Configuration', icon: 'tune' },
     { id: 'whatsapp-inbox', label: 'Inbox', icon: 'forum' },

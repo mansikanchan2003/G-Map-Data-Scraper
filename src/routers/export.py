@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from src.database import get_db
 from src.models import Business
-from src.models.business import CONTACTABLE
+from src.models.business import CONTACTABLE, NOT_PARTNER
 from typing import Optional
 from datetime import datetime, timezone
 import csv
@@ -32,7 +32,7 @@ def export_google_sheets(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Google Sheets service error: {str(e)}")
 
-    query = db.query(Business).filter(CONTACTABLE)
+    query = db.query(Business).filter(CONTACTABLE, NOT_PARTNER)
 
     if not request.export_all:
         if request.selected_ids:
@@ -93,7 +93,7 @@ def export_businesses(
     format: str = Query("csv", pattern="^(csv|json|excel)$"),
     db: Session = Depends(get_db)
 ):
-    query = db.query(Business).filter(CONTACTABLE)
+    query = db.query(Business).filter(CONTACTABLE, NOT_PARTNER)
     
     if is_valid is not None:
         query = query.filter(Business.is_valid == is_valid)
@@ -324,7 +324,7 @@ def sync_google_sheet(db: Session = Depends(get_db)):
             _set_setting(db, LIVE_SHEET_KEY, sheet_id)
 
         query = (
-            db.query(Business).filter(CONTACTABLE)
+            db.query(Business).filter(CONTACTABLE, NOT_PARTNER)
             .order_by(Business.discovered_at.desc())
             .execution_options(stream_results=True)
         )

@@ -47,3 +47,20 @@ CONTACTABLE = or_(
     and_(Business.phone.isnot(None), Business.phone != ""),
     and_(Business.email.isnot(None), Business.email != ""),
 )
+
+
+# Categories whose results are organisations to partner with (NGOs, RSETIs,
+# SHG federations...) rather than businesses to invite. They are scraped at
+# SBI branch PIN codes only and listed on their own tab, so everything that
+# lists or messages businesses leaves them out with NOT_PARTNER.
+PARTNER_PERSONA = "Partner organisation"
+
+
+def _partner_names():
+    from sqlalchemy import select
+    from src.models.category import Category
+    return select(Category.category_name).where(Category.persona == PARTNER_PERSONA)
+
+
+IS_PARTNER = Business.category.in_(_partner_names())
+NOT_PARTNER = ~IS_PARTNER

@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from src.routers import (config, jobs, businesses, discovery, export, runs,
                          whatsapp, tracking, audience, template_studio, insights,
-                         inbox, onboarding, applications, auth as auth_router)
+                         inbox, onboarding, applications, partners, auth as auth_router)
 from src.database import init_db, get_db
 from src.utils.logging import setup_logging
 
@@ -36,6 +36,20 @@ async def lifespan(app: FastAPI):
             db.close()
     except Exception as e:
         logger.error(f"Could not seed the bootstrap admin: {e}")
+
+    # Partner organisations: their categories, and jobs for every SBI branch
+    # PIN. Idempotent, so a branch added later gets its jobs at the next start.
+    try:
+        from src.database import SessionLocal
+        from src.services import partners as partner_orgs
+        db = SessionLocal()
+        try:
+            made = partner_orgs.ensure_jobs(db)
+            logger.info(f"partners event=JOBS_ENSURED {made}")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Could not set up partner organisation jobs: {e}")
 
     # Button taps and replies recorded before the inbox existed, so their
     # conversations are there from the start. Copies nothing twice.
@@ -185,6 +199,7 @@ app.include_router(audience.router)
 app.include_router(template_studio.router)
 app.include_router(insights.router)
 app.include_router(inbox.router)
+app.include_router(partners.router)
 app.include_router(applications.router)
 # The document upload page, opened from WhatsApp by people with no account.
 # Outside /api/, so the session gate never applies to it.
@@ -241,7 +256,7 @@ def readiness_check(db: Session = Depends(get_db)):
 @app.get("/api/v1/stats", tags=["Stats"])
 def get_stats(db: Session = Depends(get_db)):
     from src.models import Location, Category, Job, Business, RunLog
-    from src.models.business import CONTACTABLE
+    from src.models.business import CONTACTABLE, NOT_PARTNER
     try:
         last_run = db.query(RunLog).order_by(RunLog.started_at.desc()).first()
         last_run_dict = None
@@ -274,9 +289,9 @@ def get_stats(db: Session = Depends(get_db)):
                 "blocked": db.query(Job).filter(Job.status == "BLOCKED").count(),
             },
             "businesses": {
-                "total": db.query(Business).filter(CONTACTABLE).count(),
-                "valid": db.query(Business).filter(CONTACTABLE, Business.is_valid == True).count(),
-                "invalid": db.query(Business).filter(CONTACTABLE, Business.is_valid == False).count(),
+                "total": db.query(Business).filter(CONTACTABLE, NOT_PARTNER).count(),
+                "valid": db.query(Business).filter(CONTACTABLE, NOT_PARTNER, Business.is_valid == True).count(),
+                "invalid": db.query(Business).filter(CONTACTABLE, NOT_PARTNER, Business.is_valid == False).count(),
             },
             "last_run": last_run_dict,
         }
