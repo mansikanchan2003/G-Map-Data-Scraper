@@ -27,3 +27,5 @@ g4f
 Pillow
 # Voice notes in the WhatsApp inbox, transcribed on this server with Whisper
 faster-whisper==1.1.1
+# faster-whisper 1.1 opens audio with an option PyAV dropped in later versions.
+av==12.3.0
