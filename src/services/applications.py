@@ -17,6 +17,7 @@ import time
 import uuid
 from typing import Dict, List, Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -207,6 +208,10 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
               .order_by(ApplicationComment.created_at).all() if phones else []):
         comments.setdefault(c.phone, []).append(c)
     sources = _sources(db, phones)
+    # When the lead came in: their first message or button tap to us.
+    first_in = dict(db.query(WhatsAppMessage.phone, func.min(WhatsAppMessage.created_at))
+                    .filter(WhatsAppMessage.phone.in_(phones), WhatsAppMessage.direction == "IN")
+                    .group_by(WhatsAppMessage.phone).all()) if phones else {}
 
     items = []
     for conv in convs:
@@ -251,6 +256,7 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
             "submitted": conv.documents_submitted_at is not None,
             "submitted_at": _iso(conv.documents_submitted_at),
             "started_at": _iso(conv.created_at),
+            "lead_at": _iso(first_in.get(conv.phone) or conv.created_at),
             "last_message_at": _iso(conv.last_message_at),
             "source": sources.get(conv.phone),
             "comments": [{"comment_id": c.comment_id, "body": c.body, "author": c.author,

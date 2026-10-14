@@ -248,3 +248,18 @@ def test_several_comments_are_kept_in_order_each_with_its_date(client):
     assert [c["body"] for c in comments] == ["Reached him, asked for CIBIL",
                                              "Called back: CIBIL sent, will submit tonight", "Submitted, forwarded to SBI"]
     assert all(c["created_at"] and c["author"] == "Reviewer" for c in comments)
+
+
+def test_each_row_says_when_the_lead_came_in(client):
+    # Their first message or tap, not a later one, and not our own messages.
+    db = TestingSessionLocal()
+    at = lambda h: datetime(2026, 10, 14, h, 0, tzinfo=timezone.utc)
+    for i, (direction, hour) in enumerate([("OUT", 6), ("IN", 8), ("IN", 9)]):
+        db.add(WhatsAppMessage(message_id=f"lead-{i}", phone="+919000000002", direction=direction,
+                               kind="text", body="x", created_at=at(hour)))
+    db.commit()
+    db.close()
+    _, apps = _by_phone(client)
+    assert apps["+919000000002"]["lead_at"].startswith("2026-10-14T08:00")
+    # With no message of theirs recorded, when the conversation began.
+    assert apps["+919000000001"]["lead_at"] == apps["+919000000001"]["started_at"]

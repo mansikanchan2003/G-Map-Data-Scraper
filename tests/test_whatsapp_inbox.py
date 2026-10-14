@@ -234,7 +234,7 @@ def test_full_onboarding_flow(db, client):
     # One question covers the investment and the franchise.
     assert (kind, body) == ("buttons", onboarding_bot.ASK_INVEST)
     assert body.startswith("Are you able to invest 5 Lakh Rupees to set up a Franchise Business?")
-    assert "franchise background means" in body
+    assert "A franchise business means" in body
     assert [b["id"] for b in buttons] == ["invest:yes", "invest:no"]
     assert conv(db).bot_data["education"] == "grad"
 
@@ -1217,3 +1217,16 @@ def test_typing_12_after_not_eligible_carries_on(db):
     qualify(db, "other")
     say(db, "12")
     assert conv(db).bot_step == onboarding_bot.AWAIT_INVEST
+
+
+def test_the_investment_question_explains_a_franchise_business_and_so_does_its_nudge(db):
+    for lang, msgs in bot_messages.MESSAGES.items():
+        assert msgs["ask_invest"].split("\n\n")[1] == bot_messages._FRANCHISE_MEANING[lang]
+    assert "background" not in bot_messages.MESSAGES["en"]["ask_invest"]
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)                  # asked about investing, and they go quiet
+    assert nudges.tick(db, _hours_later(1.1)) == 1
+    body = StubMeta.sent[-1][2]
+    assert "A franchise business means running your own outlet" in body
+    assert bot_messages.MESSAGES["en"]["ask_invest"] in body

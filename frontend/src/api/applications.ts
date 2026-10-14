@@ -54,6 +54,8 @@ export interface Application {
   submitted: boolean;
   submitted_at: string | null;
   started_at: string | null;
+  /** When the lead came in: their first message or button tap to us. */
+  lead_at: string | null;
   last_message_at: string | null;
   source: { campaign: string; business_name: string | null; category: string | null;
             district: string | null; state: string | null } | null;
