@@ -11,6 +11,7 @@ import { WhatsAppPreview } from '../components/WhatsAppPreview';
 import { SheetTemplateBuilder } from '../components/SheetTemplateBuilder';
 import { BusinessTemplateAgent } from '../components/BusinessTemplateAgent';
 import { ApproveAnyway, CheckerNotes } from '../components/CheckerNotes';
+import { POSTER_EDIT_FIELDS } from '../components/PosterTextEditor';
 import { formatDateTime } from '../utils/datetime';
 import { SignNote } from '../components/SignNote';
 import { PhotoPromptRecord } from '../components/PhotoPromptRecord';
@@ -61,23 +62,7 @@ const TAB_LABELS: Record<Tab, string> = {
 
 const pct = (v: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
 
-// The poster fields a reviewer is most likely to reword, in reading order.
-const POSTER_EDIT_FIELDS: { key: keyof StudioPoster; label: string }[] = [
-  { key: 'headline_line1', label: 'Headline, line 1' },
-  { key: 'headline_line2', label: 'Headline, line 2' },
-  { key: 'headline_highlight', label: 'Highlighted phrase (from line 2)' },
-  { key: 'subline', label: 'Sub-line' },
-  { key: 'callout', label: 'Callout box' },
-  { key: 'callout_highlight', label: 'Highlighted phrase (from callout)' },
-  { key: 'benefits_title', label: 'Benefits title' },
-  { key: 'cta', label: 'Apply button on poster' },
-  { key: 'opportunity_title', label: 'Opportunity card title' },
-  { key: 'opportunity_text', label: 'Opportunity card text' },
-  { key: 'sign_title', label: 'Signboard: Customer Service Point' },
-  { key: 'bank_name', label: 'Signboard: State Bank of India' },
-  { key: 'phone_label', label: 'Footer: call label' },
-  { key: 'web_label', label: 'Footer: website label' },
-];
+
 
 export const TemplateStudioView: React.FC = () => {
   const [mode, setModeState] = useState<Mode>(readMode);
@@ -448,7 +433,6 @@ const EditModal: React.FC<{ draft: StudioDraft; onClose: () => void; onSaved: (w
   const [body, setBody] = useState(draft.body);
   const [footer, setFooter] = useState(draft.footer || '');
   const [apply, setApply] = useState(buttons.find(b => b.type === 'URL')?.text || '');
-  const [callback, setCallback] = useState(buttons.find(b => b.type === 'QUICK_REPLY')?.text || '');
   const [fields, setFields] = useState<Partial<StudioPoster>>({ ...poster });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -463,7 +447,7 @@ const EditModal: React.FC<{ draft: StudioDraft; onClose: () => void; onSaved: (w
     if (poster && JSON.stringify(fields.benefits) !== JSON.stringify(poster.benefits)) changedPoster.benefits = fields.benefits;
     try {
       const res = await editStudioDraft(draft.template_id, {
-        body, footer, apply_button: apply, callback_button: callback,
+        body, footer, apply_button: apply,
         poster: Object.keys(changedPoster).length ? changedPoster : undefined,
       });
       onSaved(res.warnings);
@@ -481,7 +465,6 @@ const EditModal: React.FC<{ draft: StudioDraft; onClose: () => void; onSaved: (w
           <label>Body<textarea value={body} onChange={e => setBody(e.target.value)} rows={14} className={inputCls} /></label>
           <label>Footer<input value={footer} onChange={e => setFooter(e.target.value)} maxLength={60} className={inputCls} /></label>
           <label>Apply button<input value={apply} onChange={e => setApply(e.target.value)} maxLength={25} className={inputCls} /></label>
-          <label>Call-back button<input value={callback} onChange={e => setCallback(e.target.value)} maxLength={25} className={inputCls} /></label>
         </div>
         {poster && (
           <div className="flex flex-col gap-3">

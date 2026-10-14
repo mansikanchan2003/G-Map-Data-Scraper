@@ -4,7 +4,8 @@ import {
   rejectStudioDraft, requestNewPhoto, stashAudience, studioMediaUrl, writeBusinessDrafts,
 } from '../api/whatsapp';
 import { ApproveAnyway, CheckerNotes } from './CheckerNotes';
-import type { SheetSettings, StudioDraft } from '../api/whatsapp';
+import { PosterTextEditor, posterChanges } from './PosterTextEditor';
+import type { SheetSettings, StudioDraft, StudioPoster } from '../api/whatsapp';
 import { LANGUAGES, readSheet } from './SheetTemplateBuilder';
 import type { Sheet } from './SheetTemplateBuilder';
 import { WhatsAppPreview } from './WhatsAppPreview';
@@ -238,6 +239,7 @@ const DraftCard: React.FC<{
   const [busy, setBusy] = useState(false);
   const [body, setBody] = useState(d.body);
   const [footer, setFooter] = useState(d.footer || '');
+  const [posterFields, setPosterFields] = useState<Partial<StudioPoster>>({ ...(g.poster || {}) });
   // The quick replies are fixed (Interested, and the webinar one in the
   // template's language): the bot answers a tap by its label.
   const quickReplies = (d.buttons || []).filter(b => b.type === 'QUICK_REPLY').map(b => b.text);
@@ -252,7 +254,10 @@ const DraftCard: React.FC<{
   };
 
   const save = () => act(async () => {
-    const out = await editStudioDraft(d.template_id, { body, footer });
+    const changed = posterChanges(g.poster, posterFields);
+    const out = await editStudioDraft(d.template_id, {
+      body, footer, poster: Object.keys(changed).length ? changed : undefined,
+    });
     setMode('view');
     onChanged();
     say(out.warnings.length ? 'error' : 'ok', out.warnings.length
@@ -341,8 +346,13 @@ const DraftCard: React.FC<{
                   </span>
                 )}
               </div>
+              {g.poster && (
+                <div className="pt-2 border-t border-slate-800">
+                  <PosterTextEditor fields={posterFields} onChange={setPosterFields} inputClassName={`${inputCls} w-full`} />
+                </div>
+              )}
               <div className="flex gap-2">
-                <button onClick={save} disabled={busy} className={`${btn} bg-emerald-600 hover:bg-emerald-500 text-white`}>Save</button>
+                <button onClick={save} disabled={busy} className={`${btn} bg-emerald-600 hover:bg-emerald-500 text-white`}>{busy ? 'Saving…' : 'Save'}</button>
                 <button onClick={() => setMode('view')} className={`${btn} bg-slate-800 text-slate-200`}>Cancel</button>
               </div>
             </div>

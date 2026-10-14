@@ -341,6 +341,10 @@ def past_mistakes(db: Session, language_code: str, limit: int = 12) -> List[str]
                 if before not in seen:
                     seen.add(before)
                     out.append(f'You wrote "{before}" and a reviewer corrected it to "{after}"')
+        for before, after in poster_corrections(t.generation or {}):
+            if before not in seen:
+                seen.add(before)
+                out.append(f'On the poster you wrote "{before}" and a reviewer corrected it to "{after}"')
     counts = Counter(
         re.sub(r"\[\d+\]", "[n]", p)
         for t in rows for p in (t.generation or {}).get("first_problems") or []
@@ -1139,6 +1143,7 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
                     # a reviewer's edits show up as corrections.
                     "first_problems": first_errors,
                     "agent_body": tmpl.body,
+                    "agent_poster": variant.get("poster"),
                     "models": models,
                     # Layout, shot, operator and message shape (variety.plan).
                     **look,
@@ -1222,6 +1227,40 @@ def run_new_photo(template_id: str, fresh: bool = True) -> None:
         db.close()
 
 
+def apply_poster_edit(tmpl: WhatsAppTemplate, gen: dict, poster: dict) -> None:
+    """
+    Merge a reviewer's poster wording into `gen` and set the image again.
+
+    The same photo is reused, so no image allowance is spent. What the agent
+    first wrote is kept the first time, so past_mistakes can show it the
+    corrections; drafts made before that was recorded start from here.
+    """
+    if "agent_poster" not in gen and gen.get("poster"):
+        gen["agent_poster"] = json.loads(json.dumps(gen["poster"]))
+    merged = {**(gen.get("poster") or {}), **poster}
+    if gen.get("photo_media_id"):
+        photo = _read_media(gen["photo_media_id"])
+        mime = "image/png" if photo[:4] == b"\x89PNG" else "image/jpeg"
+        _render_into(tmpl, merged, photo, mime)
+    gen["poster"] = merged
+
+
+def poster_corrections(gen: dict) -> List[tuple]:
+    """Poster text a reviewer changed, as (what the agent wrote, what they made it)."""
+    before, after = gen.get("agent_poster") or {}, gen.get("poster") or {}
+    out = []
+    for key in POSTER_FIELDS:
+        a, b = before.get(key), after.get(key)
+        if isinstance(a, str) and isinstance(b, str) and a.strip() and a.strip() != b.strip():
+            out.append((a.strip(), b.strip()))
+    old_benefits = [x.get("text") for x in before.get("benefits") or [] if isinstance(x, dict)]
+    new_benefits = [x.get("text") for x in after.get("benefits") or [] if isinstance(x, dict)]
+    for a, b in zip(old_benefits, new_benefits):
+        if a and b and a.strip() != b.strip():
+            out.append((a.strip(), b.strip()))
+    return out
+
+
 def update_draft(db: Session, tmpl: WhatsAppTemplate, body: Optional[str], footer: Optional[str],
                  buttons: Optional[dict], poster: Optional[dict]) -> List[str]:
     """
@@ -1243,11 +1282,7 @@ def update_draft(db: Session, tmpl: WhatsAppTemplate, body: Optional[str], foote
                 b["text"] = buttons["apply_button"].strip()
         tmpl.buttons = current
     if poster:
-        merged = {**(gen.get("poster") or {}), **poster}
-        photo = _read_media(gen["photo_media_id"])
-        mime = "image/png" if photo[:4] == b"\x89PNG" else "image/jpeg"
-        _render_into(tmpl, merged, photo, mime)
-        gen["poster"] = merged
+        apply_poster_edit(tmpl, gen, poster)
     tmpl.generation = gen
     db.commit()
 

@@ -491,6 +491,7 @@ def run_generation(template_ids: List[str]) -> None:
                 # Read back by later rounds; see template_studio.past_mistakes.
                 "first_problems": first_errors,
                 "agent_body": body,
+                "agent_poster": variant.get("poster"),
                 "poster": variant.get("poster"),
                 "photo_scene": variant.get("photo_scene"),
                 "image_phrase": variant.get("image_phrase"),
@@ -530,9 +531,13 @@ def run_generation(template_ids: List[str]) -> None:
 
 
 def update(db: Session, tmpl: WhatsAppTemplate, body: Optional[str], footer: Optional[str],
-           buttons: Optional[dict]) -> List[str]:
+           buttons: Optional[dict], poster: Optional[dict] = None) -> List[str]:
     """A reviewer's edit. Saved either way; the problems are returned."""
     gen = dict(tmpl.generation or {})
+    if poster:
+        # The poster's wording, set again on the same photo; see
+        # template_studio.apply_poster_edit.
+        studio.apply_poster_edit(tmpl, gen, poster)
     if body is not None:
         tmpl.body = body.strip()
         gen["variables"] = blanks_in(tmpl.body)
@@ -546,7 +551,8 @@ def update(db: Session, tmpl: WhatsAppTemplate, body: Optional[str], footer: Opt
         tmpl.buttons = current
     tmpl.generation = gen
     db.commit()
-    problems = validate({"angle": gen.get("angle"), "body": tmpl.body, "footer": tmpl.footer or ""},
+    problems = validate({"angle": gen.get("angle"), "body": tmpl.body, "footer": tmpl.footer or "",
+                         "poster": gen.get("poster") or {}},
                         tmpl.language_code, gen.get("allowed_fields") or ["name"])
     phrase = gen.get("image_phrase")
     written = " ".join([tmpl.body or ""] + [str(v) for v in (gen.get("poster") or {}).values() if isinstance(v, str)])

@@ -183,7 +183,7 @@ def edit_draft(template_id: str, edit: DraftEdit, db: Session = Depends(get_db))
     try:
         if business_agent.is_business_draft(tmpl):
             # No poster to re-render: the text is the whole template.
-            warnings = business_agent.update(db, tmpl, edit.body, edit.footer, buttons)
+            warnings = business_agent.update(db, tmpl, edit.body, edit.footer, buttons, edit.poster)
         else:
             warnings = template_studio.update_draft(db, tmpl, edit.body, edit.footer, buttons, edit.poster)
     except Exception as e:

@@ -159,6 +159,8 @@ BENEFIT_ICONS: Dict[str, str] = {
     "account": "person_add",
     "transfer": "sync_alt",
     "withdrawal": "payments",
+    # Balance enquiry is one of the services; the agent kept reaching for it.
+    "balance": "account_balance_wallet",
     "fingerprint": "fingerprint",
 }
 

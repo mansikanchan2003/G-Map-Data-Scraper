@@ -454,3 +454,27 @@ def test_an_older_page_asking_for_three_is_not_refused():
     assert BusinessDraftRequest(rows=[{"name": "A"}], count=3).count == 3
     assert GenerateRequest(state="Gujarat", count=3).count == 3
     assert ba.MAX_VARIANTS == 1 and studio.MAX_VARIANTS == 1
+
+
+def test_a_poster_correction_is_saved_and_taught_to_the_next_round(db):
+    d = make_round(db, count=1)[0]
+    gen = dict(d.generation)
+    gen["poster"] = {"headline_line1": "ગામમાં પહોંચાડો", "benefits": [{"icon": "balance", "text": "બેલેન્સ તપાસવું"}]}
+    gen.pop("agent_poster", None)  # a draft from before the agent's poster was kept
+    d.generation = gen
+    db.commit()
+
+    ba.update(db, d, None, None, None, {"headline_line1": "ગામડાં સુધી પહોંચાડો",
+                                        "benefits": [{"icon": "balance", "text": "બેલેન્સ ચેક કરવાની સુવિધા"}]})
+    db.refresh(d)
+    assert d.generation["poster"]["headline_line1"] == "ગામડાં સુધી પહોંચાડો"
+    assert d.generation["agent_poster"]["headline_line1"] == "ગામમાં પહોંચાડો"
+
+    lessons = studio.past_mistakes(db, d.language_code)
+    assert any('On the poster you wrote "ગામમાં પહોંચાડો"' in l and "ગામડાં સુધી પહોંચાડો" in l for l in lessons)
+    assert any("બેલેન્સ ચેક કરવાની સુવિધા" in l for l in lessons)
+
+
+def test_balance_is_an_allowed_poster_icon():
+    from src.services import creative_brief
+    assert "balance" in creative_brief.BENEFIT_ICONS
