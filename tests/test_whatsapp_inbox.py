@@ -1199,3 +1199,21 @@ def test_the_guidance_day_stays_as_offered_when_asked_again(db, monkeypatch):
 def test_every_language_can_offer_guidance_today():
     for lang, msgs in bot_messages.MESSAGES.items():
         assert msgs["webinar_ask_today"] != msgs["webinar_ask"], lang
+
+
+def test_a_new_education_answer_after_not_eligible_carries_on(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db, "other")
+    assert conv(db).bot_step == onboarding_bot.NOT_ELIGIBLE
+    qualify(db, "12")                    # tapped the right one after all
+    assert conv(db).bot_step == onboarding_bot.AWAIT_INVEST
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["en"]["ask_invest"]
+
+
+def test_typing_12_after_not_eligible_carries_on(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db, "other")
+    say(db, "12")
+    assert conv(db).bot_step == onboarding_bot.AWAIT_INVEST

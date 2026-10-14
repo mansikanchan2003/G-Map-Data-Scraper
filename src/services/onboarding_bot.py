@@ -827,7 +827,16 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
         _fallback(db, conv, _t(db, conv, "not_served_again", pin=pin))
 
     elif step == NOT_ELIGIBLE:
-        _fallback(db, conv, _t(db, conv, "not_eligible"))
+        # Someone who tapped "Other" by mistake, or wrote "10" and then
+        # their real level, can still answer again: a 12th/Diploma or a
+        # degree carries on to the next question.
+        level = _education_answer(msg)
+        if level and level != "other":
+            _understood(conv)
+            _move(conv, AWAIT_INVEST, education=level)
+            _say(db, conv, _t(db, conv, "ask_invest"), buttons=YES_NO("invest", lang))
+        else:
+            _fallback(db, conv, _t(db, conv, "not_eligible"))
 
     elif step in (NOT_INVESTING, HANDOVER, WEBINAR_CONFIRMED, WEBINAR_AVAILABILITY):
         _fallback(db, conv, _t(db, conv, "acknowledge"))
