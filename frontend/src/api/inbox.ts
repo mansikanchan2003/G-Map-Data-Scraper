@@ -18,6 +18,10 @@ export interface ConversationSummary {
   documents: number;
   /** Reached by an AutoGMap campaign; the bot answers no one else. */
   from_campaign: boolean;
+  /** A question waiting for a person; cleared only by "Question resolved". */
+  needs_attention: boolean;
+  attention_reason: string | null;
+  attention_at: string | null;
 }
 
 export interface ThreadMessage {
@@ -103,6 +107,25 @@ export const sendInboxMessage = (phone: string, message: string) =>
 
 export const markConversationRead = (phone: string) =>
   call<{ status: string }>(`/conversations/${digits(phone)}/read`, { method: 'POST' });
+
+/** Mark a campaign conversation as needing attention, or resolve it. */
+export const setAttention = (phone: string, needed: boolean) =>
+  call<{ needs_attention: boolean }>(`/conversations/${digits(phone)}/attention`, {
+    method: 'POST', body: JSON.stringify({ needed }),
+  });
+
+/** Send a photo, video, audio clip or document; anything else goes as a document. */
+export const sendInboxMedia = async (phone: string, file: File, caption: string): Promise<ThreadMessage> => {
+  const form = new FormData();
+  form.append('file', file);
+  if (caption.trim()) form.append('caption', caption.trim());
+  const res = await fetch(`${base()}/conversations/${digits(phone)}/media`, {
+    method: 'POST', credentials: 'include', body: form,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.detail || `Could not send the file (${res.status})`);
+  return json as ThreadMessage;
+};
 
 export const setBotPaused = (phone: string, paused: boolean) =>
   call<{ bot_paused: boolean }>(`/conversations/${digits(phone)}/bot`, {

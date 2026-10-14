@@ -65,6 +65,16 @@ class StubMeta:
             return StubMeta.media[media_id] + (None,)
         return None, None, "Media not found"
 
+    def upload_media(self, path, kind):
+        StubMeta.uploads.append((path, kind))
+        return "media123"
+
+    def send_media_message(self, to, kind, media_id, caption=None, filename=None):
+        StubMeta.sent.append((kind, to, caption, {"media_id": media_id, "filename": filename}))
+        return self._result()
+
+    uploads = []
+
     def send_link_message(self, to, body, text, url):
         StubMeta.sent.append(("link", to, body, {"text": text, "url": url}))
         return self._result()
@@ -955,3 +965,91 @@ def test_no_nudge_once_the_flow_has_ended(db):
     say(db, SERVED_PIN)
     tap(db, "edu:other")         # not eligible: nothing left to ask
     assert nudges.tick(db, _hours_later(2)) == 0
+
+
+# --- Sending files from the inbox ---------------------------------------------
+
+def test_a_photo_is_sent_and_shown_in_the_thread(db, client):
+    say(db, "hello")
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/media",
+                    files={"file": ("shop.png", PNG, "image/png")}, data={"caption": "Our kiosk 😊"})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["kind"] == "image" and out["payload"]["available"] and "stored" not in out["payload"]
+    assert StubMeta.sent[-1][:3] == ("image", PHONE, "Our kiosk 😊")
+    # The thread can show it back.
+    got = client.get(f"/api/v1/inbox/media/{out['id']}")
+    assert got.status_code == 200 and got.content == PNG
+
+
+def test_an_unknown_type_goes_as_a_document_and_size_is_checked(db, client):
+    say(db, "hello")
+    path = f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/media"
+    r = client.post(path, files={"file": ("list.xlsx", b"PK" + bytes([3, 4]) + b"data", "application/vnd.ms-excel")})
+    assert r.status_code == 200 and r.json()["kind"] == "document"
+    assert StubMeta.sent[-1][3]["filename"] == "list.xlsx"
+    big = bytes([0xFF, 0xD8, 0xFF]) + b"0" * (5 * 1024 * 1024 + 10)
+    assert client.post(path, files={"file": ("big.jpg", big, "image/jpeg")}).status_code == 413
+
+
+def test_no_file_after_the_window_has_closed(db, client):
+    say(db, "hello")
+    c = conv(db)
+    c.last_inbound_at = inbox.now() - timedelta(hours=25)
+    db.commit()
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/media",
+                    files={"file": ("a.png", PNG, "image/png")})
+    assert r.status_code == 409
+
+
+# --- Voice notes ---------------------------------------------------------------
+
+@pytest.fixture
+def heard(monkeypatch):
+    """Whisper stands in: what it will hear, and in which language."""
+    from src.services import transcribe
+    said = {"text": "", "language": "hi", "probability": 0.95}
+    monkeypatch.setattr(transcribe, "transcribe", lambda path, fallback_language=None: dict(said))
+    return said
+
+
+def _voice(db, media_id="v1"):
+    StubMeta.media[media_id] = (b"OggS" + b"0" * 40, "audio/ogg")
+    msg = inbox.record_inbound(db, {"from": PHONE.lstrip("+"), "id": f"wamid.{media_id}", "type": "audio",
+                                    "audio": {"id": media_id, "mime_type": "audio/ogg; codecs=opus"}}, None)
+    db.commit()
+    c = conv(db)
+    onboarding_bot.transcribe_voice(db, c, msg)
+    onboarding_bot.handle(db, c, msg)
+    db.commit()
+    return msg
+
+
+def test_a_spoken_pin_is_understood_and_answered_in_the_language_spoken(db, heard):
+    tap_campaign(db)                              # English chosen
+    heard.update(text="मेरा पिन कोड 110001 है", language="hi")
+    msg = _voice(db)
+    assert msg.payload["transcript"] == "मेरा पिन कोड 110001 है"
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["hi"]["ask_education"]
+    assert conv(db).bot_data["lang"] == "hi"
+
+
+def test_a_spoken_question_is_marked_for_a_person(db, heard):
+    tap_campaign(db)
+    heard.update(text="इसमें कितना पैसा लगेगा", language="hi")
+    _voice(db)
+    c = conv(db)
+    assert c.needs_attention and "कितना" in c.attention_reason
+    assert StubMeta.sent[-1][2].startswith(bot_messages.MESSAGES["hi"]["question_ack"])
+
+
+def test_a_voice_note_that_cannot_be_transcribed_is_kept(db, monkeypatch):
+    from src.services import transcribe
+
+    def broken(path, fallback_language=None):
+        raise RuntimeError("model unavailable")
+    monkeypatch.setattr(transcribe, "transcribe", broken)
+    tap_campaign(db)
+    msg = _voice(db, "v2")
+    assert "model unavailable" in msg.payload["transcript_error"]
+    assert msg.payload.get("stored")              # still there to listen to

@@ -259,6 +259,67 @@ _EXTENSIONS = {
 }
 
 
+# What WhatsApp accepts from us, and as what. Larger documents are allowed by
+# Meta, but 16 MB keeps an upload from the dashboard quick and the server light.
+SENDABLE = {
+    "image/jpeg": "image", "image/png": "image",
+    "video/mp4": "video", "video/3gpp": "video",
+    "audio/aac": "audio", "audio/mp4": "audio", "audio/mpeg": "audio", "audio/amr": "audio",
+    "audio/ogg": "audio",
+}
+SEND_LIMIT = {"image": 5 * 1024 * 1024, "video": 16 * 1024 * 1024, "audio": 16 * 1024 * 1024,
+              "document": 16 * 1024 * 1024}
+_LABELS_OUT = {"image": "Photo", "video": "Video", "audio": "Audio", "document": "Document"}
+
+
+def media_kind(mime: str) -> str:
+    """How WhatsApp will show a file of this type: any other type goes as a document."""
+    return SENDABLE.get((mime or "").split(";")[0].strip().lower(), "document")
+
+
+def send_media(db: Session, phone: str, content: bytes, mime: str, filename: str,
+               caption: Optional[str], *, sent_by: str) -> WhatsAppMessage:
+    """
+    Send a file from the inbox and record it, sent or not.
+
+    The file is kept so the thread can show what was sent; Meta is given its
+    own copy. The caller checks the 24-hour window and the size.
+    """
+    kind = media_kind(mime)
+    mime = (mime or "application/octet-stream").split(";")[0].strip().lower()
+    ext = _EXTENSIONS.get(mime) or (os.path.splitext(filename or "")[1].lstrip(".")[:8]) or "bin"
+    ext = re.sub(r"[^A-Za-z0-9]", "", ext) or "bin"
+    message_id = uuid.uuid4().hex
+    folder = os.path.join(MEDIA_DIR, re.sub(r"\D", "", phone))
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"{message_id}.{ext}")
+    with open(path, "wb") as fh:
+        fh.write(content)
+
+    meta = MetaWhatsAppService()
+    media_id = meta.upload_media(path, kind)
+    if media_id:
+        ok, provider_id, _s, error, _c = meta.send_media_message(phone, kind, media_id, caption, filename)
+    else:
+        ok, provider_id, error = False, None, getattr(meta, "last_media_error", None) or "Could not upload the file to WhatsApp"
+
+    conv = conversation(db, phone)
+    label = f"[{_LABELS_OUT[kind]}]"
+    msg = WhatsAppMessage(
+        message_id=message_id, phone=phone, direction="OUT", kind=kind,
+        body=f"{label} {caption or (filename if kind == 'document' else '')}".strip(),
+        payload={"stored": path, "mime_type": mime, "filename": filename, "size": len(content)},
+        provider_message_id=provider_id,
+        status="SENT" if ok else "FAILED",
+        error_reason=None if ok else (error or "Unknown error")[:500],
+        sent_by=sent_by, created_at=now(),
+    )
+    db.add(msg)
+    conv.last_message_at = msg.created_at
+    db.flush()
+    return msg
+
+
 def fetch_media(msg: WhatsAppMessage) -> Optional[str]:
     """
     Download the file an inbound message carries, and note where it was kept.

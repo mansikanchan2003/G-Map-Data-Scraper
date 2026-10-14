@@ -852,6 +852,38 @@ def documents_submitted(db: Session, conv: WhatsAppConversation) -> WhatsAppMess
     return _say(db, conv, _t(db, conv, "thanks"))
 
 
+def transcribe_voice(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> None:
+    """
+    Write a voice note out as text, once, into its payload.
+
+    Done for every voice note, whoever sent it, so the inbox can show what
+    was said; the bot then answers campaign people from the text. A failure
+    is recorded rather than raised: the note is still there to listen to.
+    """
+    payload = dict(msg.payload or {})
+    if msg.kind != "audio" or payload.get("transcript") or payload.get("transcript_error"):
+        return
+    try:
+        if not payload.get("stored"):
+            inbox.fetch_media(msg)
+            payload = dict(msg.payload or {})
+        path = payload.get("stored")
+        if not path:
+            raise RuntimeError(payload.get("fetch_error") or "the voice note could not be downloaded")
+        from src.services import transcribe
+
+        heard = transcribe.transcribe(path, fallback_language=_lang(db, conv))
+        payload.update(transcript=heard["text"] or None, language=heard["language"],
+                       language_probability=heard["probability"])
+        if not heard["text"]:
+            payload["transcript_error"] = "Nothing could be made out"
+    except Exception as exc:
+        logger.exception(f"onboarding_bot event=TRANSCRIBE_FAILED message_id={msg.message_id}")
+        payload["transcript_error"] = str(exc)[:300]
+    msg.payload = payload
+    db.commit()
+
+
 def run(message_ids: list) -> None:
     """
     Answer newly recorded inbound messages. Runs after the webhook has replied.
@@ -870,6 +902,7 @@ def run(message_ids: list) -> None:
                 continue
             conv = db.query(WhatsAppConversation).filter(WhatsAppConversation.phone == msg.phone).first()
             try:
+                transcribe_voice(db, conv, msg)
                 handle(db, conv, msg)
                 db.commit()
             except Exception:

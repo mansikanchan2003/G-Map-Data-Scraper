@@ -191,6 +191,28 @@ class MetaWhatsAppService:
             },
         })
 
+    def send_media_message(
+        self,
+        to_phone: str,
+        kind: str,
+        media_id: str,
+        caption: Optional[str] = None,
+        filename: Optional[str] = None,
+    ) -> Tuple[bool, Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """
+        Sends an uploaded photo, video, audio clip or document.
+
+        `media_id` comes from upload_media. Meta takes a caption on photos,
+        videos and documents, and shows a document's file name; audio has
+        neither. Only accepted inside the 24-hour window.
+        """
+        media = {"id": media_id}
+        if caption and kind in ("image", "video", "document"):
+            media["caption"] = caption[:1024]
+        if filename and kind == "document":
+            media["filename"] = filename[:240]
+        return self._send_session_message(to_phone, {"type": kind, kind: media})
+
     def _send_session_message(
         self,
         to_phone: str,

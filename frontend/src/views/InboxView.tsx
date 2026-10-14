@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  fetchBotSettings, fetchConversation, fetchConversations, markConversationRead,
+  fetchBotSettings, fetchConversation, fetchConversations, markConversationRead, setAttention, sendInboxMedia,
   saveBotSettings, saveDocumentsToDrive, sendInboxMessage, setBotPaused, documentUrl, mediaUrl,
   type BotSettings, type ConversationDetail, type ConversationSummary, type ThreadMessage,
 } from '../api/inbox';
@@ -114,6 +114,15 @@ const formatted = (text: string): React.ReactNode[] =>
 
 const MEDIA_KINDS = ['image', 'video', 'audio', 'document', 'sticker'];
 
+// The emoji most used in these chats; enough to reply warmly without a library.
+const EMOJIS = [
+  '😊', '🙏', '👍', '🙂', '😀', '😃', '😄', '😁', '😅', '😂',
+  '🤝', '👏', '🙌', '💪', '👌', '✌️', '👋', '🤗', '😇', '🥳',
+  '✅', '❌', '⭐', '🎉', '🔥', '💯', '📌', '📍', '📞', '📱',
+  '💰', '💵', '🏦', '🏪', '📝', '📄', '📎', '📅', '⏰', '⌛',
+  '❤️', '💙', '💚', '🧡', '🤔', '😔', '😢', '🙃', '👉', '➡️',
+];
+
 /** A file someone sent, shown the way WhatsApp would show it. */
 const Media: React.FC<{ m: ThreadMessage }> = ({ m }) => {
   const [failed, setFailed] = useState(false);
@@ -200,9 +209,20 @@ const Bubble: React.FC<{ m: ThreadMessage }> = ({ m }) => {
             <span className="material-symbols-outlined text-[16px]">touch_app</span>
             Tapped “{m.body}”
           </div>
-        ) : m.direction === 'IN' && MEDIA_KINDS.includes(m.kind) ? (
+        ) : MEDIA_KINDS.includes(m.kind) ? (
           <div className="flex flex-col gap-1.5">
             <Media m={m} />
+            {m.kind === 'audio' && m.payload?.transcript && (
+              <div className="text-sm text-slate-200 whitespace-pre-wrap break-words select-text border-l-2 border-sky-700 pl-2">
+                <span className="block text-[10px] text-sky-400 font-semibold mb-0.5">
+                  Transcript{m.payload.language ? ` · ${LANGUAGE_NAMES[m.payload.language] || m.payload.language}` : ''}
+                </span>
+                {m.payload.transcript}
+              </div>
+            )}
+            {m.kind === 'audio' && !m.payload?.transcript && m.payload?.transcript_error && (
+              <div className="text-[11px] text-slate-500">Could not transcribe: {m.payload.transcript_error}</div>
+            )}
             {/* The caption, without the "[Photo]" label the list preview uses. */}
             {(m.body || '').replace(/^\[[^\]]+\]\s*/, '') && m.kind !== 'document' && (
               <div className="text-sm text-slate-100 whitespace-pre-wrap break-words select-text">
@@ -314,11 +334,15 @@ const BotSettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 <li>Asks for their PIN code.</li>
                 <li>Checks it is one of our PINs or within {settings.radius_km} km of one.</li>
                 <li>Asks how far they have studied: 12th/Diploma, Graduate/Post-Grad or Other. Other is told politely that at least 12th or a Diploma is needed, and the flow ends.</li>
-                <li>Asks whether they have a franchise background — Yes / No. Either answer goes on.</li>
-                <li>Asks whether they can invest ₹5 Lakh — Yes / No.</li>
+                <li>Asks once whether they can invest 5 lakh rupees to set up a franchise business, with a note on what a franchise background is — Yes / No.</li>
                 <li>Lists the documents needed and asks if they have them — Yes / No.</li>
                 <li>Sends the upload link; after they submit, thanks them.</li>
               </ol>
+              <p className="mt-1.5">
+                Someone who stops answering gets one polite reminder an hour later, in their language, with the
+                question they left. A question the bot cannot answer is marked <span className="text-rose-300">Needs attention</span> until
+                you press Question resolved. Voice notes are transcribed and answered in the language spoken.
+              </p>
               <p className="mt-1.5">
                 The <span className="text-slate-300">Webinar</span> button instead asks if they can join tomorrow's
                 webinar; a yes, or the time they suggest, is emailed to you so the link can be sent.
@@ -547,7 +571,7 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
   const [listError, setListError] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | 'autogmap' | 'unread' | 'bot' | 'docs'>('all');
+  const [filter, setFilter] = useState<'all' | 'attention' | 'autogmap' | 'unread' | 'bot' | 'docs'>('all');
   const [selected, setSelected] = useState<string | null>(() => {
     // A link such as #inbox/919876543210 opens that conversation.
     const m = window.location.hash.match(/^#inbox\/(\d+)/);
@@ -561,6 +585,11 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
   const [showSettings, setShowSettings] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const textBox = useRef<HTMLTextAreaElement>(null);
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [attentionBusy, setAttentionBusy] = useState(false);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   const lastCount = useRef(0);
@@ -639,6 +668,32 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
     lastCount.current = count;
   }, [detail?.messages.length]);
 
+  const changeAttention = async (needed: boolean) => {
+    if (!selected) return;
+    setAttentionBusy(true);
+    try {
+      await setAttention(selected, needed);
+      await loadThread(selected);
+      loadList();
+    } catch (e) {
+      setSendError(errMsg(e));
+    } finally {
+      setAttentionBusy(false);
+    }
+  };
+
+  /** Puts an emoji where the cursor is, not always at the end. */
+  const insertEmoji = (emoji: string) => {
+    const box = textBox.current;
+    const at = box ? box.selectionStart ?? draft.length : draft.length;
+    const end = box ? box.selectionEnd ?? at : at;
+    setDraft(d => d.slice(0, at) + emoji + d.slice(end));
+    requestAnimationFrame(() => {
+      box?.focus();
+      box?.setSelectionRange(at + emoji.length, at + emoji.length);
+    });
+  };
+
   const open = (phone: string) => {
     setSelected(phone);
     setShowDetails(false);
@@ -652,11 +707,17 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
 
   const send = async () => {
     const body = draft.trim();
-    if (!body || !selected || sending) return;
+    if ((!body && !attachment) || !selected || sending) return;
     setSending(true);
     setSendError(null);
     try {
-      await sendInboxMessage(selected, body);
+      if (attachment) {
+        await sendInboxMedia(selected, attachment, body);
+        setAttachment(null);
+      } else {
+        await sendInboxMessage(selected, body);
+      }
+      setShowEmoji(false);
       setDraft('');
       await loadThread(selected);
       loadList();
@@ -670,7 +731,8 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
   };
 
   const shown = useMemo(() => conversations.filter(c =>
-    filter === 'autogmap' ? c.from_campaign
+    filter === 'attention' ? c.needs_attention
+    : filter === 'autogmap' ? c.from_campaign
     : filter === 'unread' ? c.unread > 0
       : filter === 'bot' ? !!c.bot_step && BOT_WAITING.includes(c.bot_step) && !c.bot_paused
         : filter === 'docs' ? c.documents > 0
@@ -678,6 +740,7 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
   ), [conversations, filter]);
 
   const unreadTotal = conversations.filter(c => c.unread > 0).length;
+  const attentionTotal = conversations.filter(c => c.needs_attention).length;
   const left = detail ? windowLeft(detail.window_expires_at) : null;
   const botActive = !!detail?.bot_step && BOT_WAITING.includes(detail.bot_step) && !detail.bot_paused;
 
@@ -715,7 +778,7 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
               className="w-full bg-slate-950 border border-slate-800 rounded pl-8 pr-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-sky-600" />
           </div>
           <div className="flex gap-1 overflow-x-auto">
-            {([['all', 'All'], ['autogmap', 'From AutoGMap'], ['unread', 'Unread'], ['bot', 'With bot'], ['docs', 'Documents']] as const).map(([k, label]) => (
+            {([['all', 'All'], ['attention', `Needs attention${attentionTotal ? ` (${attentionTotal})` : ''}`], ['autogmap', 'From AutoGMap'], ['unread', 'Unread'], ['bot', 'With bot'], ['docs', 'Documents']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setFilter(k)}
                 className={`text-[11px] px-2 py-1 rounded-full border whitespace-nowrap cursor-pointer ${
                   filter === k ? 'border-sky-600 bg-sky-950 text-sky-300' : 'border-slate-800 text-slate-400 hover:text-slate-200'}`}>
@@ -767,6 +830,12 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
                       </span>
                       {(c.from_campaign || c.bot_step || c.documents > 0) && (
                         <span className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          {c.needs_attention && (
+                            <span title={c.attention_reason || 'Needs attention'}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-rose-700 bg-rose-950/70 text-rose-300 text-[10px] font-semibold whitespace-nowrap">
+                              <span className="material-symbols-outlined text-[12px]">priority_high</span>Attention
+                            </span>
+                          )}
                           {c.from_campaign && (
                             <span title="Reached by an AutoGMap campaign"
                               className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-amber-800 bg-amber-950/60 text-amber-300 text-[10px] font-semibold whitespace-nowrap">
@@ -815,6 +884,21 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
                   {detail && <BotChip step={detail.bot_step} label={detail.bot_step_label} paused={detail.bot_paused} />}
                 </div>
               </div>
+              {detail?.from_campaign && !readOnly && (
+                detail.needs_attention ? (
+                  <button onClick={() => changeAttention(false)} disabled={attentionBusy}
+                    title="Clears the attention mark; press it once the question has been answered"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded border border-emerald-700 bg-emerald-950 text-emerald-300 hover:bg-emerald-900 cursor-pointer disabled:opacity-50 whitespace-nowrap">
+                    <span className="material-symbols-outlined text-[16px]">task_alt</span>Question resolved
+                  </button>
+                ) : (
+                  <button onClick={() => changeAttention(true)} disabled={attentionBusy}
+                    title="Mark this conversation as a priority for the team"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded border border-rose-800 text-rose-300 hover:bg-rose-950 cursor-pointer disabled:opacity-50 whitespace-nowrap">
+                    <span className="material-symbols-outlined text-[16px]">priority_high</span>Attention needed
+                  </button>
+                )
+              )}
               <button onClick={() => setShowDetails(s => !s)} title="Details and documents"
                 className={`xl:hidden inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border cursor-pointer ${
                   showDetails ? 'border-sky-700 text-sky-300 bg-sky-950' : 'border-slate-700 text-slate-300 hover:bg-slate-800'}`}>
@@ -828,6 +912,15 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
                 {showDetails && detail && (
                   <div className="xl:hidden border-b border-slate-800 bg-slate-900 p-3 max-h-[55%] overflow-y-auto">
                     <Details conv={detail} onChanged={() => { loadThread(selected); loadList(); }} />
+                  </div>
+                )}
+                {detail?.needs_attention && (
+                  <div className="flex items-start gap-2 px-3 py-2 border-b border-rose-900 bg-rose-950/60 text-xs text-rose-200 select-text">
+                    <span className="material-symbols-outlined text-[16px] text-rose-400">priority_high</span>
+                    <span className="min-w-0">
+                      <span className="font-semibold">Needs attention{detail.attention_at ? ` · ${since(detail.attention_at)} ago` : ''}: </span>
+                      <span className="break-words">{detail.attention_reason || 'Marked for the team'}</span>
+                    </span>
                   </div>
                 )}
                 <div ref={scroller} className="flex-1 overflow-y-auto min-h-0 px-3 sm:px-5 py-4 bg-slate-950">
@@ -854,15 +947,46 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
                             The bot is answering this person. Pause it from the details panel to take over.
                           </div>
                         )}
+                        {attachment && (
+                          <div className="mb-1.5 flex items-center gap-2 rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200">
+                            <span className="material-symbols-outlined text-[18px] text-slate-400">
+                              {attachment.type.startsWith('image/') ? 'image' : attachment.type.startsWith('video/') ? 'movie'
+                                : attachment.type.startsWith('audio/') ? 'mic' : 'description'}
+                            </span>
+                            <span className="truncate flex-1">{attachment.name}</span>
+                            <span className="text-slate-500 shrink-0">{sizeLabel(attachment.size)}</span>
+                            <button onClick={() => setAttachment(null)} aria-label="Remove the file" className="text-slate-500 hover:text-slate-200 cursor-pointer">
+                              <span className="material-symbols-outlined text-[16px]">close</span>
+                            </button>
+                          </div>
+                        )}
+                        {showEmoji && (
+                          <div className="mb-1.5 grid grid-cols-10 gap-0.5 rounded border border-slate-700 bg-slate-950 p-1.5 max-w-sm">
+                            {EMOJIS.map(e => (
+                              <button key={e} onClick={() => insertEmoji(e)} className="text-lg leading-none p-1 rounded hover:bg-slate-800 cursor-pointer">{e}</button>
+                            ))}
+                          </div>
+                        )}
                         <div className="flex items-end gap-2">
-                          <textarea value={draft} onChange={e => setDraft(e.target.value)}
+                          <input ref={fileInput} type="file" className="hidden"
+                            onChange={e => { const f = e.target.files?.[0]; if (f) setAttachment(f); e.target.value = ''; }} />
+                          <button onClick={() => setShowEmoji(s => !s)} aria-label="Emoji" title="Emoji"
+                            className={`w-9 h-10 shrink-0 rounded-lg flex items-center justify-center cursor-pointer ${showEmoji ? 'text-amber-300' : 'text-slate-400 hover:text-slate-200'}`}>
+                            <span className="material-symbols-outlined text-[22px]">mood</span>
+                          </button>
+                          <button onClick={() => fileInput.current?.click()} aria-label="Attach a file"
+                            title="Photo, video, audio or document"
+                            className="w-9 h-10 shrink-0 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-200 cursor-pointer">
+                            <span className="material-symbols-outlined text-[22px]">attach_file</span>
+                          </button>
+                          <textarea ref={textBox} value={draft} onChange={e => setDraft(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
                             rows={Math.min(5, Math.max(1, draft.split('\n').length))}
                             maxLength={4096}
-                            placeholder="Type a reply"
+                            placeholder={attachment ? 'Add a caption (optional)' : 'Type a reply'}
                             title="Enter sends; Shift+Enter starts a new line"
                             className="flex-1 resize-none bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-600 select-text" />
-                          <button onClick={send} disabled={!draft.trim() || sending} aria-label="Send"
+                          <button onClick={send} disabled={(!draft.trim() && !attachment) || sending} aria-label="Send"
                             className="w-10 h-10 shrink-0 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center disabled:opacity-40 cursor-pointer">
                             {sending
                               ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

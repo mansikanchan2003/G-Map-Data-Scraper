@@ -14,7 +14,7 @@ import os
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
@@ -487,3 +487,46 @@ def set_attention(digits: str, payload: AttentionRequest, db: Session = Depends(
         conv.attention_resolved_at = inbox.now()
     db.commit()
     return {"needs_attention": conv.needs_attention, "attention_reason": conv.attention_reason}
+
+
+@router.post("/conversations/{digits}/media", response_model=ThreadMessage)
+async def send_media(
+    digits: str,
+    file: UploadFile = File(...),
+    caption: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """
+    Send a photo, video, audio clip or document from the business number.
+
+    JPEG and PNG go as photos, MP4 and 3GP as videos, AAC, MP3, M4A, AMR and
+    OGG as audio; anything else is sent as a document. Like a typed reply,
+    only within 24 hours of the person's last message.
+    """
+    conv = _get_conversation(db, digits)
+    if not inbox.window_open(conv):
+        raise HTTPException(status_code=409, detail=(
+            "The 24-hour reply window has closed. Only an approved template can reach this number now."))
+
+    mime = (file.content_type or "application/octet-stream").split(";")[0].strip().lower()
+    kind = inbox.media_kind(mime)
+    limit = inbox.SEND_LIMIT[kind]
+    content = await file.read(limit + 1)
+    if not content:
+        raise HTTPException(status_code=400, detail="The file is empty")
+    if len(content) > limit:
+        raise HTTPException(status_code=413, detail=(
+            f"WhatsApp takes a {kind} of up to {limit // (1024 * 1024)} MB; this file is larger."))
+
+    msg = inbox.send_media(db, conv.phone, content, mime, os.path.basename(file.filename or "file"),
+                           (caption or "").strip() or None, sent_by=user.email)
+    conv.last_read_at = inbox.now()
+    db.commit()
+    if msg.status == "FAILED":
+        raise HTTPException(status_code=502, detail=msg.error_reason)
+    return ThreadMessage(
+        id=msg.message_id, direction=msg.direction, kind=msg.kind, body=msg.body,
+        payload=_public_payload(msg), status=msg.status, sent_by=msg.sent_by,
+        created_at=inbox.aware(msg.created_at),
+    )
