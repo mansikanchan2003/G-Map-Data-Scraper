@@ -19,6 +19,12 @@ The language is chosen among the bot's own (Indian languages and English),
 not left to Whisper, which heard a short Hindi note as Polish; see
 choose_language. Odia is not among Whisper's languages, so an Odia note is
 transcribed in the nearest one it knows.
+
+A Hindi note is then written out by a "small" Whisper trained further on
+Hindi speech (HINDI_MODEL, Collabora's conversion of IIT Madras's model,
+free like the rest). On that same note it wrote "मुझे क्वेश्चन पूछना होगा",
+what was said, where every general model wrote nonsense. It is about as
+large as "small", so both fit beside a scraping batch.
 """
 import logging
 import os
@@ -29,26 +35,27 @@ logger = logging.getLogger("gmap_scraper.transcribe")
 
 MODEL = os.environ.get("WHISPER_MODEL", "small")
 CACHE_DIR = os.environ.get("WHISPER_CACHE_DIR", os.path.join("data", "whisper"))
+HINDI_MODEL = os.environ.get("WHISPER_HINDI_MODEL", "collabora/faster-whisper-small-hindi")
 THREADS = int(os.environ.get("WHISPER_THREADS", "4"))
 
 # Whisper's language codes the bot can answer in.
 BOT_LANGUAGES = {"en", "hi", "mr", "pa", "gu", "bn", "ta", "te", "kn", "ml"}
 
-_model = None
+_models: dict = {}
 _lock = threading.Lock()
 
 
-def _load():
-    global _model
+def _load(name: str = None):
+    name = name or MODEL
     with _lock:
-        if _model is None:
+        if name not in _models:
             from faster_whisper import WhisperModel
 
             os.makedirs(CACHE_DIR, exist_ok=True)
-            logger.info(f"transcribe event=LOADING model={MODEL}")
-            _model = WhisperModel(MODEL, device="cpu", compute_type="int8",
-                                  cpu_threads=THREADS, download_root=CACHE_DIR)
-    return _model
+            logger.info(f"transcribe event=LOADING model={name}")
+            _models[name] = WhisperModel(name, device="cpu", compute_type="int8",
+                                         cpu_threads=THREADS, download_root=CACHE_DIR)
+    return _models[name]
 
 
 def _audio(path: str):
@@ -85,11 +92,16 @@ def transcribe(path: str, fallback_language: Optional[str] = None) -> dict:
     {"text", "language", "probability"} for one audio file.
 
     The language is always one the bot speaks: chosen by choose_language,
-    then the note is transcribed in it.
+    then the note is transcribed in it, by the Hindi model if it is Hindi.
     """
     model = _load()
     audio = _audio(path)
     lang, prob = choose_language(model, audio, fallback_language)
+    if lang == "hi" and HINDI_MODEL:
+        try:
+            model = _load(HINDI_MODEL)
+        except Exception:
+            logger.exception(f"transcribe event=HINDI_MODEL_FAILED model={HINDI_MODEL}")
     segments, _info = model.transcribe(audio, language=lang, beam_size=5, vad_filter=True)
     text = " ".join(s.text.strip() for s in segments).strip()
     return {"text": text, "language": lang, "probability": prob}

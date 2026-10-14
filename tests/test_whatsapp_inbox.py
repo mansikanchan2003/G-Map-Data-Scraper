@@ -1084,3 +1084,52 @@ def test_the_language_is_chosen_among_the_bots_own():
     assert transcribe.choose_language(Model(), None)[0] == "hi"
     # The conversation's own language is preferred when the scores are close.
     assert transcribe.choose_language(Model(), None, fallback_language="en")[0] == "en"
+
+
+def test_questions_are_answered_past_the_few_in_a_row_limit(db, monkeypatch):
+    # Someone whose documents are in is past every question, so all they say
+    # is "not understood"; their questions must still be answered.
+    monkeypatch.setattr(onboarding_bot, "FALLBACK_GAP", timedelta(0))
+    tap_campaign(db)
+    for i in range(onboarding_bot.MAX_FALLBACK_STREAK):
+        say(db, f"ok {i}")
+    sent = len(StubMeta.sent)
+    say(db, "Mere kuch sawal hain")
+    assert len(StubMeta.sent) == sent + 1
+    assert StubMeta.sent[-1][2].startswith(bot_messages.MESSAGES["en"]["question_ack"])
+
+
+def test_a_run_of_replies_is_forgotten_after_a_while(db, monkeypatch):
+    monkeypatch.setattr(onboarding_bot, "FALLBACK_GAP", timedelta(0))
+    tap_campaign(db)
+    for i in range(onboarding_bot.MAX_FALLBACK_STREAK + 1):
+        say(db, f"ok {i}")
+    c = conv(db)
+    earlier = inbox.now() - onboarding_bot.STREAK_RESET - timedelta(minutes=1)
+    c.bot_data = {**c.bot_data, "fallback_at": earlier.isoformat()}
+    db.commit()
+    sent = len(StubMeta.sent)
+    say(db, "ok again")
+    assert len(StubMeta.sent) == sent + 1
+
+
+def test_a_hindi_note_is_written_out_by_the_hindi_model(monkeypatch):
+    from src.services import transcribe
+
+    used = []
+
+    class Model:
+        def __init__(self, name):
+            self.name = name
+
+        def detect_language(self, audio):
+            return "hi", 0.9, [("hi", 0.9)]
+
+        def transcribe(self, audio, **kw):
+            used.append(self.name)
+            return [type("S", (), {"text": "मुझे सवाल पूछना है"})()], None
+
+    monkeypatch.setattr(transcribe, "_load", lambda name=None: Model(name or transcribe.MODEL))
+    monkeypatch.setattr(transcribe, "_audio", lambda path: None)
+    assert transcribe.transcribe("x.ogg")["text"] == "मुझे सवाल पूछना है"
+    assert used == [transcribe.HINDI_MODEL]

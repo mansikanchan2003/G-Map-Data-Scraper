@@ -184,6 +184,12 @@ GREETING_GAP = timedelta(hours=24)
 # understand. Many businesses have an auto-reply, and two automatic
 # responders answering each other would never stop on their own.
 MAX_FALLBACK_STREAK = 3
+# A question or a voice note is answered past that limit (it is a person
+# asking, not an auto-reply), up to this many in a row...
+MAX_QUESTION_STREAK = 10
+# ...and a run of either is forgotten after this long without one, so a
+# person who comes back later is answered again.
+STREAK_RESET = timedelta(hours=1)
 
 # Kept across a restart of either flow: what the person already told us.
 _REMEMBERED = ("lang", "lang_campaign", "campaign_lang", "webinar")
@@ -559,8 +565,10 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, **kw):
     Paced, and stopped after a few in a row, so that a person typing several
     lines gets one answer and an auto-reply cannot start an endless exchange.
 
-    A question of their own marks the conversation for a person and is
-    thanked first, even inside the pause: a question deserves an answer.
+    A question of their own, or a voice note, marks the conversation for a
+    person and is thanked first, inside the pause and past the few-in-a-row
+    limit (up to MAX_QUESTION_STREAK): a question deserves an answer. A run
+    is forgotten after STREAK_RESET.
     """
     data = conv.bot_data or {}
     streak = data.get("fallback_streak", 0)
@@ -576,7 +584,9 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, **kw):
         flag(conv, f"Voice note: {said}" if voice and said else ("Voice note" if voice else said))
         ack = _t(db, conv, "question_ack")
         body = ack if body == _t(db, conv, "acknowledge") else f"{ack}\n\n{body}"
-    if streak >= MAX_FALLBACK_STREAK:
+    if last and inbox.now() - datetime.fromisoformat(last) >= STREAK_RESET:
+        streak = 0
+    if streak >= (MAX_QUESTION_STREAK if asked else MAX_FALLBACK_STREAK):
         return
     if not asked and last and inbox.now() - datetime.fromisoformat(last) < gap:
         return
