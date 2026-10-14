@@ -94,6 +94,9 @@ def stub_meta(monkeypatch, tmp_path):
     monkeypatch.setattr(pincode_coverage, "_locate_or_none", lambda pin: None)
     # Nor a real Google Drive; the copy itself is tested on its own below.
     monkeypatch.setattr(drive_uploads, "save_in_background", lambda phone: None)
+    # Personal guidance is offered for tomorrow whatever the hour the tests
+    # run at; the tests of "today" set the hour themselves.
+    monkeypatch.setattr(onboarding_bot, "GUIDANCE_TODAY_UNTIL", 0)
 
 
 @pytest.fixture
@@ -1154,3 +1157,45 @@ def test_a_draft_with_the_old_webinar_button_is_submitted_with_the_new_one():
     components = whatsapp_service.build_meta_components(draft)
     buttons = next(c for c in components if c["type"] == "BUTTONS")["buttons"]
     assert [b["text"] for b in buttons] == ["Interested", "પર્સનલ ગાઇડન્સ જોઈએ"]
+
+
+def _tapped_at(monkeypatch, hour, minute):
+    """Make it this time of day in India when the button is tapped."""
+    from datetime import datetime, timezone
+
+    at = datetime(2026, 10, 14, hour, minute, tzinfo=onboarding_bot.IST).astimezone(timezone.utc)
+    monkeypatch.setattr(onboarding_bot, "GUIDANCE_TODAY_UNTIL", 18)
+    monkeypatch.setattr(inbox, "now", lambda: at)
+
+
+def test_guidance_before_6_pm_is_offered_for_today(db, told, monkeypatch):
+    _tapped_at(monkeypatch, 17, 59)
+    tap_campaign(db, text=campaign_buttons.WEBINAR["hi"], lang="hi")
+    body = StubMeta.sent[-1][2]
+    assert body == bot_messages.MESSAGES["hi"]["webinar_ask_today"]
+    assert body.startswith("क्या आप आज पर्सनल गाइडेंस सेशन")
+    tap(db, "webinar:yes")
+    assert told[-1]["answer"] == "Confirmed for personal guidance today"
+
+
+def test_guidance_from_6_pm_is_offered_for_tomorrow(db, told, monkeypatch):
+    _tapped_at(monkeypatch, 18, 0)
+    tap_campaign(db, text=campaign_buttons.WEBINAR["hi"], lang="hi")
+    assert StubMeta.sent[-1][2].startswith("क्या आप कल पर्सनल गाइडेंस सेशन")
+    tap(db, "webinar:yes")
+    assert told[-1]["answer"] == "Confirmed for personal guidance tomorrow"
+
+
+def test_the_guidance_day_stays_as_offered_when_asked_again(db, monkeypatch):
+    _tapped_at(monkeypatch, 17, 30)
+    tap_campaign(db, text=campaign_buttons.WEBINAR["en"], lang="en")
+    later = inbox.now() + timedelta(hours=1)        # past 6 PM by now
+    monkeypatch.setattr(inbox, "now", lambda: later)
+    monkeypatch.setattr(onboarding_bot, "FALLBACK_GAP", timedelta(0))
+    say(db, "hmm")
+    assert bot_messages.MESSAGES["en"]["webinar_ask_today"] in StubMeta.sent[-1][2]
+
+
+def test_every_language_can_offer_guidance_today():
+    for lang, msgs in bot_messages.MESSAGES.items():
+        assert msgs["webinar_ask_today"] != msgs["webinar_ask"], lang

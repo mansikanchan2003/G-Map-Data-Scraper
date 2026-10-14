@@ -823,6 +823,29 @@ _QUESTION_ACK = {
 for _lang, _line in _QUESTION_ACK.items():
     MESSAGES[_lang]["question_ack"] = _line
 
+
+# --- Personal guidance today ---------------------------------------------------
+# The guidance question says "tomorrow"; to someone who taps the button before
+# 6 PM it says "today" instead (onboarding_bot.GUIDANCE_TODAY_UNTIL). The
+# sentence is otherwise the same, so it is made from it by swapping that word.
+_TOMORROW_TODAY = {
+    "en": ("tomorrow", "today"),
+    "hi": ("कल", "आज"),
+    "pa": ("ਕੱਲ੍ਹ", "ਅੱਜ"),
+    "gu": ("આવતીકાલે", "આજે"),
+    "mr": ("उद्या", "आज"),
+    "bn": ("আগামীকাল", "আজ"),
+    "ta": ("நாளை", "இன்று"),
+    "te": ("రేపు", "ఈరోజు"),
+    "kn": ("ನಾಳೆ", "ಇಂದು"),
+    "ml": ("നാളെ", "ഇന്ന്"),
+    "or": ("କାଲି", "ଆଜି"),
+}
+for _lang, (_tomorrow, _today) in _TOMORROW_TODAY.items():
+    _ask = MESSAGES[_lang]["webinar_ask"]
+    assert _tomorrow in _ask.split("\n")[0], _lang
+    MESSAGES[_lang]["webinar_ask_today"] = _ask.replace(_tomorrow, _today, 1)
+
 # Words that make a message a question in each language, and the Latin
 # spellings people type them in. Read by onboarding_bot.looks_like_question.
 QUESTION_WORDS = {

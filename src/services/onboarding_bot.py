@@ -37,7 +37,7 @@ import logging
 import os
 import re
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -190,6 +190,11 @@ MAX_QUESTION_STREAK = 10
 # ...and a run of either is forgotten after this long without one, so a
 # person who comes back later is answered again.
 STREAK_RESET = timedelta(hours=1)
+
+# Personal guidance is offered for the same day to someone who taps its
+# button before this hour (India time), and for the next day after it.
+GUIDANCE_TODAY_UNTIL = 18
+IST = timezone(timedelta(hours=5, minutes=30))
 
 # Kept across a restart of either flow: what the person already told us.
 _REMEMBERED = ("lang", "lang_campaign", "campaign_lang", "webinar")
@@ -439,10 +444,20 @@ def _begin(db, conv, flow: str):
     """The first question of a flow, in the chosen language."""
     if flow == WEBINAR:
         _move(conv, AWAIT_WEBINAR)
-        _say(db, conv, _t(db, conv, "webinar_ask"), buttons=YES_NO("webinar", _lang(db, conv)))
+        _say(db, conv, _guidance_ask(db, conv), buttons=YES_NO("webinar", _lang(db, conv)))
     else:
         _move(conv, AWAIT_PIN, pin_attempts=0)
         _say(db, conv, _t(db, conv, "ask_pin"))
+
+
+def _guidance_day(conv) -> str:
+    """"today" or "tomorrow": the day personal guidance was offered for."""
+    return (conv.bot_data or {}).get("guidance_day") or "tomorrow"
+
+
+def _guidance_ask(db, conv) -> str:
+    key = "webinar_ask_today" if _guidance_day(conv) == "today" else "webinar_ask"
+    return _t(db, conv, key)
 
 
 def _start(db, conv, msg, flow: str):
@@ -454,6 +469,12 @@ def _start(db, conv, msg, flow: str):
     # us (their language, their webinar answer) is kept.
     kept = {k: v for k, v in (conv.bot_data or {}).items() if k in _REMEMBERED}
     conv.bot_data = {**kept, "trigger": msg.body}
+    if flow == WEBINAR:
+        # Decided once, when the button is tapped, so a reminder or the
+        # question asked again later names the same day.
+        tapped_at = inbox.aware(getattr(msg, "created_at", None)) or inbox.now()
+        today = tapped_at.astimezone(IST).hour < GUIDANCE_TODAY_UNTIL
+        conv.bot_data = {**conv.bot_data, "guidance_day": "today" if today else "tomorrow"}
     if _chosen_lang(db, conv):
         _begin(db, conv, flow)
     else:
@@ -789,13 +810,13 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
             _understood(conv)
             _move(conv, WEBINAR_CONFIRMED, webinar={"answer": "yes", "at": inbox.now().isoformat()})
             _say(db, conv, _t(db, conv, "webinar_yes"))
-            _tell_team(conv, "Confirmed for personal guidance tomorrow")
+            _tell_team(conv, f"Confirmed for personal guidance {_guidance_day(conv)}")
         elif answer is False:
             _understood(conv)
             _move(conv, AWAIT_AVAILABILITY)
             _say(db, conv, _t(db, conv, "webinar_no"))
         else:
-            _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n" + _t(db, conv, "webinar_ask"),
+            _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n" + _guidance_ask(db, conv),
                       buttons=YES_NO("webinar", lang))
 
     elif step == SUBMITTED:
@@ -858,7 +879,7 @@ def pending_question(db: Session, conv: WhatsAppConversation):
     if step == AWAIT_UPLOAD and conv.upload_token:
         return _t(db, conv, "remind_upload"), {"link": {"text": _t(db, conv, "link_button"), "url": upload_url(conv)}}
     if step == AWAIT_WEBINAR:
-        return _t(db, conv, "webinar_ask"), {"buttons": YES_NO("webinar", lang)}
+        return _guidance_ask(db, conv), {"buttons": YES_NO("webinar", lang)}
     if step == AWAIT_AVAILABILITY:
         return _t(db, conv, "webinar_no"), {}
     return None
