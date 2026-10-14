@@ -183,7 +183,19 @@ export interface GrowthPlan {
     leads_per_1000: number | null;
     messages_needed: number | null;
     lead_list: { name: string | null; phone: string; submitted_at: string }[];
+    /** The goal is set by the agent each month from the business data. */
+    label: string;
+    set_by: 'agent';
+    basis: string;
+    reasoning: string[];
+    extra_csps?: number;
+    baseline_new_csps?: number;
+    go_live_rate?: number;
+    state_gaps?: { state: string; target: number; leads: number; gap: number }[];
+    stretch?: number;
   };
+  /** From onboarding to revenue, from Tara; null until it has been exported. */
+  business: BusinessSummary | null;
   funnel: {
     steps: { key: string; label: string; count: number; from_previous: number | null; waiting: number; of_tracked?: number }[];
     biggest_leak: { step: string; label: string; lost: number; from: number; to: number; advice: string } | null;
@@ -215,3 +227,19 @@ export interface GrowthPlan {
 }
 
 export const fetchGrowthPlan = () => call<GrowthPlan>('/growth');
+
+export interface BusinessSummary {
+  exported_at: string | null;
+  months: { month: string; label: string; active_csps: number | null; transactions: number | null;
+    revenue_inr: number | null; revenue_basis: 'actual' | 'projected' | 'estimated' | null; new_csps: number | null }[];
+  revenue_per_txn: number | null;
+  mature_csp: { median_txns: number | null; revenue_inr: number | null };
+  new_csp_ramp: { month: number; median_txns: number; revenue_inr: number | null }[];
+  new_csps_contribution: { month: string; label: string; from_new_csps_inr: number; share: number }[];
+  latest_change: { from: string; to: string; revenue_change_inr: number; csp_change: number; from_new_csps_inr: number } | null;
+  csps_live: number | null;
+  csps_inactive: number | null;
+  onboarding: { applicants: number | null; went_live: number | null; rejected: number | null; in_progress: number | null;
+    go_live_rate: number | null; top_rejections: [string, number][] };
+  this_month_by_state: { state: string; target: number; leads: number; cat1: number; cat2: number; go_live: number; rejected: number }[];
+}

@@ -3,6 +3,7 @@ The growth plan: leads against the goal, where people drop out, and what to
 do next. Built from campaigns and conversations planted here, so each number
 the plan reports can be checked against what was put in.
 """
+import json
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
@@ -31,9 +32,46 @@ SENT = datetime(2026, 10, 14, 5, 0, tzinfo=timezone.utc)
 SERVED = {"pincode": "360055", "served": True, "distance_km": 0.0}
 
 
+# What scripts/export_business_context.py writes, cut down: three months of a
+# network of about 500 CSPs, a few new ones a month, and the onboarding sheet.
+CONTEXT = {
+    "exported_at": "2026-10-14T12:00:00+00:00",
+    "csp_network": {
+        "terminal_status": {"Active": 489, "Inactive": 47},
+        "commission_by_month": {"2026-07": {"csps": 496, "inr": 8509042}},
+        "activity_by_month": {"2026-07": {"csps": 494, "txns": 331556}, "2026-08": {"csps": 491, "txns": 306546},
+                              "2026-09": {"csps": 492, "txns": 306176}, "2026-10": {"csps": 477, "txns": 139624}},
+        "new_csps_by_first_month": {"2026-08": 7, "2026-09": 2},
+        "new_csp_ramp": {"2026-08": {"2026-08": {"csps": 7, "median_txns": 29}, "2026-09": {"csps": 7, "median_txns": 99}}},
+        "established_median_txns": {"2026-07": 479, "2026-08": 454, "2026-09": 451, "2026-10": 206},
+    },
+    "revenue_forecasts": {"Sep-26": {"actual_inr": 8331188, "txns": 305965},
+                          "Oct-26": {"projected_inr": 8768364, "txns": 139666}},
+    "onboarding": {
+        "applicants": {"total": 148, "went_live": 61, "rejected": 36, "in_progress": 51,
+                       "by_status": {"Go live done": 61, "Hard Copy Rejected by branch": 16}},
+        "go_live_by_month": {"2026-09": 4, "2026-10": 5},
+        "this_month_by_state": [{"state": "Gujarat", "target": 43, "leads": 0, "cat1": 0, "cat2": 0, "go_live": 0, "rejected": 0},
+                                {"state": "Bihar", "target": 5, "leads": 5, "cat1": 0, "cat2": 5, "go_live": 0, "rejected": 0}],
+    },
+}
+
+
 @pytest.fixture
-def db(monkeypatch):
+def context(tmp_path, monkeypatch):
+    from src.services import business_context
+    path = tmp_path / "business_context.json"
+    path.write_text(json.dumps(CONTEXT), encoding="utf-8")
+    monkeypatch.setattr(business_context, "CONTEXT_FILE", str(path))
+    return path
+
+
+@pytest.fixture
+def db(monkeypatch, tmp_path):
+    from src.services import business_context
     monkeypatch.setattr(gp, "today_ist", lambda: date(2026, 10, 22))
+    # No business data unless a test asks for it.
+    monkeypatch.setattr(business_context, "CONTEXT_FILE", str(tmp_path / "none.json"))
     session = TestingSessionLocal()
     try:
         yield session
@@ -88,15 +126,47 @@ def qualified(**more):
     return {"coverage": SERVED, "education": "grad", "can_invest": True, **more}
 
 
-def test_leads_are_counted_against_the_goal(db):
+def test_leads_this_month_are_counted_against_the_agents_goal(db, context):
     phones = campaign(db, 40)
     person(db, phones[0], bot.SUBMITTED, submitted=True, **qualified())
     person(db, phones[1], bot.AWAIT_UPLOAD, **qualified())
     g = gp.goal(db, gp._people(db), ci.load_facts(db))
-    assert (g["target"], g["leads"], g["still_needed"]) == (10, 1, 9)
+    # 7 and 4 went live in Aug and Sep: 5.5 a month. Half as many again is 3,
+    # and with 61 of 97 decided applicants going live, 3 need 5 leads.
+    assert (g["target"], g["extra_csps"], g["leads"], g["still_needed"]) == (5, 3, 1, 4)
+    assert g["set_by"] == "agent" and g["label"] == "Oct 2026"
     assert g["days_left"] == 10                     # 22 to 31 October, both days counted
-    assert g["per_day_needed"] == 0.9
-    assert g["leads_per_1000"] == 25.0 and g["messages_needed"] == 360
+    assert g["per_day_needed"] == 0.4
+    assert any("Gujarat 0 leads of 43" in r for r in g["reasoning"])
+
+
+def test_last_months_leads_do_not_count_towards_this_month(db, context):
+    phones = campaign(db, 40)
+    person(db, phones[0], bot.SUBMITTED, submitted=True, **qualified())
+    c = db.query(WhatsAppConversation).filter(WhatsAppConversation.phone == phones[0]).one()
+    c.documents_submitted_at = datetime(2026, 9, 28, 6, 0, tzinfo=timezone.utc)
+    db.commit()
+    assert gp.goal(db)["leads"] == 0
+
+
+def test_without_business_data_the_goal_is_modest(db):
+    g = gp.goal(db)
+    assert g["target"] == 3 and g["basis"] == "own results only"
+
+
+def test_the_business_is_summarised_from_onboarding_to_revenue():
+    from src.services import business_context as bc
+    s = bc.summarise(CONTEXT)
+    months = {r["month"]: r for r in s["months"]}
+    assert months["2026-07"]["new_csps"] is None          # Tara's first month: new and old look alike
+    assert (months["2026-08"]["new_csps"], months["2026-09"]["new_csps"], months["2026-10"]["new_csps"]) == (7, 4, 5)
+    assert months["2026-09"]["revenue_basis"] == "actual" and months["2026-08"]["revenue_basis"] == "estimated"
+    assert s["revenue_per_txn"] == 27.23
+    assert s["onboarding"]["go_live_rate"] == 0.629
+    assert [r["median_txns"] for r in s["new_csp_ramp"]] == [29, 99]
+    # Seven new CSPs at 99 transactions are a sliver of September's revenue.
+    sep = next(c for c in s["new_csps_contribution"] if c["month"] == "2026-09")
+    assert sep["from_new_csps_inr"] == round(7 * 99 * (8331188 / 305965)) and sep["share"] < 0.01
 
 
 def test_the_teams_own_tests_are_not_leads(db):
@@ -181,11 +251,12 @@ def test_targets_offer_businesses_not_yet_messaged(db):
     assert t["reachable_left"] == 25
 
 
-def test_the_agents_are_told_the_goal(db):
+def test_the_agents_are_told_the_process_and_their_goal(db, context):
     phones = campaign(db, 40)
     person(db, phones[0], bot.SUBMITTED, submitted=True, **qualified())
     brief = gp.agent_brief(db)
-    assert "Target: 10 leads by 2026-10-31; we have 1" in brief
+    assert brief.startswith("HOW EKO EARNS, from a lead to revenue.")
+    assert "Your goal for Oct 2026, which you set from the numbers above: 5 leads; we have 1" in brief
     assert "extra income" in brief
 
 

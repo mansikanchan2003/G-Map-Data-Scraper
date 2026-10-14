@@ -4,10 +4,11 @@ out on the way to one, and what to do next to get more.
 
 A LEAD is a person a campaign reached who submitted their documents. Revenue
 comes from leads, so every campaign, template and audience is judged by how
-it moves people towards one. The goal (LEAD_GOAL by LEAD_GOAL_DEADLINE) is
-shown on the Campaign Insights page and given to the template agents, which
-read this plan afresh each time they write, so what they make follows the
-latest results.
+it moves people towards one. The goal is set by the agent itself each month
+from the business data (business_context: how CSPs go live and what they
+earn), shown on the Campaign Insights page and given to the template agents,
+which read this plan afresh each time they write, so what they make follows
+the latest results.
 
 Everything here is computed from what happened, through campaign_insights'
 facts and the conversations, and labelled with how firm the evidence is.
@@ -28,11 +29,9 @@ from src.models.inbox import WhatsAppConversation
 from src.models.location import Location
 from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
 from src.services import campaign_insights as ci
-from src.services import creative_brief, inbox
+from src.services import business_context, creative_brief, inbox
 
 IST = ci.IST
-LEAD_GOAL = int(os.environ.get("LEAD_GOAL", "10"))
-LEAD_GOAL_DEADLINE = date.fromisoformat(os.environ.get("LEAD_GOAL_DEADLINE", "2026-10-31"))
 
 # Steps of the way from a message to a lead, in order. Each counts people.
 FUNNEL = [
@@ -99,22 +98,37 @@ def _people(db: Session) -> List[WhatsAppConversation]:
             and (c.last_inbound_at is not None or c.documents_submitted_at is not None)]
 
 
+def _our_states(facts: List[dict]) -> List[str]:
+    """The states our campaigns have reached, most messaged first."""
+    return [st for st, _ in Counter(f["state"] for f in facts if not ci.is_unknown(f["state"])).most_common()]
+
+
 def goal(db: Session, people: Optional[List[WhatsAppConversation]] = None,
-         facts: Optional[List[dict]] = None) -> dict:
-    """Leads so far against the goal, and what it takes to reach it in time."""
+         facts: Optional[List[dict]] = None, summary: Optional[dict] = None) -> dict:
+    """This month's lead goal, set by the agent from the business data, and how far we are."""
     people = _people(db) if people is None else people
-    leads = sorted((c for c in people if c.documents_submitted_at),
+    facts = ci.load_facts(db) if facts is None else facts
+    if summary is None:
+        ctx = business_context.load()
+        summary = business_context.summarise(ctx) if ctx else None
+    today = today_ist()
+    target = business_context.agent_goal(summary, _our_states(facts), today)
+    start = date.fromisoformat(target["start"])
+    end = date.fromisoformat(target["end"])
+    leads = sorted((c for c in people if c.documents_submitted_at
+                    and start <= inbox.aware(c.documents_submitted_at).astimezone(IST).date() < end),
                    key=lambda c: inbox.aware(c.documents_submitted_at))
     have = len(leads)
-    today = today_ist()
-    days_left = max((LEAD_GOAL_DEADLINE - today).days + 1, 0)
-    still = max(LEAD_GOAL - have, 0)
-    sent = len(facts) if facts is not None else 0
+    days_left = max((end - today).days, 0)
+    still = max(target["leads"] - have, 0)
+    sent = len(facts)
+    all_leads = sum(1 for c in people if c.documents_submitted_at)
     # Leads per message so far; with none yet, nothing can be projected.
-    per_send = have / sent if sent and have else None
+    per_send = all_leads / sent if sent and all_leads else None
     return {
-        "target": LEAD_GOAL,
-        "deadline": LEAD_GOAL_DEADLINE.isoformat(),
+        **target,
+        "target": target["leads"],
+        "deadline": (end - timedelta(days=1)).isoformat(),
         "leads": have,
         "still_needed": still,
         "days_left": days_left,
@@ -429,7 +443,9 @@ def plan(db: Session) -> dict:
     book["_facts"] = facts
     book["_db"] = db
     people = _people(db)
-    g = goal(db, people, facts)
+    ctx = business_context.load()
+    summary = business_context.summarise(ctx) if ctx else None
+    g = goal(db, people, facts, summary)
     f = funnel(db, people, facts)
     warm = warm_people(people)
     t = targets(db, book)
@@ -437,6 +453,7 @@ def plan(db: Session) -> dict:
     return {
         "computed_at": datetime.now(timezone.utc).isoformat(),
         "goal": g,
+        "business": summary,
         "funnel": f,
         "warm_people": warm,
         "judged_on": book["judged_on"],
@@ -473,7 +490,10 @@ def agent_brief(db: Session) -> str:
         return r["confidence"].replace("_", " ")
 
     leak = p["funnel"]["biggest_leak"]
-    return f"""THE GOAL — read this first. Eko earns from LEADS: business owners who tap Interested, qualify (PIN in our area, 12th pass or more, can invest ₹5 lakh) and submit their documents. Target: {g['target']} leads by {g['deadline']}; we have {g['leads']}, with {g['days_left']} days left. A template that gets many replies from people who cannot qualify does not help. Write to win QUALIFIED owners: established shops and agencies with capital and an educated owner, and be honest that it is an investment-backed business.
+    why = " ".join(g.get("reasoning") or [])
+    return f"""{business_context.process_text(p.get('business'))}
+
+THE GOAL — read this first. Eko earns from LEADS: business owners who tap Interested, qualify (PIN in our area, 12th pass or more, can invest ₹5 lakh) and submit complete, correct documents, so the branch and LHO approve them. Your goal for {g['label']}, which you set from the numbers above: {g['target']} leads; we have {g['leads']}, with {g['days_left']} days left. Why: {why} A template that gets many replies from people who cannot qualify does not help. Write to win QUALIFIED owners: established shops and agencies with capital and an educated owner, and be honest that it is an investment-backed business.
 
 WHAT MOVED PEOPLE SO FAR (judged on “{p['judged_on_label']}”, the furthest step with enough data; 'too early' means not proven yet):
 {lines('angle', 'Message angle')}

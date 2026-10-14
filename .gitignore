@@ -94,3 +94,6 @@ data/backups/
 *.csv
 !G-Map*.csv
 .env.bak.*
+
+# Business totals exported from Tara on the server (scripts/export_business_context.py)
+data/business_context.json

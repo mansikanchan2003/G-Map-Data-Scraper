@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getApiBaseUrl } from '../api';
-import { fetchGrowthPlan, type CreativeRow, type GrowthPlan as Plan, type GrowthRow } from '../api/insights';
+import { fetchGrowthPlan, type BusinessSummary, type CreativeRow, type GrowthPlan as Plan, type GrowthRow } from '../api/insights';
 import { formatDateTime } from '../utils/datetime';
 
 /**
@@ -16,6 +16,8 @@ import { formatDateTime } from '../utils/datetime';
 
 const pct = (v: number | null | undefined) => (v == null ? '—' : `${(v * 100).toFixed(v > 0 && v < 0.1 ? 1 : 0)}%`);
 const num = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString('en-IN'));
+const lakh = (v: number | null | undefined) => (v == null ? '—' : `₹${(v / 1e5).toFixed(1)} L`);
+const inr = (v: number | null | undefined) => (v == null ? '—' : `₹${Math.round(v).toLocaleString('en-IN')}`);
 const Icon: React.FC<{ name: string; className?: string }> = ({ name, className = '' }) =>
   <span className={`material-symbols-outlined ${className}`}>{name}</span>;
 
@@ -107,7 +109,12 @@ const Goal: React.FC<{ plan: Plan }> = ({ plan }) => {
       <div className="p-6 flex flex-col lg:flex-row lg:items-center gap-6">
         <Ring value={g.leads} target={g.target} />
         <div className="flex-1 min-w-0">
-          <div className="text-[11px] uppercase tracking-[0.14em] font-semibold" style={{ color: '#f9ab10' }}>Road to {g.target} leads</div>
+          <div className="text-[11px] uppercase tracking-[0.14em] font-semibold flex flex-wrap items-center gap-2" style={{ color: '#f9ab10' }}>
+            {g.label} goal · {g.target} leads
+            <span className="normal-case tracking-normal font-medium text-[10.5px] px-2 py-0.5 rounded-full bg-white/10 text-white/80">
+              <Icon name="smart_toy" className="text-[13px] align-[-2px] mr-0.5" />set by the agent from {g.basis}
+            </span>
+          </div>
           <h2 className="text-2xl font-semibold mt-1 leading-snug">
             {g.still_needed ? <>{g.still_needed} more lead{g.still_needed === 1 ? '' : 's'} by {deadline}</> : <>Goal reached 🎉</>}
           </h2>
@@ -137,6 +144,16 @@ const Goal: React.FC<{ plan: Plan }> = ({ plan }) => {
           </ol>
         </div>
       </div>
+      {g.reasoning?.length > 0 && (
+        <div className="px-6 py-4 bg-black/15 border-t border-white/10">
+          <div className="text-[11px] uppercase tracking-wider text-white/60 font-semibold mb-2">Why this goal</div>
+          <ol className="grid gap-x-8 gap-y-1.5 md:grid-cols-2 text-[13px] text-white/85">
+            {g.reasoning.map((r, i) => (
+              <li key={i} className="flex gap-2"><span className="text-white/45 tabular-nums">{i + 1}.</span><span>{r}</span></li>
+            ))}
+          </ol>
+        </div>
+      )}
       {g.lead_list.length > 0 && (
         <div className="px-6 py-2.5 bg-black/15 text-xs text-white/80">
           <Icon name="verified" className="text-[15px] align-middle mr-1" />
@@ -144,6 +161,115 @@ const Goal: React.FC<{ plan: Plan }> = ({ plan }) => {
         </div>
       )}
     </section>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// From a lead to revenue
+// ---------------------------------------------------------------------------
+
+const BASIS: Record<string, string> = { actual: '', projected: 'projected', estimated: 'estimated' };
+
+const Business: React.FC<{ b: BusinessSummary }> = ({ b }) => {
+  const months = b.months.filter(m => m.revenue_inr);
+  const top = Math.max(1, ...months.map(m => m.revenue_inr || 0));
+  const low = Math.min(...months.map(m => m.revenue_inr || 0));
+  const ob = b.onboarding;
+  const steps = [
+    { icon: 'campaign', title: 'Lead', text: 'AutoGMap reaches a business; it qualifies and submits documents.' },
+    { icon: 'fact_check', title: 'Onboarding', text: `CAT-1, CAT-2, SBI branch, RBO and LHO approvals. ${ob.go_live_rate != null ? `${Math.round(ob.go_live_rate * 100)}% of decided go live.` : ''}` },
+    { icon: 'rocket_launch', title: 'Go live', text: `${b.csps_live ?? '—'} CSPs active now${b.csps_inactive ? `, ${b.csps_inactive} inactive` : ''}.` },
+    { icon: 'trending_up', title: 'Ramp up', text: b.new_csp_ramp.length ? `A new CSP: ${b.new_csp_ramp.map(r => `~${r.median_txns}`).join(' → ')} transactions in its first months.` : 'New CSPs start slowly.' },
+    { icon: 'payments', title: 'Revenue', text: `About ₹${b.revenue_per_txn ?? '—'} a transaction; an established CSP ~${inr(b.mature_csp.revenue_inr)} a month.` },
+  ];
+  const ch = b.latest_change;
+  return (
+    <Card icon="account_balance" title="From a lead to revenue" tint="bg-emerald-950 text-emerald-300"
+      subtitle={<>How Eko earns from a CSP, from Tara and the onboarding sheet{b.exported_at ? <> · updated {formatDateTime(b.exported_at)}</> : null}. The agent sets its goal from these numbers.</>}>
+      <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {steps.map((s, i) => (
+          <li key={s.title} className="relative rounded-lg border border-slate-800 bg-slate-950/60 p-3.5">
+            <div className="flex items-center gap-2">
+              <span className="h-7 w-7 rounded-full bg-emerald-950 text-emerald-300 flex items-center justify-center"><Icon name={s.icon} className="text-[16px]" /></span>
+              <span className="text-[11px] font-semibold text-slate-500">{i + 1}</span>
+              <span className="text-sm font-semibold text-slate-100">{s.title}</span>
+            </div>
+            <p className="text-[12.5px] text-slate-400 mt-2 leading-relaxed">{s.text}</p>
+          </li>
+        ))}
+      </ol>
+
+      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr] mt-6">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Revenue and CSPs by month</div>
+          <div className="flex items-end gap-2 h-44">
+            {months.map(m => {
+              // Bars start from a little under the lowest month, so month-to-month change shows.
+              const floor = low * 0.9;
+              const h = 18 + ((m.revenue_inr! - floor) / Math.max(top - floor, 1)) * 82;
+              return (
+                <div key={m.month} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full">
+                  <span className="text-[11px] font-semibold text-slate-200 tabular-nums">{lakh(m.revenue_inr)}</span>
+                  <div className={`w-full max-w-[56px] rounded-t-md mt-1 ${m.revenue_basis === 'actual' ? 'bg-emerald-500' : 'bg-emerald-500/40 border border-dashed border-emerald-500'}`}
+                    style={{ height: `${h}%` }} title={`${m.label}: ${inr(m.revenue_inr)}${BASIS[m.revenue_basis || ''] ? ` (${BASIS[m.revenue_basis || '']})` : ''}`} />
+                  <span className="text-[11px] text-slate-400 mt-1.5">{m.label.split(' ')[0]}</span>
+                  <span className="text-[10.5px] text-slate-500 tabular-nums">{num(m.active_csps)} CSPs</span>
+                  <span className={`text-[10.5px] tabular-nums ${m.new_csps ? 'text-sky-300 font-semibold' : 'text-slate-600'}`}>
+                    {m.new_csps == null ? '—' : `+${m.new_csps} new`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="text-[11px] text-slate-500 mt-2">Faded bars are estimated or projected. “New” is CSPs that went live that month.</div>
+        </div>
+        <div className="min-w-0 space-y-3">
+          {ch && (
+            <div className="rounded-lg border border-sky-800/60 bg-sky-950 p-3.5 text-[13px] text-slate-200">
+              <div className="font-semibold text-sky-300 flex items-center gap-1.5"><Icon name="insights" className="text-[18px]" />What moves revenue</div>
+              <p className="mt-1 leading-relaxed">
+                {ch.from} → {ch.to}: revenue {ch.revenue_change_inr >= 0 ? 'rose' : 'fell'} by {inr(Math.abs(ch.revenue_change_inr))} while
+                the network changed by {ch.csp_change >= 0 ? '+' : ''}{ch.csp_change} CSPs. New CSPs brought {inr(ch.from_new_csps_inr)}.
+                In a single month, revenue follows the existing CSPs' activity; new CSPs add to it over the months they take to ramp up.
+              </p>
+            </div>
+          )}
+          <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3.5">
+            <div className="text-xs font-semibold text-slate-400 mb-2">Onboarding so far</div>
+            <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-800">
+              <div className="bg-emerald-500" style={{ width: `${((ob.went_live || 0) / Math.max(ob.applicants || 1, 1)) * 100}%` }} title="Went live" />
+              <div className="bg-amber-400" style={{ width: `${((ob.in_progress || 0) / Math.max(ob.applicants || 1, 1)) * 100}%` }} title="In progress" />
+              <div className="bg-rose-500" style={{ width: `${((ob.rejected || 0) / Math.max(ob.applicants || 1, 1)) * 100}%` }} title="Rejected" />
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[12px] text-slate-400">
+              <span><span className="inline-block h-2 w-2 rounded-full bg-emerald-500 mr-1" />{ob.went_live} live</span>
+              <span><span className="inline-block h-2 w-2 rounded-full bg-amber-400 mr-1" />{ob.in_progress} in progress</span>
+              <span><span className="inline-block h-2 w-2 rounded-full bg-rose-500 mr-1" />{ob.rejected} rejected</span>
+              <span className="text-slate-500">of {ob.applicants} applicants</span>
+            </div>
+            {ob.top_rejections.length > 0 && (
+              <div className="text-[11.5px] text-slate-500 mt-2">Most rejected: {ob.top_rejections.slice(0, 2).map(([s, n]) => `${s.toLowerCase()} (${n})`).join(', ')}.</div>
+            )}
+          </div>
+          {b.this_month_by_state.length > 0 && (
+            <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3.5">
+              <div className="text-xs font-semibold text-slate-400 mb-2">The onboarding team's targets this month</div>
+              <ul className="space-y-1.5">
+                {b.this_month_by_state.filter(r => r.state !== 'Total' && r.target).sort((a, c) => (c.target - c.leads) - (a.target - a.leads)).slice(0, 5).map(r => (
+                  <li key={r.state} className="flex items-center gap-2 text-[12.5px]">
+                    <span className="w-24 truncate text-slate-200">{r.state}</span>
+                    <div className="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                      <div className="h-full bg-sky-500 rounded-full" style={{ width: `${Math.min(100, (r.leads / Math.max(r.target, 1)) * 100)}%` }} />
+                    </div>
+                    <span className="text-slate-400 tabular-nums w-24 text-right">{r.leads} of {r.target} leads</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
   );
 };
 
@@ -444,6 +570,7 @@ export const GrowthPlan: React.FC = () => {
   return (
     <div className="space-y-5">
       <Goal plan={plan} />
+      {plan.business && <Business b={plan.business} />}
       <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
         <NextSteps plan={plan} />
         <div className="space-y-5 min-w-0">
