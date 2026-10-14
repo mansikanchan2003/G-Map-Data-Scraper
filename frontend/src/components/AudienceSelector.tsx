@@ -39,6 +39,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
   const [states, setStates] = useState<string[]>([]);
   const [districts, setDistricts] = useState<string[]>([]);
   const [tehsils, setTehsils] = useState<string[]>([]);
+  const [branches, setBranches] = useState<string[]>([]);
   const [includeContacted, setIncludeContacted] = useState(false);
   const [limitEnabled, setLimitEnabled] = useState(false);
   const [limit, setLimit] = useState<number>(100);
@@ -51,6 +52,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
     states,
     districts: districts.map(k => toPlace(k, 'district')),
     tehsils: tehsils.map(k => toPlace(k, 'tehsil')),
+    branches,
     limit: limitEnabled ? limit : null,
     include_already_contacted: includeContacted,
   };
@@ -80,7 +82,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
     } finally {
       setLoading(false);
     }
-  }, [states.join(), districts.join(), tehsils.join(), includeContacted, limitEnabled, limit]);
+  }, [states.join(), districts.join(), tehsils.join(), branches.join(), includeContacted, limitEnabled, limit]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -101,9 +103,18 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
     key: [o.state, o.district, o.value].join(SEP), label: o.value, sub: o.district, count: o.businesses,
   }));
 
+  const branchChoices: GeoChoice[] = (options?.branches || []).map(b => ({
+    key: b.value, label: `${b.name} (${b.value})`,
+    sub: [b.pincode, b.district].filter(Boolean).join(' · '), count: b.businesses,
+  }));
+  const branchName = (code: string) => options?.branches?.find(b => b.value === code)?.name || code;
+
   const nameOf = (key: string) => key.split(SEP).pop() as string;
   const list = (keys: string[]) => keys.length <= 3 ? keys.map(nameOf).join(', ') : `${keys.slice(0, 2).map(nameOf).join(', ')} +${keys.length - 2}`;
   const scopeLabel = [
+    branches.length
+      ? `SBI ${branches.length <= 2 ? branches.map(branchName).join(', ') : `${branchName(branches[0])} +${branches.length - 1}`}`
+      : null,
     tehsils.length ? list(tehsils) : null,
     districts.length ? list(districts) : null,
     states.length ? list(states) : 'All states',
@@ -178,6 +189,17 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
           <p className="text-[11px] text-slate-500 -mt-2">
             Pick as many as you like. A district narrows only its own state, and a tehsil only its own district.
           </p>
+
+          {(options?.branches?.length ?? 0) > 0 && (
+            <div>
+              <GeoMultiSelect label="SBI Branches" plural="SBI branches" choices={branchChoices}
+                selected={branches} onChange={setBranches} emptyLabel="Any business (no branch filter)" />
+              <p className="text-[11px] text-slate-500 mt-1">
+                Tick branches to reach only the businesses scraped at their PIN codes. With none ticked,
+                businesses are not limited to SBI branches.
+              </p>
+            </div>
+          )}
 
           {/* What this selection adds up to */}
           <div className="bg-slate-950 border border-slate-800 rounded-lg p-4">

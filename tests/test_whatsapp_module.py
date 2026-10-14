@@ -631,6 +631,49 @@ def test_audience_options_follow_the_picked_states_and_districts():
     assert len(opts.states) == 3  # states are always all offered
 
 
+def _branch_db():
+    """Two branch PINs with businesses, and one ordinary PIN."""
+    from src.models import Business, Job, Location, SbiBranch
+    db = _audience_db()
+    for loc_id, pin in (("L_JASDAN", "360050"), ("L_BABRA", "365421"), ("L_OTHER", "110001")):
+        db.add(Location(location_id=loc_id, pincode=pin, latitude=22.0, longitude=71.0))
+        db.add(Job(job_id=f"J_{pin}", location_id=loc_id, category_id="C1", search_query="q"))
+    db.add(SbiBranch(branch_code="1234", branch_name="Jasdan", pincode="360050", state="Gujarat"))
+    db.add(SbiBranch(branch_code="5678", branch_name="Babra", pincode="365421", state="Gujarat"))
+    # B0 Jasdan and B1 Vinchhiya were scraped at Jasdan's PIN, B2 Babra at Babra's,
+    # B3 Samrala at an ordinary PIN; the rest at none of these.
+    for bid, job in (("B0", "J_360050"), ("B1", "J_360050"), ("B2", "J_365421"), ("B3", "J_110001")):
+        db.query(Business).filter(Business.business_id == bid).update({"job_id": job})
+    db.commit()
+    return db
+
+
+def _branch_tehsils(db, **filters):
+    from src.models import Business
+    from src.routers.audience import AudienceFilters, _branch_filtered, _geo_filtered
+    f = AudienceFilters(**filters)
+    return sorted(b.tehsil for b in _branch_filtered(_geo_filtered(db.query(Business), f), db, f))
+
+
+def test_audience_a_branch_keeps_only_businesses_scraped_at_its_pin():
+    db = _branch_db()
+    assert _branch_tehsils(db, branches=["1234"]) == ["Jasdan", "Vinchhiya"]
+    assert _branch_tehsils(db, branches=["1234", "5678"]) == ["Babra", "Jasdan", "Vinchhiya"]
+    # Combined with a place, both must hold.
+    assert _branch_tehsils(db, branches=["1234", "5678"],
+                           tehsils=[{"state": "Gujarat", "district": "Rajkot", "tehsil": "Jasdan"}]) == ["Jasdan"]
+    # No branch picked is no branch filter; an unknown one matches nobody.
+    assert len(_branch_tehsils(db)) == 8
+    assert _branch_tehsils(db, branches=["0000"]) == []
+
+
+def test_audience_options_list_the_branches_with_their_businesses():
+    from src.routers.audience import audience_options
+    db = _branch_db()
+    opts = audience_options(states=[], districts=[], state="All", district="All", db=db)
+    assert [(b.value, b.businesses) for b in opts.branches] == [("1234", 2), ("5678", 1)]
+
+
 def test_contacted_means_a_message_went_out():
     """
     Sent, delivered and read are all contact: the webhook moves a recipient

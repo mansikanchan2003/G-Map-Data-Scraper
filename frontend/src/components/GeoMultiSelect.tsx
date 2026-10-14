@@ -16,13 +16,15 @@ interface Props {
   choices: GeoChoice[];
   selected: string[];
   onChange: (keys: string[]) => void;
+  /** Shown when nothing is ticked; "All {plural}" unless given. */
+  emptyLabel?: string;
 }
 
 /**
  * A dropdown that takes any number of places, with counts and a search box.
  * Nothing ticked means all of them.
  */
-export const GeoMultiSelect: React.FC<Props> = ({ label, plural, choices, selected, onChange }) => {
+export const GeoMultiSelect: React.FC<Props> = ({ label, plural, choices, selected, onChange, emptyLabel }) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const box = useRef<HTMLDivElement>(null);
@@ -46,7 +48,7 @@ export const GeoMultiSelect: React.FC<Props> = ({ label, plural, choices, select
     onChange(picked.has(key) ? selected.filter(k => k !== key) : [...selected, key]);
 
   const names = choices.filter(c => picked.has(c.key)).map(c => c.label);
-  const summary = names.length === 0 ? `All ${plural}`
+  const summary = names.length === 0 ? (emptyLabel || `All ${plural}`)
     : names.length <= 2 ? names.join(', ')
     : `${names.length} ${plural}`;
 

@@ -410,10 +410,23 @@ export interface GeoOption {
   district?: string | null;
 }
 
+/** An SBI branch whose PIN code was scraped. */
+export interface BranchOption {
+  /** The branch code. */
+  value: string;
+  name: string;
+  pincode: string;
+  town?: string | null;
+  district?: string | null;
+  state?: string | null;
+  businesses: number;
+}
+
 export interface AudienceOptions {
   states: GeoOption[];
   districts: GeoOption[];
   tehsils: GeoOption[];
+  branches?: BranchOption[];
 }
 
 /** A district or tehsil, named with the levels above it. */
@@ -428,6 +441,8 @@ export interface AudienceFilters {
   states: string[];
   districts: AudiencePlace[];
   tehsils: AudiencePlace[];
+  /** SBI branch codes: only businesses scraped at those branches' PIN codes. */
+  branches?: string[];
   limit?: number | null;
   include_already_contacted: boolean;
 }

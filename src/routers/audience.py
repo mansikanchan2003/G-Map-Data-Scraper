@@ -15,7 +15,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from src.database import get_db
-from src.models import Business
+from src.models import Business, Job, Location, SbiBranch
 from src.models.whatsapp import WhatsAppCampaignRecipient
 from src.services.whatsapp_normalizer import WhatsAppNormalizer
 
@@ -42,6 +42,9 @@ class AudienceFilters(BaseModel):
     states: List[str] = Field(default_factory=list)
     districts: List[Place] = Field(default_factory=list)
     tehsils: List[Place] = Field(default_factory=list)
+    # SBI branch codes. Only businesses scraped at those branches' PIN codes;
+    # combined with the places above, both must hold.
+    branches: List[str] = Field(default_factory=list)
     # One of each, as the picker sent before it took several. Still read, so
     # a page loaded before the change keeps working.
     state: Optional[str] = ALL
@@ -61,10 +64,22 @@ class GeoOption(BaseModel):
     district: Optional[str] = None
 
 
+class BranchOption(BaseModel):
+    """An SBI branch whose PIN code was scraped, and how many businesses it gave."""
+    value: str            # the branch code
+    name: str
+    pincode: str
+    town: Optional[str] = None
+    district: Optional[str] = None
+    state: Optional[str] = None
+    businesses: int
+
+
 class AudienceOptions(BaseModel):
     states: List[GeoOption]
     districts: List[GeoOption]
     tehsils: List[GeoOption]
+    branches: List[BranchOption] = []
 
 
 class AudienceSummary(BaseModel):
@@ -130,6 +145,24 @@ def _geo_filtered(query, f: AudienceFilters):
     return query.filter(or_(*conditions))
 
 
+def _at_pincodes(pins):
+    """Businesses scraped at these PIN codes' locations."""
+    jobs = (Job.__table__.select().with_only_columns(Job.job_id)
+            .join(Location.__table__, Location.location_id == Job.location_id)
+            .where(Location.pincode.in_(list(pins))))
+    return Business.job_id.in_(jobs)
+
+
+def _branch_filtered(query, db: Session, f: AudienceFilters):
+    """Narrow to the picked SBI branches' PIN codes; untouched when none is picked."""
+    codes = [c for c in f.branches if c]
+    if not codes:
+        return query
+    pins = {p for (p,) in db.query(SbiBranch.pincode).filter(SbiBranch.branch_code.in_(codes)).all()}
+    # A pick that matches no branch must give nobody, not everybody.
+    return query.filter(_at_pincodes(pins)) if pins else query.filter(False)
+
+
 def _contacted_phones(db: Session) -> set:
     """
     Phone numbers a campaign has already reached.
@@ -182,7 +215,24 @@ def audience_options(
     in_states = or_(*[Business.state == s for s in picked_states]) if picked_states else None
     in_districts = (or_(*[_place(s, d) for s, d in picked_districts]) if picked_districts else in_states)
 
+    # Every branch with businesses at its PIN, most first; branches share a
+    # PIN only rarely, and each is listed with the PIN's count.
+    per_pin = dict(
+        db.query(Location.pincode, func.count(Business.business_id))
+        .join(Job, Job.location_id == Location.location_id)
+        .join(Business, Business.job_id == Job.job_id)
+        .filter(Location.pincode.in_(db.query(SbiBranch.pincode)))
+        .group_by(Location.pincode).all()
+    )
+    branches = sorted(
+        (BranchOption(value=b.branch_code, name=b.branch_name, pincode=b.pincode, town=b.town,
+                      district=b.district, state=b.state, businesses=per_pin.get(b.pincode, 0))
+         for b in db.query(SbiBranch).all()),
+        key=lambda o: (-o.businesses, o.name),
+    )
+
     return AudienceOptions(
+        branches=branches,
         states=[GeoOption(value=v, businesses=c) for v, c in counts([Business.state], None) if v],
         districts=[GeoOption(value=d, businesses=c, state=s)
                    for s, d, c in counts([Business.state, Business.district], in_states) if d],
@@ -192,7 +242,7 @@ def audience_options(
 
 
 def _build(db: Session, f: AudienceFilters, with_contacts: bool):
-    base = _geo_filtered(db.query(Business), f)
+    base = _branch_filtered(_geo_filtered(db.query(Business), f), db, f)
 
     total = base.count()
     with_phone_q = base.filter(Business.phone.isnot(None), Business.phone != "")
@@ -242,7 +292,8 @@ def audience_preview(filters: AudienceFilters, db: Session = Depends(get_db)):
     """The contacts a campaign would be created with, ready to hand over."""
     summary, contacts = _build(db, filters, with_contacts=True)
     logger.info(
-        f"audience event=AUDIENCE_SELECTED selection={_selection(filters)} limit={filters.limit} "
+        f"audience event=AUDIENCE_SELECTED selection={_selection(filters)} branches={filters.branches} "
+        f"limit={filters.limit} "
         f"include_contacted={filters.include_already_contacted} sendable={summary['sendable']}"
     )
     return AudiencePreview(**summary, contacts=contacts)
