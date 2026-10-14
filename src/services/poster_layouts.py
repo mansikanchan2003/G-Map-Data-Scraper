@@ -7,8 +7,8 @@ agent writes and the checks judge one set of fields, whatever the layout:
 
 - list:   benefits as a vertical list with round icons, the opportunity in a
           card with a yellow header strip, the Eko logo on a tab top right.
-- banner: the photo across the top with the headline over it; subline,
-          callout and benefits in two columns below.
+- banner: the photo fills the poster under a deepening shade; headline,
+          callout and button on the left, benefits on translucent chips.
 - mirror: the photo on the left and the text on the right, a yellow callout
           box, benefits as a three-by-two grid.
 
@@ -126,29 +126,45 @@ def build_list(poster: dict, language_code: str, photo: bytes, photo_mime: str) 
 
 
 def build_banner(poster: dict, language_code: str, photo: bytes, photo_mime: str) -> str:
-    """The photo across the top with the headline over it; two columns below."""
+    """
+    The photo fills the poster; the text sits on it, over a deepening shade.
+
+    It used to fill only the top half, with the subline, callout and
+    benefits in a large white block below; the user found that block heavy
+    (2026-10-14). Now nothing covers the photo but the shade, the headline,
+    and the benefits on translucent chips.
+    """
     chips = "".join(
         f'<div class="chip"><span class="ms">{_icon(b)}</span><div class="fit ct" data-min="14">{_esc(b.get("text"))}</div></div>'
         for b in (poster.get("benefits") or [])[:6]
     )
     css = f"""
-.photo{{left:0;top:0;width:{WIDTH}px;height:540px;background:url('{_photo(photo, photo_mime)}') center 35%/cover no-repeat}}
-.shade{{left:0;top:200px;width:{WIDTH}px;height:340px;background:linear-gradient(180deg,rgba(19,33,74,0) 0%,rgba(19,33,74,.82) 70%,rgba(19,33,74,.92) 100%)}}
+.photo{{left:0;top:0;width:{WIDTH}px;height:904px;background:url('{_photo(photo, photo_mime)}') center 58%/cover no-repeat}}
+.shade{{left:0;top:0;width:{WIDTH}px;height:904px;background:linear-gradient(180deg,rgba(13,24,56,0) 22%,
+  rgba(13,24,56,.55) 44%,rgba(13,24,56,.9) 64%,rgba(13,24,56,.96) 100%)}}
+.side{{left:0;top:0;width:820px;height:904px;background:linear-gradient(90deg,rgba(13,24,56,.45),rgba(13,24,56,0))}}
 .logo{{left:0;top:0;padding:22px 40px 20px 40px;background:#fff;border-bottom-right-radius:30px}} .logo svg{{height:70px;width:auto;display:block}}
-.headline{{left:48px;top:330px;width:1000px;height:190px;font-size:74px;font-weight:800;line-height:1.18;color:#fff}}
+.headline{{left:56px;top:318px;width:960px;height:180px;font-size:72px;font-weight:800;line-height:1.16;color:#fff;
+  text-shadow:0 2px 14px rgba(0,0,0,.35)}}
 .headline .hl{{color:#FFC21A}}
-.sub{{left:48px;top:560px;width:640px;height:100px;font-size:27px;font-weight:600;line-height:1.32}}
-.call{{left:48px;top:672px;width:640px;height:110px;background:#FFF3CF;border-left:10px solid #F5B400;border-radius:12px;
-  padding:12px 22px;font-size:26px;font-weight:700;line-height:1.3;display:flex;align-items:center}}
-.cta{{left:48px;top:800px;height:76px;padding:0 34px;background:#14234B;color:#fff;border-radius:38px;
-  font-size:31px;font-weight:800;display:flex;align-items:center;gap:16px;white-space:nowrap}} .cta .ms{{color:#FFC21A;font-size:38px}}
-.pill{{left:740px;top:556px;height:44px;padding:0 24px;background:#14234B;color:#fff;border-radius:22px;font-size:22px;font-weight:700;display:flex;align-items:center}}
-.grid{{left:740px;top:612px;width:748px;height:270px;display:grid;grid-template-columns:1fr 1fr;gap:12px}}
-.chip{{display:flex;align-items:center;gap:14px;background:#F2F6FC;border:2px solid #D3DEEE;border-radius:14px;padding:0 16px;height:82px}}
-.chip .ms{{font-size:40px;color:#14234B}} .chip .ct{{flex:1;font-size:22px;font-weight:700;height:60px;display:flex;align-items:center}}
+.sub{{left:56px;top:508px;width:880px;height:72px;font-size:28px;font-weight:600;line-height:1.3;color:#E8EEF8}}
+.sub .eko{{color:#FFC21A}} .sub .sbi{{color:#9CC3FF}}
+.call{{left:56px;top:604px;width:640px;height:110px;background:#FFC21A;border-radius:18px;padding:12px 24px;
+  font-size:27px;font-weight:800;line-height:1.3;display:flex;align-items:center;color:#13214A;
+  box-shadow:0 10px 26px rgba(0,0,0,.25)}}
+.call .hl{{color:#13214A;background:#fff;padding:0 8px;border-radius:6px}}
+.cta{{left:56px;top:740px;height:76px;padding:0 36px;background:#fff;color:#13214A;border-radius:38px;
+  font-size:31px;font-weight:800;display:flex;align-items:center;gap:16px;white-space:nowrap;
+  box-shadow:0 10px 26px rgba(0,0,0,.25)}} .cta .ms{{color:#F5A300;font-size:38px}}
+.pill{{left:752px;top:604px;height:40px;padding:0 20px;border:2px solid rgba(255,194,26,.9);color:#FFC21A;border-radius:20px;
+  font-size:21px;font-weight:700;display:flex;align-items:center}}
+.grid{{left:752px;top:656px;width:736px;height:224px;display:grid;grid-template-columns:1fr 1fr;gap:10px}}
+.chip{{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);
+  border-radius:14px;padding:0 14px;height:68px;backdrop-filter:blur(6px)}}
+.chip .ms{{font-size:34px;color:#FFC21A}} .chip .ct{{flex:1;font-size:21px;font-weight:700;height:56px;display:flex;align-items:center;color:#fff}}
 """
     return _head(language_code, css) + f"""
-<div class="abs photo"></div><div class="abs shade"></div>
+<div class="abs photo"></div><div class="abs side"></div><div class="abs shade"></div>
 <div class="abs logo">{_logo_svg()}</div>
 {_sign(poster, "right:34px;top:26px;width:520px")}
 <div class="abs headline fit" id="headline" data-min="44">{_headline(poster)}</div>

@@ -777,7 +777,9 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name or number"
               className="w-full bg-slate-950 border border-slate-800 rounded pl-8 pr-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-sky-600" />
           </div>
-          <div className="flex gap-1 overflow-x-auto">
+          {/* Wrapped onto a second line rather than scrolled: a scroll bar
+              under five chips looked out of place. */}
+          <div className="flex flex-wrap gap-1">
             {([['all', 'All'], ['attention', `Needs attention${attentionTotal ? ` (${attentionTotal})` : ''}`], ['autogmap', 'From AutoGMap'], ['unread', 'Unread'], ['bot', 'With bot'], ['docs', 'Documents']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setFilter(k)}
                 className={`text-[11px] px-2 py-1 rounded-full border whitespace-nowrap cursor-pointer ${
