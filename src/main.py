@@ -63,12 +63,17 @@ async def lifespan(app: FastAPI):
     if os.environ.get("STUDIO_PHOTO_QUEUE_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
         from src.services import photo_queue
         photo_queue.start()
+    # Reminds people who stopped answering the bot, an hour on.
+    if os.environ.get("BOT_NUDGE_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
+        from src.services import nudges
+        nudges.start()
     yield
     # --- Shutdown ---
     try:
-        from src.services import discovery_autopilot, photo_queue
+        from src.services import discovery_autopilot, nudges, photo_queue
         discovery_autopilot.stop()
         photo_queue.stop()
+        nudges.stop()
     except Exception:
         pass
     logger.info("Shutdown complete")

@@ -286,7 +286,7 @@ def test_no_pin_three_times_hands_over_to_a_person(db):
     say(db, "hello")
     assert StubMeta.sent[-1][2] == onboarding_bot.BAD_PIN
     say(db, "999")
-    say(db, "what?")
+    say(db, "nope")
     assert StubMeta.sent[-1][2] == onboarding_bot.HANDOVER_TEXT
     assert conv(db).bot_step == onboarding_bot.HANDOVER
 
@@ -324,11 +324,11 @@ def test_a_pin_sent_out_of_the_blue_is_checked(db):
 
 
 def test_someone_writing_first_is_greeted_and_can_start(db):
-    say(db, "Hi, what is this about?")
+    say(db, "Hi")
     kind, _to, body, buttons = StubMeta.sent[-1]
     assert "Thank you for contacting Eko" in body
     assert [b["id"] for b in buttons] == [onboarding_bot.START_INTERESTED, onboarding_bot.START_WEBINAR]
-    say(db, "hello?")  # greeted once a day, not on every line
+    say(db, "hello")  # greeted once a day, not on every line
     assert len(StubMeta.sent) == 1
     tap(db, "start:interested")
     tap(db, "lang:en")
@@ -352,7 +352,7 @@ def test_an_unclear_answer_gets_the_question_again(db):
     tap_campaign(db)
     say(db, SERVED_PIN)
     qualify(db)
-    say(db, "what does it involve?")
+    say(db, "hmm maybe")
     kind, _to, body, buttons = StubMeta.sent[-1]
     assert body == onboarding_bot.REMIND_INVEST and [b["id"] for b in buttons] == ["invest:yes", "invest:no"]
 
@@ -798,7 +798,7 @@ def test_typed_education_counts(db):
 def test_an_unclear_education_answer_gets_the_buttons_again(db):
     tap_campaign(db)
     say(db, SERVED_PIN)
-    say(db, "why do you ask?")
+    say(db, "not sure")
     kind, _to, body, buttons = StubMeta.sent[-1]
     assert body == onboarding_bot.ASK_EDUCATION
     assert [b["id"] for b in buttons] == ["edu:12", "edu:grad", "edu:other"]
@@ -808,3 +808,150 @@ def test_every_language_has_short_education_buttons():
     for lang, msgs in bot_messages.MESSAGES.items():
         for k in ("edu_12", "edu_grad", "edu_other"):
             assert len(msgs[k]) <= 20, (lang, k, msgs[k])
+
+
+# --- Questions the bot cannot answer, for a person ---------------------------
+
+def test_a_question_marks_the_conversation_and_is_thanked(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "Isme kitna kamaunga?")
+    body = StubMeta.sent[-1][2]
+    assert body.startswith(bot_messages.MESSAGES["en"]["question_ack"])
+    assert onboarding_bot.ASK_EDUCATION in body  # and the question it left is asked again
+    c = conv(db)
+    assert c.needs_attention and c.attention_reason == "Isme kitna kamaunga?"
+    assert c.bot_step == onboarding_bot.AWAIT_EDUCATION
+
+
+def test_a_question_at_the_pin_step_is_not_a_failed_attempt(db):
+    tap_campaign(db)
+    say(db, "PIN code kya hota hai?")
+    c = conv(db)
+    assert c.needs_attention and c.bot_step == onboarding_bot.AWAIT_PIN
+    assert c.bot_data.get("pin_attempts", 0) == 0
+
+
+def test_plain_replies_do_not_need_attention(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "ok")
+    assert not conv(db).needs_attention
+
+
+def test_a_question_while_the_bot_is_paused_still_needs_attention(db):
+    say(db, "hello")
+    c = conv(db)
+    c.bot_paused = True
+    db.commit()
+    count = len(StubMeta.sent)
+    say(db, "When will someone call me?")
+    assert conv(db).needs_attention and len(StubMeta.sent) == count
+
+
+def test_people_from_elsewhere_are_never_marked(db):
+    msg = inbox.record_inbound(db, {"from": "919000000002", "id": "wamid.q2", "type": "text",
+                                    "text": {"body": "What is this?"}}, None)
+    db.commit()
+    other = inbox.conversation(db, "+919000000002")
+    onboarding_bot.handle(db, other, msg)
+    assert not other.needs_attention
+
+
+def test_three_failed_pins_need_a_person(db):
+    tap_campaign(db)
+    for text in ("hello", "999", "nope"):
+        say(db, text)
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.HANDOVER and c.needs_attention
+
+
+def test_attention_can_be_set_by_hand_and_only_resolved_by_hand(db, client):
+    say(db, "hello")
+    path = f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/attention"
+    assert client.post(path, json={"needed": True}).status_code == 200
+    item = client.get("/api/v1/inbox/conversations").json()[0]
+    assert item["needs_attention"] and "admin@eko.co.in" in item["attention_reason"]
+    # A reply alone does not clear it.
+    client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/messages", json={"message": "Hi!"})
+    assert conv(db).needs_attention
+    assert client.post(path, json={"needed": False}).status_code == 200
+    c = conv(db)
+    assert not c.needs_attention and c.attention_resolved_by == "admin@eko.co.in"
+
+
+def test_attention_cannot_be_set_on_someone_from_elsewhere(db, client):
+    inbox.record_inbound(db, {"from": "919000000002", "id": "wamid.q3", "type": "text",
+                              "text": {"body": "hi"}}, None)
+    db.commit()
+    r = client.post("/api/v1/inbox/conversations/919000000002/attention", json={"needed": True})
+    assert r.status_code == 409
+
+
+# --- Nudges, an hour after someone stops answering ---------------------------
+
+from src.services import nudges  # noqa: E402
+
+
+def _hours_later(h):
+    return inbox.now() + timedelta(hours=h)
+
+
+def test_someone_quiet_for_an_hour_is_nudged_once_with_the_same_question(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)          # the bot asks about education, and they go quiet
+    count = len(StubMeta.sent)
+    assert nudges.tick(db, _hours_later(0.5)) == 0, "not before an hour"
+    assert nudges.tick(db, _hours_later(1.1)) == 1
+    kind, _to, body, buttons = StubMeta.sent[-1]
+    assert body.startswith(bot_messages.MESSAGES["en"]["nudge"])
+    assert onboarding_bot.ASK_EDUCATION in body
+    assert [b["id"] for b in buttons] == ["edu:12", "edu:grad", "edu:other"]
+    assert len(StubMeta.sent) == count + 1
+    assert nudges.tick(db, _hours_later(3)) == 0, "one reminder per pause"
+
+
+def _age(db, hours):
+    """Move the whole conversation this many hours into the past."""
+    for m in db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == PHONE).all():
+        m.created_at = inbox.aware(m.created_at) - timedelta(hours=hours)
+    c = conv(db)
+    c.last_inbound_at = inbox.aware(c.last_inbound_at) - timedelta(hours=hours)
+    db.commit()
+
+
+def test_a_reply_and_a_new_pause_gets_a_new_nudge(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    _age(db, 1.1)
+    assert nudges.tick(db) == 1
+    tap(db, "edu:12")            # they come back, then go quiet again
+    assert nudges.tick(db) == 0
+    assert nudges.tick(db, _hours_later(1.1)) == 1
+    assert onboarding_bot.ASK_INVEST in StubMeta.sent[-1][2]
+
+
+def test_the_nudge_is_in_their_language(db):
+    tap_campaign(db, lang="hi")
+    assert nudges.tick(db, _hours_later(1.1)) == 1
+    body = StubMeta.sent[-1][2]
+    assert body.startswith(bot_messages.MESSAGES["hi"]["nudge"])
+    assert bot_messages.MESSAGES["hi"]["bad_pin"] in body
+
+
+def test_no_nudge_when_waiting_for_a_person_or_after_the_window(db):
+    tap_campaign(db)
+    c = conv(db)
+    c.needs_attention = True
+    db.commit()
+    assert nudges.tick(db, _hours_later(1.1)) == 0
+    c.needs_attention = False
+    db.commit()
+    assert nudges.tick(db, _hours_later(23.95)) == 0, "too close to the 24-hour limit"
+
+
+def test_no_nudge_once_the_flow_has_ended(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    tap(db, "edu:other")         # not eligible: nothing left to ask
+    assert nudges.tick(db, _hours_later(2)) == 0

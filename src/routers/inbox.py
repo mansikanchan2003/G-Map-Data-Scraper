@@ -48,6 +48,10 @@ class ConversationSummary(BaseModel):
     # Reached by an AutoGMap campaign. Only these does the bot answer; the
     # number is shared, and everyone else is another team's to handle.
     from_campaign: bool = False
+    # A question waiting for a person; see onboarding_bot.flag.
+    needs_attention: bool = False
+    attention_reason: Optional[str] = None
+    attention_at: Optional[datetime] = None
 
 
 class ThreadMessage(BaseModel):
@@ -95,6 +99,12 @@ class SendRequest(BaseModel):
 
 class BotStateRequest(BaseModel):
     paused: bool
+
+
+class AttentionRequest(BaseModel):
+    # True marks the conversation for a person; False is "Question resolved".
+    needed: bool
+    reason: Optional[str] = Field(None, max_length=500)
 
 
 class BotSettings(BaseModel):
@@ -173,6 +183,9 @@ def _summary(conv, name, last, unread, docs, from_campaign=False) -> dict:
         bot_paused=bool(conv.bot_paused),
         documents=docs,
         from_campaign=from_campaign,
+        needs_attention=bool(conv.needs_attention),
+        attention_reason=conv.attention_reason,
+        attention_at=inbox.aware(conv.attention_at),
     )
 
 
@@ -450,3 +463,27 @@ def get_media(message_id: str, download: bool = False, db: Session = Depends(get
         headers={"X-Content-Type-Options": "nosniff",
                  "Content-Security-Policy": "default-src 'none'; sandbox"},
     )
+
+
+@router.post("/conversations/{digits}/attention")
+def set_attention(digits: str, payload: AttentionRequest, db: Session = Depends(get_db),
+                  user: User = Depends(current_user)):
+    """
+    Mark a conversation as needing attention, or clear it once answered.
+
+    Only people an AutoGMap campaign reached are marked, by the bot or by
+    hand; the number is shared, and other teams' conversations are theirs.
+    Clearing is done only here, by a person: the bot never clears it.
+    """
+    conv = _get_conversation(db, digits)
+    if payload.needed:
+        if not inbox.from_campaign(db, conv.phone):
+            raise HTTPException(status_code=409,
+                                detail="Only conversations from an AutoGMap campaign can be marked for attention")
+        onboarding_bot.flag(conv, payload.reason or f"Marked by {user.email}")
+    else:
+        conv.needs_attention = False
+        conv.attention_resolved_by = user.email
+        conv.attention_resolved_at = inbox.now()
+    db.commit()
+    return {"needs_attention": conv.needs_attention, "attention_reason": conv.attention_reason}

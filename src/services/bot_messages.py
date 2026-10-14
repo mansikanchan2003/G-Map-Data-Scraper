@@ -826,6 +826,45 @@ for _lang, _line in _NUDGE.items():
     MESSAGES[_lang]["nudge"] = _line
 
 
+# --- A question the bot cannot answer -----------------------------------------
+# Said when someone asks something of their own; the conversation is marked
+# for a person, who answers it in the inbox.
+_QUESTION_ACK = {
+    "en": "Thank you for your question! 🙏 One of our team members will answer it here shortly.",
+    "hi": "आपके सवाल के लिए धन्यवाद! 🙏 हमारी टीम का कोई सदस्य जल्द ही यहीं जवाब देगा।",
+    "pa": "ਤੁਹਾਡੇ ਸਵਾਲ ਲਈ ਧੰਨਵਾਦ! 🙏 ਸਾਡੀ ਟੀਮ ਦਾ ਕੋਈ ਮੈਂਬਰ ਜਲਦੀ ਹੀ ਇੱਥੇ ਜਵਾਬ ਦੇਵੇਗਾ।",
+    "gu": "તમારા પ્રશ્ન બદલ આભાર! 🙏 અમારી ટીમના સભ્ય ટૂંક સમયમાં અહીં જવાબ આપશે.",
+    "mr": "तुमच्या प्रश्नाबद्दल धन्यवाद! 🙏 आमच्या टीमचा सदस्य लवकरच इथे उत्तर देईल.",
+    "bn": "আপনার প্রশ্নের জন্য ধন্যবাদ! 🙏 আমাদের টিমের একজন সদস্য শীঘ্রই এখানে উত্তর দেবেন।",
+    "ta": "உங்கள் கேள்விக்கு நன்றி! 🙏 எங்கள் குழுவைச் சேர்ந்த ஒருவர் விரைவில் இங்கே பதிலளிப்பார்.",
+    "te": "మీ ప్రశ్నకు ధన్యవాదాలు! 🙏 మా బృంద సభ్యులు త్వరలో ఇక్కడే జవాబు ఇస్తారు.",
+    "kn": "ನಿಮ್ಮ ಪ್ರಶ್ನೆಗೆ ಧನ್ಯವಾದಗಳು! 🙏 ನಮ್ಮ ತಂಡದ ಸದಸ್ಯರು ಶೀಘ್ರದಲ್ಲೇ ಇಲ್ಲೇ ಉತ್ತರಿಸುತ್ತಾರೆ.",
+    "ml": "നിങ്ങളുടെ ചോദ്യത്തിന് നന്ദി! 🙏 ഞങ്ങളുടെ ടീമിലെ ഒരാൾ ഉടൻ ഇവിടെ മറുപടി നൽകും.",
+    "or": "ଆପଣଙ୍କ ପ୍ରଶ୍ନ ପାଇଁ ଧନ୍ୟବାଦ! 🙏 ଆମ ଟିମ୍‌ର ଜଣେ ସଦସ୍ୟ ଶୀଘ୍ର ଏଠାରେ ଉତ୍ତର ଦେବେ।",
+}
+for _lang, _line in _QUESTION_ACK.items():
+    MESSAGES[_lang]["question_ack"] = _line
+
+# Words that make a message a question in each language, and the Latin
+# spellings people type them in. Read by onboarding_bot.looks_like_question.
+QUESTION_WORDS = {
+    "what", "how", "why", "when", "where", "which", "who", "whom", "whose", "can", "could", "will",
+    "is", "are", "do", "does", "much", "many", "cost", "price", "fee", "fees", "charge", "charges",
+    "salary", "earn", "earning", "income", "commission", "kya", "kaise", "kyu", "kyun", "kyon", "kab",
+    "kaha", "kahan", "kitna", "kitne", "kitni", "kaun", "kaunsa", "kon", "konsa",
+    "क्या", "कैसे", "क्यों", "कब", "कहाँ", "कहां", "कितना", "कितने", "कितनी", "कौन", "कौनसा",
+    "શું", "કેવી", "કેવી રીતે", "કેમ", "ક્યારે", "ક્યાં", "કેટલા", "કેટલું", "કોણ",
+    "ਕੀ", "ਕਿਵੇਂ", "ਕਿਉਂ", "ਕਦੋਂ", "ਕਿੱਥੇ", "ਕਿੰਨਾ", "ਕਿੰਨੇ", "ਕੌਣ",
+    "काय", "कसे", "कसा", "का", "कधी", "कुठे", "किती", "कोण",
+    "কি", "কী", "কেন", "কখন", "কোথায়", "কত", "কে",
+    "என்ன", "எப்படி", "ஏன்", "எப்போது", "எங்கே", "எவ்வளவு", "யார்",
+    "ఏమి", "ఎలా", "ఎందుకు", "ఎప్పుడు", "ఎక్కడ", "ఎంత", "ఎవరు",
+    "ಏನು", "ಹೇಗೆ", "ಏಕೆ", "ಯಾವಾಗ", "ಎಲ್ಲಿ", "ಎಷ್ಟು", "ಯಾರು",
+    "എന്ത്", "എങ്ങനെ", "എന്തുകൊണ്ട്", "എപ്പോൾ", "എവിടെ", "എത്ര", "ആര്",
+    "କଣ", "କ'ଣ", "କିପରି", "କାହିଁକି", "କେବେ", "କେଉଁଠି", "କେତେ", "କିଏ",
+}
+
+
 def text(lang: str, key: str, **fields) -> str:
     """A message in `lang`, or in English if that language lacks it."""
     template = MESSAGES.get(lang, {}).get(key) or MESSAGES["en"][key]

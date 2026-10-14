@@ -42,6 +42,15 @@ class WhatsAppConversation(Base):
     # The Google Drive folder this person's documents were copied into.
     drive_folder_url = Column(String(500), nullable=True)
 
+    # A question the bot could not answer, waiting for a person. Cleared only
+    # by someone pressing "Question resolved" after answering it, never by
+    # the bot and never by a reply alone: a reply may not settle it.
+    needs_attention = Column(Boolean, nullable=False, default=False, server_default="0", index=True)
+    attention_reason = Column(String(500), nullable=True)
+    attention_at = Column(DateTime(timezone=True), nullable=True)
+    attention_resolved_by = Column(String(200), nullable=True)
+    attention_resolved_at = Column(DateTime(timezone=True), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

@@ -31,6 +31,7 @@ a short, paced reply.
 Every message it sends answers one the person just sent, so all of them fall
 inside Meta's 24-hour window and none needs a template.
 """
+import contextvars
 import json
 import logging
 import os
@@ -44,7 +45,7 @@ from sqlalchemy.orm import Session
 from src.models.app_setting import AppSetting
 from src.models.inbox import WhatsAppConversation, WhatsAppMessage
 from src.services import bot_messages, campaign_buttons, inbox, pincode_coverage
-from src.services.bot_messages import LANGUAGE_NAMES, LANGUAGE_WORDS, MESSAGES
+from src.services.bot_messages import LANGUAGE_NAMES, LANGUAGE_WORDS, MESSAGES, QUESTION_WORDS
 
 logger = logging.getLogger("gmap_scraper.onboarding_bot")
 
@@ -468,6 +469,7 @@ def _pin_failed(db, conv, reply: str):
     attempts = (conv.bot_data or {}).get("pin_attempts", 0) + 1
     if attempts >= MAX_PIN_ATTEMPTS:
         _move(conv, HANDOVER, pin_attempts=attempts)
+        flag(conv, "Could not give a usable PIN code after three tries")
         _say(db, conv, _t(db, conv, "handover"))
     else:
         _move(conv, AWAIT_PIN, pin_attempts=attempts)
@@ -503,19 +505,75 @@ def _only_a_pin(msg: WhatsAppMessage) -> Optional[str]:
     return body if msg.kind == "text" and re.fullmatch(r"[1-9]\d{5}", body) else None
 
 
+# The message being answered, so that _fallback can tell a question from an
+# unclear answer without every caller passing it along.
+_CURRENT = contextvars.ContextVar("onboarding_bot_message", default=None)
+
+
+def message_text(msg) -> Optional[str]:
+    """What someone said: their text, or what their voice note was transcribed as."""
+    if msg is None:
+        return None
+    if msg.kind == "text":
+        return msg.body
+    if msg.kind == "audio":
+        return (msg.payload or {}).get("transcript")
+    return None
+
+
+def looks_like_question(text: Optional[str]) -> bool:
+    """
+    Whether a message asks something the bot cannot answer itself.
+
+    A question mark, a question word in any of the bot's languages, or a
+    message long enough to be more than a one-word reply. "ok", "thanks" and
+    "hello" are none of these.
+    """
+    text = (text or "").strip()
+    if not text:
+        return False
+    if "?" in text or "？" in text:
+        return True
+    words = re.findall(r"[\w'\u0900-\u0DFF]+", text.lower())
+    if any(w in QUESTION_WORDS for w in words):
+        return True
+    return len(words) >= 8
+
+
+def flag(conv, reason: str) -> None:
+    """
+    Mark the conversation for a person. Only ever cleared by someone pressing
+    "Question resolved"; asked again, the latest question is what shows.
+    """
+    conv.needs_attention = True
+    conv.attention_reason = (reason or "").strip()[:500] or None
+    conv.attention_at = inbox.now()
+    conv.attention_resolved_by = None
+    conv.attention_resolved_at = None
+
+
 def _fallback(db, conv, body, gap=FALLBACK_GAP, **kw):
     """
     Answer a message the bot did not understand, if it has not just done so.
 
     Paced, and stopped after a few in a row, so that a person typing several
     lines gets one answer and an auto-reply cannot start an endless exchange.
+
+    A question of their own marks the conversation for a person and is
+    thanked first, even inside the pause: a question deserves an answer.
     """
     data = conv.bot_data or {}
     streak = data.get("fallback_streak", 0)
     last = data.get("fallback_at")
+    said = message_text(_CURRENT.get())
+    asked = looks_like_question(said)
+    if asked:
+        flag(conv, said)
+        ack = _t(db, conv, "question_ack")
+        body = ack if body == _t(db, conv, "acknowledge") else f"{ack}\n\n{body}"
     if streak >= MAX_FALLBACK_STREAK:
         return
-    if last and inbox.now() - datetime.fromisoformat(last) < gap:
+    if not asked and last and inbox.now() - datetime.fromisoformat(last) < gap:
         return
     conv.bot_data = {**data, "fallback_streak": streak + 1, "fallback_at": inbox.now().isoformat()}
     _say(db, conv, body, **kw)
@@ -541,18 +599,47 @@ def _tell_team(conv, what: str, availability: Optional[str] = None):
         logger.exception("onboarding_bot event=WEBINAR_NOTIFY_FAILED")
 
 
+class _Spoken:
+    """A voice note read as the text it was transcribed to, for the bot's purposes only."""
+
+    def __init__(self, msg, text):
+        self.message_id, self.direction, self.phone = msg.message_id, msg.direction, msg.phone
+        self.kind, self.body, self.payload = "text", text, msg.payload
+
+
 def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> None:
     """Answer one inbound message. Every message gets a fitting reply, paced."""
-    if msg.direction != "IN" or conv.bot_paused:
-        return
-    cfg = get_settings(db)
-    if not cfg["enabled"]:
+    if msg.direction != "IN":
         return
     # The number is shared with other teams, who talk to people of their
-    # own. The bot speaks only to people an AutoGMap campaign reached; every
-    # other conversation is still shown in the inbox, and left to a person.
+    # own. The bot speaks only to people an AutoGMap campaign reached, and
+    # only their questions are marked for attention; every other
+    # conversation is still shown in the inbox, and left to a person.
     if not inbox.from_campaign(db, conv.phone):
         return
+
+    # A voice note is answered as what it says, in the language it was said in.
+    if msg.kind == "audio" and message_text(msg):
+        spoken = (msg.payload or {}).get("language")
+        if spoken in MESSAGES:
+            conv.bot_data = {**(conv.bot_data or {}), "lang": spoken,
+                             "lang_campaign": _campaign_lang(db, conv)}
+        msg = _Spoken(msg, message_text(msg))
+
+    token = _CURRENT.set(msg)
+    try:
+        cfg = get_settings(db)
+        if conv.bot_paused or not cfg["enabled"]:
+            # Nobody automatic will answer, so a question is left for a person.
+            if looks_like_question(message_text(msg)):
+                flag(conv, message_text(msg))
+            return
+        _handle(db, conv, msg, cfg)
+    finally:
+        _CURRENT.reset(token)
+
+
+def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
     # A reaction is not a message to answer.
     if msg.kind == "reaction":
         return
@@ -609,8 +696,12 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
     lang = _lang(db, conv)
 
     if step == AWAIT_PIN:
-        # _on_pin counts the failed attempts and hands over after a few.
-        if msg.kind == "text":
+        # _on_pin counts the failed attempts and hands over after a few. A
+        # question ("what is a PIN code?") is not a failed attempt: it is
+        # thanked, left for a person, and the PIN asked for again.
+        if msg.kind == "text" and looks_like_question(msg.body):
+            _fallback(db, conv, _t(db, conv, "bad_pin"))
+        elif msg.kind == "text":
             _on_pin(db, conv, msg)
         else:
             _fallback(db, conv, _t(db, conv, "bad_pin"))
@@ -711,6 +802,47 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
             _fallback(db, conv, _t(db, conv, "greeting", webinar=webinar), gap=GREETING_GAP,
                       buttons=[{"id": START_INTERESTED, "title": campaign_buttons.INTERESTED},
                                {"id": START_WEBINAR, "title": webinar}])
+
+
+# Steps where the bot is waiting for an answer; someone who goes quiet at one
+# of these is nudged (see nudges.py).
+NUDGE_STEPS = (CHOOSE_LANG, AWAIT_PIN, AWAIT_EDUCATION, AWAIT_FRANCHISE, AWAIT_INVEST,
+               AWAIT_DOCS, AWAIT_UPLOAD, AWAIT_WEBINAR, AWAIT_AVAILABILITY)
+
+
+def pending_question(db: Session, conv: WhatsAppConversation):
+    """
+    What the bot is waiting for an answer to: (text, send options), or None.
+
+    The question as it was asked, with its buttons, so a reminder takes the
+    person straight back to where they left off.
+    """
+    step, lang = conv.bot_step, _lang(db, conv)
+    if step == CHOOSE_LANG:
+        options = language_options(_campaign_lang(db, conv))
+        lines = []
+        for code in options:
+            line = bot_messages.text(code, "language_prompt")
+            if line not in lines:
+                lines.append(line)
+        return "\n".join(lines), {"buttons": [{"id": f"lang:{c}", "title": LANGUAGE_NAMES[c]} for c in options]}
+    if step == AWAIT_PIN:
+        return _t(db, conv, "bad_pin"), {}
+    if step == AWAIT_EDUCATION:
+        return _t(db, conv, "ask_education"), {"buttons": education_buttons(lang)}
+    if step == AWAIT_FRANCHISE:
+        return _t(db, conv, "ask_franchise"), {"buttons": YES_NO("franchise", lang)}
+    if step == AWAIT_INVEST:
+        return _t(db, conv, "ask_invest"), {"buttons": YES_NO("invest", lang)}
+    if step == AWAIT_DOCS:
+        return _t(db, conv, "ask_docs", documents=document_list(lang)), {"buttons": YES_NO("docs", lang)}
+    if step == AWAIT_UPLOAD and conv.upload_token:
+        return _t(db, conv, "remind_upload"), {"link": {"text": _t(db, conv, "link_button"), "url": upload_url(conv)}}
+    if step == AWAIT_WEBINAR:
+        return _t(db, conv, "webinar_ask"), {"buttons": YES_NO("webinar", lang)}
+    if step == AWAIT_AVAILABILITY:
+        return _t(db, conv, "webinar_no"), {}
+    return None
 
 
 def documents_submitted(db: Session, conv: WhatsAppConversation) -> WhatsAppMessage:
