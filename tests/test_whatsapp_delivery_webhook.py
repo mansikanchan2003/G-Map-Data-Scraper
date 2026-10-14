@@ -75,6 +75,19 @@ def status_event(stage, ts="1700000000", **extra):
 
 
 class TestStatusEvents:
+    def test_a_failure_reported_later_moves_the_campaign_totals(self, db):
+        # Meta took the message (counted as sent), then said it failed.
+        camp = db.query(WhatsAppCampaign).filter(
+            WhatsAppCampaign.campaign_id == recipient(db).campaign_id).first()
+        camp.successful_count, camp.failed_count = 1, 0
+        db.flush()
+        failed = status_event("failed", errors=[{"code": 131049, "title": "Not delivered"}])
+        _apply_status_event(db, failed)
+        _apply_status_event(db, failed)          # Meta repeats itself
+        db.flush()
+        assert (camp.successful_count, camp.failed_count) == (0, 1)
+        assert recipient(db).failure_code == "131049"
+
     def test_delivered_then_read_keeps_both_stamps(self, db):
         _apply_status_event(db, status_event("delivered", "1700000000"))
         _apply_status_event(db, status_event("read", "1700000060"))

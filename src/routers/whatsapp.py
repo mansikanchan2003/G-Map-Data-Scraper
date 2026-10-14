@@ -991,6 +991,15 @@ def _apply_status_event(db: Session, status: dict) -> None:
         elif not recipient.reason:
             recipient.reason = "Delivery failed (reported by Meta)"
         # A failure is terminal whatever arrived before it.
+        if recipient.status != "FAILED":
+            # Meta took the message, so it was counted as sent; it is a
+            # failure now, and the campaign's totals have to say so.
+            campaign = db.query(WhatsAppCampaign).filter(
+                WhatsAppCampaign.campaign_id == recipient.campaign_id).first()
+            if campaign is not None:
+                campaign.failed_count = (campaign.failed_count or 0) + 1
+                if recipient.status in ("SENT", "DELIVERED", "READ") and campaign.successful_count:
+                    campaign.successful_count -= 1
         recipient.status = "FAILED"
     elif stage in ("SENT", "DELIVERED", "READ"):
         field = {"SENT": "sent_at", "DELIVERED": "delivered_at", "READ": "read_at"}[stage]
