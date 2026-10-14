@@ -6,8 +6,8 @@ The onboarding bot: what happens after someone taps a campaign's buttons.
       PIN within our area   -> "How far have you studied?"
                                  [12th/Diploma] [Graduate/Post-Grad] [Other]
       Other                 -> "Sorry, at least 12th or a Diploma is needed" (ends)
-      12th or Graduate      -> "Do you have a franchise background?" [Yes] [No]
-      either answer         -> "Can you invest 5 lakh?"            [Yes] [No]
+      12th or Graduate      -> "Can you invest 5 lakh to set up a franchise
+                               business?" (with what a franchise is) [Yes] [No]
       Yes                   -> the documents needed, "Have them?"   [Yes] [No]
       Yes                   -> a link to the upload page
       documents submitted   -> "Thank you, our team will reach out"
@@ -622,15 +622,17 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
             _move(conv, NOT_ELIGIBLE, education=level)
             _say(db, conv, _t(db, conv, "not_eligible"))
         elif level:
+            # One question now covers the investment and the franchise
+            # (the user's choice, 2026-10-14).
             _understood(conv)
-            _move(conv, AWAIT_FRANCHISE, education=level)
-            _say(db, conv, _t(db, conv, "ask_franchise"), buttons=YES_NO("franchise", lang))
+            _move(conv, AWAIT_INVEST, education=level)
+            _say(db, conv, _t(db, conv, "ask_invest"), buttons=YES_NO("invest", lang))
         else:
             _fallback(db, conv, _t(db, conv, "ask_education"), buttons=education_buttons(lang))
 
     elif step == AWAIT_FRANCHISE:
-        # Either answer goes on to the investment question; it is recorded
-        # for the team, not used to turn anyone away.
+        # No longer asked on its own; kept for anyone left at this step
+        # before the two questions became one. Either answer goes on.
         answer = _answer(msg, "franchise")
         if answer is not None:
             _understood(conv)

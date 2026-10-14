@@ -642,9 +642,9 @@ _ELIGIBILITY = {
         ),
         "ask_franchise": (
             "Do you have a franchise background?\n\n"
-            "(A franchise background means you have run, or now run, a business under "
-            "another company's brand, for example a bank or payment kiosk, a courier, "
-            "mobile recharge or insurance outlet.)"
+            "(A franchise background means that you have operated—or are currently "
+            "operating—a business under another company's brand name, such as a bank or "
+            "payment kiosk, courier service, mobile recharge outlet, or insurance outlet.)"
         ),
     },
     "hi": {
@@ -772,6 +772,58 @@ _ELIGIBILITY = {
 }
 for _lang, _texts in _ELIGIBILITY.items():
     MESSAGES[_lang].update(_texts)
+
+
+# --- One question for investment and franchise (the user's choice, 2026-10-14)
+# The franchise question and the investment question were asked one after
+# the other; they are now one. The note on what a franchise background is
+# comes from ask_franchise above, so the two can never say it differently.
+_INVEST_LINE = {
+    "en": "Are you able to invest 5 Lakh Rupees to set up a Franchise Business?",
+    "hi": "क्या आप फ्रैंचाइज़ी बिज़नेस शुरू करने के लिए 5 लाख रुपये निवेश कर सकते हैं?",
+    "pa": "ਕੀ ਤੁਸੀਂ ਫਰੈਂਚਾਈਜ਼ੀ ਕਾਰੋਬਾਰ ਸ਼ੁਰੂ ਕਰਨ ਲਈ 5 ਲੱਖ ਰੁਪਏ ਨਿਵੇਸ਼ ਕਰ ਸਕਦੇ ਹੋ?",
+    "gu": "શું તમે ફ્રેન્ચાઇઝી બિઝનેસ શરૂ કરવા માટે 5 લાખ રૂપિયાનું રોકાણ કરી શકો છો?",
+    "mr": "फ्रँचायझी व्यवसाय सुरू करण्यासाठी तुम्ही 5 लाख रुपये गुंतवू शकता का?",
+    "bn": "আপনি কি ফ্র্যাঞ্চাইজি ব্যবসা শুরু করতে 5 লক্ষ টাকা বিনিয়োগ করতে পারবেন?",
+    "ta": "ஃபிரான்சைஸ் தொழிலைத் தொடங்க 5 லட்சம் ரூபாய் முதலீடு செய்ய உங்களால் முடியுமா?",
+    "te": "ఫ్రాంచైజీ వ్యాపారం ప్రారంభించడానికి మీరు 5 లక్షల రూపాయలు పెట్టుబడి పెట్టగలరా?",
+    "kn": "ಫ್ರಾಂಚೈಸಿ ವ್ಯಾಪಾರ ಪ್ರಾರಂಭಿಸಲು ನೀವು 5 ಲಕ್ಷ ರೂಪಾಯಿ ಹೂಡಿಕೆ ಮಾಡಬಹುದೇ?",
+    "ml": "ഫ്രാഞ്ചൈസി ബിസിനസ് ആരംഭിക്കാൻ 5 ലക്ഷം രൂപ നിക്ഷേപിക്കാൻ നിങ്ങൾക്ക് കഴിയുമോ?",
+    "or": "ଫ୍ରାଞ୍ଚାଇଜି ବ୍ୟବସାୟ ଆରମ୍ଭ କରିବା ପାଇଁ ଆପଣ 5 ଲକ୍ଷ ଟଙ୍କା ନିବେଶ କରିପାରିବେ କି?",
+}
+for _lang, _line in _INVEST_LINE.items():
+    _note = MESSAGES[_lang]["ask_franchise"].split("\n\n", 1)[1]
+    MESSAGES[_lang]["ask_invest"] = f"{_line}\n\n{_note}"
+
+
+# --- Nudges, an hour after someone stops answering ----------------------------
+# Said before the question they left, which is asked again in full.
+_NUDGE = {
+    "en": "Hi again! 😊 We understand you may have got busy, and that's completely okay. "
+          "Whenever you have a moment, we can continue right where we left off:",
+    "hi": "नमस्ते! 😊 हम समझते हैं कि आप किसी काम में व्यस्त हो गए होंगे, कोई बात नहीं। "
+          "जब भी आपको समय मिले, हम वहीं से आगे बढ़ सकते हैं जहाँ हमने छोड़ा था:",
+    "pa": "ਸਤ ਸ੍ਰੀ ਅਕਾਲ! 😊 ਅਸੀਂ ਸਮਝਦੇ ਹਾਂ ਕਿ ਤੁਸੀਂ ਕਿਸੇ ਕੰਮ ਵਿੱਚ ਰੁੱਝ ਗਏ ਹੋਵੋਗੇ, ਕੋਈ ਗੱਲ ਨਹੀਂ। "
+          "ਜਦੋਂ ਵੀ ਤੁਹਾਨੂੰ ਸਮਾਂ ਮਿਲੇ, ਅਸੀਂ ਉੱਥੋਂ ਹੀ ਅੱਗੇ ਵਧ ਸਕਦੇ ਹਾਂ ਜਿੱਥੇ ਅਸੀਂ ਛੱਡਿਆ ਸੀ:",
+    "gu": "નમસ્તે! 😊 અમે સમજીએ છીએ કે તમે કોઈ કામમાં વ્યસ્ત થઈ ગયા હશો, કોઈ વાંધો નહીં. "
+          "જ્યારે પણ તમને સમય મળે, આપણે જ્યાંથી અટક્યા હતા ત્યાંથી જ આગળ વધી શકીએ:",
+    "mr": "नमस्कार! 😊 आम्ही समजू शकतो की तुम्ही कामात व्यस्त झाला असाल, काही हरकत नाही. "
+          "तुम्हाला वेळ मिळेल तेव्हा आपण जिथे थांबलो होतो तिथूनच पुढे जाऊ शकतो:",
+    "bn": "নমস্কার! 😊 আমরা বুঝি আপনি হয়তো কোনো কাজে ব্যস্ত হয়ে পড়েছেন, কোনো সমস্যা নেই। "
+          "যখনই সময় পাবেন, আমরা যেখানে থেমেছিলাম সেখান থেকেই আবার শুরু করতে পারি:",
+    "ta": "வணக்கம்! 😊 நீங்கள் வேறு வேலையில் மும்முரமாக இருந்திருக்கலாம், பரவாயில்லை. "
+          "உங்களுக்கு நேரம் கிடைக்கும்போது, நாம் நிறுத்திய இடத்திலிருந்தே தொடரலாம்:",
+    "te": "నమస్కారం! 😊 మీరు ఏదో పనిలో బిజీ అయి ఉంటారని మాకు అర్థమైంది, పర్వాలేదు. "
+          "మీకు సమయం దొరికినప్పుడు, మనం ఆపిన చోటు నుండే కొనసాగించవచ్చు:",
+    "kn": "ನಮಸ್ಕಾರ! 😊 ನೀವು ಯಾವುದೋ ಕೆಲಸದಲ್ಲಿ ನಿರತರಾಗಿರಬಹುದು ಎಂದು ನಮಗೆ ಅರ್ಥವಾಗುತ್ತದೆ, ಪರವಾಗಿಲ್ಲ. "
+          "ನಿಮಗೆ ಸಮಯ ಸಿಕ್ಕಾಗ, ನಾವು ನಿಲ್ಲಿಸಿದ ಕಡೆಯಿಂದಲೇ ಮುಂದುವರಿಸಬಹುದು:",
+    "ml": "നമസ്കാരം! 😊 നിങ്ങൾ മറ്റെന്തെങ്കിലും തിരക്കിലായിരിക്കാം എന്ന് ഞങ്ങൾക്ക് മനസ്സിലാകും, കുഴപ്പമില്ല. "
+          "നിങ്ങൾക്ക് സമയം കിട്ടുമ്പോൾ, നിർത്തിയിടത്തുനിന്ന് തന്നെ തുടരാം:",
+    "or": "ନମସ୍କାର! 😊 ଆମେ ବୁଝିପାରୁଛୁ ଆପଣ ହୁଏତ କୌଣସି କାମରେ ବ୍ୟସ୍ତ ହୋଇଯାଇଥିବେ, କିଛି ଅସୁବିଧା ନାହିଁ। "
+          "ଆପଣଙ୍କୁ ସମୟ ମିଳିଲେ, ଆମେ ଯେଉଁଠି ଅଟକିଥିଲୁ ସେଠାରୁ ହିଁ ଆଗକୁ ବଢ଼ିପାରିବା:",
+}
+for _lang, _line in _NUDGE.items():
+    MESSAGES[_lang]["nudge"] = _line
 
 
 def text(lang: str, key: str, **fields) -> str:

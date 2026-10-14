@@ -159,10 +159,9 @@ def tap(db, button_id):
         "type": "button_reply", "button_reply": {"id": button_id, "title": button_id}})
 
 
-def qualify(db, education="12", franchise="no"):
-    """Answer the education and franchise questions that follow a served PIN."""
+def qualify(db, education="12"):
+    """Answer the education question that follows a served PIN."""
     tap(db, f"edu:{education}")
-    tap(db, f"franchise:{franchise}")
 
 
 def say(db, text):
@@ -219,14 +218,12 @@ def test_full_onboarding_flow(db, client):
 
     tap(db, "edu:grad")
     kind, _to, body, buttons = StubMeta.sent[-1]
-    assert body == onboarding_bot.ASK_FRANCHISE and "franchise background means" in body
-    assert [b["id"] for b in buttons] == ["franchise:yes", "franchise:no"]
-
-    tap(db, "franchise:yes")
-    kind, _to, body, buttons = StubMeta.sent[-1]
+    # One question covers the investment and the franchise.
     assert (kind, body) == ("buttons", onboarding_bot.ASK_INVEST)
+    assert body.startswith("Are you able to invest 5 Lakh Rupees to set up a Franchise Business?")
+    assert "franchise background means" in body
     assert [b["id"] for b in buttons] == ["invest:yes", "invest:no"]
-    assert conv(db).bot_data["education"] == "grad" and conv(db).bot_data["franchise"] is True
+    assert conv(db).bot_data["education"] == "grad"
 
     tap(db, "invest:yes")
     kind, _to, body, _b = StubMeta.sent[-1]
@@ -780,10 +777,12 @@ def test_below_12th_is_told_politely_and_the_flow_ends(db):
     assert all("Aadhaar" not in m[2] for m in StubMeta.sent[count:])
 
 
-def test_a_franchise_no_still_goes_on(db):
+def test_someone_left_at_the_old_franchise_step_still_goes_on(db):
     tap_campaign(db)
     say(db, SERVED_PIN)
-    tap(db, "edu:12")
+    c = conv(db)
+    c.bot_step = onboarding_bot.AWAIT_FRANCHISE  # asked before the questions were joined
+    db.commit()
     tap(db, "franchise:no")
     assert StubMeta.sent[-1][2] == onboarding_bot.ASK_INVEST
     assert conv(db).bot_data["franchise"] is False
@@ -793,7 +792,7 @@ def test_typed_education_counts(db):
     tap_campaign(db)
     say(db, SERVED_PIN)
     say(db, "Graduate")
-    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_FRANCHISE
+    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_INVEST
 
 
 def test_an_unclear_education_answer_gets_the_buttons_again(db):
