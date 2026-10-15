@@ -44,6 +44,7 @@ from sqlalchemy.orm import Session
 
 from src.models.app_setting import AppSetting
 from src.models.inbox import WhatsAppConversation, WhatsAppMessage
+from src.services import eko_knowledge
 from src.services import bot_messages, campaign_buttons, inbox, pincode_coverage
 from src.services.bot_messages import LANGUAGE_NAMES, LANGUAGE_WORDS, MESSAGES, QUESTION_WORDS
 
@@ -600,8 +601,19 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, **kw):
     # machine transcript of a short note can be wrong, and only someone
     # listening can tell what was asked.
     voice = getattr(current, "voice", False) or getattr(current, "kind", None) == "audio"
-    asked = looks_like_question(said) or voice
-    if asked:
+    # A question Eko's confirmed FAQ answers is answered here and now; the
+    # question it was asked at, if any, follows. Anything else, and any voice
+    # note (a transcript can be wrong), is left for a person.
+    faq = eko_knowledge.match(said) if said else []
+    asked = looks_like_question(said) or voice or bool(faq)
+    if faq:
+        answer = eko_knowledge.reply(faq, _lang(db, conv), said)
+        conv.bot_data = {**(conv.bot_data or {}), "faq_answered": (data.get("faq_answered") or []) + faq}
+        data = conv.bot_data
+        if voice:
+            flag(conv, f"Voice note: {said} (answered from the FAQ: {', '.join(faq)})")
+        body = answer if body == _t(db, conv, "acknowledge") else f"{answer}\n\n{body}"
+    elif asked:
         flag(conv, f"Voice note: {said}" if voice and said else ("Voice note" if voice else said))
         ack = _t(db, conv, "question_ack")
         body = ack if body == _t(db, conv, "acknowledge") else f"{ack}\n\n{body}"

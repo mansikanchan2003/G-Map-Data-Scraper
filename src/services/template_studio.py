@@ -38,6 +38,7 @@ from src.models.whatsapp import (
     WhatsAppButtonClick, WhatsAppCampaign, WhatsAppCampaignRecipient,
     WhatsAppLinkClick, WhatsAppTemplate, HUMAN_LINK_CLICK,
 )
+from src.services import eko_knowledge
 from src.services import campaign_buttons, creative_brief, image_prompts, poster_renderer, variety
 from src.services.gemini_client import GeminiClient, GeminiError, ImageUnavailable
 
@@ -448,6 +449,8 @@ Write {count} variant(s) in {lang['name']} ({lang['script']} script), in this or
 FACTS — the only claims allowed:
 {bullets(creative_brief.FACTS)}
 
+{eko_knowledge.agent_section()}
+
 RULES:
 {bullets(creative_brief.COPY_RULES)}
 
@@ -677,6 +680,11 @@ def validate_copy(variant: dict, language_code: str) -> List[str]:
             errors.append("image_phrase is not copied exactly from the headline or body")
 
     errors += validate_poster(poster, language_code)
+
+    # The Creator Pack's words we do not use, in the body and on the poster.
+    for name, text in [("body", body)] + [(f"poster {k}", str(poster.get(k) or "")) for k in POSTER_FIELDS]:
+        for problem in eko_knowledge.vocabulary_problems(text):
+            errors.append(f"{name} {problem}")
 
     # Script: everything a recipient reads must be in the state's script.
     texts = {"body": body, "footer": variant.get("footer"),

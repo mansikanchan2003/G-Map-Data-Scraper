@@ -32,6 +32,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from src.models.whatsapp import WhatsAppTemplate
+from src.services import eko_knowledge
 from src.services import campaign_buttons, creative_brief, image_prompts, sheet_templates, variety
 from src.services.gemini_client import GeminiClient, GeminiError, ImageUnavailable
 from src.services import template_studio as studio
@@ -252,6 +253,8 @@ Write {len(angles)} variant(s) in {lang} ({script} script), one per angle below,
 FACTS — the only claims allowed:
 {bullets(creative_brief.FACTS)}
 
+{eko_knowledge.agent_section()}
+
 RULES:
 {bullets(_copy_rules())}
 - The message must not begin or end with a blank: start with a greeting word, end with fixed text.
@@ -310,6 +313,8 @@ def validate(variant: dict, language_code: str, allowed: List[str]) -> List[str]
         errors.append(f"body does not give the contact number {creative_brief.PHONE}")
     if "**" in body:
         errors.append(studio.DOUBLE_ASTERISK)
+    # The Creator Pack's words we do not use.
+    errors += [f"body {p}" for p in eko_knowledge.vocabulary_problems(body)]
 
     used = TOKEN.findall(body)
     unknown = sorted(set(used) - set(allowed) - {"link"})

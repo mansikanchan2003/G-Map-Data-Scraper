@@ -98,9 +98,13 @@ FACTS: List[str] = [
     "The kiosk can also help customers enrol in government schemes: PMJDY, PMJJBY, PMSBY, APY.",
     "Earning: an OPPORTUNITY to earn ₹15,000 to ₹50,000 commission per month. Always phrase as an "
     "opportunity ('कमाने का अवसर'), never as a guarantee.",
-    "Easy application process, training and live support, low investment.",
-    "It works alongside an existing business or profession — an extra service and extra income "
-    "for shopkeepers, agents, professionals and anyone with a local network.",
+    "Applying is free (never ask anyone to pay for an allotment); Eko gives training, live support, "
+    "installs the devices and runs every process for the operator's month-on-month growth.",
+    "The investment is ₹5 lakh and above, depending on location and setup. The Banking Outlet needs its "
+    "own space and fixed hours, so it suits established business families adding a second, respected "
+    "business, and it draws on their name, network and existing customers.",
+    "Women operators get an extra incentive on their total commission, up to a limit.",
+    "Eko Bharat Ventures Private Limited has been a National Business Correspondent since 2009.",
     f"Contact by call or WhatsApp: {PHONE}.",
     f"Apply online: {SIGNUP_URL}.",
 ]
@@ -115,6 +119,9 @@ COPY_RULES: List[str] = [
     "The body is a WhatsApp message: short paragraphs, *bold* for emphasis, a few emojis, a "
     "respectful greeting and a thank-you. At most 900 characters.",
     "Each variant tests one clear idea (its angle) so its results can be compared with others.",
+    "Never call it a job (naukri, vacancy, bharti, joining) or promise a salary, fixed, guaranteed or "
+    "'pakka' income; no 'zero investment', 'limited seats' or pressure to pay; the operator is a Kiosk "
+    "Operator, not a bank employee; write Eko as 'Eko'.",
 ]
 
 IMAGE_RULES: List[str] = [
@@ -140,7 +147,12 @@ ANGLES: Dict[str, str] = {
     "trust_in_sbi": "The trust and pride of being associated with SBI, India's biggest bank",
     "government_schemes": "Helping neighbours join PMJDY, PMJJBY, PMSBY and APY",
     "easy_start": "Easy application, training and live support — no banking background needed",
-    "low_investment": "Low investment for a steady, secure business",
+    "area_banker_pride": "Becoming the whole area's trusted banker: 'poore ilaake ka banker', where the bank's name is, your name is",
+    "next_generation_business": "A second respected business for the next generation of an established business family",
+    "many_earning_lines": "Many ways to earn from one counter: accounts, schemes, deposits, loans, insurance, each with its own commission",
+    "woman_entrepreneur": "A woman's own identity and standing as the area's banker, with an extra incentive for women operators",
+    "eko_growth_promise": "Never alone: Eko runs every process (training, coaching, campaigns, devices, compliance) for month-on-month growth",
+    "season_proof_income": "Earnings every month, in season or out, for agri-input, fuel and seasonal businesses",
     "network_advantage": "Your existing customers and contacts become your first kiosk customers",
     "convenience_for_locals": "Saving local people the trip to a distant bank branch",
 }

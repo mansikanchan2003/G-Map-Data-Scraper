@@ -1230,3 +1230,40 @@ def test_the_investment_question_explains_a_franchise_business_and_so_does_its_n
     body = StubMeta.sent[-1][2]
     assert "A franchise business means running your own outlet" in body
     assert bot_messages.MESSAGES["en"]["ask_invest"] in body
+
+
+def test_a_question_the_faq_answers_is_answered_and_the_question_asked_again(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)                                  # now asked about investing
+    say(db, "Kitna invest karna hoga?")
+    body = StubMeta.sent[-1][2]
+    assert body.startswith("₹5 lakh and above")                   # in English, as chosen
+    assert bot_messages.MESSAGES["en"]["ask_invest"] in body     # and the question follows
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.AWAIT_INVEST
+    assert not c.needs_attention, "an answered question needs nobody"
+    assert c.bot_data["faq_answered"] == ["investment"]
+
+
+def test_the_faq_answer_is_in_the_persons_language(db):
+    tap_campaign(db, lang="hi")
+    say(db, "क्या फिक्स सैलरी मिलेगी?")
+    assert StubMeta.sent[-1][2].startswith("नहीं। यह नौकरी नहीं, बिज़नेस है।")
+
+
+def test_a_question_the_faq_does_not_answer_still_goes_to_a_person(db):
+    tap_campaign(db)
+    say(db, "Mere ghar ka pata badalna hai, kya karna hoga?")
+    c = conv(db)
+    assert c.needs_attention
+    assert StubMeta.sent[-1][2].startswith(bot_messages.MESSAGES["en"]["question_ack"])
+
+
+def test_a_voice_note_answered_from_the_faq_is_still_checked_by_a_person(db, heard):
+    tap_campaign(db)
+    heard.update(text="apply karne ki fees kitni hai", language="hi")
+    _voice(db, "vf")
+    # Heard as Hindi in Latin letters, so answered in Hinglish.
+    assert StubMeta.sent[-1][2].startswith("Apply karna free hai.")
+    assert conv(db).needs_attention
