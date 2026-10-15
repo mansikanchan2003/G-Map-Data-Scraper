@@ -176,33 +176,30 @@ const money = (v: number) => (v >= 1e7 ? `₹${+(v / 1e7).toFixed(2)} Cr` : `₹
 
 /** The month's revenue against the team's goal, and setting that goal. */
 const RevenueGoal: React.FC<{ plan: Plan; onSaved: () => void }> = ({ plan, onSaved }) => {
-  const g = plan.goal;
-  const r = g.revenue;
+  const r = plan.goal.revenue;
+  const today = new Date().toISOString().slice(0, 10);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(r ? String(r.goal_inr / 1e5) : '');
-  // The month the revenue is to be reached by; this month unless a goal is set.
-  const [month, setMonth] = useState(r?.month || g.start.slice(0, 7));
+  const [from, setFrom] = useState(r?.from || today);
+  const [to, setTo] = useState(r?.to || `${new Date().getFullYear()}-12-31`);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const save = async (lakhs: number | null) => {
     setSaving(true); setError(null);
-    try {
-      // Moving a goal to another month clears it from the old one.
-      if (r && r.month !== month) await setRevenueGoal(r.month, null);
-      await setRevenueGoal(month, lakhs ? Math.round(lakhs * 1e5) : null);
-      setEditing(false); onSaved();
-    }
+    try { await setRevenueGoal(lakhs ? Math.round(lakhs * 1e5) : null, from, to); setEditing(false); onSaved(); }
     catch (e: any) { setError(e.message); }
     finally { setSaving(false); }
   };
+  const field = 'h-9 px-2 rounded-lg border border-slate-800 bg-slate-900 text-sm text-slate-100 outline-none focus:border-sky-500';
   const editor = (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-sm text-slate-400">₹</span>
       <input value={value} onChange={e => setValue(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" autoFocus
-        className="h-9 w-28 px-3 rounded-lg border border-slate-800 bg-slate-900 text-sm text-slate-100 outline-none focus:border-sky-500" />
-      <span className="text-sm text-slate-400">lakh a month (100 = ₹1 Cr), by the end of</span>
-      <input type="month" value={month} min={g.start.slice(0, 7)} onChange={e => setMonth(e.target.value)}
-        className="h-9 px-2 rounded-lg border border-slate-800 bg-slate-900 text-sm text-slate-100 outline-none focus:border-sky-500" />
+        className={`${field} w-24 px-3`} />
+      <span className="text-sm text-slate-400">lakh in total (100 = ₹1 Cr), from</span>
+      <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={field} />
+      <span className="text-sm text-slate-400">to</span>
+      <input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} className={field} />
       <button onClick={() => save(parseFloat(value) || null)} disabled={saving}
         className="h-9 px-4 rounded-lg bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
       {r && <button onClick={() => save(null)} disabled={saving} className="h-9 px-3 rounded-lg text-sm text-slate-400 hover:text-rose-300">Clear</button>}
@@ -213,7 +210,7 @@ const RevenueGoal: React.FC<{ plan: Plan; onSaved: () => void }> = ({ plan, onSa
   if (!r) {
     return (
       <div className="rounded-lg border border-dashed border-slate-700 p-4 mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm text-slate-400">No revenue goal set. Set one (a monthly revenue, and the month to reach it by) and the agent works its lead goal out from it.</div>
+        <div className="text-sm text-slate-400">No revenue goal set. Set a total to earn between two dates, and the agent checks the network's pace against it.</div>
         {editing ? editor : (
           <button onClick={() => setEditing(true)} className="h-9 px-3.5 rounded-lg border border-slate-800 bg-slate-900 text-sm text-slate-300 hover:bg-slate-800 flex items-center gap-1.5">
             <Icon name="flag" className="text-[18px]" />Set a revenue goal</button>
@@ -222,46 +219,49 @@ const RevenueGoal: React.FC<{ plan: Plan; onSaved: () => void }> = ({ plan, onSa
     );
   }
   const done = Math.min(100, r.share * 100);
+  const expectedPct = Math.min(100, (r.expected_inr / r.goal_inr) * 100);
   return (
-    <div className="rounded-xl border border-emerald-800/60 bg-emerald-950 p-4 mb-5">
+    <div className={`rounded-xl border p-4 mb-5 ${r.on_course ? 'border-emerald-800/60 bg-emerald-950' : 'border-rose-800/60 bg-rose-950'}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-emerald-300">
-            Revenue goal · by {r.deadline_label} · {r.months_left} month{r.months_left === 1 ? '' : 's'} left
+          <div className={`text-[11px] uppercase tracking-wider font-semibold ${r.on_course ? 'text-emerald-300' : 'text-rose-300'}`}>
+            Revenue goal · {r.from_label} to {r.to_label}
           </div>
           <div className="flex flex-wrap items-baseline gap-x-3 mt-0.5">
-            <span className="text-2xl font-bold text-slate-100 tabular-nums">{money(r.goal_inr)} <span className="text-sm font-medium text-slate-400">a month</span></span>
-            <span className="text-sm text-slate-400">{r.baseline_month} {r.expected_basis} {money(r.expected_inr)} · {Math.round(r.share * 100)}%</span>
-            {r.gap_inr > 0
-              ? <span className="text-sm font-semibold text-rose-300">{money(r.gap_inr)} short</span>
-              : <span className="text-sm font-semibold text-emerald-300">on course</span>}
+            <span className="text-2xl font-bold text-slate-100 tabular-nums">{money(r.goal_inr)} <span className="text-sm font-medium text-slate-400">in total</span></span>
+            <span className={`text-sm font-semibold ${r.on_course ? 'text-emerald-300' : 'text-rose-300'}`}>
+              {r.on_course ? 'On course' : `${money(r.shortfall_inr)} short at today's pace`}
+            </span>
           </div>
         </div>
         {!editing && (
-          <button onClick={() => { setValue(String(r.goal_inr / 1e5)); setMonth(r.month); setEditing(true); }}
+          <button onClick={() => { setValue(String(r.goal_inr / 1e5)); setFrom(r.from); setTo(r.to); setEditing(true); }}
             className="h-8 px-3 rounded-lg border border-slate-800 bg-slate-900 text-xs text-slate-300 hover:bg-slate-800 flex items-center gap-1">
             <Icon name="edit" className="text-[16px]" />Change</button>
         )}
       </div>
       {editing && <div className="mt-3">{editor}</div>}
-      <div className="h-2.5 rounded-full bg-slate-800 mt-3 overflow-hidden">
-        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${done}%` }} />
+      <div className="relative h-3 rounded-full bg-slate-800 mt-3 overflow-hidden" title="Earned so far, and the pace's reach by the end">
+        <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-500/30" style={{ width: `${expectedPct}%` }} />
+        <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-500" style={{ width: `${done}%` }} />
       </div>
-      {r.gap_inr > 0 && (
-        <div className="grid gap-3 md:grid-cols-2 mt-4 text-[13px]">
-          <div className="rounded-lg bg-slate-900 border border-slate-800 p-3">
-            <div className="font-semibold text-slate-100 flex items-center gap-1.5"><Icon name="today" className="text-[18px] text-amber-300" />By {r.deadline_label}</div>
-            <p className="text-slate-400 mt-1">Mostly the existing CSPs: <b className="text-slate-200">{num(r.extra_txns)} more transactions a month</b>
-              {r.extra_txns_share ? ` (+${Math.round(r.extra_txns_share * 100)}%)` : ''}, about {r.extra_txns_per_csp} more each. A CSP going live now
-              adds only about ₹{num(r.new_csp_by_then_inr)} a month by then.</p>
-          </div>
-          <div className="rounded-lg bg-slate-900 border border-slate-800 p-3">
-            <div className="font-semibold text-slate-100 flex items-center gap-1.5"><Icon name="update" className="text-[18px] text-sky-300" />For good</div>
-            <p className="text-slate-400 mt-1">About <b className="text-slate-200">{r.csps_needed} more established CSPs</b>: {r.leads_needed} leads,
-              so <b className="text-slate-200">{r.leads_per_month} a month</b> until {r.deadline_label}. That is AutoGMap's part.</p>
-          </div>
+      <div className="grid gap-3 sm:grid-cols-3 mt-4 text-[13px]">
+        <div className="rounded-lg bg-slate-900 border border-slate-800 p-3">
+          <div className="text-[11px] text-slate-500">Earned so far</div>
+          <div className="text-lg font-semibold text-slate-100 tabular-nums">{money(r.earned_inr)}</div>
+          <div className="text-[11px] text-slate-500">{Math.round(r.share * 100)}% · Tara's figures to {r.as_of_label}</div>
         </div>
-      )}
+        <div className="rounded-lg bg-slate-900 border border-slate-800 p-3">
+          <div className="text-[11px] text-slate-500">At today's pace by {r.to_label}</div>
+          <div className="text-lg font-semibold text-slate-100 tabular-nums">{money(r.expected_inr)}</div>
+          <div className="text-[11px] text-slate-500">about {money(r.daily_inr)} a day</div>
+        </div>
+        <div className="rounded-lg bg-slate-900 border border-slate-800 p-3">
+          <div className="text-[11px] text-slate-500">{r.on_course ? `Reaches ${money(r.goal_inr)}` : 'To close the gap'}</div>
+          <div className="text-lg font-semibold text-slate-100">{r.on_course ? (r.reached_on_label || '—') : `+${num(r.extra_txns_a_day)} txns a day`}</div>
+          <div className="text-[11px] text-slate-500">{r.on_course ? 'around this date' : 'from the existing CSPs'}</div>
+        </div>
+      </div>
     </div>
   );
 };

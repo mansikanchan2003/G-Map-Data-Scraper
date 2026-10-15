@@ -158,18 +158,25 @@ def growth(db: Session = Depends(get_db)):
 
 
 class RevenueGoal(BaseModel):
-    month: str = Field(..., pattern=r"^\d{4}-\d{2}$", description="e.g. 2026-10")
-    inr: Optional[int] = Field(None, ge=0, description="The month's revenue goal in rupees; empty clears it")
+    # A total to earn between two dates; an empty amount clears the goal.
+    inr: Optional[int] = Field(None, ge=0, description="The total in rupees")
+    start: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$", description="e.g. 2026-10-15")
+    end: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$", description="e.g. 2026-12-31")
 
 
-@router.get("/revenue-goals")
-def get_revenue_goals(db: Session = Depends(get_db)):
-    """The team's revenue goal for each month; the growth agent sets its lead goal from it."""
+@router.get("/revenue-goal")
+def get_revenue_goal(db: Session = Depends(get_db)):
+    """The team's revenue goal: a total to earn between two dates. The growth agent reads it."""
     from src.services import business_context
-    return business_context.revenue_goals(db)
+    return business_context.revenue_goal(db)
 
 
-@router.put("/revenue-goals")
+@router.put("/revenue-goal")
 def put_revenue_goal(req: RevenueGoal, db: Session = Depends(get_db)):
     from src.services import business_context
-    return business_context.set_revenue_goal(db, req.month, req.inr)
+    if req.inr and not (req.start and req.end):
+        raise HTTPException(status_code=400, detail="A goal needs a start and an end date")
+    try:
+        return business_context.set_revenue_goal(db, req.inr, req.start, req.end)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

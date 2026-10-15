@@ -277,42 +277,35 @@ def test_delivery_is_measured_only_where_meta_reported(db):
     assert steps["delivered"]["from_previous"] == 1.0
 
 
-def test_a_revenue_goal_sets_the_lead_goal(db, context):
+def test_a_revenue_goal_is_a_total_between_two_dates(db, context):
     from src.services import business_context as bc
-    bc.set_revenue_goal(db, "2026-12", 10_000_000)         # ₹1 Cr a month by 31 December
-    g = gp.goal(db)
+    bc.set_revenue_goal(db, 10_000_000, "2026-10-15", "2026-12-31")   # ₹1 Cr in total by 31 December
+    g = gp.goal(db)                                                      # "today" is 22 October
     money = g["revenue"]
-    # October is projected at ₹87.7 lakh: ₹12.3 lakh short of ₹1 Cr.
-    assert (money["expected_inr"], money["gap_inr"]) == (8768364, 1231636)
-    assert money["expected_basis"] == "projected" and money["share"] == 0.877
-    assert (money["month"], money["deadline_label"], money["months_left"]) == ("2026-12", "31 Dec 2026", 3)
-    # By then mostly from the existing CSPs: measured against September's full month.
-    assert money["extra_txns_share"] == round(money["extra_txns"] / 306176, 3)
-    # For good it takes established CSPs; their leads spread over the months left.
-    assert money["leads_per_month"] == math.ceil(money["leads_needed"] / 3)
-    assert g["target"] == money["leads_per_month"] > 5
-    assert "₹1 Cr revenue goal" in g["basis"]
-    assert g["reasoning"][0].startswith("The goal: ₹1 Cr of revenue a month by 31 Dec 2026, 3 months away.")
+    daily = 8768364 / 31                                                 # October's projection, a day
+    # Counted to yesterday: 7 days since the 15th.
+    assert money["as_of"] == "2026-10-21" and money["earned_inr"] == round(daily * 7)
+    assert money["expected_inr"] == round(daily * 78) and money["on_course"]
+    assert money["reached_on"] == "2026-11-19"
+    # On course: the goal needs no extra leads, so the growth goal stands.
+    assert g["target"] == 5
+    assert g["reasoning"][0].startswith("The revenue goal: ₹1 Cr in total from 15 Oct 2026 to 31 Dec 2026.")
+    assert "passing ₹1 Cr around 19 Nov 2026" in g["reasoning"][1]
 
 
-def test_a_goal_already_past_is_not_used(db, context):
+def test_a_revenue_goal_out_of_reach_is_said_in_transactions(db, context):
     from src.services import business_context as bc
-    bc.set_revenue_goal(db, "2026-09", 10_000_000)
-    assert gp.goal(db)["revenue"] is None
+    bc.set_revenue_goal(db, 30_000_000, "2026-10-15", "2026-12-31")
+    money = gp.goal(db)["revenue"]
+    assert not money["on_course"] and money["shortfall_inr"] > 0 and money["extra_txns_a_day"] > 0
 
 
-def test_a_revenue_goal_already_met_leaves_the_growth_goal(db, context):
+def test_the_revenue_goal_is_kept_and_cleared(db):
     from src.services import business_context as bc
-    bc.set_revenue_goal(db, "2026-12", 8_000_000)
-    g = gp.goal(db)
-    assert g["revenue"]["gap_inr"] == 0 and g["target"] == 5
-    assert "on course" in g["reasoning"][0]
-
-
-def test_revenue_goals_are_kept_per_month(db):
-    from src.services import business_context as bc
-    bc.set_revenue_goal(db, "2026-10", 10_000_000)
-    bc.set_revenue_goal(db, "2026-11", 11_000_000)
-    assert bc.revenue_goals(db) == {"2026-10": 10_000_000, "2026-11": 11_000_000}
-    bc.set_revenue_goal(db, "2026-11", None)
-    assert bc.revenue_goals(db) == {"2026-10": 10_000_000}
+    assert bc.revenue_goal(db) is None
+    bc.set_revenue_goal(db, 10_000_000, "2026-10-15", "2026-12-31")
+    assert bc.revenue_goal(db) == {"inr": 10_000_000, "from": "2026-10-15", "to": "2026-12-31"}
+    with pytest.raises(ValueError):
+        bc.set_revenue_goal(db, 1, "2026-12-31", "2026-10-15")
+    bc.set_revenue_goal(db, None)
+    assert bc.revenue_goal(db) is None

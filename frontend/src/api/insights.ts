@@ -196,13 +196,12 @@ export interface GrowthPlan {
     go_live_rate?: number;
     state_gaps?: { state: string; target: number; leads: number; gap: number }[];
     /** The month's revenue against the team's revenue goal, when one is set. */
+    /** The team's revenue goal, a total between two dates, against the network's pace. */
     revenue?: {
-      /** The monthly revenue to reach, and the month it is due ("2026-12"). */
-      goal_inr: number; month: string; deadline: string; deadline_label: string; months_left: number;
-      baseline_month: string; expected_inr: number; expected_basis: string; share: number; gap_inr: number;
-      extra_txns: number; extra_txns_per_csp: number; extra_txns_share: number | null;
-      new_csp_by_then_inr: number; new_csps_by_then: number;
-      csps_needed: number; leads_needed: number; horizon_months: number; leads_per_month: number;
+      goal_inr: number; from: string; to: string; from_label: string; to_label: string;
+      as_of: string; as_of_label: string; earned_inr: number; share: number; daily_inr: number; days_left: number;
+      expected_inr: number; on_course: boolean; reached_on: string | null; reached_on_label: string | null;
+      shortfall_inr: number; extra_txns_a_day: number;
     } | null;
     stretch?: number;
   };
@@ -240,10 +239,12 @@ export interface GrowthPlan {
 
 export const fetchGrowthPlan = () => call<GrowthPlan>('/growth');
 /** Revenue goals by month ("2026-10" -> rupees); the agent sets its lead goal from them. */
-export const fetchRevenueGoals = () => call<Record<string, number>>('/revenue-goals');
-export const setRevenueGoal = (month: string, inr: number | null) =>
-  call<Record<string, number>>('/revenue-goals', {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month, inr }),
+/** The revenue goal: a total to earn between two dates (ISO), or null. */
+export interface RevenueGoalSetting { inr: number; from: string; to: string }
+export const fetchRevenueGoal = () => call<RevenueGoalSetting | null>('/revenue-goal');
+export const setRevenueGoal = (inr: number | null, start?: string, end?: string) =>
+  call<RevenueGoalSetting | null>('/revenue-goal', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inr, start, end }),
   });
 
 export interface BusinessSummary {
