@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.database import get_db
@@ -154,3 +155,21 @@ def growth(db: Session = Depends(get_db)):
     """
     from src.services import growth_plan
     return growth_plan.plan(db)
+
+
+class RevenueGoal(BaseModel):
+    month: str = Field(..., pattern=r"^\d{4}-\d{2}$", description="e.g. 2026-10")
+    inr: Optional[int] = Field(None, ge=0, description="The month's revenue goal in rupees; empty clears it")
+
+
+@router.get("/revenue-goals")
+def get_revenue_goals(db: Session = Depends(get_db)):
+    """The team's revenue goal for each month; the growth agent sets its lead goal from it."""
+    from src.services import business_context
+    return business_context.revenue_goals(db)
+
+
+@router.put("/revenue-goals")
+def put_revenue_goal(req: RevenueGoal, db: Session = Depends(get_db)):
+    from src.services import business_context
+    return business_context.set_revenue_goal(db, req.month, req.inr)

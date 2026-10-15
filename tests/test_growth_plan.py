@@ -4,6 +4,7 @@ do next. Built from campaigns and conversations planted here, so each number
 the plan reports can be checked against what was put in.
 """
 import json
+import math
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
@@ -17,6 +18,7 @@ from src.models import (  # noqa: F401  (registers the tables on Base)
     Business, WhatsAppButtonClick, WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppLinkClick,
     WhatsAppTemplate,
 )
+from src.models.app_setting import AppSetting
 from src.models.category import Category
 from src.models.inbox import WhatsAppConversation, WhatsAppMessage
 from src.services import campaign_insights as ci
@@ -78,7 +80,7 @@ def db(monkeypatch, tmp_path):
     finally:
         session.rollback()
         for model in (WhatsAppMessage, WhatsAppConversation, WhatsAppLinkClick, WhatsAppButtonClick,
-                      WhatsAppCampaignRecipient, WhatsAppCampaign, WhatsAppTemplate, Business, Category):
+                      WhatsAppCampaignRecipient, WhatsAppCampaign, WhatsAppTemplate, Business, Category, AppSetting):
             session.query(model).delete()
         session.commit()
         session.close()
@@ -273,3 +275,37 @@ def test_delivery_is_measured_only_where_meta_reported(db):
     steps = {s["key"]: s for s in gp.funnel(db, gp._people(db), ci.load_facts(db))["steps"]}
     assert steps["delivered"]["of_tracked"] == 40
     assert steps["delivered"]["from_previous"] == 1.0
+
+
+def test_a_revenue_goal_sets_the_lead_goal(db, context):
+    from src.services import business_context as bc
+    bc.set_revenue_goal(db, "2026-10", 10_000_000)
+    g = gp.goal(db)
+    money = g["revenue"]
+    # October is projected at ₹87.7 lakh: ₹12.3 lakh short of ₹1 Cr.
+    assert (money["expected_inr"], money["gap_inr"]) == (8768364, 1231636)
+    assert money["expected_basis"] == "projected" and money["share"] == 0.877
+    # Too much for new CSPs this month; for good it takes established CSPs,
+    # and the leads for them spread over the horizon.
+    assert money["new_csps_this_month"] > 1000
+    assert money["leads_per_month"] == math.ceil(money["leads_needed"] / bc.REVENUE_HORIZON_MONTHS)
+    assert g["target"] == money["leads_per_month"] > 5
+    assert "₹1 Cr revenue goal" in g["basis"]
+    assert g["reasoning"][0].startswith("The revenue goal for Oct 2026 is ₹1 Cr")
+
+
+def test_a_revenue_goal_already_met_leaves_the_growth_goal(db, context):
+    from src.services import business_context as bc
+    bc.set_revenue_goal(db, "2026-10", 8_000_000)
+    g = gp.goal(db)
+    assert g["revenue"]["gap_inr"] == 0 and g["target"] == 5
+    assert "on course" in g["reasoning"][0]
+
+
+def test_revenue_goals_are_kept_per_month(db):
+    from src.services import business_context as bc
+    bc.set_revenue_goal(db, "2026-10", 10_000_000)
+    bc.set_revenue_goal(db, "2026-11", 11_000_000)
+    assert bc.revenue_goals(db) == {"2026-10": 10_000_000, "2026-11": 11_000_000}
+    bc.set_revenue_goal(db, "2026-11", None)
+    assert bc.revenue_goals(db) == {"2026-10": 10_000_000}

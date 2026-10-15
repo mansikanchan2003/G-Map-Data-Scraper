@@ -192,6 +192,12 @@ export interface GrowthPlan {
     baseline_new_csps?: number;
     go_live_rate?: number;
     state_gaps?: { state: string; target: number; leads: number; gap: number }[];
+    /** The month's revenue against the team's revenue goal, when one is set. */
+    revenue?: {
+      goal_inr: number; month: string; expected_inr: number; expected_basis: string; share: number; gap_inr: number;
+      extra_txns: number; extra_txns_per_csp: number; new_csps_this_month: number;
+      csps_needed: number; leads_needed: number; horizon_months: number; leads_per_month: number;
+    } | null;
     stretch?: number;
   };
   /** From onboarding to revenue, from Tara; null until it has been exported. */
@@ -227,6 +233,12 @@ export interface GrowthPlan {
 }
 
 export const fetchGrowthPlan = () => call<GrowthPlan>('/growth');
+/** Revenue goals by month ("2026-10" -> rupees); the agent sets its lead goal from them. */
+export const fetchRevenueGoals = () => call<Record<string, number>>('/revenue-goals');
+export const setRevenueGoal = (month: string, inr: number | null) =>
+  call<Record<string, number>>('/revenue-goals', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month, inr }),
+  });
 
 export interface BusinessSummary {
   exported_at: string | null;

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { getApiBaseUrl } from '../api';
-import { fetchGrowthPlan, type BusinessSummary, type CreativeRow, type GrowthPlan as Plan, type GrowthRow } from '../api/insights';
+import {
+  fetchGrowthPlan, setRevenueGoal, type BusinessSummary, type CreativeRow, type GrowthPlan as Plan, type GrowthRow,
+} from '../api/insights';
 import { formatDateTime } from '../utils/datetime';
 
 /**
@@ -170,7 +172,90 @@ const Goal: React.FC<{ plan: Plan }> = ({ plan }) => {
 
 const BASIS: Record<string, string> = { actual: '', projected: 'projected', estimated: 'estimated' };
 
-const Business: React.FC<{ b: BusinessSummary }> = ({ b }) => {
+const money = (v: number) => (v >= 1e7 ? `₹${+(v / 1e7).toFixed(2)} Cr` : `₹${(v / 1e5).toFixed(1)} L`);
+
+/** The month's revenue against the team's goal, and setting that goal. */
+const RevenueGoal: React.FC<{ plan: Plan; onSaved: () => void }> = ({ plan, onSaved }) => {
+  const g = plan.goal;
+  const r = g.revenue;
+  const month = g.start.slice(0, 7);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(r ? String(r.goal_inr / 1e5) : '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const save = async (lakhs: number | null) => {
+    setSaving(true); setError(null);
+    try { await setRevenueGoal(month, lakhs ? Math.round(lakhs * 1e5) : null); setEditing(false); onSaved(); }
+    catch (e: any) { setError(e.message); }
+    finally { setSaving(false); }
+  };
+  const editor = (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-sm text-slate-400">₹</span>
+      <input value={value} onChange={e => setValue(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" autoFocus
+        className="h-9 w-28 px-3 rounded-lg border border-slate-800 bg-slate-900 text-sm text-slate-100 outline-none focus:border-sky-500" />
+      <span className="text-sm text-slate-400">lakh (100 = ₹1 Cr)</span>
+      <button onClick={() => save(parseFloat(value) || null)} disabled={saving}
+        className="h-9 px-4 rounded-lg bg-emerald-500 text-white text-sm font-semibold disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
+      {r && <button onClick={() => save(null)} disabled={saving} className="h-9 px-3 rounded-lg text-sm text-slate-400 hover:text-rose-300">Clear</button>}
+      <button onClick={() => setEditing(false)} className="h-9 px-3 rounded-lg text-sm text-slate-400 hover:text-slate-200">Cancel</button>
+      {error && <span className="text-xs text-rose-300">{error}</span>}
+    </div>
+  );
+  if (!r) {
+    return (
+      <div className="rounded-lg border border-dashed border-slate-700 p-4 mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-slate-400">No revenue goal for {g.label}. Set one and the agent works its lead goal out from it.</div>
+        {editing ? editor : (
+          <button onClick={() => setEditing(true)} className="h-9 px-3.5 rounded-lg border border-slate-800 bg-slate-900 text-sm text-slate-300 hover:bg-slate-800 flex items-center gap-1.5">
+            <Icon name="flag" className="text-[18px]" />Set a revenue goal</button>
+        )}
+      </div>
+    );
+  }
+  const done = Math.min(100, r.share * 100);
+  return (
+    <div className="rounded-xl border border-emerald-800/60 bg-emerald-950 p-4 mb-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-wider font-semibold text-emerald-300">{g.label} revenue goal</div>
+          <div className="flex flex-wrap items-baseline gap-x-3 mt-0.5">
+            <span className="text-2xl font-bold text-slate-100 tabular-nums">{money(r.goal_inr)}</span>
+            <span className="text-sm text-slate-400">{r.expected_basis} {money(r.expected_inr)} · {Math.round(r.share * 100)}%</span>
+            {r.gap_inr > 0
+              ? <span className="text-sm font-semibold text-rose-300">{money(r.gap_inr)} short</span>
+              : <span className="text-sm font-semibold text-emerald-300">on course</span>}
+          </div>
+        </div>
+        {!editing && (
+          <button onClick={() => { setValue(String(r.goal_inr / 1e5)); setEditing(true); }}
+            className="h-8 px-3 rounded-lg border border-slate-800 bg-slate-900 text-xs text-slate-300 hover:bg-slate-800 flex items-center gap-1">
+            <Icon name="edit" className="text-[16px]" />Change</button>
+        )}
+      </div>
+      {editing && <div className="mt-3">{editor}</div>}
+      <div className="h-2.5 rounded-full bg-slate-800 mt-3 overflow-hidden">
+        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${done}%` }} />
+      </div>
+      {r.gap_inr > 0 && (
+        <div className="grid gap-3 md:grid-cols-2 mt-4 text-[13px]">
+          <div className="rounded-lg bg-slate-900 border border-slate-800 p-3">
+            <div className="font-semibold text-slate-100 flex items-center gap-1.5"><Icon name="today" className="text-[18px] text-amber-300" />This month</div>
+            <p className="text-slate-400 mt-1">Only the existing CSPs can close it: <b className="text-slate-200">{num(r.extra_txns)} more transactions</b>,
+              about {r.extra_txns_per_csp} more each. New CSPs earn too little in their first month ({num(r.new_csps_this_month)} would be needed).</p>
+          </div>
+          <div className="rounded-lg bg-slate-900 border border-slate-800 p-3">
+            <div className="font-semibold text-slate-100 flex items-center gap-1.5"><Icon name="update" className="text-[18px] text-sky-300" />For good</div>
+            <p className="text-slate-400 mt-1">About <b className="text-slate-200">{r.csps_needed} more established CSPs</b>: {r.leads_needed} leads,
+              so <b className="text-slate-200">{r.leads_per_month} a month</b> over {r.horizon_months} months. That is AutoGMap's part.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const Business: React.FC<{ b: BusinessSummary; plan: Plan; onSaved: () => void }> = ({ b, plan, onSaved }) => {
   const months = b.months.filter(m => m.revenue_inr);
   const top = Math.max(1, ...months.map(m => m.revenue_inr || 0));
   const low = Math.min(...months.map(m => m.revenue_inr || 0));
@@ -186,6 +271,7 @@ const Business: React.FC<{ b: BusinessSummary }> = ({ b }) => {
   return (
     <Card icon="account_balance" title="From a lead to revenue" tint="bg-emerald-950 text-emerald-300"
       subtitle={<>How Eko earns from a CSP, from Tara and the onboarding sheet{b.exported_at ? <> · updated {formatDateTime(b.exported_at)}</> : null}. The agent sets its goal from these numbers.</>}>
+      <RevenueGoal plan={plan} onSaved={onSaved} />
       <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {steps.map((s, i) => (
           <li key={s.title} className="relative rounded-lg border border-slate-800 bg-slate-950/60 p-3.5">
@@ -560,7 +646,8 @@ export const GrowthPlan: React.FC = () => {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { fetchGrowthPlan().then(setPlan).catch(e => setError(e.message)); }, []);
+  const load = () => fetchGrowthPlan().then(setPlan).catch(e => setError(e.message));
+  useEffect(() => { load(); }, []);
 
   if (error) return <div className="p-3 rounded-lg border border-rose-800/60 bg-rose-950 text-rose-300 text-sm">Growth plan: {error}</div>;
   if (!plan) return (
@@ -570,7 +657,7 @@ export const GrowthPlan: React.FC = () => {
   return (
     <div className="space-y-5">
       <Goal plan={plan} />
-      {plan.business && <Business b={plan.business} />}
+      {plan.business && <Business b={plan.business} plan={plan} onSaved={load} />}
       <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
         <NextSteps plan={plan} />
         <div className="space-y-5 min-w-0">
