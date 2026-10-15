@@ -68,6 +68,8 @@ class UserResponse(BaseModel):
     decided_by: Optional[str] = None
     decided_at: Optional[datetime] = None
     last_login_at: Optional[datetime] = None
+    # Tabs this account is limited to; None means all its role allows.
+    allowed_tabs: Optional[List[str]] = None
 
     model_config = {"from_attributes": True}
 
@@ -404,4 +406,29 @@ def reject_user(user_id: str, payload: RejectRequest, background: BackgroundTask
 
     background.add_task(notifier.notify_decision, user.email, False,
                         _public_app_url(), user.rejection_reason)
+    return user
+
+
+TAB_KEYS = {"dashboard", "businesses", "partners", "jobs", "config", "whatsapp-campaign", "whatsapp-templates",
+            "whatsapp-studio", "whatsapp-history", "whatsapp-insights", "whatsapp-inbox", "applications"}
+
+
+class TabsRequest(BaseModel):
+    # None or [] gives the account every tab its role allows.
+    tabs: Optional[List[str]] = None
+
+
+@router.put("/users/{user_id}/tabs", response_model=UserResponse)
+def set_user_tabs(user_id: str, payload: TabsRequest, db: Session = Depends(get_db),
+                  admin: User = Depends(current_admin)):
+    """Limit an account to some tabs (admin only)."""
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="No such account")
+    unknown = sorted(set(payload.tabs or []) - TAB_KEYS)
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown tabs: {', '.join(unknown)}")
+    user.allowed_tabs = list(dict.fromkeys(payload.tabs)) if payload.tabs else None
+    db.commit()
+    db.refresh(user)
     return user

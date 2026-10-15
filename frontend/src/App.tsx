@@ -5,7 +5,7 @@ import { AttentionAlerts } from './components/AttentionAlerts';
 import { useTheme } from './hooks/useTheme';
 import type { NavTab } from './components/Header';
 import { useAuth } from './hooks/useAuth';
-import { canOpen, isReadOnly } from './utils/permissions';
+import { canOpen, homeTab, isReadOnly } from './utils/permissions';
 import { LoginView } from './views/LoginView';
 import { BackendSettingsModal } from './components/BackendSettingsModal';
 import { ChangePasswordForm } from './components/ChangePasswordForm';
@@ -147,7 +147,7 @@ export default function App() {
 
   // A tab the role may not open — reached by a typed address or a saved
   // link — falls back to the dashboard rather than showing a page of errors.
-  const shownTab: NavTab = canOpen(user.role, activeTab) ? activeTab : 'dashboard';
+  const shownTab: NavTab = canOpen(user.role, activeTab, user.allowed_tabs) ? activeTab : homeTab(user.role, user.allowed_tabs);
   const readOnly = isReadOnly(user.role);
 
   return (
@@ -156,6 +156,7 @@ export default function App() {
       <Sidebar
         activeTab={shownTab}
         role={user.role}
+        allowedTabs={user.allowed_tabs}
         isAdmin={user?.role === 'admin'}
         onTabChange={(tab) => handleTabChange(tab)}
         isBackendConnected={isBackendConnected}

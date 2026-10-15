@@ -10,6 +10,8 @@ interface SidebarProps {
   isAdmin?: boolean;
   /** Decides which tabs are listed; a member has only the data ones. */
   role?: string | null;
+  /** Tabs this account is limited to, if any. */
+  allowedTabs?: string[] | null;
   /** Below lg the sidebar is a drawer, so it needs to be told when to show. */
   isOpen?: boolean;
   onClose?: () => void;
@@ -23,6 +25,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   isAdmin = false,
   role,
+  allowedTabs,
   isOpen = false,
   onClose,
   onTabChange,
@@ -35,7 +38,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Conversations with something unread, shown beside Inbox so a new message
   // is noticed from any tab.
   const [unread, setUnread] = useState(0);
-  const showsInbox = !role || canOpen(role, 'whatsapp-inbox');
+  const showsInbox = !role || canOpen(role, 'whatsapp-inbox', allowedTabs);
 
   useEffect(() => {
     if (!showsInbox) return;
@@ -82,7 +85,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       : []),
   ];
   // With no role given every tab is listed, as before roles existed.
-  const navItems = role ? allItems.filter(item => canOpen(role, item.id)) : allItems;
+  const navItems = role ? allItems.filter(item => canOpen(role, item.id, allowedTabs)) : allItems;
 
   return (
     <>

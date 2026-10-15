@@ -14,12 +14,21 @@ const VIEW_ONLY_TABS: NavTab[] = [
   'dashboard', 'businesses', 'partners', 'whatsapp-templates', 'whatsapp-history', 'whatsapp-insights',
 ];
 
-/** Whether a role may open a tab. Access Requests is the administrator's alone. */
-export const canOpen = (role: string | null | undefined, tab: NavTab): boolean => {
+/**
+ * Whether an account may open a tab. Access Requests is the administrator's
+ * alone. An account limited to some tabs (allowed) sees only those, within
+ * what its role allows.
+ */
+export const canOpen = (role: string | null | undefined, tab: NavTab, allowed?: string[] | null): boolean => {
   if (tab === 'approvals') return role === 'admin';
+  if (allowed && allowed.length && role !== 'admin' && !allowed.includes(tab)) return false;
   if (isReadOnly(role)) return VIEW_ONLY_TABS.includes(tab);
   return true;
 };
+
+/** The tab an account lands on: the dashboard, or the first it is allowed. */
+export const homeTab = (role: string | null | undefined, allowed?: string[] | null): NavTab =>
+  canOpen(role, 'dashboard', allowed) ? 'dashboard' : ((allowed?.[0] as NavTab) || 'dashboard');
 
 export const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin', manager: 'Manager', operator: 'Operator', member: 'Member · view only',

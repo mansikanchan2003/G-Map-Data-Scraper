@@ -1307,8 +1307,9 @@ def test_a_question_left_for_a_person_is_emailed_with_the_summary(db, emailed):
     assert len(emailed) == 1
     text = emailed[0]["text"]
     assert f"Phone:     {PHONE}" in text and "PIN code:" in text and "District:" in text and "Tehsil:" in text
-    assert "Mere ghar ka pata badalna hai" in text and "No ready answer in the FAQ" in text
-    assert "WHAT TO DO NEXT" in text
+    assert "IN SHORT" in text and "THE CONVERSATION SO FAR" in text
+    assert "Asked: “Mere ghar ka pata badalna hai, kya karna hoga?”. Needs your reply." in text
+    assert "QUESTIONS WAITING FOR YOUR REPLY" in text and "WHAT TO DO NEXT" in text
     # A second question straight after is one email, not two.
     say(db, "Aur kya documents lagenge?")
     assert len(emailed) == 1 or emailed[-1]["summary"]["attention"]["reason"] != emailed[0]["summary"]["attention"]["reason"]

@@ -496,6 +496,8 @@ export interface AuthUser {
   decided_by: string | null;
   decided_at: string | null;
   last_login_at: string | null;
+  /** Tabs this account is limited to; null means every tab its role allows. */
+  allowed_tabs?: string[] | null;
 }
 
 export interface SignupResult {

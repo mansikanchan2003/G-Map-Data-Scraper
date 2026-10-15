@@ -691,3 +691,22 @@ class TestForgottenPassword:
         monkeypatch.setattr(notifier, "smtp_configured", lambda: False)
         res = self._forgot(client, "anyone@eko.co.in")
         assert res.status_code == 503 and "not set up" in res.json()["detail"]
+
+
+class TestAllowedTabs:
+    def test_admin_limits_an_account_to_some_tabs(self, client):
+        client.post("/api/v1/auth/signup", json={"email": "mgr@eko.co.in", "password": GOOD_PASSWORD, "role": "manager"})
+        admin = make_admin()
+        client.post("/api/v1/auth/login", json={"email": admin, "password": GOOD_PASSWORD})
+        uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+        client.post(f"/api/v1/auth/users/{uid}/approve")
+        tabs = ["whatsapp-inbox", "applications", "whatsapp-history", "whatsapp-insights"]
+        r = client.put(f"/api/v1/auth/users/{uid}/tabs", json={"tabs": tabs})
+        assert r.status_code == 200 and r.json()["allowed_tabs"] == tabs
+        assert client.put(f"/api/v1/auth/users/{uid}/tabs", json={"tabs": ["nope"]}).status_code == 400
+
+        client.post("/api/v1/auth/logout")
+        client.post("/api/v1/auth/login", json={"email": "mgr@eko.co.in", "password": GOOD_PASSWORD})
+        assert client.get("/api/v1/auth/me").json()["allowed_tabs"] == tabs
+        # Only an admin may change it.
+        assert client.put(f"/api/v1/auth/users/{uid}/tabs", json={"tabs": None}).status_code == 403

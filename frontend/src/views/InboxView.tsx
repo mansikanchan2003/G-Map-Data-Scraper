@@ -483,6 +483,7 @@ const SummaryCard: React.FC<{
 }> = ({ phone, version, onUseReply, compact }) => {
   const [s, setS] = useState<ChatSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
   useEffect(() => {
     let live = true;
     setError(null);
@@ -493,40 +494,90 @@ const SummaryCard: React.FC<{
   if (error) return <div className="text-xs text-rose-400">Summary: {error}</div>;
   if (!s) return <div className="text-xs text-slate-500">Summarising the chat…</div>;
   const p = s.person;
-  const place = [p.tehsil, p.district, p.state].filter(Boolean).join(', ');
-  const Heading = ({ icon, children }: { icon: string; children: React.ReactNode }) => (
-    <div className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider font-semibold text-slate-500 mb-1.5">
-      <span className="material-symbols-outlined text-[15px]">{icon}</span>{children}
-    </div>
+  const place = [p.pincode && `PIN ${p.pincode}`, p.tehsil, p.district, p.state].filter(Boolean).join(', ');
+  // The latest steps first in view; the rest one tap away.
+  const steps = showAll || compact ? s.timeline : s.timeline.slice(-8);
+  const hidden = s.timeline.length - steps.length + s.timeline_earlier;
+  const ready = s.questions.filter(q => !q.answered_by_bot && q.answers.length);
+  const mark: Record<string, { icon: string; cls: string }> = {
+    event: { icon: 'campaign', cls: 'bg-sky-950 text-sky-300' },
+    said: { icon: 'person', cls: 'bg-slate-800 text-slate-300' },
+    answered: { icon: 'check', cls: 'bg-emerald-950 text-emerald-300' },
+    waiting: { icon: 'priority_high', cls: 'bg-rose-950 text-rose-300' },
+  };
+  const Heading = ({ children }: { children: React.ReactNode }) => (
+    <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 mb-2">{children}</div>
   );
+
   return (
-    <div className="flex flex-col gap-3.5 text-xs select-text">
+    <div className="flex flex-col gap-4 text-[13px] select-text">
       <div className="rounded-lg border border-sky-800/60 bg-sky-950 p-3">
-        <div className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider font-semibold text-sky-300">
-          <span className="material-symbols-outlined text-[15px]">summarize</span>Chat summary
+        <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-semibold text-sky-300">
+          <span className="material-symbols-outlined text-[16px]">summarize</span>In short
         </div>
-        <div className="text-sm font-semibold text-slate-100 mt-1">{s.headline}</div>
-        <div className="text-[11.5px] text-slate-400 mt-1">
-          {[p.pincode && `PIN ${p.pincode}`, place, p.category].filter(Boolean).join(' · ') || 'No PIN or place yet'}
-        </div>
-        {s.attention && (
-          <div className="mt-2 text-[11.5px] text-rose-300">
-            <span className="font-semibold">Needs attention:</span> {s.attention.reason || 'marked for the team'}
-          </div>
-        )}
+        <p className="text-slate-100 mt-1.5 leading-relaxed">{s.in_short}</p>
+        {place && <p className="text-[11.5px] text-slate-400 mt-1.5">{place}{p.category ? ` · ${p.category}` : ''}</p>}
       </div>
 
+      <div>
+        <Heading>The conversation so far</Heading>
+        {hidden > 0 && !compact && (
+          <button onClick={() => setShowAll(true)} className="text-[11.5px] text-sky-300 hover:underline mb-2 cursor-pointer">
+            Show {hidden} earlier step{hidden === 1 ? '' : 's'}
+          </button>
+        )}
+        <ol className="relative border-l border-slate-800 ml-2.5 space-y-2.5">
+          {steps.map((t, i) => (
+            <li key={i} className="pl-4 relative">
+              <span className={`absolute -left-[11px] top-0 h-5 w-5 rounded-full flex items-center justify-center ${mark[t.kind].cls}`}>
+                <span className="material-symbols-outlined text-[13px]">{mark[t.kind].icon}</span>
+              </span>
+              {t.when && <div className="text-[10.5px] text-slate-500">{t.when}</div>}
+              <div className={t.kind === 'waiting' ? 'text-rose-200 font-medium' : 'text-slate-200'}>{t.text}</div>
+            </li>
+          ))}
+          {steps.length === 0 && <li className="pl-4 text-slate-500">Nothing yet.</li>}
+        </ol>
+      </div>
+
+      {s.waiting_questions.length > 0 && (
+        <div className="rounded-lg border border-rose-800/60 bg-rose-950 p-3">
+          <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-semibold text-rose-300 mb-1.5">
+            <span className="material-symbols-outlined text-[16px]">priority_high</span>
+            Waiting for your reply
+          </div>
+          <ul className="space-y-2">
+            {s.waiting_questions.map((q, i) => {
+              const answer = ready.find(r => r.text === q.text)?.answers[0]?.answer;
+              return (
+                <li key={i}>
+                  <div className="text-slate-100">“{q.text}”</div>
+                  {answer ? (
+                    <div className="text-[12px] text-slate-300 mt-0.5">
+                      Ready answer: {answer}
+                      {onUseReply && <button onClick={() => onUseReply(answer)} className="ml-1 text-sky-300 font-semibold hover:underline cursor-pointer">Use</button>}
+                    </div>
+                  ) : <div className="text-[12px] text-amber-300 mt-0.5">No ready answer: please reply yourself.</div>}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
       <div className="rounded-lg border border-emerald-800/60 bg-emerald-950 p-3">
-        <Heading icon="lightbulb">Send next</Heading>
-        <p className="text-[12.5px] text-slate-200 leading-relaxed">{s.next.action}</p>
+        <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-semibold text-emerald-300 mb-1.5">
+          <span className="material-symbols-outlined text-[16px]">lightbulb</span>What to do next
+        </div>
+        <p className="text-slate-200 leading-relaxed">{s.next.action}</p>
         {s.next.reply && (
           <div className="mt-2">
-            <div className="rounded-md bg-slate-900 border border-slate-800 p-2 text-[12px] text-slate-200 whitespace-pre-wrap max-h-40 overflow-y-auto">{s.next.reply}</div>
+            <div className="rounded-md bg-slate-900 border border-slate-800 p-2 text-[12.5px] text-slate-200 whitespace-pre-wrap max-h-40 overflow-y-auto">{s.next.reply}</div>
             <div className="flex items-center justify-between mt-1.5">
               <span className="text-[10.5px] text-slate-500">In {s.next.reply_language}</span>
               {onUseReply && (
                 <button onClick={() => onUseReply(s.next.reply!)}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-emerald-500 text-white hover:opacity-90 cursor-pointer">
+                  className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 py-1 rounded bg-emerald-500 text-white hover:opacity-90 cursor-pointer">
                   <span className="material-symbols-outlined text-[15px]">edit_note</span>Use this reply
                 </button>
               )}
@@ -534,50 +585,6 @@ const SummaryCard: React.FC<{
           </div>
         )}
       </div>
-
-      <div>
-        <Heading icon="help">What they asked{s.unanswered_questions ? ` · ${s.unanswered_questions} without a ready answer` : ''}</Heading>
-        {s.questions.length === 0 ? <div className="text-slate-500">No questions.</div> : (
-          <ul className="space-y-2">
-            {s.questions.slice(compact ? -3 : 0).map((q, i) => (
-              <li key={i} className="rounded-md border border-slate-800 bg-slate-900 p-2">
-                <div className="text-slate-100">“{q.text}”{q.voice && <span className="text-slate-500"> · voice note</span>}</div>
-                <div className="text-[10.5px] text-slate-500">{q.at}</div>
-                {q.answers.length ? q.answers.map((a, j) => (
-                  <div key={j} className="mt-1.5 text-[11.5px] text-slate-300">
-                    <span className={q.answered_by_bot ? 'text-emerald-300 font-semibold' : 'text-sky-300 font-semibold'}>
-                      {q.answered_by_bot ? 'Bot answered: ' : 'Possible answer: '}
-                    </span>{a.answer}
-                    {!q.answered_by_bot && onUseReply && (
-                      <button onClick={() => onUseReply(a.answer)} className="ml-1 text-sky-300 hover:underline cursor-pointer">use</button>
-                    )}
-                  </div>
-                )) : <div className="mt-1 text-[11.5px] text-amber-300">No ready answer: reply yourself.</div>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {s.other_messages.length > 0 && (
-        <div>
-          <Heading icon="chat_bubble">Other messages</Heading>
-          <ul className="space-y-1">
-            {s.other_messages.slice(compact ? -3 : 0).map((o, i) => (
-              <li key={i} className="text-slate-300">“{o.text}” <span className="text-[10.5px] text-slate-500">· {o.at}</span></li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {!compact && s.story.length > 0 && (
-        <div>
-          <Heading icon="timeline">What happened</Heading>
-          <ol className="space-y-1 text-slate-300 list-disc pl-4">
-            {s.story.map((line, i) => <li key={i}>{line}</li>)}
-          </ol>
-        </div>
-      )}
     </div>
   );
 };
@@ -1125,7 +1132,7 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
                   </div>
                 )}
                 {detail && (
-                  <div className="xl:hidden border-b border-slate-800 bg-slate-900">
+                  <div className="panel-dark xl:hidden border-b border-slate-800 bg-slate-900">
                     <button onClick={() => setSummaryOpen(o => !o)}
                       className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-sky-300 cursor-pointer">
                       <span className="flex items-center gap-1.5"><span className="material-symbols-outlined text-[16px]">summarize</span>Chat summary</span>
@@ -1239,9 +1246,9 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
                 )}
               </div>
 
-              {/* A div, not an aside: the light theme styles every aside as the dark sidebar. */}
+              {/* Kept dark in the light theme too, on the sidebar's teal (panel-dark in index.css). */}
               {detail && (
-                <div className="hidden xl:block w-80 shrink-0 border-l border-slate-800 bg-slate-900 p-4 overflow-y-auto">
+                <div className="panel-dark hidden xl:block w-80 shrink-0 border-l border-slate-800 bg-slate-900 p-4 overflow-y-auto">
                   <SummaryCard phone={selected} version={`${detail.messages.length}-${detail.needs_attention}`}
                     onUseReply={readOnly ? undefined : putReply} />
                   <div className="my-4 border-t border-slate-800" />

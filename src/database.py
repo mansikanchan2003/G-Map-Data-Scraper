@@ -99,6 +99,7 @@ def _migrate_db(eng) -> None:
             "reset_code_hash": "VARCHAR(64)",
             "reset_code_sent_at": "DATETIME",
             "reset_code_attempts": "INTEGER NOT NULL DEFAULT 0",
+            "allowed_tabs": "JSON",
         }
         with eng.connect() as conn:
             for name, ddl in added.items():

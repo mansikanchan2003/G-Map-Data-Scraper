@@ -123,6 +123,147 @@ def _story(db: Session, conv: WhatsAppConversation) -> List[str]:
     return out
 
 
+# What tapping each of the bot's buttons means, in plain words.
+_TAPS = {
+    "start:interested": "Tapped “Interested”",
+    "start:webinar": "Asked for personal guidance",
+    "edu:12": "Said they studied up to 12th or a diploma",
+    "edu:grad": "Said they are a graduate or post-graduate",
+    "edu:other": "Said they studied below 12th (not eligible)",
+    "invest:yes": "Said YES, they can invest up to ₹5 lakh",
+    "invest:no": "Said NO, they cannot invest up to ₹5 lakh",
+    "franchise:yes": "Said yes to the franchise question",
+    "franchise:no": "Said no to the franchise question",
+    "docs:yes": "Said they have the documents",
+    "docs:no": "Said they do not have the documents yet",
+    "webinar:yes": "Said YES to personal guidance",
+    "webinar:no": "Said they cannot make personal guidance then",
+}
+# What the bot is waiting for at each step, said simply.
+_WAITING = {
+    bot.CHOOSE_LANG: "choose a language",
+    bot.AWAIT_PIN: "send their PIN code",
+    bot.AWAIT_EDUCATION: "say how far they have studied",
+    bot.AWAIT_FRANCHISE: "say whether they can invest up to ₹5 lakh",
+    bot.AWAIT_INVEST: "say whether they can invest up to ₹5 lakh",
+    bot.AWAIT_DOCS: "say whether they have the documents",
+    bot.AWAIT_UPLOAD: "upload their documents",
+    bot.AWAIT_WEBINAR: "say whether they can join personal guidance",
+    bot.AWAIT_AVAILABILITY: "say when they can join personal guidance",
+}
+TIMELINE_LIMIT = 30
+
+
+def _quote(text: str, n: int = 160) -> str:
+    text = " ".join((text or "").split())
+    return f"“{text[:n]}{'…' if len(text) > n else ''}”"
+
+
+def timeline(db: Session, conv: WhatsAppConversation) -> List[dict]:
+    """
+    The conversation from the start, one plain line per thing that happened:
+    when our campaign reached them, each button they tapped, what they wrote
+    or asked (and whether the bot answered), and the documents.
+    """
+    data = conv.bot_data or {}
+    coverage = data.get("coverage") or {}
+    answered_ids = set(data.get("faq_answered") or [])
+    lines: List[dict] = []
+    reached = (db.query(WhatsAppCampaignRecipient, WhatsAppCampaign)
+               .join(WhatsAppCampaign, WhatsAppCampaign.campaign_id == WhatsAppCampaignRecipient.campaign_id)
+               .filter(WhatsAppCampaignRecipient.phone == conv.phone, WhatsAppCampaignRecipient.sent_at.isnot(None))
+               .order_by(WhatsAppCampaignRecipient.sent_at).all())
+    for r, c in reached:
+        lines.append({"at": inbox.aware(r.sent_at), "kind": "event",
+                      "text": f"Our campaign “{c.name}” reached them on WhatsApp"})
+
+    for m in (db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone, WhatsAppMessage.direction == "IN")
+              .order_by(WhatsAppMessage.created_at).all()):
+        at = inbox.aware(m.created_at)
+        payload = m.payload or {}
+        if m.kind == "interactive":
+            tapped = payload.get("id") or ""
+            if tapped.startswith("lang:"):
+                code = tapped.split(":", 1)[1]
+                lines.append({"at": at, "kind": "said", "text": f"Chose {LANGUAGE_NAMES.get(code, code)}"})
+            else:
+                lines.append({"at": at, "kind": "said", "text": _TAPS.get(tapped, f"Tapped “{m.body or tapped}”")})
+            continue
+        if m.kind == "button":
+            lines.append({"at": at, "kind": "said", "text": f"Tapped “{m.body}” on our message"})
+            continue
+        if m.kind == "reaction":
+            continue
+        said = bot.message_text(m)
+        if m.kind == "audio":
+            if not said:
+                lines.append({"at": at, "kind": "said", "text": "Sent a voice note (listen to it in the chat)"})
+                continue
+        elif m.kind != "text":
+            lines.append({"at": at, "kind": "said", "text": f"Sent a {m.kind}" + (f": {_quote(m.body, 60)}" if m.body else "")})
+            continue
+        if not said:
+            continue
+        voice = " in a voice note" if m.kind == "audio" else ""
+        pin = _PIN.search(said)
+        faq = eko_knowledge.match(said)
+        words = re.findall(r"\w+", said.lower())
+        if faq or bot.looks_like_question(said):
+            if faq and set(faq) <= answered_ids:
+                lines.append({"at": at, "kind": "answered", "text": f"Asked{voice}: {_quote(said)}. The bot answered it."})
+            elif faq:
+                lines.append({"at": at, "kind": "waiting",
+                              "text": f"Asked{voice}: {_quote(said)}. Needs your reply (a ready answer is below)."})
+            else:
+                lines.append({"at": at, "kind": "waiting", "text": f"Asked{voice}: {_quote(said)}. Needs your reply."})
+        elif pin and len(words) <= 4:
+            where = ""
+            if coverage.get("pincode") == pin.group(0):
+                where = " (we serve this area)" if applications._served(conv) else " (outside our area)"
+            lines.append({"at": at, "kind": "said", "text": f"Sent their PIN code {pin.group(0)}{where}"})
+        elif words and all(w in _ANSWER_WORDS for w in words):
+            lines.append({"at": at, "kind": "said", "text": f"Replied {_quote(said, 40)}"})
+        else:
+            lines.append({"at": at, "kind": "said", "text": f"Wrote{voice}: {_quote(said)}"})
+
+    if conv.upload_token and not conv.documents_submitted_at:
+        docs = db.query(OnboardingDocument).filter(OnboardingDocument.phone == conv.phone).count()
+        lines.append({"at": None, "kind": "event", "text": "Got the link to upload documents"
+                      + (f"; {docs} uploaded so far" if docs else "; nothing uploaded yet")})
+    if conv.documents_submitted_at:
+        lines.append({"at": inbox.aware(conv.documents_submitted_at), "kind": "event",
+                      "text": "Submitted their documents 🎉"})
+    lines.sort(key=lambda x: (x["at"] is None, x["at"] or inbox.now()))
+    for x in lines:
+        x["when"] = _when(x["at"]) if x["at"] else ""
+        x.pop("at")
+    return lines
+
+
+def in_short(conv: WhatsAppConversation, waiting_questions: int) -> str:
+    """One or two plain sentences: where this person stands."""
+    data = conv.bot_data or {}
+    name = conv.profile_name or "This person"
+    q = applications.qualify(conv)
+    if conv.documents_submitted_at:
+        first = f"{name} has submitted their documents. This is a lead: the team should call them for the next steps."
+    elif q["not_qualified"]:
+        first = f"{name} is not eligible right now: {', '.join(q['not_qualified_reasons']).lower()}."
+    elif conv.bot_step in (bot.WEBINAR_CONFIRMED, bot.WEBINAR_AVAILABILITY):
+        first = f"{name} wants personal guidance" + (" and confirmed they can join." if conv.bot_step == bot.WEBINAR_CONFIRMED
+                                                    else " and told us when they are free.") + " Someone should contact them."
+    elif conv.bot_step in _WAITING:
+        good = " and fits so far (area, education)" if q["pin_qualified"] and data.get("education") in ("12", "grad") else ""
+        first = f"{name} is interested{good}. The bot is waiting for them to {_WAITING[conv.bot_step]}."
+    elif not conv.bot_step:
+        first = f"{name} wrote to us but has not started applying."
+    else:
+        first = f"{name}: {bot.STEP_LABELS.get(conv.bot_step, conv.bot_step).lower()}."
+    if waiting_questions:
+        first += f" {waiting_questions} question{'s are' if waiting_questions > 1 else ' is'} waiting for your reply."
+    return first
+
+
 def summarise(db: Session, conv: WhatsAppConversation) -> dict:
     """Everything the summary panel and the attention email show."""
     data = conv.bot_data or {}
@@ -169,7 +310,10 @@ def summarise(db: Session, conv: WhatsAppConversation) -> dict:
     if conv.bot_step == bot.AWAIT_UPLOAD and conv.upload_token:
         reply = bot._t(db, conv, "send_link") + "\n" + bot.upload_url(conv)
 
-    needing = [q for q in questions if not q["answers"]]
+    # Waiting for a person: no ready answer, or one the bot did not send.
+    needing = [q for q in questions if not q["answered_by_bot"]]
+    events = timeline(db, conv)
+    earlier = max(len(events) - TIMELINE_LIMIT, 0)
     headline = conv.bot_step and bot.STEP_LABELS.get(conv.bot_step, conv.bot_step) or "Has not started"
     if conv.needs_attention:
         headline += " · needs attention"
@@ -180,6 +324,10 @@ def summarise(db: Session, conv: WhatsAppConversation) -> dict:
         "ticket_id": ticket.ticket_id if ticket else None,
         "person": _person(db, conv),
         "headline": headline,
+        "in_short": in_short(conv, len(needing)),
+        "timeline": events[-TIMELINE_LIMIT:],
+        "timeline_earlier": earlier,
+        "waiting_questions": [{"text": q["text"], "at": q["at"], "voice": q["voice"]} for q in needing][-6:],
         "story": _story(db, conv),
         "questions": questions[-6:],
         "unanswered_questions": len(needing),
@@ -212,25 +360,21 @@ def as_text(s: dict) -> str:
         lines.append(f"Campaign:  {p['campaign']}")
     if p.get("language"):
         lines.append(f"Language:  {p['language']}")
-    lines += ["", f"WHERE THEY ARE: {s['headline']}"]
+    lines += ["", "IN SHORT", s["in_short"]]
     if s.get("attention"):
         lines.append(f"Why it needs attention: {s['attention']['reason'] or 'marked for the team'} ({s['attention']['at']})")
-    lines += ["", "WHAT HAPPENED"] + [f"- {x}" for x in s["story"] or ["Nothing yet."]]
-    lines += ["", "WHAT THEY ASKED"]
-    if not s["questions"]:
-        lines.append("- No questions.")
-    for q in s["questions"]:
-        tag = " (voice note, machine transcript)" if q["voice"] else ""
-        lines.append(f"- “{q['text']}”{tag} · {q['at']}")
-        if q["answers"]:
-            for a in q["answers"]:
-                lines.append(f"    Possible answer ({a['question']}): {a['answer']}"
-                             + ("  [the bot already sent this]" if q["answered_by_bot"] else ""))
-        else:
-            lines.append("    No ready answer in the FAQ: please reply yourself.")
-    if s["other_messages"]:
-        lines += ["", "OTHER MESSAGES (not a question or an answer to the bot)"]
-        lines += [f"- “{o['text']}” · {o['at']}" for o in s["other_messages"]]
+    lines += ["", "THE CONVERSATION SO FAR"]
+    if s.get("timeline_earlier"):
+        lines.append(f"  (… {s['timeline_earlier']} earlier steps)")
+    marks = {"waiting": "❗ ", "answered": "✓ "}
+    lines += [f"- {t['when'] + ' · ' if t['when'] else ''}{marks.get(t['kind'], '')}{t['text']}" for t in s["timeline"]]
+    if s["waiting_questions"]:
+        lines += ["", "QUESTIONS WAITING FOR YOUR REPLY"]
+        lines += [f"- “{q['text']}”" for q in s["waiting_questions"]]
+    answers = [(q, a) for q in s["questions"] if not q["answered_by_bot"] for a in q["answers"]]
+    if answers:
+        lines += ["", "ANSWERS YOU CAN SEND (from Eko's FAQ)"]
+        lines += [f"- To “{q['text']}”: {a['answer']}" for q, a in answers]
     lines += ["", "WHAT TO DO NEXT", f"- {s['next']['action']}"]
     if s["next"]["reply"]:
         lines += [f"- A reply you could send ({s['next']['reply_language']}):", "", s["next"]["reply"]]

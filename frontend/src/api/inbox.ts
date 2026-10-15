@@ -157,6 +157,12 @@ export interface ChatSummary {
     state: string | null; category: string | null; business_name: string | null; campaign: string | null; language: string | null;
   };
   headline: string;
+  /** One or two plain sentences: where this person stands. */
+  in_short: string;
+  /** The conversation from the start, one plain line per thing that happened. */
+  timeline: { when: string; kind: 'event' | 'said' | 'answered' | 'waiting'; text: string }[];
+  timeline_earlier: number;
+  waiting_questions: { text: string; at: string; voice: boolean }[];
   story: string[];
   questions: { text: string; at: string; voice: boolean; answers: { question: string; answer: string }[]; answered_by_bot: boolean }[];
   unanswered_questions: number;

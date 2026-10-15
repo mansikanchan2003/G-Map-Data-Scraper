@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, func
+from sqlalchemy import Column, Integer, JSON, String, DateTime, func
 
 from src.database import Base
 
@@ -22,6 +22,9 @@ class User(Base):
 
     # admin can approve others and see the approvals queue; member cannot.
     role = Column(String(20), nullable=False, default="member")
+    # The tabs this person sees, when narrower than their role's (["whatsapp-inbox", ...]);
+    # empty means everything the role allows.
+    allowed_tabs = Column(JSON, nullable=True)
     # PENDING -> APPROVED | REJECTED, and DISABLED for revoking later.
     status = Column(String(20), nullable=False, default="PENDING", index=True)
 
