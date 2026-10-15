@@ -66,6 +66,8 @@ export interface ConversationDetail extends ConversationSummary {
   drive_folder_url: string | null;
   messages: ThreadMessage[];
   document_files: OnboardingDocument[];
+  /** The open ticket while the conversation needs attention. */
+  ticket_id: string | null;
 }
 
 export interface BotSettings {
@@ -146,3 +148,48 @@ export const mediaUrl = (messageId: string, download = false) =>
 
 export const documentUrl = (id: string, download = false) =>
   `${base()}/documents/${id}${download ? '?download=true' : ''}`;
+
+/** A conversation at a glance: who, how far, what they asked, and what to send next. */
+export interface ChatSummary {
+  generated_at: string;
+  person: {
+    name: string | null; phone: string; pincode: string | null; tehsil: string | null; district: string | null;
+    state: string | null; category: string | null; business_name: string | null; campaign: string | null; language: string | null;
+  };
+  headline: string;
+  story: string[];
+  questions: { text: string; at: string; voice: boolean; answers: { question: string; answer: string }[]; answered_by_bot: boolean }[];
+  unanswered_questions: number;
+  other_messages: { text: string; at: string; voice: boolean }[];
+  attention: { reason: string | null; at: string } | null;
+  next: { action: string; reply: string | null; reply_language: string; window_open: boolean };
+}
+
+export const fetchChatSummary = (phone: string) =>
+  call<ChatSummary>(`/conversations/${digits(phone)}/summary`);
+
+/** Conversations waiting for a person, newest first; shown on every page until resolved. */
+export interface AttentionAlert { phone: string; name: string | null; reason: string | null; at: string | null; ticket_id: string | null }
+export const fetchAttentionAlerts = () => call<AttentionAlert[]>('/attention-alerts');
+/** Fired when someone marks or resolves a conversation, so the alerts refresh at once. */
+export const ATTENTION_CHANGED = 'autogmap:attention-changed';
+
+/** A conversation left for a person, as a ticket: raised on "Attention needed", solved on "Question resolved". */
+export interface Ticket {
+  ticket_id: string;
+  phone: string;
+  /** The person who asked. */
+  raised_by: string | null;
+  question: string | null;
+  /** A later question while the ticket was open, if any. */
+  latest_question: string | null;
+  questions_count: number;
+  /** "bot", or the team member who marked it. */
+  raised_via: string;
+  status: 'Resolved' | 'Not resolved';
+  raised_at: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+}
+export const fetchTickets = (status?: 'open' | 'resolved') => call<Ticket[]>(`/tickets${status ? `?status=${status}` : ''}`);
+export const fetchRecentlyResolved = () => call<Ticket[]>('/tickets/recently-resolved');

@@ -6,6 +6,7 @@ redelivers them. The bot walks someone from an "Interested" tap to uploaded
 documents, says nothing it was not asked for, and stays quiet when paused.
 The upload page accepts only real PDFs and images, and only on a live link.
 """
+import re
 import uuid
 from datetime import timedelta
 
@@ -18,7 +19,7 @@ from sqlalchemy.pool import StaticPool
 from src.database import Base, get_db
 from src.main import app
 from src.models import (  # noqa: F401  (registers the tables on Base)
-    AppSetting, Location, OnboardingDocument, WhatsAppButtonClick, WhatsAppCampaign, WhatsAppTemplate,
+    AppSetting, AttentionTicket, Location, OnboardingDocument, WhatsAppButtonClick, WhatsAppCampaign, WhatsAppTemplate,
     WhatsAppCampaignRecipient, WhatsAppConversation, WhatsAppMessage, WhatsAppReply,
 )
 from src.routers.auth import current_user
@@ -116,7 +117,7 @@ def db():
         yield session
     finally:
         session.rollback()
-        for model in (OnboardingDocument, WhatsAppMessage, WhatsAppConversation, WhatsAppReply,
+        for model in (AttentionTicket, OnboardingDocument, WhatsAppMessage, WhatsAppConversation, WhatsAppReply,
                       WhatsAppButtonClick, WhatsAppCampaignRecipient, WhatsAppCampaign,
                       WhatsAppTemplate, Location, AppSetting):
             session.query(model).delete()
@@ -1288,3 +1289,87 @@ def test_asking_how_much_to_invest_also_explains_the_e_wallet(db):
     tap_campaign(db)
     say(db, "Kitna invest karna hoga?")
     assert bot_messages.MESSAGES["en"]["invest_explained"] in StubMeta.sent[-1][2]
+
+
+@pytest.fixture
+def emailed(monkeypatch):
+    from src.services import notifier
+    sent = []
+    monkeypatch.setattr(notifier, "notify_attention",
+                        lambda to, summary, text, url: sent.append({"to": to, "summary": summary, "text": text}) or True)
+    return sent
+
+
+def test_a_question_left_for_a_person_is_emailed_with_the_summary(db, emailed):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "Mere ghar ka pata badalna hai, kya karna hoga?")
+    assert len(emailed) == 1
+    text = emailed[0]["text"]
+    assert f"Phone:     {PHONE}" in text and "PIN code:" in text and "District:" in text and "Tehsil:" in text
+    assert "Mere ghar ka pata badalna hai" in text and "No ready answer in the FAQ" in text
+    assert "WHAT TO DO NEXT" in text
+    # A second question straight after is one email, not two.
+    say(db, "Aur kya documents lagenge?")
+    assert len(emailed) == 1 or emailed[-1]["summary"]["attention"]["reason"] != emailed[0]["summary"]["attention"]["reason"]
+
+
+def test_a_question_the_faq_answers_sends_no_email(db, emailed):
+    tap_campaign(db)
+    say(db, "Apply karne ki fees kitni hai?")
+    assert emailed == []
+
+
+def test_the_summary_shows_questions_answers_and_what_to_send_next(db, client):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)                                   # now at the investment question
+    say(db, "Kitna invest karna hoga?")           # answered from the FAQ
+    say(db, "Mera naam Ravi hai")                 # something else
+    r = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/summary")
+    assert r.status_code == 200, r.text
+    s = r.json()
+    assert s["person"]["phone"] == PHONE
+    assert any("Gave PIN" in line for line in s["story"])
+    q = s["questions"][-1]
+    assert q["text"] == "Kitna invest karna hoga?" and q["answered_by_bot"]
+    assert q["answers"][0]["answer"].startswith("Up to ₹5 lakh")
+    assert [o["text"] for o in s["other_messages"]] == ["Mera naam Ravi hai"]
+    assert "investment" in s["next"]["action"] and s["next"]["reply"] == bot_messages.MESSAGES["en"]["ask_invest"]
+
+
+def test_attention_alerts_list_waiting_conversations_until_resolved(db, client):
+    tap_campaign(db)
+    say(db, "Mere ghar ka pata badalna hai, kya karna hoga?")
+    alerts = client.get("/api/v1/inbox/attention-alerts").json()
+    assert [a["phone"] for a in alerts] == [PHONE]
+    assert alerts[0]["reason"].startswith("Mere ghar ka pata")
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/attention", json={"needed": False})
+    assert r.status_code == 200, r.text
+    assert client.get("/api/v1/inbox/attention-alerts").json() == []
+
+
+def test_a_ticket_is_raised_once_and_solved_with_question_resolved(db, client, emailed):
+    tap_campaign(db)
+    say(db, "Mere ghar ka pata badalna hai, kya karna hoga?")
+    say(db, "Kya aap Sunday ko bhi baat karte ho?")         # a second question: the same ticket
+    open_ = client.get("/api/v1/inbox/tickets?status=open").json()
+    assert len(open_) == 1
+    t = open_[0]
+    first = t["ticket_id"]
+    assert re.fullmatch(r"TKT-\d{5}", first) and t["status"] == "Not resolved" and t["phone"] == PHONE
+    assert t["question"].startswith("Mere ghar ka pata") and t["latest_question"] == "Kya aap Sunday ko bhi baat karte ho?"
+    assert t["questions_count"] == 2 and t["raised_via"] == "bot"
+    # The alert, the chat and the email all carry the ticket id.
+    assert client.get("/api/v1/inbox/attention-alerts").json()[0]["ticket_id"] == first
+    assert client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}").json()["ticket_id"] == first
+    assert f"Ticket:    {first}" in emailed[0]["text"]
+
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/attention", json={"needed": False}).json()
+    assert r["ticket"]["status"] == "Resolved" and r["ticket"]["resolved_by"]
+    assert client.get("/api/v1/inbox/tickets?status=open").json() == []
+    assert [x["ticket_id"] for x in client.get("/api/v1/inbox/tickets/recently-resolved").json()] == [first]
+    # A new question after that raises a new ticket.
+    say(db, "Ek aur sawal hai, aapka office kahan hai?")
+    ids = [x["ticket_id"] for x in client.get("/api/v1/inbox/tickets").json()]
+    assert len(ids) == 2 and ids[1] == first and ids[0] > first

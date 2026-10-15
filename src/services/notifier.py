@@ -191,3 +191,18 @@ def notify_webinar(admin_email: str, details: dict) -> bool:
         f"WhatsApp: https://wa.me/{phone}",
     ]
     return _send(admin_email, f"AutoGMap: personal guidance — {who}", "\n".join(lines) + "\n")
+
+
+def notify_attention(admin_email: str, summary: dict, text: str, inbox_url: str) -> bool:
+    """
+    Tell the admin a campaign contact needs a person: what they asked or
+    said, who and where they are, and what to send them next.
+    """
+    p = summary["person"]
+    who = p.get("name") or p.get("phone")
+    reason = (summary.get("attention") or {}).get("reason") or "needs a reply"
+    ticket = summary.get("ticket_id")
+    subject = f"AutoGMap: {'Ticket ' + ticket + ' raised' if ticket else 'needs attention'}: {who}: {reason[:60]}"
+    body = (f"{who} needs a reply on WhatsApp.{(' Ticket ' + ticket + '.') if ticket else ''}\n\n{text}\n\n"
+            f"Open the chat: {inbox_url}\nWhatsApp: https://wa.me/{(p.get('phone') or '').lstrip('+')}\n")
+    return _send(admin_email, subject, body)

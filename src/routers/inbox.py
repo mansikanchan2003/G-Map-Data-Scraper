@@ -26,6 +26,7 @@ from src.models.inbox import OnboardingDocument, WhatsAppConversation, WhatsAppM
 from src.models.user import User
 from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppTemplate
 from src.routers.auth import current_user
+from src.services import tickets
 from src.services import drive_uploads, inbox, onboarding_bot
 
 logger = logging.getLogger("gmap_scraper.inbox")
@@ -91,6 +92,8 @@ class ConversationDetail(ConversationSummary):
     drive_folder_url: Optional[str] = None
     messages: List[ThreadMessage] = []
     document_files: List[DocumentInfo] = []
+    # The open ticket while it needs attention.
+    ticket_id: Optional[str] = None
 
 
 class SendRequest(BaseModel):
@@ -303,6 +306,7 @@ def get_conversation(digits: str, db: Session = Depends(get_db)):
         documents_submitted_at=inbox.aware(conv.documents_submitted_at),
         upload_url=onboarding_bot.upload_url(conv) if token_live else None,
         drive_folder_url=conv.drive_folder_url,
+        ticket_id=(lambda t: t.ticket_id if t else None)(tickets.open_ticket(db, conv.phone)) if conv.needs_attention else None,
         messages=messages,
         document_files=[DocumentInfo(
             document_id=f.document_id, doc_type=f.doc_type, label=labels.get(f.doc_type, f.doc_type),
@@ -311,6 +315,43 @@ def get_conversation(digits: str, db: Session = Depends(get_db)):
             drive_url=f.drive_url, drive_error=f.drive_error,
         ) for f in files],
     )
+
+
+@router.get("/attention-alerts")
+def attention_alerts(db: Session = Depends(get_db)):
+    """
+    Every conversation waiting for a person, newest first: shown on every page
+    of the app until someone presses "Question resolved" in the chat.
+    """
+    convs = (db.query(WhatsAppConversation).filter(WhatsAppConversation.needs_attention.is_(True))
+             .order_by(WhatsAppConversation.attention_at.desc()).all())
+    names = _names(db, [c.phone for c in convs])
+    out = []
+    for c in convs:
+        ticket = tickets.open_ticket(db, c.phone)
+        out.append({"phone": c.phone, "name": c.profile_name or names.get(c.phone),
+                    "reason": c.attention_reason, "at": inbox.aware(c.attention_at),
+                    "ticket_id": ticket.ticket_id if ticket else None})
+    return out
+
+
+@router.get("/tickets")
+def list_tickets(status: Optional[str] = Query(None, pattern="^(open|resolved)$"), db: Session = Depends(get_db)):
+    """Every ticket raised, newest first: who raised it, why, and when it was solved."""
+    return tickets.history(db, status)
+
+
+@router.get("/tickets/recently-resolved")
+def recently_resolved_tickets(db: Session = Depends(get_db)):
+    """Tickets solved in the last two hours, announced across the app."""
+    return tickets.recently_resolved(db)
+
+
+@router.get("/conversations/{digits}/summary")
+def get_conversation_summary(digits: str, db: Session = Depends(get_db)):
+    """The conversation at a glance: who, how far, what they asked, and what to send next."""
+    from src.services import chat_summary
+    return chat_summary.summarise(db, _get_conversation(db, digits))
 
 
 @router.post("/conversations/{digits}/messages", response_model=ThreadMessage)
@@ -481,12 +522,15 @@ def set_attention(digits: str, payload: AttentionRequest, db: Session = Depends(
             raise HTTPException(status_code=409,
                                 detail="Only conversations from an AutoGMap campaign can be marked for attention")
         onboarding_bot.flag(conv, payload.reason or f"Marked by {user.email}")
+        ticket = tickets.raise_or_update(db, conv, via=user.email)
     else:
         conv.needs_attention = False
         conv.attention_resolved_by = user.email
         conv.attention_resolved_at = inbox.now()
+        ticket = tickets.resolve(db, conv.phone, user.email)
     db.commit()
-    return {"needs_attention": conv.needs_attention, "attention_reason": conv.attention_reason}
+    return {"needs_attention": conv.needs_attention, "attention_reason": conv.attention_reason,
+            "ticket": tickets.as_dict(ticket) if ticket else None}
 
 
 @router.post("/conversations/{digits}/media", response_model=ThreadMessage)

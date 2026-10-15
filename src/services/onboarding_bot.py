@@ -685,6 +685,7 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
                              "lang_campaign": _campaign_lang(db, conv)}
         msg = _Spoken(msg, message_text(msg))
 
+    flagged_before = inbox.aware(conv.attention_at) if conv.needs_attention else None
     token = _CURRENT.set(msg)
     try:
         cfg = get_settings(db)
@@ -694,10 +695,15 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
             voice = getattr(msg, "voice", False) or msg.kind == "audio"
             if voice or looks_like_question(message_text(msg)):
                 flag(conv, message_text(msg) or "Voice note")
-            return
-        _handle(db, conv, msg, cfg)
+        else:
+            _handle(db, conv, msg, cfg)
     finally:
         _CURRENT.reset(token)
+    # Newly left for a person (or for a new reason): a ticket, and an email to the admin.
+    if conv.needs_attention and inbox.aware(conv.attention_at) != flagged_before:
+        from src.services import tickets
+        tickets.raise_or_update(db, conv)
+        email_attention(db, conv)
 
 
 def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
@@ -952,6 +958,36 @@ def transcribe_voice(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessa
         payload["transcript_error"] = str(exc)[:300]
     msg.payload = payload
     db.commit()
+
+
+# One email per conversation in this long, unless the reason changes: someone
+# sending three questions in a row is one email, not three.
+ATTENTION_EMAIL_GAP = timedelta(minutes=10)
+
+
+def email_attention(db: Session, conv: WhatsAppConversation) -> bool:
+    """Email the admin that the bot left this conversation for a person, with its summary."""
+    from src.services import auth_service, chat_summary, notifier
+
+    data = conv.bot_data or {}
+    last = data.get("attention_emailed") or {}
+    if (last.get("reason") == conv.attention_reason and last.get("at")
+            and inbox.now() - datetime.fromisoformat(last["at"]) < ATTENTION_EMAIL_GAP):
+        return False
+    try:
+        summary = chat_summary.summarise(db, conv)
+        base = (os.environ.get("APP_PUBLIC_URL") or os.environ.get("PUBLIC_BASE_URL") or "").rstrip("/")
+        sent = notifier.notify_attention(auth_service.BOOTSTRAP_ADMIN, summary, chat_summary.as_text(summary),
+                                         f"{base}/#inbox/{conv.phone.lstrip('+')}" if base else "the Inbox in AutoGMap")
+    except Exception:
+        logger.exception(f"onboarding_bot event=ATTENTION_EMAIL_FAILED phone={conv.phone}")
+        return False
+    if sent:
+        conv.bot_data = {**(conv.bot_data or {}),
+                         "attention_emailed": {"reason": conv.attention_reason, "at": inbox.now().isoformat()}}
+        db.commit()
+    logger.info(f"onboarding_bot event=ATTENTION_EMAIL sent={sent} phone={conv.phone}")
+    return sent
 
 
 def run(message_ids: list) -> None:

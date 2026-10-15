@@ -100,15 +100,18 @@ def _by_phone(client, **params):
     return out["stats"], {a["phone"]: a for a in out["items"]}
 
 
-def test_only_people_in_the_onboarding_flow_are_applications(client):
+def test_people_in_the_onboarding_or_guidance_flow_are_applications(client):
     stats, apps = _by_phone(client)
-    assert set(apps) == {f"+91900000000{i}" for i in range(1, 7)}
-    assert stats["total"] == 6
+    assert set(apps) == {f"+91900000000{i}" for i in range(1, 8)}
+    assert stats["total"] == 7
+    # Asking for personal guidance counts, shown at its own stage.
+    assert apps["+919000000007"]["stage"] == bot.STEP_LABELS[bot.WEBINAR_CONFIRMED]
+    assert apps["+919000000007"]["verdict"] == "In progress"
 
 
 def test_the_totals_follow_the_teams_definitions(client):
     stats, apps = _by_phone(client)
-    assert stats == {"total": 6, "pin_qualified": 4, "strongly_qualified": 2,
+    assert stats == {"total": 7, "pin_qualified": 4, "strongly_qualified": 2,
                      "not_qualified": 3, "submitted": 1, "removed": 0}
     assert apps["+919000000001"]["verdict"] == "Strongly qualified"
     assert apps["+919000000002"]["strongly_qualified"] is True
@@ -142,14 +145,14 @@ def test_comments_are_added_shown_and_deleted(client):
 
 
 def test_a_comment_on_someone_who_has_not_applied_is_refused(client):
-    r = client.post("/api/v1/applications/919000000007/comments", json={"body": "x"})
+    r = client.post("/api/v1/applications/919000000008/comments", json={"body": "x"})
     assert r.status_code == 404
 
 
 def test_removing_keeps_the_chat_and_restore_brings_it_back(client):
     assert client.delete("/api/v1/applications/919000000005").status_code == 200
     stats, apps = _by_phone(client)
-    assert "+919000000005" not in apps and stats["total"] == 5 and stats["removed"] == 1
+    assert "+919000000005" not in apps and stats["total"] == 6 and stats["removed"] == 1
     _, removed = _by_phone(client, removed=True)
     assert list(removed) == ["+919000000005"]
 
@@ -226,7 +229,7 @@ def test_the_persona_is_the_category_the_business_was_found_as(client):
 
 def test_someone_no_campaign_reached_is_not_an_application(client):
     stats, apps = _by_phone(client)
-    assert "+919000000009" not in apps and stats["total"] == 6
+    assert "+919000000009" not in apps and stats["total"] == 7
 
 
 def test_digits_inside_a_csp_code_are_not_a_pin(client):

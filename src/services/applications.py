@@ -28,7 +28,7 @@ from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
 from src.services import inbox, pincode_coverage
 from src.services import onboarding_bot as bot
 
-# The steps of the onboarding flow; the webinar flow is not an application.
+# The steps of the onboarding flow.
 ONBOARDING_STEPS = {
     bot.AWAIT_PIN, bot.AWAIT_EDUCATION, bot.AWAIT_FRANCHISE, bot.NOT_ELIGIBLE,
     bot.AWAIT_INVEST, bot.AWAIT_DOCS, bot.AWAIT_UPLOAD, bot.SUBMITTED,
@@ -39,13 +39,18 @@ DOC_LABELS = {d["key"]: d["label"] for d in bot.DOCUMENTS}
 REQUIRED_KEYS = [d["key"] for d in bot.REQUIRED_DOCUMENTS]
 
 
+# Asking for personal guidance is a response to a campaign too, and is counted
+# as an application (the team's call, 2026-10-15); its stage says which it is.
+GUIDANCE_STEPS = {bot.AWAIT_WEBINAR, bot.AWAIT_AVAILABILITY, bot.WEBINAR_CONFIRMED, bot.WEBINAR_AVAILABILITY}
+
+
 def is_application(conv: WhatsAppConversation) -> bool:
     data = conv.bot_data or {}
     if conv.documents_submitted_at or data.get("coverage") or data.get("education"):
         return True
-    if conv.bot_step in ONBOARDING_STEPS:
+    if conv.bot_step in ONBOARDING_STEPS or conv.bot_step in GUIDANCE_STEPS:
         return True
-    if conv.bot_step == bot.CHOOSE_LANG and data.get("next") == bot.ONBOARD:
+    if conv.bot_step == bot.CHOOSE_LANG and data.get("next") in (bot.ONBOARD, bot.WEBINAR):
         return True
     # A PIN asked for too many times hands over to a person mid-application.
     return conv.bot_step == bot.HANDOVER and "pin_attempts" in data

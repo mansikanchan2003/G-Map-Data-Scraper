@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
+import { AttentionAlerts } from './components/AttentionAlerts';
 import { useTheme } from './hooks/useTheme';
 import type { NavTab } from './components/Header';
 import { useAuth } from './hooks/useAuth';
@@ -183,6 +184,9 @@ export default function App() {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
+
+        {/* Conversations waiting for a person, on every page until resolved. */}
+        <AttentionAlerts />
 
         {/* Dynamic Workspace Views */}
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">

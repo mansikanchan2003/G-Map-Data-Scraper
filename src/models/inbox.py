@@ -115,3 +115,35 @@ class OnboardingDocument(Base):
     drive_error = Column(String(500), nullable=True)
 
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class AttentionTicket(Base):
+    """
+    A conversation left for a person, as a ticket: raised when the bot (or
+    someone in the team) marks it as needing attention, solved when someone
+    presses "Question resolved". One open ticket per conversation; a further
+    question while it is open is recorded as its latest question.
+    """
+    __tablename__ = "attention_tickets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    phone = Column(String(20), ForeignKey("whatsapp_conversations.phone", ondelete="CASCADE"),
+                   nullable=False, index=True)
+    # The person the ticket is about: the one who asked.
+    raised_by_name = Column(String(200), nullable=True)
+    question = Column(String(500), nullable=True)
+    latest_question = Column(String(500), nullable=True)
+    questions_count = Column(Integer, nullable=False, default=1)
+    # "bot", or the team member who marked it.
+    raised_via = Column(String(200), nullable=False, default="bot")
+    raised_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    resolved_by = Column(String(200), nullable=True)
+
+    @property
+    def ticket_id(self) -> str:
+        return f"TKT-{self.id:05d}"
+
+    @property
+    def status(self) -> str:
+        return "Resolved" if self.resolved_at else "Not resolved"

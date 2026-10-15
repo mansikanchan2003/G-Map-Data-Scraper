@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  fetchBotSettings, fetchConversation, fetchConversations, markConversationRead, setAttention, sendInboxMedia,
+  ATTENTION_CHANGED, fetchBotSettings, fetchChatSummary, fetchTickets, fetchConversation, fetchConversations, markConversationRead, setAttention, sendInboxMedia,
   saveBotSettings, saveDocumentsToDrive, sendInboxMessage, setBotPaused, documentUrl, mediaUrl,
-  type BotSettings, type ConversationDetail, type ConversationSummary, type ThreadMessage,
+  type BotSettings, type ChatSummary, type ConversationDetail, type Ticket, type ConversationSummary, type ThreadMessage,
 } from '../api/inbox';
 
 /**
@@ -395,6 +395,193 @@ const BotSettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   );
 };
 
+// --- Tickets: every conversation left for a person -----------------------------
+
+const TicketsPanel: React.FC<{ initial: 'open' | 'resolved'; onClose: () => void }> = ({ initial, onClose }) => {
+  const [view, setView] = useState<'open' | 'resolved' | 'all'>(initial);
+  const [rows, setRows] = useState<Ticket[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setRows(null); setError(null);
+    fetchTickets(view === 'all' ? undefined : view).then(setRows).catch(e => setError(errMsg(e)));
+  }, [view]);
+  const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+  }) : '—');
+  const open = (t: Ticket) => { onClose(); window.location.hash = `inbox/${t.phone.replace(/\D/g, '')}`; };
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-3" onClick={onClose}>
+      <div className="w-full max-w-5xl max-h-[85vh] flex flex-col rounded-xl border border-slate-800 bg-slate-900 shadow-2xl"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[22px] text-rose-300">confirmation_number</span>
+            <h2 className="text-base font-semibold text-slate-100">Tickets</h2>
+          </div>
+          <div className="flex items-center gap-1 rounded-lg bg-slate-950 p-1">
+            {([['open', 'Raised (open)'], ['resolved', 'Solved'], ['all', 'All']] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setView(k)}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer ${view === k ? 'bg-slate-900 text-slate-100 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <button onClick={onClose} className="h-8 w-8 rounded-full text-slate-400 hover:bg-slate-800 flex items-center justify-center cursor-pointer" title="Close">
+            <span className="material-symbols-outlined text-[20px]">close</span>
+          </button>
+        </div>
+        <div className="overflow-auto flex-1">
+          {error && <div className="p-4 text-sm text-rose-400">{error}</div>}
+          {!rows && !error && <div className="p-6 text-sm text-slate-500">Loading tickets…</div>}
+          {rows && rows.length === 0 && <div className="p-8 text-center text-sm text-slate-500">No tickets here.</div>}
+          {rows && rows.length > 0 && (
+            <table className="w-full text-xs select-text">
+              <thead className="bg-slate-950 text-[10.5px] uppercase tracking-wider text-slate-500 sticky top-0">
+                <tr>{['Ticket ID', 'Raised by', 'Phone', 'Status', 'Raised', 'Solved', 'Question'].map(h =>
+                  <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {rows.map(t => (
+                  <tr key={t.ticket_id} onClick={() => open(t)} className="align-top hover:bg-slate-950/60 cursor-pointer" title="Open the chat">
+                    <td className="px-3 py-2.5 font-mono font-semibold text-slate-100 whitespace-nowrap">{t.ticket_id}</td>
+                    <td className="px-3 py-2.5 text-slate-200">{t.raised_by || '—'}
+                      {t.raised_via !== 'bot' && <div className="text-[10.5px] text-slate-500">marked by {t.raised_via.split('@')[0]}</div>}</td>
+                    <td className="px-3 py-2.5 font-mono text-slate-300 whitespace-nowrap">{t.phone}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded-full border text-[10.5px] font-semibold ${t.status === 'Resolved'
+                        ? 'bg-emerald-950 text-emerald-300 border-emerald-800/60' : 'bg-rose-950 text-rose-300 border-rose-800/60'}`}>{t.status}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-300 whitespace-nowrap">{when(t.raised_at)}</td>
+                    <td className="px-3 py-2.5 text-slate-300 whitespace-nowrap">{when(t.resolved_at)}
+                      {t.resolved_by && <div className="text-[10.5px] text-slate-500">by {t.resolved_by.split('@')[0]}</div>}</td>
+                    <td className="px-3 py-2.5 text-slate-200 min-w-[240px]">{t.question || '—'}
+                      {t.latest_question && <div className="text-[11px] text-slate-400 mt-0.5">Then: {t.latest_question}
+                        {t.questions_count > 2 ? ` (+${t.questions_count - 2} more)` : ''}</div>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Summary: the conversation at a glance ------------------------------------
+
+/**
+ * Who they are, how far they got, what they asked (with the FAQ's answers),
+ * what else they wrote, and what to send next, so nobody has to read the
+ * whole chat first. Built on the server from the chat itself.
+ */
+const SummaryCard: React.FC<{
+  phone: string;
+  version: string;
+  onUseReply?: (text: string) => void;
+  compact?: boolean;
+}> = ({ phone, version, onUseReply, compact }) => {
+  const [s, setS] = useState<ChatSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    setError(null);
+    fetchChatSummary(phone).then(r => { if (live) setS(r); }).catch(e => { if (live) setError(errMsg(e)); });
+    return () => { live = false; };
+  }, [phone, version]);
+
+  if (error) return <div className="text-xs text-rose-400">Summary: {error}</div>;
+  if (!s) return <div className="text-xs text-slate-500">Summarising the chat…</div>;
+  const p = s.person;
+  const place = [p.tehsil, p.district, p.state].filter(Boolean).join(', ');
+  const Heading = ({ icon, children }: { icon: string; children: React.ReactNode }) => (
+    <div className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider font-semibold text-slate-500 mb-1.5">
+      <span className="material-symbols-outlined text-[15px]">{icon}</span>{children}
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-3.5 text-xs select-text">
+      <div className="rounded-lg border border-sky-800/60 bg-sky-950 p-3">
+        <div className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider font-semibold text-sky-300">
+          <span className="material-symbols-outlined text-[15px]">summarize</span>Chat summary
+        </div>
+        <div className="text-sm font-semibold text-slate-100 mt-1">{s.headline}</div>
+        <div className="text-[11.5px] text-slate-400 mt-1">
+          {[p.pincode && `PIN ${p.pincode}`, place, p.category].filter(Boolean).join(' · ') || 'No PIN or place yet'}
+        </div>
+        {s.attention && (
+          <div className="mt-2 text-[11.5px] text-rose-300">
+            <span className="font-semibold">Needs attention:</span> {s.attention.reason || 'marked for the team'}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-lg border border-emerald-800/60 bg-emerald-950 p-3">
+        <Heading icon="lightbulb">Send next</Heading>
+        <p className="text-[12.5px] text-slate-200 leading-relaxed">{s.next.action}</p>
+        {s.next.reply && (
+          <div className="mt-2">
+            <div className="rounded-md bg-slate-900 border border-slate-800 p-2 text-[12px] text-slate-200 whitespace-pre-wrap max-h-40 overflow-y-auto">{s.next.reply}</div>
+            <div className="flex items-center justify-between mt-1.5">
+              <span className="text-[10.5px] text-slate-500">In {s.next.reply_language}</span>
+              {onUseReply && (
+                <button onClick={() => onUseReply(s.next.reply!)}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-emerald-500 text-white hover:opacity-90 cursor-pointer">
+                  <span className="material-symbols-outlined text-[15px]">edit_note</span>Use this reply
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <Heading icon="help">What they asked{s.unanswered_questions ? ` · ${s.unanswered_questions} without a ready answer` : ''}</Heading>
+        {s.questions.length === 0 ? <div className="text-slate-500">No questions.</div> : (
+          <ul className="space-y-2">
+            {s.questions.slice(compact ? -3 : 0).map((q, i) => (
+              <li key={i} className="rounded-md border border-slate-800 bg-slate-900 p-2">
+                <div className="text-slate-100">“{q.text}”{q.voice && <span className="text-slate-500"> · voice note</span>}</div>
+                <div className="text-[10.5px] text-slate-500">{q.at}</div>
+                {q.answers.length ? q.answers.map((a, j) => (
+                  <div key={j} className="mt-1.5 text-[11.5px] text-slate-300">
+                    <span className={q.answered_by_bot ? 'text-emerald-300 font-semibold' : 'text-sky-300 font-semibold'}>
+                      {q.answered_by_bot ? 'Bot answered: ' : 'Possible answer: '}
+                    </span>{a.answer}
+                    {!q.answered_by_bot && onUseReply && (
+                      <button onClick={() => onUseReply(a.answer)} className="ml-1 text-sky-300 hover:underline cursor-pointer">use</button>
+                    )}
+                  </div>
+                )) : <div className="mt-1 text-[11.5px] text-amber-300">No ready answer: reply yourself.</div>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {s.other_messages.length > 0 && (
+        <div>
+          <Heading icon="chat_bubble">Other messages</Heading>
+          <ul className="space-y-1">
+            {s.other_messages.slice(compact ? -3 : 0).map((o, i) => (
+              <li key={i} className="text-slate-300">“{o.text}” <span className="text-[10.5px] text-slate-500">· {o.at}</span></li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {!compact && s.story.length > 0 && (
+        <div>
+          <Heading icon="timeline">What happened</Heading>
+          <ol className="space-y-1 text-slate-300 list-disc pl-4">
+            {s.story.map((line, i) => <li key={i}>{line}</li>)}
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- Details: who, the bot, documents ----------------------------------------
 
 const Details: React.FC<{
@@ -580,9 +767,20 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const [threadError, setThreadError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  // The summary above the chat on smaller screens; open unless closed before.
+  const [summaryOpen, setSummaryOpen] = useState(() => {
+    try { return localStorage.getItem('inbox-summary-open') !== '0'; } catch { return true; }
+  });
+  useEffect(() => { try { localStorage.setItem('inbox-summary-open', summaryOpen ? '1' : '0'); } catch { /* private window */ } }, [summaryOpen]);
+  // A suggested reply goes into the box to be read and sent, never sent by itself.
+  const putReply = (text: string) => {
+    setDraft(text);
+    setTimeout(() => textBox.current?.focus(), 0);
+  };
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [ticketsView, setTicketsView] = useState<'open' | 'resolved' | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -673,6 +871,8 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
     setAttentionBusy(true);
     try {
       await setAttention(selected, needed);
+      // The alerts shown on every page follow at once.
+      window.dispatchEvent(new Event(ATTENTION_CHANGED));
       await loadThread(selected);
       loadList();
     } catch (e) {
@@ -770,6 +970,14 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
             <button onClick={() => setShowSettings(true)} title="Onboarding bot settings"
               className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 px-2 py-1 rounded hover:bg-slate-800 cursor-pointer">
               <span className="material-symbols-outlined text-[16px]">smart_toy</span>Bot
+            </button>
+            <button onClick={() => setTicketsView('open')} title="Tickets raised and not yet resolved"
+              className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 px-2 py-1 rounded hover:bg-slate-800 cursor-pointer">
+              <span className="material-symbols-outlined text-[16px]">confirmation_number</span>Raised
+            </button>
+            <button onClick={() => setTicketsView('resolved')} title="Tickets solved"
+              className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 px-2 py-1 rounded hover:bg-slate-800 cursor-pointer">
+              <span className="material-symbols-outlined text-[16px]">task_alt</span>Solved
             </button>
           </div>
           <div className="relative">
@@ -916,11 +1124,26 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
                     <Details conv={detail} onChanged={() => { loadThread(selected); loadList(); }} />
                   </div>
                 )}
+                {detail && (
+                  <div className="xl:hidden border-b border-slate-800 bg-slate-900">
+                    <button onClick={() => setSummaryOpen(o => !o)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-sky-300 cursor-pointer">
+                      <span className="flex items-center gap-1.5"><span className="material-symbols-outlined text-[16px]">summarize</span>Chat summary</span>
+                      <span className="material-symbols-outlined text-[18px] text-slate-500">{summaryOpen ? 'expand_less' : 'expand_more'}</span>
+                    </button>
+                    {summaryOpen && (
+                      <div className="px-3 pb-3 max-h-[45vh] overflow-y-auto">
+                        <SummaryCard phone={selected} version={`${detail.messages.length}-${detail.needs_attention}`}
+                          onUseReply={readOnly ? undefined : putReply} compact />
+                      </div>
+                    )}
+                  </div>
+                )}
                 {detail?.needs_attention && (
                   <div className="flex items-start gap-2 px-3 py-2 border-b border-rose-900 bg-rose-950/60 text-xs text-rose-200 select-text">
                     <span className="material-symbols-outlined text-[16px] text-rose-400">priority_high</span>
                     <span className="min-w-0">
-                      <span className="font-semibold">Needs attention{detail.attention_at ? ` · ${since(detail.attention_at)} ago` : ''}: </span>
+                      <span className="font-semibold">Needs attention{detail.ticket_id ? ` · Ticket ${detail.ticket_id}` : ''}{detail.attention_at ? ` · ${since(detail.attention_at)} ago` : ''}: </span>
                       <span className="break-words">{detail.attention_reason || 'Marked for the team'}</span>
                     </span>
                   </div>
@@ -1016,10 +1239,14 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
                 )}
               </div>
 
+              {/* A div, not an aside: the light theme styles every aside as the dark sidebar. */}
               {detail && (
-                <aside className="hidden xl:block w-80 shrink-0 border-l border-slate-800 bg-slate-900/40 p-4 overflow-y-auto">
+                <div className="hidden xl:block w-80 shrink-0 border-l border-slate-800 bg-slate-900 p-4 overflow-y-auto">
+                  <SummaryCard phone={selected} version={`${detail.messages.length}-${detail.needs_attention}`}
+                    onUseReply={readOnly ? undefined : putReply} />
+                  <div className="my-4 border-t border-slate-800" />
                   <Details conv={detail} onChanged={() => { loadThread(selected); loadList(); }} />
-                </aside>
+                </div>
               )}
             </div>
           </>
@@ -1027,6 +1254,7 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
       </section>
 
       {showSettings && <BotSettingsPanel onClose={() => setShowSettings(false)} />}
+      {ticketsView && <TicketsPanel initial={ticketsView} onClose={() => setTicketsView(null)} />}
     </div>
   );
 };
