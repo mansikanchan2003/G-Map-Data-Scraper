@@ -185,6 +185,9 @@ export interface GrowthPlan {
     lead_list: { name: string | null; phone: string; submitted_at: string }[];
     /** The goal is set by the agent each month from the business data. */
     label: string;
+    /** The month the goal covers: start inclusive, end exclusive (ISO dates). */
+    start: string;
+    end: string;
     set_by: 'agent';
     basis: string;
     reasoning: string[];
