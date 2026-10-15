@@ -100,17 +100,17 @@ FACTS: List[str] = [
     "opportunity ('कमाने का अवसर'), never as a guarantee.",
     "Applying is free (never ask anyone to pay for an allotment); Eko gives training, live support, "
     "installs the devices and runs every process for the operator's month-on-month growth.",
-    "The investment is ₹5 lakh and above, depending on location and setup. The Banking Outlet needs its "
+    "The investment is up to ₹5 lakh, depending on location and setup. The Banking Outlet needs its "
     "own space and fixed hours, so it suits established business families adding a second, respected "
     "business, and it draws on their name, network and existing customers.",
     "Women operators get an extra incentive on their total commission, up to a limit.",
-    "The ₹5 lakh stays with the operator, in their own e-wallet that customers' transactions run through: "
-    "a deposit or transfer is paid in cash to the operator and goes from the e-wallet to the customer's "
-    "account, a withdrawal is paid out in cash and comes back into the e-wallet, and the operator tops the "
-    "e-wallet up at the bank with the cash collected. A commission on every transaction. ₹1 lakh of it is a "
-    "security deposit in a separate e-wallet in the operator's name: it cannot be withdrawn while the "
-    "agreement is on, but it is safe and can be checked anytime. Eko provides the devices (laptop or tab, "
-    "biometric device, micro ATM, passbook printer, GPS dongle) and trains the operator on them.",
+    "Of the up to ₹5 lakh, about ₹1-1.5 lakh goes on the devices (laptop or tab, biometric device, micro "
+    "ATM, passbook printer, GPS dongle), which Eko provides and trains the operator on. The operator's own "
+    "e-wallet, which customers' transactions run through, stays theirs: a deposit or transfer is paid in cash "
+    "to the operator and goes from the e-wallet to the customer's account, a withdrawal is paid out in cash and "
+    "comes back into the e-wallet, and the operator tops it up at the bank with the cash collected. A commission "
+    "on every transaction. The rest sets up the outlet (seating, drinking water, posters, banners) so it looks "
+    "like an SBI mini branch.",
     "Eko Bharat Ventures Private Limited has been a National Business Correspondent since 2009.",
     f"Contact by call or WhatsApp: {PHONE}.",
     f"Apply online: {SIGNUP_URL}.",

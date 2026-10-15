@@ -233,7 +233,7 @@ def test_full_onboarding_flow(db, client):
     kind, _to, body, buttons = StubMeta.sent[-1]
     # One question covers the investment and the franchise.
     assert (kind, body) == ("buttons", onboarding_bot.ASK_INVEST)
-    assert body.startswith("Are you able to invest 5 Lakh Rupees to set up a Franchise Business?")
+    assert body.startswith("Are you able to invest up to 5 Lakh Rupees to set up a Franchise Business?")
     assert "A franchise business means" in body
     assert [b["id"] for b in buttons] == ["invest:yes", "invest:no"]
     assert conv(db).bot_data["education"] == "grad"
@@ -1238,7 +1238,7 @@ def test_a_question_the_faq_answers_is_answered_and_the_question_asked_again(db)
     qualify(db)                                  # now asked about investing
     say(db, "Kitna invest karna hoga?")
     body = StubMeta.sent[-1][2]
-    assert body.startswith("₹5 lakh and above")                   # in English, as chosen
+    assert body.startswith("Up to ₹5 lakh")                   # in English, as chosen
     assert bot_messages.MESSAGES["en"]["ask_invest"] in body     # and the question follows
     c = conv(db)
     assert c.bot_step == onboarding_bot.AWAIT_INVEST
@@ -1276,7 +1276,10 @@ def test_what_the_5_lakh_is_for_comes_before_the_investment_question(db):
     qualify(db)
     (_k1, _t1, explained, b1), (_k2, _t2, question, b2) = StubMeta.sent[count:count + 2]
     assert explained == bot_messages.MESSAGES["en"]["invest_explained"] and not b1
-    assert "e-wallet" in explained and "₹1 lakh" in explained and "security deposit" in explained
+    assert explained.startswith("💼 *How up to ₹5 lakh is used*")
+    assert "e-wallet" in explained and "₹1–1.5 lakh" in explained and "mini branch" in explained
+    assert "security deposit" not in explained
+    assert "up to 5 Lakh" in question
     assert question == bot_messages.MESSAGES["en"]["ask_invest"]
     assert [b["id"] for b in b2] == ["invest:yes", "invest:no"]
 

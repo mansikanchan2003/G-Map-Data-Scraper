@@ -83,11 +83,11 @@ FAQ: List[dict] = [
         "id": "investment", "question": "Kitna invest karna hoga?",
         "keys": ["invest", "investment", "nivesh", "kitna paisa", "kitne paise", "lagat", "kharcha", "5 lakh", "paanch lakh", "निवेश", "लागत", "खर्चा", "રોકાણ", "ખર્ચ", "ਨਿਵੇਸ਼", "ਖਰਚਾ"],
         "answer": {
-            "hinglish": "INR 5 lakh aur usse upar, location aur setup par nirbhar.",
-            "en": "₹5 lakh and above, depending on the location and the setup.",
-            "hi": "₹5 लाख और उससे ऊपर, लोकेशन और सेटअप पर निर्भर।",
-            "gu": "₹5 લાખ અને તેથી વધુ, સ્થાન અને સેટઅપ પર આધારિત.",
-            "pa": "₹5 ਲੱਖ ਅਤੇ ਉਸ ਤੋਂ ਵੱਧ, ਲੋਕੇਸ਼ਨ ਅਤੇ ਸੈੱਟਅੱਪ 'ਤੇ ਨਿਰਭਰ।",
+            "hinglish": "INR 5 lakh tak, location aur setup par nirbhar.",
+            "en": "Up to ₹5 lakh, depending on the location and the setup.",
+            "hi": "₹5 लाख तक, लोकेशन और सेटअप पर निर्भर।",
+            "gu": "₹5 લાખ સુધી, સ્થાન અને સેટઅપ પર આધારિત.",
+            "pa": "₹5 ਲੱਖ ਤੱਕ, ਲੋਕੇਸ਼ਨ ਅਤੇ ਸੈੱਟਅੱਪ 'ਤੇ ਨਿਰਭਰ।",
         },
     },
     {
@@ -362,4 +362,4 @@ THE PATH EKO RUNS WITH THE OPERATOR (good material for “you are never alone”
 WHO WE SPEAK TO — Banking Outlet operators come from established business families and are graduates; women entrepreneurs are a priority. Pick the persona that fits the businesses this template goes to, answer what holds them back, and adapt (not copy) a hook into the template's language:
 {personas}
 
-WORDS WE DO NOT USE: never call it a job, naukri, vacancy, bharti or joining (it is apna business); never promise a salary, fixed, guaranteed or “pakka” income; no “zero investment”, “limited seats” or “aaj hi payment”; the operator is a Kiosk Operator, not a bank employee or officer, and the outlet is not a mini bank or branch; always write Eko as “Eko”. Being honest about the ₹5 lakh+ investment and “apply free” builds trust."""
+WORDS WE DO NOT USE: never call it a job, naukri, vacancy, bharti or joining (it is apna business); never promise a salary, fixed, guaranteed or “pakka” income; no “zero investment”, “limited seats” or “aaj hi payment”; the operator is a Kiosk Operator, not a bank employee or officer, and the outlet is not a mini bank or branch; always write Eko as “Eko”. Being honest about the investment of up to ₹5 lakh and “apply free” builds trust."""
