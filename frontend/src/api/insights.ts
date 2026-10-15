@@ -197,8 +197,11 @@ export interface GrowthPlan {
     state_gaps?: { state: string; target: number; leads: number; gap: number }[];
     /** The month's revenue against the team's revenue goal, when one is set. */
     revenue?: {
-      goal_inr: number; month: string; expected_inr: number; expected_basis: string; share: number; gap_inr: number;
-      extra_txns: number; extra_txns_per_csp: number; new_csps_this_month: number;
+      /** The monthly revenue to reach, and the month it is due ("2026-12"). */
+      goal_inr: number; month: string; deadline: string; deadline_label: string; months_left: number;
+      baseline_month: string; expected_inr: number; expected_basis: string; share: number; gap_inr: number;
+      extra_txns: number; extra_txns_per_csp: number; extra_txns_share: number | null;
+      new_csp_by_then_inr: number; new_csps_by_then: number;
       csps_needed: number; leads_needed: number; horizon_months: number; leads_per_month: number;
     } | null;
     stretch?: number;

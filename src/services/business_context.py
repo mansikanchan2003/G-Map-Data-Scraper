@@ -26,18 +26,19 @@ aims to add half as many again through AutoGMap leads, and turns that into
 leads with the share of decided applicants who go live. It says why, and
 what the extra CSPs should earn, so the goal can be checked against reality.
 
-When the team sets a REVENUE GOAL for the month (₹1 Cr for October 2026),
-the agent measures the month's projected revenue against it. A gap cannot be
-closed by new CSPs within the month, as they earn little at first, so it
-says what the existing CSPs would have to do; and it works out how many more
-established CSPs would close the gap for good, and the leads that takes over
-REVENUE_HORIZON_MONTHS (going live and ramping up take months). The month's
-lead goal is the larger of the two reckonings.
+When the team sets a REVENUE GOAL, a monthly revenue to reach by a given
+month (₹1 Cr a month by 31 December 2026), the agent measures the current
+month's revenue against it. New CSPs earn little in their first months, so
+by the deadline most of a gap has to come from the existing CSPs, and it
+says what they would have to do; it also works out how many more
+established CSPs would close the gap for good, and the leads that takes,
+spread over the months left. The month's lead goal is the larger of that
+and the growth reckoning.
 """
 import json
 import math
 import os
-from datetime import date
+from datetime import date, timedelta
 from typing import Dict, List, Optional
 
 CONTEXT_FILE = os.environ.get("BUSINESS_CONTEXT_FILE", os.path.join("data", "business_context.json"))
@@ -45,9 +46,6 @@ CONTEXT_FILE = os.environ.get("BUSINESS_CONTEXT_FILE", os.path.join("data", "bus
 GROWTH_SHARE = 0.5
 # Without business data, a modest goal from AutoGMap's own results.
 FALLBACK_LEADS = 3
-# The months over which new CSPs are to close a revenue gap: weeks of
-# onboarding and approvals, then months of ramping up.
-REVENUE_HORIZON_MONTHS = 6
 REVENUE_GOALS_KEY = "revenue_goals"
 
 
@@ -211,32 +209,66 @@ def summarise(ctx: dict) -> dict:
     }
 
 
-def revenue_plan(summary: dict, goal_inr: int, month: str) -> Optional[dict]:
-    """How far the month's revenue is from its goal, and what closing the gap takes."""
-    row = next((r for r in summary["months"] if r["month"] == month), None)
+def _months_between(a: str, b: str) -> int:
+    """Months from a to b, both "YYYY-MM", counting both: Oct to Dec is 3."""
+    ay, am = map(int, a.split("-"))
+    by, bm = map(int, b.split("-"))
+    return (by - ay) * 12 + (bm - am) + 1
+
+
+def next_revenue_goal(goals: Dict[str, int], today: date) -> Optional[tuple]:
+    """The nearest goal not yet past: (month it is due, rupees), or None."""
+    now = today.strftime("%Y-%m")
+    due = sorted(m for m in goals if m >= now)
+    return (due[0], goals[due[0]]) if due else None
+
+
+def revenue_plan(summary: dict, goal_inr: int, goal_month: str, today: date) -> Optional[dict]:
+    """
+    How far monthly revenue is from the goal due in goal_month, and what
+    closing the gap takes: from the existing CSPs by then, and from new
+    established CSPs for good, with their leads spread over the months left.
+    """
+    now = today.strftime("%Y-%m")
+    row = next((r for r in summary["months"] if r["month"] == now), None) or \
+        next((r for r in reversed(summary["months"]) if r["revenue_inr"]), None)
     rpt = summary["revenue_per_txn"]
     mature = summary["mature_csp"]["revenue_inr"]
     rate = summary["onboarding"]["go_live_rate"] or 0.5
     if not row or not row["revenue_inr"] or not rpt:
         return None
+    months_left = max(_months_between(now, goal_month), 1)
     gap = max(goal_inr - row["revenue_inr"], 0)
     active = row["active_csps"] or 1
-    first = (summary["new_csp_ramp"][0]["revenue_inr"] if summary["new_csp_ramp"] else None) or rpt
+    ramp = summary["new_csp_ramp"]
+    first = (ramp[0]["revenue_inr"] if ramp else None) or rpt
+    # What one CSP going live now would bring in the goal's month.
+    by_then = (ramp[min(months_left, len(ramp)) - 1]["revenue_inr"] if ramp else None) or first
     csps = math.ceil(gap / mature) if mature and gap else 0
     total_leads = math.ceil(csps / rate) if csps else 0
+    y, m = map(int, goal_month.split("-"))
     return {
-        "goal_inr": goal_inr, "month": month, "expected_inr": row["revenue_inr"], "expected_basis": row["revenue_basis"],
+        "goal_inr": goal_inr, "month": goal_month,
+        "deadline": date(y + (m == 12), m % 12 + 1, 1).isoformat(),
+        "deadline_label": f"{(date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)).day} {MONTH_NAMES[m - 1]} {y}",
+        "months_left": months_left,
+        "baseline_month": row["label"], "expected_inr": row["revenue_inr"], "expected_basis": row["revenue_basis"],
         "share": round(row["revenue_inr"] / goal_inr, 3), "gap_inr": gap,
         "extra_txns": math.ceil(gap / rpt) if gap else 0,
         "extra_txns_per_csp": math.ceil(gap / rpt / active) if gap else 0,
-        "new_csps_this_month": math.ceil(gap / first) if gap else 0,
-        "csps_needed": csps, "leads_needed": total_leads, "horizon_months": REVENUE_HORIZON_MONTHS,
-        "leads_per_month": math.ceil(total_leads / REVENUE_HORIZON_MONTHS) if total_leads else 0,
+        # Against the last full month's transactions, not this month's so far.
+        "extra_txns_share": (lambda full: round(gap / rpt / full, 3) if gap and full else None)(
+            next((r["transactions"] for r in reversed(summary["months"])
+                  if r["revenue_basis"] == "actual" and r.get("transactions")), None)),
+        "new_csp_by_then_inr": by_then,
+        "new_csps_by_then": math.ceil(gap / by_then) if gap and by_then else 0,
+        "csps_needed": csps, "leads_needed": total_leads, "horizon_months": months_left,
+        "leads_per_month": math.ceil(total_leads / months_left) if total_leads else 0,
     }
 
 
 def agent_goal(summary: Optional[dict], our_states: List[str], today: date,
-               revenue_goal: Optional[int] = None) -> dict:
+               revenue_goal: Optional[tuple] = None) -> dict:
     """The lead goal for this calendar month, with the reasoning behind it."""
     month_end = date(today.year + (today.month == 12), today.month % 12 + 1, 1)
     period = {"start": date(today.year, today.month, 1).isoformat(), "end": month_end.isoformat(),
@@ -277,28 +309,33 @@ def agent_goal(summary: Optional[dict], our_states: List[str], today: date,
             f"{g['state']} {g['leads']} leads of {g['target']}" for g in gaps)
             + f". A gap of {gap_total} applicants that our leads can fill.")
     basis = "business data from Tara"
-    money = revenue_plan(summary, revenue_goal, today.strftime("%Y-%m")) if revenue_goal else None
+    money = None
+    if revenue_goal:
+        goal_month, goal_inr = revenue_goal
+        money = revenue_plan(summary, goal_inr, goal_month, today)
     if money:
-        goal_text = f"₹{revenue_goal / 1e7:g} Cr" if revenue_goal >= 1e7 else f"₹{revenue_goal / 1e5:g} lakh"
+        goal_text = f"₹{goal_inr / 1e7:g} Cr" if goal_inr >= 1e7 else f"₹{goal_inr / 1e5:g} lakh"
         basis = f"the {goal_text} revenue goal and business data from Tara"
         if money["gap_inr"]:
+            pct = f" (+{round(money['extra_txns_share'] * 100)}%)" if money.get("extra_txns_share") else ""
             lines = [
-                f"The revenue goal for {period['label']} is {goal_text}; {money['expected_basis']} revenue is "
-                f"₹{money['expected_inr'] / 1e5:.1f} lakh ({round(money['share'] * 100)}%), ₹{money['gap_inr'] / 1e5:.1f} lakh short.",
-                f"New CSPs cannot close that this month: in their first month they earn about "
-                f"₹{(summary['new_csp_ramp'][0]['revenue_inr'] if summary['new_csp_ramp'] else 0):,}, so it would take "
-                f"{money['new_csps_this_month']:,} of them. This month's gap is for the existing CSPs to close: "
-                f"{money['extra_txns']:,} more transactions, about {money['extra_txns_per_csp']} more for each active CSP.",
-                f"To earn {goal_text} a month for good, about {money['csps_needed']} more established CSPs are needed; "
-                f"at {round(rate * 100)}% going live that is {money['leads_needed']} leads, or {money['leads_per_month']} a month "
-                f"over the {money['horizon_months']} months it takes them to go live and ramp up.",
+                f"The goal: {goal_text} of revenue a month by {money['deadline_label']}, {money['months_left']} "
+                f"month{'s' if money['months_left'] != 1 else ''} away. {money['baseline_month']} is "
+                f"{money['expected_basis']} at ₹{money['expected_inr'] / 1e5:.1f} lakh ({round(money['share'] * 100)}%), "
+                f"₹{money['gap_inr'] / 1e5:.1f} lakh short.",
+                f"New CSPs grow slowly: one going live now adds only about ₹{money['new_csp_by_then_inr']:,} a month by "
+                f"then, so most of the gap by {money['deadline_label']} has to come from the existing CSPs: about "
+                f"{money['extra_txns']:,} more transactions a month{pct}, some {money['extra_txns_per_csp']} more for each active CSP.",
+                f"For {goal_text} a month to last, about {money['csps_needed']} more established CSPs are needed; at "
+                f"{round(rate * 100)}% going live that is {money['leads_needed']} leads, or {money['leads_per_month']} a month "
+                f"until {money['deadline_label']}.",
             ]
             if money["leads_per_month"] > leads:
                 leads = money["leads_per_month"]
                 lines.append(f"So the lead goal for {period['label']} is {leads}, set by the revenue goal.")
             reasoning = lines + reasoning
         else:
-            reasoning = [f"{period['label']}'s revenue is on course for the {goal_text} goal "
+            reasoning = [f"Revenue is already on course for the {goal_text} goal "
                          f"(₹{money['expected_inr'] / 1e5:.1f} lakh {money['expected_basis']})."] + reasoning
     return {**period, "leads": leads, "extra_csps": extra, "baseline_new_csps": round(baseline, 1),
             "go_live_rate": rate, "set_by": "agent", "basis": basis, "revenue": money,

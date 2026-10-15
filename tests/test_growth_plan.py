@@ -279,24 +279,31 @@ def test_delivery_is_measured_only_where_meta_reported(db):
 
 def test_a_revenue_goal_sets_the_lead_goal(db, context):
     from src.services import business_context as bc
-    bc.set_revenue_goal(db, "2026-10", 10_000_000)
+    bc.set_revenue_goal(db, "2026-12", 10_000_000)         # ₹1 Cr a month by 31 December
     g = gp.goal(db)
     money = g["revenue"]
     # October is projected at ₹87.7 lakh: ₹12.3 lakh short of ₹1 Cr.
     assert (money["expected_inr"], money["gap_inr"]) == (8768364, 1231636)
     assert money["expected_basis"] == "projected" and money["share"] == 0.877
-    # Too much for new CSPs this month; for good it takes established CSPs,
-    # and the leads for them spread over the horizon.
-    assert money["new_csps_this_month"] > 1000
-    assert money["leads_per_month"] == math.ceil(money["leads_needed"] / bc.REVENUE_HORIZON_MONTHS)
+    assert (money["month"], money["deadline_label"], money["months_left"]) == ("2026-12", "31 Dec 2026", 3)
+    # By then mostly from the existing CSPs: measured against September's full month.
+    assert money["extra_txns_share"] == round(money["extra_txns"] / 306176, 3)
+    # For good it takes established CSPs; their leads spread over the months left.
+    assert money["leads_per_month"] == math.ceil(money["leads_needed"] / 3)
     assert g["target"] == money["leads_per_month"] > 5
     assert "₹1 Cr revenue goal" in g["basis"]
-    assert g["reasoning"][0].startswith("The revenue goal for Oct 2026 is ₹1 Cr")
+    assert g["reasoning"][0].startswith("The goal: ₹1 Cr of revenue a month by 31 Dec 2026, 3 months away.")
+
+
+def test_a_goal_already_past_is_not_used(db, context):
+    from src.services import business_context as bc
+    bc.set_revenue_goal(db, "2026-09", 10_000_000)
+    assert gp.goal(db)["revenue"] is None
 
 
 def test_a_revenue_goal_already_met_leaves_the_growth_goal(db, context):
     from src.services import business_context as bc
-    bc.set_revenue_goal(db, "2026-10", 8_000_000)
+    bc.set_revenue_goal(db, "2026-12", 8_000_000)
     g = gp.goal(db)
     assert g["revenue"]["gap_inr"] == 0 and g["target"] == 5
     assert "on course" in g["reasoning"][0]
