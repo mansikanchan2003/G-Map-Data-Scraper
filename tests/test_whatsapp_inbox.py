@@ -1267,3 +1267,21 @@ def test_a_voice_note_answered_from_the_faq_is_still_checked_by_a_person(db, hea
     # Heard as Hindi in Latin letters, so answered in Hinglish.
     assert StubMeta.sent[-1][2].startswith("Apply karna free hai.")
     assert conv(db).needs_attention
+
+
+def test_what_the_5_lakh_is_for_comes_before_the_investment_question(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    count = len(StubMeta.sent)
+    qualify(db)
+    (_k1, _t1, explained, b1), (_k2, _t2, question, b2) = StubMeta.sent[count:count + 2]
+    assert explained == bot_messages.MESSAGES["en"]["invest_explained"] and not b1
+    assert "e-wallet" in explained and "₹1 lakh" in explained and "security deposit" in explained
+    assert question == bot_messages.MESSAGES["en"]["ask_invest"]
+    assert [b["id"] for b in b2] == ["invest:yes", "invest:no"]
+
+
+def test_asking_how_much_to_invest_also_explains_the_e_wallet(db):
+    tap_campaign(db)
+    say(db, "Kitna invest karna hoga?")
+    assert bot_messages.MESSAGES["en"]["invest_explained"] in StubMeta.sent[-1][2]

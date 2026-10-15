@@ -461,6 +461,12 @@ def _guidance_ask(db, conv) -> str:
     return _t(db, conv, key)
 
 
+def _ask_invest(db, conv, lang):
+    """What the ₹5 lakh is for, then the question: the money stays theirs, in an e-wallet."""
+    _say(db, conv, _t(db, conv, "invest_explained"))
+    _say(db, conv, _t(db, conv, "ask_invest"), buttons=YES_NO("invest", lang))
+
+
 def _start(db, conv, msg, flow: str):
     """A campaign button was tapped: start that flow, asking the language if not known."""
     if flow == ONBOARD and conv.documents_submitted_at:
@@ -608,6 +614,9 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, **kw):
     asked = looks_like_question(said) or voice or bool(faq)
     if faq:
         answer = eko_knowledge.reply(faq, _lang(db, conv), said)
+        if "investment" in faq:
+            # How much, then what the money is for: it stays theirs.
+            answer += "\n\n" + _t(db, conv, "invest_explained")
         conv.bot_data = {**(conv.bot_data or {}), "faq_answered": (data.get("faq_answered") or []) + faq}
         data = conv.bot_data
         if voice:
@@ -769,7 +778,7 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
             # (the user's choice, 2026-10-14).
             _understood(conv)
             _move(conv, AWAIT_INVEST, education=level)
-            _say(db, conv, _t(db, conv, "ask_invest"), buttons=YES_NO("invest", lang))
+            _ask_invest(db, conv, lang)
         else:
             _fallback(db, conv, _t(db, conv, "ask_education"), buttons=education_buttons(lang))
 
@@ -780,7 +789,7 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
         if answer is not None:
             _understood(conv)
             _move(conv, AWAIT_INVEST, franchise=answer)
-            _say(db, conv, _t(db, conv, "ask_invest"), buttons=YES_NO("invest", lang))
+            _ask_invest(db, conv, lang)
         else:
             _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n" + _t(db, conv, "ask_franchise"),
                       buttons=YES_NO("franchise", lang))
@@ -846,7 +855,7 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
         if level and level != "other":
             _understood(conv)
             _move(conv, AWAIT_INVEST, education=level)
-            _say(db, conv, _t(db, conv, "ask_invest"), buttons=YES_NO("invest", lang))
+            _ask_invest(db, conv, lang)
         else:
             _fallback(db, conv, _t(db, conv, "not_eligible"))
 
