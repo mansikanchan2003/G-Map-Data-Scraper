@@ -644,8 +644,13 @@ def _understood(conv):
 
 
 def _tell_team(conv, what: str, availability: Optional[str] = None):
-    """Email the team a webinar answer, so somebody sends the link."""
+    """
+    Email the team a personal-guidance answer, and mark the chat for a person,
+    so it shows as Attention needed with a ticket until someone has called.
+    """
     from src.services import auth_service, notifier
+
+    flag(conv, f"Personal guidance: {what}" + (f" ({availability})" if availability else ""))
 
     try:
         notifier.notify_webinar(auth_service.BOOTSTRAP_ADMIN, {

@@ -504,6 +504,7 @@ const SummaryCard: React.FC<{
     said: { icon: 'person', cls: 'bg-slate-800 text-slate-300' },
     answered: { icon: 'check', cls: 'bg-emerald-950 text-emerald-300' },
     waiting: { icon: 'priority_high', cls: 'bg-rose-950 text-rose-300' },
+    team: { icon: 'support_agent', cls: 'bg-violet-950 text-violet-300' },
   };
   const Heading = ({ children }: { children: React.ReactNode }) => (
     <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 mb-2">{children}</div>
@@ -529,8 +530,8 @@ const SummaryCard: React.FC<{
         <ol className="relative border-l border-slate-800 ml-2.5 space-y-2.5">
           {steps.map((t, i) => (
             <li key={i} className="pl-4 relative">
-              <span className={`absolute -left-[11px] top-0 h-5 w-5 rounded-full flex items-center justify-center ${mark[t.kind].cls}`}>
-                <span className="material-symbols-outlined text-[13px]">{mark[t.kind].icon}</span>
+              <span className={`absolute -left-[11px] top-0 h-5 w-5 rounded-full flex items-center justify-center ${(mark[t.kind] || mark.said).cls}`}>
+                <span className="material-symbols-outlined text-[13px]">{(mark[t.kind] || mark.said).icon}</span>
               </span>
               {t.when && <div className="text-[10.5px] text-slate-500">{t.when}</div>}
               <div className={t.kind === 'waiting' ? 'text-rose-200 font-medium' : 'text-slate-200'}>{t.text}</div>

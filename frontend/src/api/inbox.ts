@@ -160,7 +160,9 @@ export interface ChatSummary {
   /** One or two plain sentences: where this person stands. */
   in_short: string;
   /** The conversation from the start, one plain line per thing that happened. */
-  timeline: { when: string; kind: 'event' | 'said' | 'answered' | 'waiting'; text: string }[];
+  timeline: { when: string; kind: 'event' | 'said' | 'answered' | 'waiting' | 'team'; text: string }[];
+  /** True when they wrote to us on their own, not from a campaign or the bot's flow. */
+  direct?: boolean;
   timeline_earlier: number;
   waiting_questions: { text: string; at: string; voice: boolean }[];
   story: string[];

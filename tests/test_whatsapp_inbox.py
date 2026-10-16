@@ -1374,3 +1374,42 @@ def test_a_ticket_is_raised_once_and_solved_with_question_resolved(db, client, e
     say(db, "Ek aur sawal hai, aapka office kahan hai?")
     ids = [x["ticket_id"] for x in client.get("/api/v1/inbox/tickets").json()]
     assert len(ids) == 2 and ids[1] == first and ids[0] > first
+
+
+def test_personal_guidance_answers_raise_a_ticket(db, told, emailed):
+    from src.services import tickets
+    tap_campaign(db, text=campaign_buttons.WEBINAR["en"], lang="en")
+    tap(db, "webinar:yes")
+    c = conv(db)
+    assert c.needs_attention and c.attention_reason.startswith("Personal guidance: Confirmed")
+    t = tickets.open_ticket(db, PHONE)
+    assert t is not None and t.question.startswith("Personal guidance")
+    assert len(emailed) == 1 and told
+
+
+def test_team_emails_go_to_the_admin_and_kavya_once_each(monkeypatch):
+    from src.services import notifier
+    monkeypatch.setattr(notifier, "NOTIFY_ALSO", "kavya.shukla@eko.co.in, Admin@Eko.in")
+    assert notifier.team("admin@eko.in") == "admin@eko.in, kavya.shukla@eko.co.in"
+
+
+def test_a_chat_that_did_not_come_from_a_campaign_is_summarised_for_what_it_is(db, client):
+    from src.services import chat_summary
+    for i in range(2):
+        inbound(db, "image", image={"id": f"m{i}", "mime_type": "image/jpeg"})
+    say(db, "isko install karna hai sir")
+    c = conv(db)
+    assert c.bot_step is None
+    s = chat_summary.summarise(db, c)
+    assert s["direct"] and s["headline"] == "Wrote to us directly"
+    assert "wrote to us directly" in s["in_short"] and "sent 2 photos" in s["in_short"]
+    assert "installing or setting up a device" in s["in_short"] and "Nobody has replied yet" in s["in_short"]
+    assert "Sent 2 photos" in [t["text"] for t in s["timeline"]]
+    assert "Interested" not in s["next"]["action"] and "support team" in s["next"]["action"]
+    assert s["next"]["reply"].startswith("Namaste") and s["next"]["reply_language"] == "Hinglish"
+    # The team's own reply shows in the conversation and in short.
+    inbox.send(db, PHONE, "Ji, hum aapko call karte hain", sent_by="kavya.shukla@eko.co.in")
+    db.commit()
+    s = chat_summary.summarise(db, conv(db))
+    assert any(t["kind"] == "team" and t["text"].startswith("Kavya Shukla replied") for t in s["timeline"])
+    assert "The team replied" in s["in_short"]

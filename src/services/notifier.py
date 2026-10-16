@@ -14,6 +14,21 @@ from typing import Optional
 logger = logging.getLogger("gmap_scraper.notifier")
 
 
+# Who else gets the team's lead and inbox emails (interested, documents,
+# personal guidance, attention tickets) besides the admin: comma-separated.
+NOTIFY_ALSO = os.environ.get("NOTIFY_ALSO", "kavya.shukla@eko.co.in")
+
+
+def team(admin_email: str) -> str:
+    """The admin and everyone in NOTIFY_ALSO, once each, as one To line."""
+    out = []
+    for e in [admin_email] + NOTIFY_ALSO.split(","):
+        e = (e or "").strip()
+        if e and e.lower() not in {x.lower() for x in out}:
+            out.append(e)
+    return ", ".join(out)
+
+
 def smtp_configured() -> bool:
     return bool(os.environ.get("SMTP_HOST") and os.environ.get("SMTP_FROM"))
 
@@ -131,7 +146,7 @@ def notify_button_click(admin_email: str, lead: dict) -> bool:
 
     phone = (lead.get("phone") or "").lstrip("+")
     return _send(
-        admin_email,
+        team(admin_email),
         f"AutoGMap: {lead.get('name') or lead.get('phone')} tapped "
         f"\u201c{lead.get('button_text') or 'a button'}\u201d",
         f"{lead.get('name') or 'A recipient'} responded to a WhatsApp campaign.\n\n"
@@ -163,7 +178,7 @@ def notify_documents_submitted(admin_email: str, details: dict) -> bool:
         "Open them in AutoGMap under Inbox, and reach out as promised.",
         f"WhatsApp: https://wa.me/{phone}",
     ]
-    return _send(admin_email, f"AutoGMap: {who} submitted onboarding documents", "\n".join(lines) + "\n")
+    return _send(team(admin_email), f"AutoGMap: {who} submitted onboarding documents", "\n".join(lines) + "\n")
 
 
 def notify_webinar(admin_email: str, details: dict) -> bool:
@@ -190,7 +205,7 @@ def notify_webinar(admin_email: str, details: dict) -> bool:
         "Contact them soon, as the bot promised: call or WhatsApp.",
         f"WhatsApp: https://wa.me/{phone}",
     ]
-    return _send(admin_email, f"AutoGMap: personal guidance — {who}", "\n".join(lines) + "\n")
+    return _send(team(admin_email), f"AutoGMap: personal guidance — {who}", "\n".join(lines) + "\n")
 
 
 def notify_attention(admin_email: str, summary: dict, text: str, inbox_url: str) -> bool:
@@ -205,4 +220,4 @@ def notify_attention(admin_email: str, summary: dict, text: str, inbox_url: str)
     subject = f"AutoGMap: {'Ticket ' + ticket + ' raised' if ticket else 'needs attention'}: {who}: {reason[:60]}"
     body = (f"{who} needs a reply on WhatsApp.{(' Ticket ' + ticket + '.') if ticket else ''}\n\n{text}\n\n"
             f"Open the chat: {inbox_url}\nWhatsApp: https://wa.me/{(p.get('phone') or '').lstrip('+')}\n")
-    return _send(admin_email, subject, body)
+    return _send(team(admin_email), subject, body)
