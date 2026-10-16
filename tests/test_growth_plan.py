@@ -312,3 +312,26 @@ def test_the_revenue_goal_is_kept_and_cleared(db):
         bc.set_revenue_goal(db, 1, "2026-12-31", "2026-10-15")
     bc.set_revenue_goal(db, None)
     assert bc.revenue_goal(db) is None
+
+
+def test_the_plan_says_where_else_to_advertise_for_strong_leads(db):
+    from src.models.sbi_branch import SbiBranch
+    phones = campaign(db, 30, district="Rajkot", category="Insurance agency")
+    campaign(db, 20, district="Rajkot", category="Insurance agency", start=100)   # messaged
+    # 12 Insurance agencies in Rajkot nobody messaged yet.
+    for i in range(12):
+        bid = uuid.uuid4().hex[:16]
+        db.add(Business(business_id=bid, job_id="J", name="b", phone=f"+9197{i:08d}", category="Insurance agency",
+                        district="Rajkot", state="Gujarat", source_query="q", dedup_key=bid))
+    db.add(SbiBranch(branch_code="60108", branch_name="MULI", pincode="363510", district="Surendranagar"))
+    db.commit()
+    person(db, phones[0], bot.SUBMITTED, submitted=True,
+           **qualified(coverage={**SERVED, "geo": {"district": "Rajkot", "state": "Gujarat"}}))
+    p = gp.plan(db)
+    ad = p["advertise"]
+    assert ad["based_on"] == {"strong": 1, "qualified": 0} and ad["thin"]
+    assert ad["places"][0] == {"name": "Rajkot", "strong": 1, "qualified": 0, "left": 12}
+    assert ad["kinds"][0]["name"] == "Insurance agency" and ad["kinds"][0]["where"][0] == {"district": "Rajkot", "left": 12}
+    assert ad["branch_places"][0]["district"] == "Surendranagar" and ad["branch_places"][0]["branches"] == ["Muli"]
+    titles = [c["title"] for c in ad["channels"]]
+    assert "At the SBI branches themselves" in titles and any("Insurance agency" in t for t in titles)

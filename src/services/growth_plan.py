@@ -278,9 +278,9 @@ def _ranked(book: dict, dim: str) -> List[dict]:
     return [r for r in rows if not ci.is_unknown(r["values"][dim])]
 
 
-def targets(db: Session, book: dict) -> dict:
+def targets(db: Session, book: dict, pool: Optional[Dict[str, Counter]] = None) -> dict:
     """Where to send next and to whom: what worked so far, and the reachable people left there."""
-    pool = _untapped(db)
+    pool = pool if pool is not None else _untapped(db)
     stage = book["judged_on"]
 
     def rows_for(dim: str, key_of, pool_counter: Counter) -> List[dict]:
@@ -306,6 +306,103 @@ def targets(db: Session, book: dict) -> dict:
         "categories": rows_for("category", lambda name: name, pool["category"]),
         "best_pairs": [{"district": d, "category": c, "left": n} for (d, c), n in pool["pair"].most_common(10)],
         "reachable_left": sum(pool["district"].values()),
+    }
+
+
+def advertise(db: Session, people: List[WhatsAppConversation], pool: Dict[str, Counter],
+              showcase: Optional[dict] = None) -> dict:
+    """
+    Where else to advertise to win strongly qualified leads: the places and
+    kinds of business our strong and qualified leads came from, with the
+    businesses there we have not messaged yet; our SBI branches' districts
+    not advertised in yet; and other channels than WhatsApp campaigns, aimed
+    at those same places and people.
+    """
+    from src.models.sbi_branch import SbiBranch
+    from src.services import applications
+
+    # The business each campaign reached them as: its category and district.
+    sources = {}
+    phones = [p.phone for p in people]
+    for phone, category, district in (db.query(WhatsAppCampaignRecipient.phone, Business.category, Business.district)
+                                      .join(Business, Business.business_id == WhatsAppCampaignRecipient.business_id)
+                                      .filter(WhatsAppCampaignRecipient.phone.in_(phones)).all() if phones else []):
+        sources[inbox.normalize_phone(phone)] = {"category": category, "district": district}
+    leads = []
+    for conv in people:
+        q = applications.qualify(conv)
+        if not (q["strongly_qualified"] or (q["pin_qualified"] and not q["not_qualified"])):
+            continue
+        geo = ((conv.bot_data or {}).get("coverage") or {}).get("geo") or {}
+        src = sources.get(conv.phone) or {}
+        leads.append({"strong": q["strongly_qualified"], "district": geo.get("district") or src.get("district"),
+                      "category": src.get("category")})
+    strong = sum(l["strong"] for l in leads)
+
+    def tally(key: str) -> List[dict]:
+        out = {}
+        for l in leads:
+            name = l[key]
+            if not name or ci.is_unknown(name):
+                continue
+            row = out.setdefault(name, {"name": name, "strong": 0, "qualified": 0})
+            row["strong" if l["strong"] else "qualified"] += 1
+        return sorted(out.values(), key=lambda r: (-r["strong"], -r["qualified"]))
+
+    places = [{**r, "left": pool["district"].get(r["name"], 0)} for r in tally("district")][:6]
+    kinds = []
+    for r in tally("category")[:6]:
+        where = [(d, n) for (d, c), n in pool["pair"].most_common() if c == r["name"] and d != "Unknown"][:3]
+        kinds.append({**r, "left": pool["category"].get(r["name"], 0),
+                      "where": [{"district": d, "left": n} for d, n in where]})
+
+    # Our SBI branches' districts where no campaign has found a lead yet.
+    lead_districts = {p["name"].lower() for p in places}
+    branches = {}
+    for b in db.query(SbiBranch).all():
+        if b.district and b.district.lower() not in lead_districts:
+            branches.setdefault(b.district, []).append(b.branch_name.title() if b.branch_name else b.branch_code)
+    branch_places = sorted(({"district": d, "branches": names, "left": pool["district"].get(d, 0)}
+                            for d, names in branches.items()), key=lambda x: -x["left"])[:6]
+
+    hot = [p["name"] for p in places[:3]] or [b["district"] for b in branch_places[:3]]
+    hot_text = ", ".join(hot) if hot else "our SBI branch areas"
+    kind_text = ", ".join(k["name"] for k in kinds[:3]) or "shop and agency owners"
+    poster = f" Use the poster of “{showcase['template']}”, the template that moved the most people." if showcase else ""
+    n_branches = db.query(SbiBranch).count()
+    channels = [
+        {"icon": "ads_click", "title": "Facebook and Instagram ads around our SBI branches",
+         "where": hot_text,
+         "how": f"Target 10–20 km around the {n_branches or 'our'} branch PINs, people aged 25–55 who own a shop or "
+                f"run an agency. Point the ad to WhatsApp, so the bot qualifies them the same way.{poster}",
+         "why": "Reaches owners who are not on Google Maps, in exactly the places we can serve."},
+        {"icon": "account_balance", "title": "At the SBI branches themselves",
+         "where": ", ".join(sorted({d for d in branches} | set(hot)))[:200] or hot_text,
+         "how": "A poster or standee with the WhatsApp QR at each branch, and a word with the Branch Manager and the AO "
+                "so walk-in customers who ask about a kiosk are sent to us.",
+         "why": "People asking at a branch already trust SBI and live nearby: the strongest leads."},
+        {"icon": "storefront", "title": f"Traders' associations and market groups for {kind_text}",
+         "where": hot_text,
+         "how": "Share the message in the local traders' and agents' WhatsApp groups and market committees, "
+                "through a member or the association head.",
+         "why": "Our strong leads were these kinds of business; their peers have the same capital and reasons to join."},
+        {"icon": "group_add", "title": "Referrals from CSPs already live",
+         "where": hot_text,
+         "how": "Ask CSPs who went live to refer one person each, with a small thank-you; give each a code to quote "
+                "so we can count them.",
+         "why": "A working CSP nearby is the most convincing proof that it pays."},
+        {"icon": "school", "title": "RSETI and Common Service Centres (CSC)",
+         "where": hot_text,
+         "how": "Talk at RSETI entrepreneurship batches and leave the QR with CSC operators in these districts.",
+         "why": "People there are already looking to start a business, and many are 12th pass or more."},
+    ]
+    return {
+        "based_on": {"strong": strong, "qualified": len(leads) - strong},
+        "thin": len(leads) < 10,
+        "places": places,
+        "kinds": kinds,
+        "branch_places": branch_places,
+        "channels": channels,
     }
 
 
@@ -449,9 +546,11 @@ def plan(db: Session) -> dict:
     g = goal(db, people, facts, summary)
     f = funnel(db, people, facts)
     warm = warm_people(people)
-    t = targets(db, book)
+    pool = _untapped(db)
+    t = targets(db, book, pool)
     c = creative(book)
     return {
+        "advertise": advertise(db, people, pool, c.get("showcase")),
         "computed_at": datetime.now(timezone.utc).isoformat(),
         "goal": g,
         "business": summary,

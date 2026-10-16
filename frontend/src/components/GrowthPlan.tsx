@@ -410,6 +410,73 @@ const NextSteps: React.FC<{ plan: Plan }> = ({ plan }) => (
   </Card>
 );
 
+const Advertise: React.FC<{ plan: Plan }> = ({ plan }) => {
+  const ad = plan.advertise;
+  if (!ad) return null;
+  const leadsLine = (r: { strong: number; qualified: number }) =>
+    [r.strong && `${r.strong} strong`, r.qualified && `${r.qualified} qualified`].filter(Boolean).join(', ');
+  return (
+    <Card icon="campaign" title="Where else to advertise" tint="bg-violet-950 text-violet-300"
+      subtitle={<>To win more <b className="text-slate-300">strongly qualified</b> leads: the places and kinds of business they came from, our SBI branch areas, and channels beyond WhatsApp. Based on {ad.based_on.strong} strong and {ad.based_on.qualified} qualified leads{ad.thin ? ', still few, so treat these as a start' : ''}.</>}>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Places our good leads came from</div>
+          {ad.places.length ? (
+            <ul className="space-y-1.5">
+              {ad.places.map(p => (
+                <li key={p.name} className="text-[13px] rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+                  <div className="flex justify-between gap-2"><b className="text-slate-100 font-semibold">{p.name}</b><span className="text-emerald-300 text-[12px]">{leadsLine(p)}</span></div>
+                  <div className="text-[12px] text-slate-400">{num(p.left)} businesses there not messaged yet</div>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-[13px] text-slate-500">No qualified leads with a known district yet.</p>}
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Kinds of business that qualified</div>
+          {ad.kinds.length ? (
+            <ul className="space-y-1.5">
+              {ad.kinds.map(k => (
+                <li key={k.name} className="text-[13px] rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+                  <div className="flex justify-between gap-2"><b className="text-slate-100 font-semibold">{k.name}</b><span className="text-emerald-300 text-[12px]">{leadsLine(k)}</span></div>
+                  <div className="text-[12px] text-slate-400">{num(k.left)} not messaged yet{k.where.length ? `, most in ${k.where.map(w => `${w.district} (${num(w.left)})`).join(', ')}` : ''}</div>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-[13px] text-slate-500">No qualified leads with a known category yet.</p>}
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Our SBI branch areas, no lead yet</div>
+          {ad.branch_places.length ? (
+            <ul className="space-y-1.5">
+              {ad.branch_places.map(b => (
+                <li key={b.district} className="text-[13px] rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+                  <b className="text-slate-100 font-semibold">{b.district}</b>
+                  <div className="text-[12px] text-slate-400">Branches: {b.branches.join(', ')} · {num(b.left)} businesses not messaged</div>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-[13px] text-slate-500">Every branch area has a lead already.</p>}
+        </div>
+      </div>
+      <div className="text-[11px] uppercase tracking-wider text-slate-500 mt-5 mb-1.5">Beyond WhatsApp campaigns <span className="normal-case tracking-normal text-slate-600">· ideas, not measured yet; give each its own QR or code so its leads can be counted</span></div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {ad.channels.map(c => (
+          <article key={c.title} className="rounded-lg border border-slate-800 bg-slate-950/60 p-3.5">
+            <div className="flex items-center gap-2">
+              <span className="h-7 w-7 shrink-0 rounded-full bg-violet-950 text-violet-300 flex items-center justify-center"><Icon name={c.icon} className="text-[16px]" /></span>
+              <h4 className="text-[13.5px] font-semibold text-slate-100">{c.title}</h4>
+            </div>
+            <p className="text-[12.5px] text-slate-300 mt-2 leading-relaxed">{c.how}</p>
+            <p className="text-[11.5px] text-slate-500 mt-1.5"><b className="text-slate-400 font-medium">Where:</b> {c.where}</p>
+            <p className="text-[11.5px] text-slate-500 mt-1 flex gap-1"><Icon name="info" className="text-[14px]" />{c.why}</p>
+          </article>
+        ))}
+      </div>
+    </Card>
+  );
+};
+
 // ---------------------------------------------------------------------------
 // From message to lead
 // ---------------------------------------------------------------------------
@@ -671,6 +738,7 @@ export const GrowthPlan: React.FC = () => {
       {plan.business && <Business b={plan.business} plan={plan} onSaved={load} />}
       <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
         <NextSteps plan={plan} />
+        <Advertise plan={plan} />
         <div className="space-y-5 min-w-0">
           <Funnel plan={plan} />
           <CallList plan={plan} />

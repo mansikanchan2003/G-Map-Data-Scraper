@@ -235,6 +235,15 @@ export interface GrowthPlan {
   };
   /** icon: a Material Symbols name. */
   next_steps: { title: string; detail: string; why: string; impact: 'high' | 'medium' | 'low'; icon?: string }[];
+  /** Where else to advertise to win strongly qualified leads. */
+  advertise?: {
+    based_on: { strong: number; qualified: number };
+    thin: boolean;
+    places: { name: string; strong: number; qualified: number; left: number }[];
+    kinds: { name: string; strong: number; qualified: number; left: number; where: { district: string; left: number }[] }[];
+    branch_places: { district: string; branches: string[]; left: number }[];
+    channels: { icon: string; title: string; where: string; how: string; why: string }[];
+  };
 }
 
 export const fetchGrowthPlan = () => call<GrowthPlan>('/growth');
