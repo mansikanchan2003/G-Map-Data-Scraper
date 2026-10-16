@@ -42,7 +42,7 @@ STEP_NEXT = {
     bot.SUBMITTED: ("Documents submitted: a lead. Thank them and arrange the team's call for the next steps.", None),
     bot.NOT_SERVED: ("Their PIN is outside our area. Tell them, and note the PIN in case we expand there.", None),
     bot.NOT_ELIGIBLE: ("Below 12th, so not eligible for the Banking Outlet. Thank them politely.", None),
-    bot.NOT_INVESTING: ("They said they cannot invest. Explain that the money stays theirs in their e-wallet "
+    bot.NOT_INVESTING: ("They said they cannot invest. Explain that part of the money stays theirs in their e-wallet "
                         "and ask whether up to ₹5 lakh could work.", "invest_explained"),
     bot.HANDOVER: ("The bot handed them over after three unusable PIN codes. Call them or ask for the PIN again.", "ask_pin"),
     bot.AWAIT_WEBINAR: ("Asked about personal guidance. Ask whether they can join.", None),

@@ -104,9 +104,9 @@ FACTS: List[str] = [
     "own space and fixed hours, so it suits established business families adding a second, respected "
     "business, and it draws on their name, network and existing customers.",
     "Women operators get an extra incentive on their total commission, up to a limit.",
-    "Of the up to ₹5 lakh, about ₹1-1.5 lakh goes on the devices (laptop or tab, biometric device, micro "
-    "ATM, passbook printer, GPS dongle), which Eko provides and trains the operator on. The operator's own "
-    "e-wallet, which customers' transactions run through, stays theirs: a deposit or transfer is paid in cash "
+    "Of the up to ₹5 lakh, about ₹1.5-2.5 lakh goes on the devices (laptop or tab, biometric device, micro "
+    "ATM, passbook printer, GPS dongle), which Eko provides and trains the operator on. Part of the money stays "
+    "with the operator, in their own e-wallet, which customers' transactions run through: a deposit or transfer is paid in cash "
     "to the operator and goes from the e-wallet to the customer's account, a withdrawal is paid out in cash and "
     "comes back into the e-wallet, and the operator tops it up at the bank with the cash collected. A commission "
     "on every transaction. The rest sets up the outlet (seating, drinking water, posters, banners) so it looks "

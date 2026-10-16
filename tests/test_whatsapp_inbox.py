@@ -1278,7 +1278,7 @@ def test_what_the_5_lakh_is_for_comes_before_the_investment_question(db):
     (_k1, _t1, explained, b1), (_k2, _t2, question, b2) = StubMeta.sent[count:count + 2]
     assert explained == bot_messages.MESSAGES["en"]["invest_explained"] and not b1
     assert explained.startswith("💼 *How up to ₹5 lakh is used*")
-    assert "e-wallet" in explained and "₹1–1.5 lakh" in explained and "mini branch" in explained
+    assert "e-wallet" in explained and "₹1.5–2.5 lakh" in explained and "Some of the money stays with you" in explained and "mini branch" in explained
     assert "security deposit" not in explained
     assert "up to 5 Lakh" in question
     assert question == bot_messages.MESSAGES["en"]["ask_invest"]
