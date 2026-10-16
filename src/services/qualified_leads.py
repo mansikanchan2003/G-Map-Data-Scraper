@@ -12,23 +12,19 @@ Kept up to date whenever the list is opened: the applications are read
 afresh and anyone newly qualified is added, so older applicants are there too.
 """
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.models.application import ApplicationComment, ApplicationRemoval, QualifiedLead
 from src.models.inbox import WhatsAppConversation, WhatsAppMessage
-from src.models.location import Location
 from src.models.sbi_branch import SbiBranch
-from src.services import applications, inbox, pincode_coverage
+from src.services import applications, inbox
 from src.services import onboarding_bot as bot
-from src.services.geo_validator import haversine_distance
 
 QUALIFIED, STRONG = "Qualified", "Strongly qualified"
 RANK = {QUALIFIED: 1, STRONG: 2}
-# PINs placed on the map per load at most (OpenStreetMap is slow); the rest next time.
-LOOKUPS_PER_LOAD = 10
 
 
 def level_of(q: dict) -> Optional[str]:
@@ -60,36 +56,6 @@ def why(conv: WhatsAppConversation, q: dict) -> List[str]:
     return out
 
 
-def _branches(db: Session) -> List[Tuple[SbiBranch, float, float]]:
-    """Our SBI branches with the coordinates of their PIN."""
-    coords = {l.pincode: (l.latitude, l.longitude) for l in db.query(Location)
-              .filter(Location.pincode.in_([b.pincode for b in db.query(SbiBranch.pincode)]),
-                      Location.latitude.isnot(None), Location.longitude.isnot(None))}
-    return [(b, *coords[b.pincode]) for b in db.query(SbiBranch).all() if b.pincode in coords]
-
-
-def _coords(db: Session, pin: str) -> Optional[Tuple[float, float]]:
-    loc = (db.query(Location).filter(Location.pincode == pin, Location.latitude.isnot(None),
-                                     Location.longitude.isnot(None)).first())
-    if loc:
-        return loc.latitude, loc.longitude
-    return pincode_coverage._locate_or_none(pin)
-
-
-def nearest_branch(db: Session, pin: str, branches=None) -> Optional[Tuple[SbiBranch, float]]:
-    """The SBI branch nearest to a PIN, and how far, or None if it cannot be placed."""
-    branches = branches if branches is not None else _branches(db)
-    if not branches:
-        return None
-    exact = next((b for b, _, _ in branches if b.pincode == pin), None)
-    if exact:
-        return exact, 0.0
-    here = _coords(db, pin)
-    if here is None:
-        return None
-    return min(((b, haversine_distance(here[0], here[1], lat, lng)) for b, lat, lng in branches), key=lambda x: x[1])
-
-
 def _candidates(db: Session) -> List[WhatsAppConversation]:
     """Every application from our campaigns, including those taken off the tab."""
     convs = [c for c in db.query(WhatsAppConversation)
@@ -105,7 +71,9 @@ def sync(db: Session) -> None:
     typed = applications._typed_pins(db, convs)
     applications._fill_geography(db, convs, typed)
     kept = {r.phone: r for r in db.query(QualifiedLead).all()}
-    by_phone = {c.phone: c for c in convs}
+    branches = applications._branches(db)
+    # The branch's region (RBO) and circle, which the shared helper leaves out.
+    rbo = {b.branch_code: (b.region, b.circle) for b in db.query(SbiBranch.branch_code, SbiBranch.region, SbiBranch.circle)}
     for conv in convs:
         q = applications.qualify(conv)
         level = level_of(q)
@@ -124,27 +92,16 @@ def sync(db: Session) -> None:
             row.level, row.why = level, why(conv, q)
         coverage = (conv.bot_data or {}).get("coverage") or {}
         geo = coverage.get("geo") or {}
+        # The nearest of our SBI branches, from the PIN's coordinates (kept by the Applications list).
+        near = applications._nearest_branch(branches, coverage.get("coords"))
+        if near:
+            row.branch_code, row.branch_name, row.branch_ao = near["branch_code"], near["branch_name"], near["ao"]
+            row.branch_region, row.branch_circle = rbo.get(near["branch_code"], (None, None))
+            row.branch_distance_km, row.branch_checked_pin = near["distance_km"], coverage.get("pincode")
         row.name = conv.profile_name or row.name
         row.pincode = coverage.get("pincode") or row.pincode
         row.state, row.district, row.tehsil = (geo.get("state") or row.state, geo.get("district") or row.district,
                                                geo.get("tehsil") or row.tehsil)
-    db.flush()
-
-    branches, looked_up = None, 0
-    for row in kept.values():
-        if not row.pincode or row.branch_checked_pin == row.pincode or row.phone not in by_phone:
-            continue
-        if looked_up >= LOOKUPS_PER_LOAD:
-            break
-        looked_up += 1
-        branches = branches if branches is not None else _branches(db)
-        found = nearest_branch(db, row.pincode, branches)
-        if found is None:
-            continue
-        b, km = found
-        row.branch_code, row.branch_name, row.branch_ao = b.branch_code, b.branch_name, b.module
-        row.branch_region, row.branch_circle = b.region, b.circle
-        row.branch_distance_km, row.branch_checked_pin = round(km, 1), row.pincode
     db.commit()
 
 

@@ -330,7 +330,11 @@ def test_qualified_and_strongly_qualified_leads_are_kept_with_the_nearest_branch
                                      status="DELIVERED", provider_message_id="wamid.0.x"))
     db.commit()
     # Chotila (363520) sits about 25 km from Muli and 60 km from Jasdan.
-    monkeypatch.setattr(pincode_coverage, "_locate_or_none", lambda pin: (22.42, 71.20) if pin == "363520" else None)
+    def locate(pin):
+        if pin != "363520":
+            raise LookupError(pin)
+        return 22.42, 71.20
+    monkeypatch.setattr(pincode_coverage, "locate", locate)
 
     out = client.get("/api/v1/applications/qualified").json()
     leads = {a["phone"]: a for a in out["items"]}
