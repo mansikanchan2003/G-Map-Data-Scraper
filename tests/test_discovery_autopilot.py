@@ -602,7 +602,7 @@ def test_a_batch_whose_jobs_all_failed_does_not_count(db):
     assert len(scraper.batches) == 13, "three failed batches, then the day's ten"
     assert ap.batches_today(db, clock()) == 10
     assert ap.failed_batches_today(db, clock()) == 3
-    status = ap.status(db)["today"]
+    status = ap.status(db, clock())["today"]
     assert status["batches_done"] == 10 and status["batches_failed"] == 3
     # Still one at a time, a quarter of an hour apart, failed ones included.
     runs = db.query(RunLog).order_by(RunLog.started_at).all()

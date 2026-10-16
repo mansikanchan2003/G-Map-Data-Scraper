@@ -684,8 +684,8 @@ def _round_view(r: DiscoveryRound, progress: Dict[str, str]) -> dict:
             "created_at": _iso(_aware(r.created_at)), "completed_at": _iso(_aware(r.completed_at))}
 
 
-def status(db: Session) -> dict:
-    now = _now()
+def status(db: Session, now: Optional[datetime] = None) -> dict:
+    now = now or _now()
     settings = get_settings(db)
     state = get_state(db)
     if not settings["enabled"]:
