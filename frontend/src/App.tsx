@@ -57,6 +57,8 @@ export default function App() {
       let hash = window.location.hash.replace('#', '');
       // #inbox/919876543210 opens the inbox at that conversation.
       if (hash.startsWith('inbox/')) hash = 'inbox';
+      // #applications/qualified opens the Qualified leads page inside Applications.
+      if (hash.startsWith('applications/')) hash = 'applications';
       if (hash === 'inbox') hash = 'whatsapp-inbox';
       // Approval emails sent before this used #admin-approvals.
       if (hash === 'admin-approvals') hash = 'approvals';

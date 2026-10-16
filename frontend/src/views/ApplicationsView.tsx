@@ -4,6 +4,7 @@ import {
   restoreApplication, documentUrl, type Application, type ApplicationStats,
 } from '../api/applications';
 import { formatDateTime } from '../utils/datetime';
+import { QualifiedLeadsView } from './QualifiedLeadsView';
 
 /**
  * Everyone who started onboarding through the WhatsApp bot: how far they got,
@@ -92,6 +93,13 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
   const [open, setOpen] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The Qualified leads page, at #applications/qualified so a refresh or a link lands there.
+  const [qualifiedOpen, setQualifiedOpen] = useState(() => window.location.hash.startsWith('#applications/qualified'));
+  useEffect(() => {
+    const onHash = () => setQualifiedOpen(window.location.hash.startsWith('#applications/qualified'));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -166,6 +174,10 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
     { label: 'Submitted', value: stats?.submitted || 0, icon: 'task_alt' },
   ];
 
+  if (qualifiedOpen) {
+    return <QualifiedLeadsView readOnly={readOnly} onBack={() => { window.location.hash = 'applications'; }} />;
+  }
+
   return (
     <div className="flex-1 overflow-y-auto bg-slate-950 text-slate-100">
       <div className="px-6 pt-6 pb-2 max-w-[1500px] mx-auto flex flex-wrap items-end justify-between gap-4">
@@ -173,7 +185,11 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
           <h1 className="text-2xl font-semibold tracking-tight text-slate-100">{showRemoved ? 'Removed applications' : 'Applications'}</h1>
           <p className="text-sm text-slate-500 mt-1">People who started SBI Customer Service Point onboarding through the WhatsApp bot.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => { window.location.hash = 'applications/qualified'; }}
+            className="h-9 px-3.5 rounded-lg bg-emerald-500 hover:opacity-90 text-white text-sm font-semibold flex items-center gap-1.5 shadow-sm">
+            <Icon name="workspace_premium" className="text-[18px]" />Qualified leads
+          </button>
           <button onClick={() => { setShowRemoved(v => !v); setOpen(null); }}
             className={`h-9 px-3.5 rounded-lg border text-sm font-medium flex items-center gap-1.5 shadow-sm ${showRemoved
               ? 'bg-amber-950 border-amber-800/60 text-amber-300' : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'}`}>

@@ -309,3 +309,49 @@ def test_each_row_says_when_the_lead_came_in(client):
     assert apps["+919000000002"]["lead_at"].startswith("2026-10-14T08:00")
     # With no message of theirs recorded, when the conversation began.
     assert apps["+919000000001"]["lead_at"] == apps["+919000000001"]["started_at"]
+
+
+def test_qualified_and_strongly_qualified_leads_are_kept_with_the_nearest_branch(client, monkeypatch):
+    from src.models import Location, QualifiedLead
+    from src.models.sbi_branch import SbiBranch
+    from src.services import pincode_coverage
+    db = TestingSessionLocal()
+    # Two of our branches, and someone part-way: PIN in our area, education not answered yet.
+    db.add(SbiBranch(branch_code="60108", branch_name="MULI", pincode="363510", circle="GANDHINAGAR",
+                     module="AO Ahmedabad", region="5"))
+    db.add(SbiBranch(branch_code="60077", branch_name="JASDAN", pincode="360050", circle="GANDHINAGAR",
+                     module="AO RAJKOT", region="6"))
+    db.add(Location(location_id="L1", pincode="363510", latitude=22.65, longitude=71.46))
+    db.add(Location(location_id="L2", pincode="360050", latitude=22.04, longitude=71.20))
+    db.add(WhatsAppConversation(phone="+919000000010", profile_name="Part-way", bot_step=bot.AWAIT_EDUCATION,
+                                bot_data={"coverage": SERVED}, last_message_at=datetime.now(timezone.utc)))
+    from src.models.whatsapp import WhatsAppCampaignRecipient
+    db.add(WhatsAppCampaignRecipient(recipient_id="R0-x", campaign_id="C0", phone="+919000000010",
+                                     status="DELIVERED", provider_message_id="wamid.0.x"))
+    db.commit()
+    # Chotila (363520) sits about 25 km from Muli and 60 km from Jasdan.
+    monkeypatch.setattr(pincode_coverage, "_locate_or_none", lambda pin: (22.42, 71.20) if pin == "363520" else None)
+
+    out = client.get("/api/v1/applications/qualified").json()
+    leads = {a["phone"]: a for a in out["items"]}
+    assert set(leads) == {"+919000000001", "+919000000002", "+919000000010"}
+    assert out["stats"]["strongly_qualified"] == 2 and out["stats"]["qualified"] == 1
+    strong = leads["+919000000001"]
+    assert strong["level"] == "Strongly qualified" and strong["submitted"]
+    assert strong["why"] == ["PIN 363520 is in our area (Chotila)", "Graduate or post-graduate", "Can invest up to ₹5 lakh"]
+    assert strong["district"] == "Surendranagar" and strong["pincode"] == "363520"
+    assert strong["branch"]["code"] == "60108" and strong["branch"]["ao"] == "AO Ahmedabad"
+    part = leads["+919000000010"]
+    assert part["level"] == "Qualified" and "Education not answered yet" in part["why"]
+
+    # Saying later they cannot invest does not lose them: kept, marked as dropped.
+    conv = db.get(WhatsAppConversation, "+919000000002")
+    conv.bot_data = {**conv.bot_data, "can_invest": False}
+    conv.bot_step = bot.NOT_INVESTING
+    db.commit()
+    again = {a["phone"]: a for a in client.get("/api/v1/applications/qualified").json()["items"]}
+    assert again["+919000000002"]["level"] == "Strongly qualified"
+    assert again["+919000000002"]["still_qualified"] is False
+    assert again["+919000000002"]["now"].startswith("Not qualified now: cannot invest")
+    assert db.query(QualifiedLead).count() == 3
+    db.close()

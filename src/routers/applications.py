@@ -25,6 +25,13 @@ def list_applications(removed: bool = False, db: Session = Depends(get_db)):
     return applications.list_applications(db, removed=removed)
 
 
+@router.get("/qualified")
+def list_qualified(db: Session = Depends(get_db)):
+    """Everyone who ever reached Qualified or Strongly qualified, kept for good, with the nearest SBI branch."""
+    from src.services import qualified_leads
+    return qualified_leads.list_leads(db)
+
+
 @router.post("/{digits}/comments")
 def add_comment(digits: str, payload: CommentIn, db: Session = Depends(get_db),
                 user: User = Depends(current_user)):

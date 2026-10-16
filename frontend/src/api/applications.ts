@@ -109,3 +109,37 @@ export const restoreApplication = (phone: string) =>
 
 /** Opens an uploaded document (or its copy in Drive). */
 export const documentUrl = (documentId: string) => `${getApiBaseUrl()}/api/v1/inbox/documents/${documentId}`;
+
+/** Someone who reached Qualified or Strongly qualified, kept for good. */
+export interface QualifiedLead {
+  phone: string;
+  name: string | null;
+  /** The highest level reached. */
+  level: 'Qualified' | 'Strongly qualified';
+  /** Why, in plain lines (and for Qualified, what is not answered yet). */
+  why: string[];
+  /** Where they stand today: their level, or what ruled them out since. */
+  now: string;
+  still_qualified: boolean;
+  stage: string;
+  submitted: boolean;
+  submitted_at: string | null;
+  lead_at: string | null;
+  qualified_at: string | null;
+  strongly_qualified_at: string | null;
+  last_message_at: string | null;
+  pincode: string | null;
+  state: string | null;
+  district: string | null;
+  tehsil: string | null;
+  /** The nearest SBI branch from our branch list. */
+  branch: { code: string; name: string | null; ao: string | null; region: string | null; circle: string | null; distance_km: number | null } | null;
+  category: string | null;
+  campaign: string | null;
+  removed: boolean;
+  comments: ApplicationComment[];
+}
+
+export interface QualifiedStats { total: number; strongly_qualified: number; qualified: number; submitted: number; dropped: number }
+
+export const fetchQualifiedLeads = () => call<{ stats: QualifiedStats; items: QualifiedLead[] }>('/qualified');
