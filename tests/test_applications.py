@@ -46,7 +46,14 @@ NOT_OURS = {"+919000000009"}
 
 GEO = {"363520": {"state": "Gujarat", "district": "Surendranagar", "tehsil": "Chotila"},
        "110001": {"state": "Delhi", "district": "New Delhi", "tehsil": None}}
+COORDS = {"363520": (22.42, 71.19), "110001": (28.63, 77.22)}
 LOOKUPS = []
+
+
+def _locate(pin):
+    if pin not in COORDS:
+        raise LookupError(pin)
+    return COORDS[pin]
 
 
 @pytest.fixture
@@ -55,6 +62,7 @@ def client(monkeypatch):
     LOOKUPS.clear()
     monkeypatch.setattr(pincode_coverage, "geography",
                         lambda db, pin: LOOKUPS.append(pin) or GEO.get(pin))
+    monkeypatch.setattr(pincode_coverage, "locate", _locate)
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
@@ -190,6 +198,41 @@ def test_a_pin_is_looked_up_once_and_kept(client):
     assert first == 5  # five applications have a PIN
     _by_phone(client)
     assert len(LOOKUPS) == first
+
+
+def _add_branches():
+    from src.models.location import Location
+    from src.models.sbi_branch import SbiBranch
+    db = TestingSessionLocal()
+    for code, name, pin, ao, (lat, lng) in [("60104", "Chotila", "363520", "AO Ahmedabad", (22.42, 71.19)),
+                                            ("497", "Viramgam", "382150", "AO Ahmedabad", (23.12, 72.04)),
+                                            ("60086", "Vinchhiya", "360055", "AO Rajkot", (22.21, 71.38))]:
+        db.add(SbiBranch(branch_code=code, branch_name=name, pincode=pin, module=ao))
+        db.add(Location(location_id=f"loc-{pin}", pincode=pin, latitude=lat, longitude=lng,
+                        radius_km=10, anchor_name=name, source_dataset="sbi_branches"))
+    db.commit()
+    db.close()
+
+
+def test_each_application_shows_its_nearest_sbi_branch_and_ao(client):
+    _add_branches()
+    _, apps = _by_phone(client)
+    assert apps["+919000000001"]["sbi_branch"] == {"branch_code": "60104", "branch_name": "Chotila",
+                                                   "ao": "AO Ahmedabad", "pincode": "363520", "distance_km": 0.0}
+    # Far away, still the nearest of the branches, with how far it is.
+    delhi = apps["+919000000004"]["sbi_branch"]
+    assert delhi["branch_code"] == "497" and delhi["distance_km"] > 700
+    assert apps["+919000000006"]["sbi_branch"] is None  # no PIN given yet
+
+
+def test_a_branch_added_later_is_found_without_looking_the_pin_up_again(client):
+    _, apps = _by_phone(client)
+    assert apps["+919000000001"]["sbi_branch"] is None  # no branches yet
+    looked_up = len(LOOKUPS)
+    _add_branches()
+    _, apps = _by_phone(client)
+    assert apps["+919000000001"]["sbi_branch"]["branch_code"] == "60104"
+    assert len(LOOKUPS) == looked_up
 
 
 def test_a_pin_the_bot_could_not_place_comes_from_the_chat(client):

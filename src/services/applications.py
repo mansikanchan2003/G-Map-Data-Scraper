@@ -24,8 +24,11 @@ from sqlalchemy.orm.attributes import flag_modified
 from src.models import Business
 from src.models.application import ApplicationComment, ApplicationRemoval
 from src.models.inbox import OnboardingDocument, WhatsAppConversation, WhatsAppMessage
+from src.models.location import Location
+from src.models.sbi_branch import SbiBranch
 from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
 from src.services import inbox, pincode_coverage
+from src.services.geo_validator import haversine_distance
 from src.services import onboarding_bot as bot
 
 # The steps of the onboarding flow.
@@ -153,15 +156,28 @@ def _standalone_pin(text: Optional[str]) -> Optional[str]:
     return match.group(1) if match else None
 
 
+def _pin_coords(db: Session, pin: str) -> Optional[List[float]]:
+    """A PIN's coordinates: our own location list first, then the geocoder."""
+    loc = db.query(Location).filter(Location.pincode == pin, Location.latitude.isnot(None)).first()
+    if loc:
+        return [loc.latitude, loc.longitude]
+    try:
+        lat, lng = pincode_coverage.locate(pin)
+    except LookupError:
+        return None
+    return [lat, lng]
+
+
 def _fill_geography(db: Session, convs: List[WhatsAppConversation], typed: Dict[str, str]) -> None:
     """
-    Gives each application's PIN its state, district and tehsil, once.
+    Gives each application's PIN its state, district, tehsil and coordinates, once.
 
     The PIN is the one the person gave in the chat. The bot's "place" is the
     nearest of our target PINs, not their own area, so the PIN itself is
     looked up and the answer kept on the conversation (beside the bot's
-    check, or under typed_pin for a PIN the bot could not place). Unknown
-    PINs are retried on a later load.
+    check, or under typed_pin for a PIN the bot could not place). The
+    coordinates find the nearest SBI branch. Unknown PINs are retried on a
+    later load.
     """
     started, looked_up, changed = time.monotonic(), 0, False
     for conv in convs:
@@ -169,18 +185,44 @@ def _fill_geography(db: Session, convs: List[WhatsAppConversation], typed: Dict[
         coverage = data.get("coverage") or {}
         key, pin = ("coverage", coverage.get("pincode")) if coverage.get("pincode") else ("typed_pin", typed.get(conv.phone))
         held = data.get(key) or {}
-        if not pin or (held.get("geo") and held.get("pincode") == pin):
+        if held.get("pincode") != pin:
+            held = {k: v for k, v in held.items() if k not in ("geo", "coords")}
+        if not pin or (held.get("geo") and held.get("coords")):
             continue
         if looked_up >= GEO_LOOKUPS_PER_LOAD or time.monotonic() - started > GEO_SECONDS_PER_LOAD:
             break
         looked_up += 1
-        geo = pincode_coverage.geography(db, pin)
+        found = {}
+        geo = held.get("geo") or pincode_coverage.geography(db, pin)
         if geo:
-            conv.bot_data = {**data, key: {**held, "pincode": pin, "geo": geo}}
+            found["geo"] = geo
+        coords = held.get("coords") or _pin_coords(db, pin)
+        if coords:
+            found["coords"] = coords
+        if found:
+            conv.bot_data = {**data, key: {**held, "pincode": pin, **found}}
             flag_modified(conv, "bot_data")
             changed = True
     if changed:
         db.commit()
+
+
+def _branches(db: Session) -> List[Dict]:
+    """The SBI branches with their PIN's coordinates, from our location list."""
+    coords = {l.pincode: (l.latitude, l.longitude) for l in db.query(Location)
+              .filter(Location.pincode.in_(db.query(SbiBranch.pincode)), Location.latitude.isnot(None))}
+    return [{"branch_code": b.branch_code, "branch_name": b.branch_name, "ao": b.module,
+             "pincode": b.pincode, "coords": coords[b.pincode]}
+            for b in db.query(SbiBranch).all() if b.pincode in coords]
+
+
+def _nearest_branch(branches: List[Dict], coords: Optional[List[float]]) -> Optional[Dict]:
+    """The SBI branch nearest a PIN, and how far it is."""
+    if not coords or not branches:
+        return None
+    km, best = min(((haversine_distance(coords[0], coords[1], *b["coords"]), b) for b in branches),
+                   key=lambda pair: pair[0])
+    return {k: v for k, v in best.items() if k != "coords"} | {"distance_km": round(km, 1)}
 
 
 def _iso(value) -> Optional[str]:
@@ -213,6 +255,7 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
               .order_by(ApplicationComment.created_at).all() if phones else []):
         comments.setdefault(c.phone, []).append(c)
     sources = _sources(db, phones)
+    branches = _branches(db)
     # When the lead came in: their first message or button tap to us.
     first_in = dict(db.query(WhatsAppMessage.phone, func.min(WhatsAppMessage.created_at))
                     .filter(WhatsAppMessage.phone.in_(phones), WhatsAppMessage.direction == "IN")
@@ -226,8 +269,8 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
         # last one they typed.
         typed_pin = typed.get(conv.phone)
         pin_info = coverage if coverage.get("pincode") else (data.get("typed_pin") or {})
-        geo = pin_info.get("geo") if pin_info.get("pincode") in (coverage.get("pincode"), typed_pin) else {}
-        geo = geo or {}
+        current = pin_info.get("pincode") in (coverage.get("pincode"), typed_pin)
+        geo = (pin_info.get("geo") if current else None) or {}
         q = qualify(conv)
         mine = docs.get(conv.phone, [])
         have = {d.doc_type for d in mine}
@@ -243,6 +286,8 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
             # The nearest of our target PINs and how far it is, from the bot's check.
             "place": coverage.get("place"),
             "distance_km": coverage.get("distance_km"),
+            # The SBI branch nearest their PIN: its code, name, AO and how far.
+            "sbi_branch": _nearest_branch(branches, pin_info.get("coords") if current else None),
             "category": (sources.get(conv.phone) or {}).get("category"),
             "qualification": QUALIFICATION.get(data.get("education")),
             "franchise_background": data.get("franchise"),

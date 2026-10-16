@@ -50,6 +50,11 @@ const Icon: React.FC<{ name: string; className?: string }> = ({ name, className 
 const initials = (name: string | null, phone: string) =>
   (name || '').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase() || phone.slice(-2);
 const place = (a: Application) => [a.tehsil, a.district, a.state].filter(Boolean).join(', ');
+// "SBI Chotila (60104) · AO Ahmedabad · 12 km"
+const branch = (a: Application) => a.sbi_branch && [
+  `SBI ${a.sbi_branch.branch_name} (${a.sbi_branch.branch_code})`, a.sbi_branch.ao,
+  a.sbi_branch.distance_km ? `${a.sbi_branch.distance_km} km` : 'same PIN',
+].filter(Boolean).join(' · ');
 
 const Avatar: React.FC<{ a: Application; tone?: string }> = ({ a, tone = 'bg-sky-950 text-sky-300' }) => (
   <span className={`h-9 w-9 shrink-0 rounded-full text-xs font-bold flex items-center justify-center ${tone}`}>{initials(a.name, a.phone)}</span>
@@ -120,17 +125,20 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
     const pick = FILTERS.find(f => f.key === filter)!.pick;
     return items.filter(a => pick(a)
       && (!stage || a.stage === stage)
-      && (!q || [a.name, a.phone, a.pincode, a.state, a.district, a.tehsil, a.category, a.source?.campaign].some(v => (v || '').toLowerCase().includes(q))));
+      && (!q || [a.name, a.phone, a.pincode, a.state, a.district, a.tehsil, a.category, a.source?.campaign,
+        a.sbi_branch?.branch_name, a.sbi_branch?.branch_code, a.sbi_branch?.ao].some(v => (v || '').toLowerCase().includes(q))));
   }, [items, filter, search, stage]);
 
   const exportCsv = () => {
     const head = ['Name', 'Phone', 'Lead at', 'Category (persona)', 'Qualification', 'Verdict', 'Not qualified because', 'Franchise background',
-      'Can invest ₹5 lakh', 'Stage', 'Documents', 'Required documents', 'Submitted at', 'Campaign', 'Comments', 'PIN code', 'State', 'District', 'Tehsil'];
+      'Can invest ₹5 lakh', 'Stage', 'Documents', 'Required documents', 'Submitted at', 'Campaign', 'Comments', 'PIN code', 'State', 'District', 'Tehsil',
+      'Nearest SBI branch', 'SBI branch code', 'AO', 'Distance to branch (km)'];
     const rows = shown.map(a => [a.name, a.phone, a.lead_at ? formatDateTime(a.lead_at) : '', a.category, a.qualification, a.verdict, a.not_qualified_reasons.join('; '),
       yesNo(a.franchise_background), yesNo(a.can_invest), a.stage, `${a.documents_count}/${a.documents_total}`,
       a.required_documents_done ? 'Done' : 'Missing', a.submitted_at ? formatDateTime(a.submitted_at) : '',
       a.source?.campaign, a.comments.map(c => `${formatDateTime(c.created_at)} ${c.author}: ${c.body}`).join(' | '),
-      a.pincode, a.state, a.district, a.tehsil]);
+      a.pincode, a.state, a.district, a.tehsil,
+      a.sbi_branch?.branch_name, a.sbi_branch?.branch_code, a.sbi_branch?.ao, a.sbi_branch?.distance_km]);
     const csv = [head, ...rows].map(r => r.map(csvCell).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
@@ -298,6 +306,12 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
                           {a.pincode_unchecked && <span className="ml-1 text-[10px] font-semibold text-amber-300" title="Typed in the chat, but the bot could not find it on the map and asked again">unchecked</span>}
                         </div>
                         {place(a) && <div className="text-[11px] text-slate-500 truncate max-w-[180px]" title={place(a)}>{place(a)}</div>}
+                        {branch(a) && (
+                          <div className="mt-0.5 flex items-center gap-1 text-[11px] text-sky-300 max-w-[200px]" title={`Nearest SBI branch: ${branch(a)}`}>
+                            <Icon name="account_balance" className="text-[13px] shrink-0" />
+                            <span className="truncate">{branch(a)}</span>
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-3">
                         <span className={`inline-block px-2 py-0.5 rounded-full border text-[11px] font-semibold whitespace-nowrap ${VERDICT_STYLE[a.verdict]}`}
@@ -402,6 +416,12 @@ const LeadsBlock: React.FC<{ leads: Application[]; onOpen: (phone: string) => vo
               <Icon name="location_on" className="text-[15px] text-slate-500" />
               <span className="truncate">{[a.pincode, place(a)].filter(Boolean).join(' · ') || 'No PIN'}</span>
             </div>
+            {branch(a) && (
+              <div className="mt-1 flex items-center gap-1.5 text-xs text-sky-300">
+                <Icon name="account_balance" className="text-[15px]" />
+                <span className="truncate">{branch(a)}</span>
+              </div>
+            )}
             <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px]">
               <span className="px-2 py-0.5 rounded-full bg-slate-950 border border-slate-800 text-slate-300">{a.qualification || 'Education —'}</span>
               <span className="px-2 py-0.5 rounded-full bg-slate-950 border border-slate-800 text-slate-300">Docs {a.documents_count}/{a.documents_total}{a.required_documents_done ? ' ✓' : ''}</span>
@@ -466,6 +486,7 @@ const ApplicationDetails: React.FC<{
       <div className="space-y-4 min-w-0">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl border border-slate-800 bg-slate-900">
           <Field icon="pin_drop" label="PIN code" value={app.pincode && [app.pincode, app.tehsil, app.district, app.state].filter(Boolean).join(' · ')} />
+          <Field icon="account_balance" label="Nearest SBI branch" value={branch(app)} />
           <Field icon="near_me" label="Nearest target PIN" value={app.place && `${app.place}${app.distance_km ? ` · ${app.distance_km} km away` : ''}`} />
           <Field icon="school" label="Qualification" value={app.qualification} />
           <Field icon="payments" label="Can invest ₹5 lakh" value={yesNo(app.can_invest)} />

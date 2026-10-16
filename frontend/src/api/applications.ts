@@ -33,6 +33,9 @@ export interface Application {
   /** The nearest of our target PINs, from the bot's check. */
   place: string | null;
   distance_km: number | null;
+  /** The SBI branch nearest their PIN: its code, name, AO and how far away. */
+  sbi_branch: { branch_code: string; branch_name: string; ao: string | null;
+                pincode: string; distance_km: number } | null;
   /** The persona: the business's Google Maps category, from the campaign that reached them. */
   category: string | null;
   qualification: string | null;
