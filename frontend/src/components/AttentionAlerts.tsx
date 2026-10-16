@@ -132,7 +132,7 @@ export const AttentionAlerts: React.FC = () => {
         </button>
       ))}
       {alerts.length > shown.length && (
-        <button onClick={() => { window.location.hash = 'inbox'; }}
+        <button onClick={() => { window.location.hash = 'inbox/attention'; }}
           className="text-center text-[11.5px] font-semibold text-rose-300 bg-slate-900 border border-slate-800 rounded-lg py-1.5 shadow cursor-pointer hover:border-rose-500">
           and {alerts.length - shown.length} more in the Inbox
         </button>

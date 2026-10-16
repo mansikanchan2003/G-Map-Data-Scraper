@@ -765,7 +765,9 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
   const [listError, setListError] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | 'attention' | 'autogmap' | 'unread' | 'bot' | 'docs'>('all');
+  // #inbox/attention (the alert's "and N more" link) opens the Needs attention list.
+  const [filter, setFilter] = useState<'all' | 'attention' | 'autogmap' | 'unread' | 'bot' | 'docs'>(
+    () => window.location.hash.startsWith('#inbox/attention') ? 'attention' : 'all');
   const [selected, setSelected] = useState<string | null>(() => {
     // A link such as #inbox/919876543210 opens that conversation.
     const m = window.location.hash.match(/^#inbox\/(\d+)/);
@@ -851,6 +853,7 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
     const onHash = () => {
       const m = window.location.hash.match(/^#inbox\/(\d+)/);
       if (m) setSelected(`+${m[1]}`);
+      if (window.location.hash.startsWith('#inbox/attention')) setFilter('attention');
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
