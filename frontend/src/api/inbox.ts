@@ -22,6 +22,33 @@ export interface ConversationSummary {
   needs_attention: boolean;
   attention_reason: string | null;
   attention_at: string | null;
+  /** Agent to Human: who is answering by hand while the bot waits, and since when. */
+  handled_by: string | null;
+  handled_since: string | null;
+  /** The chat's outcome now: the team's last one, or the bot's when it has moved on since. */
+  disposition: Disposition | null;
+}
+
+export interface Disposition {
+  key: string;
+  label: string;
+  note: string | null;
+  by: string | null;
+  at: string;
+  source: 'team' | 'bot';
+}
+
+export interface DispositionOption { key: string; label: string; group: 'positive' | 'follow_up' | 'negative' | 'other' }
+
+export interface DispositionDashboard {
+  total: number;
+  by_team: number;
+  groups: (DispositionOption & { count: number })[];
+  recent_days: number;
+  recent_count: number;
+  recent_by_disposition: { key: string; label: string; count: number }[];
+  recent: { phone: string; name: string | null; key: string; label: string; note: string | null; by: string; at: string }[];
+  with_people: { phone: string; name: string | null; by: string; since: string | null }[];
 }
 
 export interface ThreadMessage {
@@ -111,10 +138,26 @@ export const markConversationRead = (phone: string) =>
   call<{ status: string }>(`/conversations/${digits(phone)}/read`, { method: 'POST' });
 
 /** Mark a campaign conversation as needing attention, or resolve it. */
-export const setAttention = (phone: string, needed: boolean) =>
+export const setAttention = (phone: string, needed: boolean, disposition?: string, note?: string) =>
   call<{ needs_attention: boolean }>(`/conversations/${digits(phone)}/attention`, {
-    method: 'POST', body: JSON.stringify({ needed }),
+    method: 'POST', body: JSON.stringify({ needed, disposition, note }),
   });
+
+export const fetchDispositionOptions = () => call<DispositionOption[]>('/dispositions');
+
+export const recordDisposition = (phone: string, disposition: string, note?: string) =>
+  call<Disposition>(`/conversations/${digits(phone)}/disposition`, {
+    method: 'POST', body: JSON.stringify({ disposition, note }),
+  });
+
+/** Agent to Human ("person") or Human to Agent ("bot"), with the outcome so far. */
+export const handOver = (phone: string, to: 'person' | 'bot', disposition?: string, note?: string, resume = true) =>
+  call<{ bot_paused: boolean; handled_by: string | null; bot_said: string | null; disposition: Disposition }>(
+    `/conversations/${digits(phone)}/handover`, {
+      method: 'POST', body: JSON.stringify({ to, disposition, note, resume }),
+    });
+
+export const fetchDispositionDashboard = (days = 7) => call<DispositionDashboard>(`/dispositions/dashboard?days=${days}`);
 
 /** Send a photo, video, audio clip or document; anything else goes as a document. */
 export const sendInboxMedia = async (phone: string, file: File, caption: string): Promise<ThreadMessage> => {
@@ -198,6 +241,9 @@ export interface Ticket {
   raised_at: string | null;
   resolved_at: string | null;
   resolved_by: string | null;
+  /** The bot answered it itself, from Eko's FAQ and kiosk.eko.in; bot_answer is what it sent. */
+  resolved_by_bot?: boolean;
+  bot_answer?: string | null;
 }
 export const fetchTickets = (status?: 'open' | 'resolved') => call<Ticket[]>(`/tickets${status ? `?status=${status}` : ''}`);
 export const fetchRecentlyResolved = () => call<Ticket[]>('/tickets/recently-resolved');

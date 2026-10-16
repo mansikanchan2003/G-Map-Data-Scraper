@@ -852,6 +852,26 @@ for _lang, _line in _NUDGE.items():
     MESSAGES[_lang]["nudge"] = _line
 
 
+# --- A person hands the chat back to the bot ----------------------------------
+# Said before the question the bot was waiting on, asked again in full, so the
+# person carries on with the application where it was left.
+_RESUME = {
+    "en": "Thank you! 🙏 Let's continue your application from where we left off:",
+    "hi": "धन्यवाद! 🙏 चलिए, आपका आवेदन वहीं से आगे बढ़ाते हैं जहाँ हमने छोड़ा था:",
+    "pa": "ਧੰਨਵਾਦ! 🙏 ਆਓ, ਤੁਹਾਡੀ ਅਰਜ਼ੀ ਉੱਥੋਂ ਹੀ ਅੱਗੇ ਵਧਾਈਏ ਜਿੱਥੇ ਅਸੀਂ ਛੱਡੀ ਸੀ:",
+    "gu": "આભાર! 🙏 ચાલો, તમારી અરજી ત્યાંથી જ આગળ વધારીએ જ્યાં આપણે અટક્યા હતા:",
+    "mr": "धन्यवाद! 🙏 चला, तुमचा अर्ज जिथे थांबलो होतो तिथूनच पुढे नेऊया:",
+    "bn": "ধন্যবাদ! 🙏 চলুন, আপনার আবেদন যেখানে থেমেছিলাম সেখান থেকেই এগিয়ে নিই:",
+    "ta": "நன்றி! 🙏 உங்கள் விண்ணப்பத்தை நாம் நிறுத்திய இடத்திலிருந்தே தொடர்வோம்:",
+    "te": "ధన్యవాదాలు! 🙏 మీ దరఖాస్తును మనం ఆపిన చోటు నుండే కొనసాగిద్దాం:",
+    "kn": "ಧನ್ಯವಾದಗಳು! 🙏 ನಿಮ್ಮ ಅರ್ಜಿಯನ್ನು ನಾವು ನಿಲ್ಲಿಸಿದ ಕಡೆಯಿಂದಲೇ ಮುಂದುವರಿಸೋಣ:",
+    "ml": "നന്ദി! 🙏 നിങ്ങളുടെ അപേക്ഷ നിർത്തിയിടത്തുനിന്ന് തന്നെ നമുക്ക് തുടരാം:",
+    "or": "ଧନ୍ୟବାଦ! 🙏 ଆସନ୍ତୁ, ଆପଣଙ୍କ ଆବେଦନକୁ ଯେଉଁଠି ଅଟକିଥିଲୁ ସେଠାରୁ ହିଁ ଆଗକୁ ବଢ଼ାଇବା:",
+}
+for _lang, _line in _RESUME.items():
+    MESSAGES[_lang]["resume"] = _line
+
+
 # --- A question the bot cannot answer -----------------------------------------
 # Said when someone asks something of their own; the conversation is marked
 # for a person, who answers it in the inbox.

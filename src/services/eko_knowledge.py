@@ -202,6 +202,102 @@ FAQ: List[dict] = [
     },
 ]
 
+# From Eko's own site, kiosk.eko.in (read 2026-10-16): who can apply, the
+# documents, the steps, the services and how commission is paid. Kept apart
+# from the Creator Pack's confirmed answers, which stay as they are; where the
+# site says "mini branch" or names a monthly figure, the team's word rules win
+# and those are left out.
+SITE_FAQ: List[dict] = [
+    {
+        "id": "eligibility", "question": "Kaun apply kar sakta hai? Eligibility kya hai?", "source": "kiosk.eko.in",
+        "keys": ["eligibility", "eligible", "yogyata", "yogya", "kaun apply", "kon apply", "who can apply", "criteria",
+                 "shart", "sharten", "political", "party member", "bank employee", "bank mein kaam", "योग्यता", "पात्रता",
+                 "कौन आवेदन", "શરતો", "પાત્રતા", "યોગ્યતા", "ਯੋਗਤਾ"],
+        "answer": {
+            "hinglish": "Kam se kam 12th pass; CIBIL score 0 (koi loan history nahi) ya 700+; computer ki basic jaankari; smartphone, tablet ya laptop; market ya residential ilaake mein apni ya kiraye ki jagah. Aap kisi bank ya financial institution mein naukri na karte hon aur kisi political party ke member na hon. Gaon aur kasbon ke log khas taur par.",
+            "en": "At least 12th pass; a CIBIL score of 0 (no credit history) or 700+; basic computer knowledge; a smartphone, tablet or laptop; your own or rented space in a market or residential area. You must not be employed with any bank or financial institution, nor be a member of a political party. Rural and semi-urban areas are preferred.",
+            "hi": "कम से कम 12वीं पास; CIBIL स्कोर 0 (कोई लोन हिस्ट्री नहीं) या 700+; कंप्यूटर की बुनियादी जानकारी; स्मार्टफोन, टैबलेट या लैपटॉप; मार्केट या रिहायशी इलाके में अपनी या किराए की जगह। आप किसी बैंक या वित्तीय संस्था में नौकरी न करते हों और किसी राजनीतिक दल के सदस्य न हों। ग्रामीण और कस्बाई इलाकों को प्राथमिकता।",
+            "gu": "ઓછામાં ઓછું 12મું પાસ; CIBIL સ્કોર 0 (કોઈ લોન હિસ્ટ્રી નહીં) અથવા 700+; કમ્પ્યુટરની મૂળભૂત જાણકારી; સ્માર્ટફોન, ટેબ્લેટ અથવા લેપટોપ; બજાર કે રહેણાંક વિસ્તારમાં પોતાની કે ભાડાની જગ્યા. તમે કોઈ બેંક કે નાણાકીય સંસ્થામાં નોકરી ન કરતા હો અને કોઈ રાજકીય પક્ષના સભ્ય ન હો. ગ્રામ્ય અને અર્ધ-શહેરી વિસ્તારોને પ્રાથમિકતા.",
+            "pa": "ਘੱਟੋ-ਘੱਟ 12ਵੀਂ ਪਾਸ; CIBIL ਸਕੋਰ 0 (ਕੋਈ ਲੋਨ ਹਿਸਟਰੀ ਨਹੀਂ) ਜਾਂ 700+; ਕੰਪਿਊਟਰ ਦੀ ਮੁੱਢਲੀ ਜਾਣਕਾਰੀ; ਸਮਾਰਟਫੋਨ, ਟੈਬਲੇਟ ਜਾਂ ਲੈਪਟਾਪ; ਬਾਜ਼ਾਰ ਜਾਂ ਰਿਹਾਇਸ਼ੀ ਇਲਾਕੇ ਵਿੱਚ ਆਪਣੀ ਜਾਂ ਕਿਰਾਏ ਦੀ ਜਗ੍ਹਾ। ਤੁਸੀਂ ਕਿਸੇ ਬੈਂਕ ਜਾਂ ਵਿੱਤੀ ਸੰਸਥਾ ਵਿੱਚ ਨੌਕਰੀ ਨਾ ਕਰਦੇ ਹੋਵੋ ਅਤੇ ਕਿਸੇ ਰਾਜਨੀਤਿਕ ਪਾਰਟੀ ਦੇ ਮੈਂਬਰ ਨਾ ਹੋਵੋ। ਪਿੰਡਾਂ ਅਤੇ ਕਸਬਿਆਂ ਨੂੰ ਤਰਜੀਹ।",
+        },
+    },
+    {
+        "id": "cibil", "question": "CIBIL score kitna chahiye?", "source": "kiosk.eko.in",
+        "keys": ["cibil", "sibil", "civil score", "credit score", "cibil score", "loan history", "सिबिल", "क्रेडिट स्कोर", "સિબિલ", "ਸਿਬਿਲ"],
+        "answer": {
+            "hinglish": "CIBIL score 0 hona chahiye (yaani koi loan history nahi) ya 700 se upar. Full CIBIL report documents ke saath lagti hai.",
+            "en": "Your CIBIL score should be 0 (no credit history) or above 700. The full CIBIL report goes with your documents.",
+            "hi": "CIBIL स्कोर 0 होना चाहिए (यानी कोई लोन हिस्ट्री नहीं) या 700 से ऊपर। पूरी CIBIL रिपोर्ट डॉक्यूमेंट्स के साथ लगती है।",
+            "gu": "CIBIL સ્કોર 0 (એટલે કે કોઈ લોન હિસ્ટ્રી નહીં) અથવા 700થી વધુ હોવો જોઈએ. સંપૂર્ણ CIBIL રિપોર્ટ દસ્તાવેજો સાથે જોડાય છે.",
+            "pa": "CIBIL ਸਕੋਰ 0 ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ (ਯਾਨੀ ਕੋਈ ਲੋਨ ਹਿਸਟਰੀ ਨਹੀਂ) ਜਾਂ 700 ਤੋਂ ਉੱਪਰ। ਪੂਰੀ CIBIL ਰਿਪੋਰਟ ਦਸਤਾਵੇਜ਼ਾਂ ਨਾਲ ਲੱਗਦੀ ਹੈ।",
+        },
+    },
+    {
+        "id": "documents", "question": "Kaun se documents chahiye?", "source": "kiosk.eko.in",
+        "keys": ["documents", "document", "dastavez", "dastavej", "kagaz", "kaagaz", "papers", "kya kya chahiye", "pvr",
+                 "kya kya documents", "kaun se documents", "documents chahiye", "konse documents",
+                 "police verification", "दस्तावेज", "दस्तावेज़", "कागज", "डॉक्यूमेंट", "દસ્તાવેજ", "કાગળ", "ਦਸਤਾਵੇਜ਼", "ਕਾਗਜ਼"],
+        "answer": {
+            "hinglish": "PAN card, Aadhaar card, passport size photo, Police Verification Certificate (ya uski application ki receipt), SBI account ki passbook ya statement (commission isi mein aata hai), 12th ka certificate, aur full CIBIL report. Address proof ke liye bijli ka bill ya registry bhi chalegi.",
+            "en": "PAN card, Aadhaar card, a passport-size photo, a Police Verification Certificate (or its application receipt), your SBI account passbook or statement (commission is paid into it), your 12th certificate and the full CIBIL report. An electricity bill or registry papers work as address proof.",
+            "hi": "PAN कार्ड, आधार कार्ड, पासपोर्ट साइज़ फोटो, पुलिस वेरिफिकेशन सर्टिफिकेट (या उसकी एप्लीकेशन की रसीद), SBI खाते की पासबुक या स्टेटमेंट (कमीशन इसी में आता है), 12वीं का सर्टिफिकेट, और पूरी CIBIL रिपोर्ट। पते के प्रमाण के लिए बिजली का बिल या रजिस्ट्री भी चलेगी।",
+            "gu": "PAN કાર્ડ, આધાર કાર્ડ, પાસપોર્ટ સાઇઝ ફોટો, પોલીસ વેરિફિકેશન સર્ટિફિકેટ (અથવા તેની અરજીની રસીદ), SBI ખાતાની પાસબુક કે સ્ટેટમેન્ટ (કમિશન આમાં જ આવે છે), 12માનું સર્ટિફિકેટ, અને સંપૂર્ણ CIBIL રિપોર્ટ. સરનામાના પુરાવા માટે વીજળી બિલ કે દસ્તાવેજ પણ ચાલશે.",
+            "pa": "PAN ਕਾਰਡ, ਆਧਾਰ ਕਾਰਡ, ਪਾਸਪੋਰਟ ਸਾਈਜ਼ ਫੋਟੋ, ਪੁਲਿਸ ਵੈਰੀਫਿਕੇਸ਼ਨ ਸਰਟੀਫਿਕੇਟ (ਜਾਂ ਉਸ ਦੀ ਅਰਜ਼ੀ ਦੀ ਰਸੀਦ), SBI ਖਾਤੇ ਦੀ ਪਾਸਬੁੱਕ ਜਾਂ ਸਟੇਟਮੈਂਟ (ਕਮਿਸ਼ਨ ਇਸੇ ਵਿੱਚ ਆਉਂਦਾ ਹੈ), 12ਵੀਂ ਦਾ ਸਰਟੀਫਿਕੇਟ, ਅਤੇ ਪੂਰੀ CIBIL ਰਿਪੋਰਟ। ਪਤੇ ਦੇ ਸਬੂਤ ਲਈ ਬਿਜਲੀ ਦਾ ਬਿੱਲ ਜਾਂ ਰਜਿਸਟਰੀ ਵੀ ਚੱਲੇਗੀ।",
+        },
+    },
+    {
+        "id": "commission_paid", "question": "Commission kab aur kahan milta hai?", "source": "kiosk.eko.in",
+        "keys": ["commission kab", "kab milega commission", "payment kab", "paisa kab", "kab aayega", "kab milta", "settlement",
+                 "kis account", "kahan aayega", "कमीशन कब", "पैसा कब", "भुगतान कब", "કમિશન ક્યારે", "પૈસા ક્યારે", "ਕਮਿਸ਼ਨ ਕਦੋਂ", "ਪੈਸੇ ਕਦੋਂ"],
+        "answer": {
+            "hinglish": "Commission har mahine ki 10 tareekh se pehle seedha aapke registered SBI savings account mein aata hai, wahi account jo onboarding mein diya tha.",
+            "en": "Commission is paid straight into your registered SBI savings account before the 10th of every month, the same account you gave at onboarding.",
+            "hi": "कमीशन हर महीने की 10 तारीख से पहले सीधे आपके रजिस्टर्ड SBI सेविंग्स खाते में आता है, वही खाता जो ऑनबोर्डिंग में दिया था।",
+            "gu": "કમિશન દર મહિનાની 10 તારીખ પહેલાં સીધું તમારા રજિસ્ટર્ડ SBI સેવિંગ્સ ખાતામાં આવે છે, એ જ ખાતું જે ઓનબોર્ડિંગમાં આપ્યું હતું.",
+            "pa": "ਕਮਿਸ਼ਨ ਹਰ ਮਹੀਨੇ ਦੀ 10 ਤਰੀਕ ਤੋਂ ਪਹਿਲਾਂ ਸਿੱਧਾ ਤੁਹਾਡੇ ਰਜਿਸਟਰਡ SBI ਸੇਵਿੰਗਜ਼ ਖਾਤੇ ਵਿੱਚ ਆਉਂਦਾ ਹੈ, ਉਹੀ ਖਾਤਾ ਜੋ ਆਨਬੋਰਡਿੰਗ ਵਿੱਚ ਦਿੱਤਾ ਸੀ।",
+        },
+    },
+    {
+        "id": "process", "question": "Process kya hai? Kaise shuru hoga?", "source": "kiosk.eko.in",
+        "keys": ["process", "prakriya", "steps", "kaise bane", "kaise shuru", "kaise start", "how to become", "how to start",
+                 "approval", "प्रक्रिया", "कैसे शुरू", "પ્રક્રિયા", "કેવી રીતે શરૂ", "ਪ੍ਰਕਿਰਿਆ", "ਕਿਵੇਂ ਸ਼ੁਰੂ"],
+        "answer": {
+            "hinglish": "6 kadam: 1) documents jama karein, 2) SBI approve karta hai, 3) devices aur kiosk ki setting, 4) Hindi mein digital training, 5) IIBF certification, 6) kaam aur kamaai shuru. Har kadam par Eko ki team saath rehti hai.",
+            "en": "Six steps: 1) submit your documents, 2) SBI approves them, 3) the devices and the kiosk are set up, 4) digital training in Hindi, 5) IIBF certification, 6) you start serving customers and earning. Eko's team is with you at every step.",
+            "hi": "6 कदम: 1) डॉक्यूमेंट्स जमा करें, 2) SBI अप्रूव करता है, 3) डिवाइस और कियोस्क की सेटिंग, 4) हिंदी में डिजिटल ट्रेनिंग, 5) IIBF सर्टिफिकेशन, 6) काम और कमाई शुरू। हर कदम पर Eko की टीम साथ रहती है।",
+            "gu": "6 પગલાં: 1) દસ્તાવેજો જમા કરો, 2) SBI મંજૂર કરે છે, 3) ડિવાઇસ અને કિઓસ્કની ગોઠવણી, 4) હિન્દીમાં ડિજિટલ તાલીમ, 5) IIBF સર્ટિફિકેશન, 6) કામ અને કમાણી શરૂ. દરેક પગલે Ekoની ટીમ સાથે રહે છે.",
+            "pa": "6 ਕਦਮ: 1) ਦਸਤਾਵੇਜ਼ ਜਮ੍ਹਾਂ ਕਰੋ, 2) SBI ਮਨਜ਼ੂਰ ਕਰਦਾ ਹੈ, 3) ਡਿਵਾਈਸ ਅਤੇ ਕਿਓਸਕ ਦੀ ਸੈਟਿੰਗ, 4) ਹਿੰਦੀ ਵਿੱਚ ਡਿਜੀਟਲ ਟ੍ਰੇਨਿੰਗ, 5) IIBF ਸਰਟੀਫਿਕੇਸ਼ਨ, 6) ਕੰਮ ਅਤੇ ਕਮਾਈ ਸ਼ੁਰੂ। ਹਰ ਕਦਮ 'ਤੇ Eko ਦੀ ਟੀਮ ਨਾਲ ਰਹਿੰਦੀ ਹੈ।",
+        },
+    },
+    {
+        "id": "services", "question": "Kaun si sevayein de sakte hain?", "source": "kiosk.eko.in",
+        # Not "services" or "seva": the Creator Pack's earning_lines answer has those.
+        "keys": ["44 services", "kitni services", "kitni sevayein", "kya kya kar sakte", "kya kaam hoga", "account khol",
+                 "aeps", "money transfer", "pmjdy", "pmsby", "pmjjby", "atal pension", "kaun kaun si sevayein",
+                 "सेवाएं", "કઈ સેવાઓ", "ਕਿਹੜੀਆਂ ਸੇਵਾਵਾਂ"],
+        "answer": {
+            "hinglish": "SBI ki 44+ sevayein: paise jama aur nikaalna, balance aur mini statement, passbook update, IMPS/NEFT money transfer, khata kholna (PMJDY), Aadhaar seeding, debit card aur cheque book ki request, RD/TD, PPF/SSA jama, PMSBY, PMJJBY aur Atal Pension Yojana, loan aur insurance ke leads, bill payment, recharge aur FASTag.",
+            "en": "44+ SBI services: cash deposit and withdrawal, balance and mini statement, passbook update, IMPS/NEFT money transfer, account opening (PMJDY), Aadhaar seeding, debit card and cheque book requests, RD/TD, PPF/SSA deposits, PMSBY, PMJJBY and Atal Pension Yojana, loan and insurance leads, bill payments, recharges and FASTag.",
+            "hi": "SBI की 44+ सेवाएँ: पैसे जमा और निकालना, बैलेंस और मिनी स्टेटमेंट, पासबुक अपडेट, IMPS/NEFT मनी ट्रांसफर, खाता खोलना (PMJDY), आधार सीडिंग, डेबिट कार्ड और चेक बुक की रिक्वेस्ट, RD/TD, PPF/SSA जमा, PMSBY, PMJJBY और अटल पेंशन योजना, लोन और इंश्योरेंस के लीड, बिल पेमेंट, रिचार्ज और FASTag।",
+            "gu": "SBIની 44+ સેવાઓ: પૈસા જમા અને ઉપાડ, બેલેન્સ અને મિની સ્ટેટમેન્ટ, પાસબુક અપડેટ, IMPS/NEFT મની ટ્રાન્સફર, ખાતું ખોલવું (PMJDY), આધાર સીડિંગ, ડેબિટ કાર્ડ અને ચેકબુકની વિનંતી, RD/TD, PPF/SSA જમા, PMSBY, PMJJBY અને અટલ પેન્શન યોજના, લોન અને વીમાના લીડ, બિલ પેમેન્ટ, રિચાર્જ અને FASTag.",
+            "pa": "SBI ਦੀਆਂ 44+ ਸੇਵਾਵਾਂ: ਪੈਸੇ ਜਮ੍ਹਾਂ ਕਰਨਾ ਅਤੇ ਕਢਵਾਉਣਾ, ਬੈਲੇਂਸ ਅਤੇ ਮਿੰਨੀ ਸਟੇਟਮੈਂਟ, ਪਾਸਬੁੱਕ ਅਪਡੇਟ, IMPS/NEFT ਮਨੀ ਟ੍ਰਾਂਸਫਰ, ਖਾਤਾ ਖੋਲ੍ਹਣਾ (PMJDY), ਆਧਾਰ ਸੀਡਿੰਗ, ਡੈਬਿਟ ਕਾਰਡ ਅਤੇ ਚੈੱਕ ਬੁੱਕ ਦੀ ਬੇਨਤੀ, RD/TD, PPF/SSA ਜਮ੍ਹਾਂ, PMSBY, PMJJBY ਅਤੇ ਅਟਲ ਪੈਨਸ਼ਨ ਯੋਜਨਾ, ਲੋਨ ਅਤੇ ਬੀਮੇ ਦੇ ਲੀਡ, ਬਿੱਲ ਪੇਮੈਂਟ, ਰੀਚਾਰਜ ਅਤੇ FASTag।",
+        },
+    },
+    {
+        "id": "reach", "question": "Eko kitni jagah kaam karta hai?", "source": "kiosk.eko.in",
+        "keys": ["kitne csp", "kitni jagah", "kahan kahan", "kaha kaha", "districts", "how many csp", "कितने सीएसपी",
+                 "कहाँ कहाँ", "ક્યાં ક્યાં", "ਕਿੱਥੇ ਕਿੱਥੇ"],
+        "answer": {
+            "hinglish": "Eko ke 1,100 se zyada CSP 160+ districts mein kaam kar rahe hain, Punjab, Haryana, UP, Bihar, Rajasthan, Maharashtra, Jharkhand, Delhi NCR, J&K aur Himachal mein.",
+            "en": "Over 1,100 Eko CSPs work in 160+ districts, across Punjab, Haryana, UP, Bihar, Rajasthan, Maharashtra, Jharkhand, Delhi NCR, J&K and Himachal.",
+            "hi": "Eko के 1,100 से ज़्यादा CSP 160+ ज़िलों में काम कर रहे हैं, पंजाब, हरियाणा, यूपी, बिहार, राजस्थान, महाराष्ट्र, झारखंड, दिल्ली NCR, J&K और हिमाचल में।",
+            "gu": "Ekoના 1,100થી વધુ CSP 160+ જિલ્લાઓમાં કામ કરે છે, પંજાબ, હરિયાણા, યુપી, બિહાર, રાજસ્થાન, મહારાષ્ટ્ર, ઝારખંડ, દિલ્હી NCR, J&K અને હિમાચલમાં.",
+            "pa": "Eko ਦੇ 1,100 ਤੋਂ ਵੱਧ CSP 160+ ਜ਼ਿਲ੍ਹਿਆਂ ਵਿੱਚ ਕੰਮ ਕਰ ਰਹੇ ਹਨ, ਪੰਜਾਬ, ਹਰਿਆਣਾ, ਯੂਪੀ, ਬਿਹਾਰ, ਰਾਜਸਥਾਨ, ਮਹਾਰਾਸ਼ਟਰ, ਝਾਰਖੰਡ, ਦਿੱਲੀ NCR, J&K ਅਤੇ ਹਿਮਾਚਲ ਵਿੱਚ।",
+        },
+    },
+]
+FAQ = FAQ + SITE_FAQ
+
 # Some words belong to more than one question ("fixed salary" names the
 # salary question, not the job one); the longer, more specific key wins.
 _BY_ID = {f["id"]: f for f in FAQ}

@@ -26,7 +26,7 @@ from src.models.inbox import OnboardingDocument, WhatsAppConversation, WhatsAppM
 from src.models.user import User
 from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppTemplate
 from src.routers.auth import current_user
-from src.services import tickets
+from src.services import handover, tickets
 from src.services import drive_uploads, inbox, onboarding_bot
 
 logger = logging.getLogger("gmap_scraper.inbox")
@@ -53,6 +53,11 @@ class ConversationSummary(BaseModel):
     needs_attention: bool = False
     attention_reason: Optional[str] = None
     attention_at: Optional[datetime] = None
+    # Agent to Human: the person answering by hand while the bot waits, and since when.
+    handled_by: Optional[str] = None
+    handled_since: Optional[datetime] = None
+    # The chat's outcome now: {key, label, note, by, at, source ("team" or "bot")}.
+    disposition: Optional[dict] = None
 
 
 class ThreadMessage(BaseModel):
@@ -108,6 +113,23 @@ class AttentionRequest(BaseModel):
     # True marks the conversation for a person; False is "Question resolved".
     needed: bool
     reason: Optional[str] = Field(None, max_length=500)
+    # Recorded with "Question resolved": how the chat ended up.
+    disposition: Optional[str] = Field(None, max_length=40)
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class HandoverRequest(BaseModel):
+    # "person": a person takes over and the bot stays quiet; "bot": the bot carries on.
+    to: str = Field(..., pattern="^(person|bot)$")
+    disposition: Optional[str] = Field(None, max_length=40)
+    note: Optional[str] = Field(None, max_length=500)
+    # Ask again the question the bot was waiting on (on handing back).
+    resume: bool = True
+
+
+class DispositionRequest(BaseModel):
+    disposition: str = Field(..., max_length=40)
+    note: Optional[str] = Field(None, max_length=500)
 
 
 class BotSettings(BaseModel):
@@ -189,6 +211,9 @@ def _summary(conv, name, last, unread, docs, from_campaign=False) -> dict:
         needs_attention=bool(conv.needs_attention),
         attention_reason=conv.attention_reason,
         attention_at=inbox.aware(conv.attention_at),
+        handled_by=conv.handled_by if conv.bot_paused else None,
+        handled_since=inbox.aware(conv.handled_since) if conv.bot_paused else None,
+        disposition=handover.current(conv),
     )
 
 
@@ -385,8 +410,11 @@ def send_message(
         )
 
     msg = inbox.send(db, conv.phone, body, sent_by=user.email)
-    # Someone answering by hand has read the conversation.
+    # Someone answering by hand has read the conversation, and has taken it
+    # over: the bot stays quiet here until it is handed back.
     conv.last_read_at = inbox.now()
+    if msg.status != "FAILED":
+        handover.take_over(db, conv, user.email)
     db.commit()
     if msg.status == "FAILED":
         raise HTTPException(status_code=502, detail=msg.error_reason)
@@ -405,12 +433,69 @@ def mark_read(digits: str, db: Session = Depends(get_db)):
 
 
 @router.post("/conversations/{digits}/bot")
-def set_bot_state(digits: str, payload: BotStateRequest, db: Session = Depends(get_db)):
-    """Pause the bot to answer by hand, or let it carry on."""
+def set_bot_state(digits: str, payload: BotStateRequest, db: Session = Depends(get_db),
+                  user: User = Depends(current_user)):
+    """Pause the bot to answer by hand, or let it carry on (a handover, without asking again)."""
     conv = _get_conversation(db, digits)
-    conv.bot_paused = payload.paused
+    if payload.paused:
+        handover.take_over(db, conv, user.email)
+    else:
+        handover.hand_back(db, conv, user.email, resume=False)
     db.commit()
     return {"bot_paused": conv.bot_paused}
+
+
+@router.post("/conversations/{digits}/handover")
+def hand_over(digits: str, payload: HandoverRequest, db: Session = Depends(get_db),
+              user: User = Depends(current_user)):
+    """
+    Agent to Human ("person") or Human to Agent ("bot"). Handing back records
+    the disposition, solves an open ticket and lets the bot ask its question again.
+    """
+    conv = _get_conversation(db, digits)
+    if payload.disposition and payload.disposition not in handover.DISPOSITIONS:
+        raise HTTPException(status_code=400, detail="Unknown disposition")
+    sent = None
+    if payload.to == "person":
+        handover.take_over(db, conv, user.email)
+        if payload.disposition:
+            handover.record(db, conv, payload.disposition, user.email, payload.note)
+    else:
+        sent = handover.hand_back(db, conv, user.email, payload.disposition, payload.note, payload.resume)
+    db.commit()
+    return {"bot_paused": conv.bot_paused, "handled_by": conv.handled_by, "bot_said": sent,
+            "disposition": handover.current(conv)}
+
+
+@router.post("/conversations/{digits}/disposition")
+def set_disposition(digits: str, payload: DispositionRequest, db: Session = Depends(get_db),
+                    user: User = Depends(current_user)):
+    """Record how the chat ended up (Interested, Call back later, Not reachable...)."""
+    conv = _get_conversation(db, digits)
+    try:
+        now = handover.record(db, conv, payload.disposition, user.email, payload.note)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    return now
+
+
+@router.get("/conversations/{digits}/activity")
+def chat_activity(digits: str, db: Session = Depends(get_db)):
+    """Handovers and dispositions in this chat, oldest first."""
+    conv = _get_conversation(db, digits)
+    return handover.activity(db, conv.phone)
+
+
+@router.get("/dispositions")
+def disposition_options():
+    return handover.options()
+
+
+@router.get("/dispositions/dashboard")
+def disposition_dashboard(days: int = Query(7, ge=1, le=90), db: Session = Depends(get_db)):
+    """Every chat's disposition now, the team's recent ones, and the chats people are handling."""
+    return handover.dashboard(db, days)
 
 
 @router.get("/bot-settings", response_model=BotSettingsResponse)
@@ -524,10 +609,14 @@ def set_attention(digits: str, payload: AttentionRequest, db: Session = Depends(
         onboarding_bot.flag(conv, payload.reason or f"Marked by {user.email}")
         ticket = tickets.raise_or_update(db, conv, via=user.email)
     else:
+        if payload.disposition and payload.disposition not in handover.DISPOSITIONS:
+            raise HTTPException(status_code=400, detail="Unknown disposition")
         conv.needs_attention = False
         conv.attention_resolved_by = user.email
         conv.attention_resolved_at = inbox.now()
         ticket = tickets.resolve(db, conv.phone, user.email)
+        if payload.disposition:
+            handover.record(db, conv, payload.disposition, user.email, payload.note)
     db.commit()
     return {"needs_attention": conv.needs_attention, "attention_reason": conv.attention_reason,
             "ticket": tickets.as_dict(ticket) if ticket else None}
@@ -566,6 +655,8 @@ async def send_media(
     msg = inbox.send_media(db, conv.phone, content, mime, os.path.basename(file.filename or "file"),
                            (caption or "").strip() or None, sent_by=user.email)
     conv.last_read_at = inbox.now()
+    if msg.status != "FAILED":
+        handover.take_over(db, conv, user.email)
     db.commit()
     if msg.status == "FAILED":
         raise HTTPException(status_code=502, detail=msg.error_reason)

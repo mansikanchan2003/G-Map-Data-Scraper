@@ -6,6 +6,10 @@ the bot, or by someone in the team) and solved when someone presses
 "Question resolved". There is at most one open ticket per conversation: a
 further question while it is open becomes its latest question, so one
 person waiting is one ticket. Every ticket is kept, for the history.
+
+A question the bot can answer from what it knows (Eko's FAQ, kiosk.eko.in)
+is a ticket too, raised and solved at once by the bot, with its answer: the
+bot tries first, and only what it cannot answer goes to a person.
 """
 from datetime import timedelta
 from typing import List, Optional
@@ -41,6 +45,18 @@ def raise_or_update(db: Session, conv: WhatsAppConversation, via: str = "bot") -
     return ticket
 
 
+def answered_by_bot(db: Session, conv: WhatsAppConversation, question: str, answer: str) -> AttentionTicket:
+    """A question the bot answered itself: a ticket raised and solved by the bot, with its answer."""
+    now = inbox.now()
+    question = (question or "").strip()[:500] or None
+    ticket = AttentionTicket(phone=conv.phone, raised_by_name=conv.profile_name, question=question,
+                             latest_question=question, questions_count=1, raised_via="bot", raised_at=now,
+                             resolved_at=now, resolved_by="bot", bot_answer=answer)
+    db.add(ticket)
+    db.flush()
+    return ticket
+
+
 def resolve(db: Session, phone: str, by: str) -> Optional[AttentionTicket]:
     """Solve the conversation's open ticket, if it has one."""
     ticket = open_ticket(db, phone)
@@ -64,6 +80,8 @@ def as_dict(t: AttentionTicket) -> dict:
         "raised_at": inbox.aware(t.raised_at).isoformat() if t.raised_at else None,
         "resolved_at": inbox.aware(t.resolved_at).isoformat() if t.resolved_at else None,
         "resolved_by": t.resolved_by,
+        "resolved_by_bot": t.resolved_by == "bot",
+        "bot_answer": t.bot_answer,
     }
 
 
@@ -80,6 +98,8 @@ def history(db: Session, status: Optional[str] = None, limit: int = 500) -> List
 
 def recently_resolved(db: Session) -> List[dict]:
     since = inbox.now() - ANNOUNCE_RESOLVED_FOR
-    rows = (db.query(AttentionTicket).filter(AttentionTicket.resolved_at >= since)
+    # Not the bot's own answers: nobody was waiting on those, so nothing to announce.
+    rows = (db.query(AttentionTicket).filter(AttentionTicket.resolved_at >= since,
+                                             AttentionTicket.resolved_by != "bot")
             .order_by(AttentionTicket.resolved_at.desc()).limit(20).all())
     return [as_dict(t) for t in rows]

@@ -19,7 +19,7 @@ from sqlalchemy.pool import StaticPool
 from src.database import Base, get_db
 from src.main import app
 from src.models import (  # noqa: F401  (registers the tables on Base)
-    AppSetting, AttentionTicket, Location, OnboardingDocument, WhatsAppButtonClick, WhatsAppCampaign, WhatsAppTemplate,
+    AppSetting, AttentionTicket, ChatActivity, Location, OnboardingDocument, WhatsAppButtonClick, WhatsAppCampaign, WhatsAppTemplate,
     WhatsAppCampaignRecipient, WhatsAppConversation, WhatsAppMessage, WhatsAppReply,
 )
 from src.routers.auth import current_user
@@ -117,7 +117,7 @@ def db():
         yield session
     finally:
         session.rollback()
-        for model in (AttentionTicket, OnboardingDocument, WhatsAppMessage, WhatsAppConversation, WhatsAppReply,
+        for model in (ChatActivity, AttentionTicket, OnboardingDocument, WhatsAppMessage, WhatsAppConversation, WhatsAppReply,
                       WhatsAppButtonClick, WhatsAppCampaignRecipient, WhatsAppCampaign,
                       WhatsAppTemplate, Location, AppSetting):
             session.query(model).delete()
@@ -1413,3 +1413,88 @@ def test_a_chat_that_did_not_come_from_a_campaign_is_summarised_for_what_it_is(d
     s = chat_summary.summarise(db, conv(db))
     assert any(t["kind"] == "team" and t["text"].startswith("Kavya Shukla replied") for t in s["timeline"])
     assert "The team replied" in s["in_short"]
+
+
+
+# --- Handover between the bot and a person, and dispositions ------------------
+
+def test_a_reply_by_hand_takes_the_chat_over_and_handing_back_asks_again(db, client):
+    from src.services import chat_summary, handover
+    tap_campaign(db)
+    say(db, SERVED_PIN)                                   # now asked for their education
+    assert conv(db).bot_step == onboarding_bot.AWAIT_EDUCATION
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/messages", json={"message": "Main Kavya, bataiye"})
+    assert r.status_code == 200, r.text
+    c = conv(db)
+    assert c.bot_paused and c.handled_by == "admin@eko.co.in"
+    detail = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}").json()
+    assert detail["handled_by"] == "admin@eko.co.in"
+    # While a person handles it the bot stays quiet; a question waits for them.
+    before = len(StubMeta.sent)
+    say(db, "Kya training milegi?")
+    assert len(StubMeta.sent) == before and conv(db).needs_attention
+
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/handover",
+                    json={"to": "bot", "disposition": "interested", "note": "Answered about training"})
+    assert r.status_code == 200, r.text
+    c = conv(db)
+    assert not c.bot_paused and c.handled_by is None and not c.needs_attention
+    # The bot asks again the question it was waiting on, after a short thank-you.
+    body = StubMeta.sent[-1][2]
+    assert body.startswith(bot_messages.MESSAGES["en"]["resume"]) and bot_messages.MESSAGES["en"]["ask_education"] in body
+    assert r.json()["disposition"]["key"] == "interested" and r.json()["disposition"]["source"] == "team"
+    kinds = [a["kind"] for a in client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/activity").json()]
+    assert kinds == ["to_person", "disposition", "to_bot"]
+    lines = [t["text"] for t in chat_summary.summarise(db, conv(db))["timeline"]]
+    assert "Admin took the chat over from the bot" in lines
+    assert "Admin handed the chat back to the bot (Interested)" in lines
+
+    # The bot moving the chat on later makes its own outcome the current one.
+    qualify(db)
+    assert handover.current(conv(db))["source"] == "bot"
+
+
+def test_every_chat_has_a_disposition_and_the_dashboard_counts_them(db, client):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    assert client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}").json()["disposition"]["key"] == "interested"
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/disposition",
+                    json={"disposition": "call_back", "note": "Call after 6 PM"})
+    assert r.status_code == 200 and r.json()["label"] == "Call back later"
+    assert client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/disposition",
+                       json={"disposition": "nonsense"}).status_code == 400
+    d = client.get("/api/v1/inbox/dispositions/dashboard").json()
+    assert d["total"] == 1 and d["by_team"] == 1 and d["recent_count"] == 1
+    assert next(g for g in d["groups"] if g["key"] == "call_back")["count"] == 1
+    assert d["recent"][0]["note"] == "Call after 6 PM"
+
+
+def test_question_resolved_records_the_disposition(db, client):
+    tap_campaign(db)
+    say(db, "Mere ghar ka pata badalna hai, kya karna hoga?")
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/attention",
+                    json={"needed": False, "disposition": "query_answered"})
+    assert r.status_code == 200, r.text
+    assert conv(db).disposition == "query_answered"
+
+
+def test_the_bot_solves_what_it_knows_and_escalates_the_rest(db, client, emailed):
+    tap_campaign(db)
+    say(db, "CIBIL score kitna chahiye?")                  # from kiosk.eko.in: the bot answers
+    assert "700" in StubMeta.sent[-1][2] and not conv(db).needs_attention
+    solved = client.get("/api/v1/inbox/tickets?status=resolved").json()
+    assert len(solved) == 1 and solved[0]["resolved_by_bot"] and "700" in solved[0]["bot_answer"]
+    assert solved[0]["question"] == "CIBIL score kitna chahiye?"
+    # Nobody was waiting on it, so it is not announced as a solved ticket.
+    assert client.get("/api/v1/inbox/tickets/recently-resolved").json() == []
+    assert emailed == []
+
+    say(db, "Mere ghar ka pata badalna hai, kya karna hoga?")   # not in what it knows: to a person
+    assert conv(db).needs_attention and len(emailed) == 1
+    open_ = client.get("/api/v1/inbox/tickets?status=open").json()
+    assert len(open_) == 1 and not open_[0]["resolved_by_bot"]
+
+
+def test_the_team_emails_go_to_mansi_and_kavya():
+    from src.services import auth_service, notifier
+    assert "kavya.shukla@eko.co.in" in notifier.team(auth_service.BOOTSTRAP_ADMIN)

@@ -9,7 +9,7 @@ from .user import User
 from .autopilot import DiscoveryRound
 from .insights import CampaignInsight, InsightSnapshot
 from .studio import StudioImagePrompt
-from .inbox import AttentionTicket, WhatsAppConversation, WhatsAppMessage, OnboardingDocument
+from .inbox import AttentionTicket, ChatActivity, WhatsAppConversation, WhatsAppMessage, OnboardingDocument
 from .application import ApplicationComment, ApplicationRemoval, QualifiedLead
 from .whatsapp import WhatsAppAccount, WhatsAppTemplate, WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppCampaignLog, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppReply
 
@@ -32,6 +32,7 @@ __all__ = [
     "WhatsAppMessage",
     "OnboardingDocument",
     "AttentionTicket",
+    "ChatActivity",
     "ApplicationComment",
     "ApplicationRemoval",
     "QualifiedLead",

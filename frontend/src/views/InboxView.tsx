@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ATTENTION_CHANGED, fetchBotSettings, fetchChatSummary, fetchTickets, fetchConversation, fetchConversations, markConversationRead, setAttention, sendInboxMedia,
-  saveBotSettings, saveDocumentsToDrive, sendInboxMessage, setBotPaused, documentUrl, mediaUrl,
+  saveBotSettings, saveDocumentsToDrive, sendInboxMessage, documentUrl, mediaUrl,
   type BotSettings, type ChatSummary, type ConversationDetail, type Ticket, type ConversationSummary, type ThreadMessage,
 } from '../api/inbox';
+import { DispositionChip, DispositionDialog, HandoverBar, useDispositionOptions } from '../components/Handover';
 
 /**
  * Every conversation with the business number, and the place to answer it.
@@ -453,10 +454,15 @@ const TicketsPanel: React.FC<{ initial: 'open' | 'resolved'; onClose: () => void
                     </td>
                     <td className="px-3 py-2.5 text-slate-300 whitespace-nowrap">{when(t.raised_at)}</td>
                     <td className="px-3 py-2.5 text-slate-300 whitespace-nowrap">{when(t.resolved_at)}
-                      {t.resolved_by && <div className="text-[10.5px] text-slate-500">by {t.resolved_by.split('@')[0]}</div>}</td>
+                      {t.resolved_by_bot
+                        ? <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-sky-800/60 bg-sky-950 text-sky-300 text-[10.5px] font-semibold">
+                            <span className="material-symbols-outlined text-[12px]">smart_toy</span>Resolved by bot</div>
+                        : t.resolved_by && <div className="text-[10.5px] text-slate-500">by {t.resolved_by.split('@')[0]}</div>}</td>
                     <td className="px-3 py-2.5 text-slate-200 min-w-[240px]">{t.question || '—'}
                       {t.latest_question && <div className="text-[11px] text-slate-400 mt-0.5">Then: {t.latest_question}
-                        {t.questions_count > 2 ? ` (+${t.questions_count - 2} more)` : ''}</div>}</td>
+                        {t.questions_count > 2 ? ` (+${t.questions_count - 2} more)` : ''}</div>}
+                      {t.bot_answer && <div className="mt-1.5 px-2 py-1.5 rounded border border-sky-800/50 bg-sky-950/60 text-[11.5px] text-sky-100 whitespace-pre-wrap">
+                        <b className="text-sky-300 font-semibold">Bot's answer:</b> {t.bot_answer}</div>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -602,13 +608,6 @@ const Details: React.FC<{
   const notInDrive = conv.document_files.filter(d => !d.drive_url);
   const driveError = notInDrive.find(d => d.drive_error)?.drive_error;
 
-  const togglePause = async () => {
-    setBusy(true); setError(null);
-    try { await setBotPaused(conv.phone, !conv.bot_paused); onChanged(); }
-    catch (e) { setError(errMsg(e)); }
-    finally { setBusy(false); }
-  };
-
   const retryDrive = async () => {
     setBusy(true); setError(null);
     try { await saveDocumentsToDrive(conv.phone); onChanged(); }
@@ -676,21 +675,10 @@ const Details: React.FC<{
           <p className="text-slate-500">Not started. It starts when they tap a trigger button on a campaign.</p>
         )}
         {conv.from_campaign && (
-          <>
-            <button data-edit onClick={togglePause} disabled={busy}
-              className={`mt-2 w-full inline-flex items-center justify-center gap-1.5 px-2 py-1.5 rounded border font-semibold cursor-pointer disabled:opacity-50 ${
-                conv.bot_paused
-                  ? 'border-sky-800 bg-sky-950 text-sky-300 hover:bg-sky-900'
-                  : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
-              <span className="material-symbols-outlined text-[16px]">{conv.bot_paused ? 'play_arrow' : 'pause'}</span>
-              {conv.bot_paused ? 'Let the bot answer again' : 'Pause the bot here'}
-            </button>
-            <p className="text-slate-500 mt-1">
-              {conv.bot_paused
-                ? 'Paused: the bot will not answer this person until you resume it.'
-                : 'Pause it to take this conversation over by hand.'}
-            </p>
-          </>
+          <p className="text-slate-500 mt-2">
+            Use <b className="text-slate-300">Take over</b> above the chat, or just reply, to answer by hand; the bot
+            stays quiet until you <b className="text-slate-300">hand it back</b>.
+          </p>
         )}
       </section>
 
@@ -798,6 +786,9 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
   const [attachment, setAttachment] = useState<File | null>(null);
   const [showEmoji, setShowEmoji] = useState(false);
   const [attentionBusy, setAttentionBusy] = useState(false);
+  // "Question resolved" first asks how the chat stands, so every chat has an outcome.
+  const [resolving, setResolving] = useState(false);
+  const dispositionOptions = useDispositionOptions();
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   const lastCount = useRef(0);
@@ -877,11 +868,11 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
     lastCount.current = count;
   }, [detail?.messages.length]);
 
-  const changeAttention = async (needed: boolean) => {
+  const changeAttention = async (needed: boolean, disposition?: string, note?: string) => {
     if (!selected) return;
     setAttentionBusy(true);
     try {
-      await setAttention(selected, needed);
+      await setAttention(selected, needed, disposition, note);
       // The alerts shown on every page follow at once.
       window.dispatchEvent(new Event(ATTENTION_CHANGED));
       await loadThread(selected);
@@ -1064,6 +1055,7 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
                             </span>
                           )}
                           <BotChip step={c.bot_step} label={c.bot_step_label} paused={c.bot_paused} />
+                          {c.disposition?.source === 'team' && <DispositionChip d={c.disposition} opts={dispositionOptions} compact />}
                           {c.documents > 0 && (
                             <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-400">
                               <span className="material-symbols-outlined text-[12px]">attach_file</span>{c.documents}
@@ -1107,7 +1099,7 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
               </div>
               {detail?.from_campaign && !readOnly && (
                 detail.needs_attention ? (
-                  <button onClick={() => changeAttention(false)} disabled={attentionBusy}
+                  <button onClick={() => setResolving(true)} disabled={attentionBusy}
                     title="Clears the attention mark; press it once the question has been answered"
                     className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded border border-emerald-700 bg-emerald-950 text-emerald-300 hover:bg-emerald-900 cursor-pointer disabled:opacity-50 whitespace-nowrap">
                     <span className="material-symbols-outlined text-[16px]">task_alt</span>Question resolved
@@ -1127,6 +1119,18 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
                 {detail && detail.document_files.length > 0 && <span>{detail.document_files.length}</span>}
               </button>
             </header>
+
+            {detail && (
+              <HandoverBar conv={detail} botActive={botActive} readOnly={readOnly}
+                onChanged={() => { loadThread(selected); loadList(); window.dispatchEvent(new Event(ATTENTION_CHANGED)); }} />
+            )}
+            {resolving && (
+              <DispositionDialog title="Question resolved" confirm="Resolve"
+                hint="How does the chat stand now? The ticket is solved and the outcome recorded."
+                current={detail?.disposition?.source === 'team' ? detail.disposition.key : null}
+                onCancel={() => setResolving(false)}
+                onConfirm={async (key, note) => { await changeAttention(false, key, note); setResolving(false); }} />
+            )}
 
             <div className="flex-1 flex min-h-0">
               <div className="flex-1 flex flex-col min-w-0 min-h-0">

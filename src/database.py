@@ -118,12 +118,16 @@ def _migrate_db(eng) -> None:
     for table, cols in (
         ("onboarding_documents", {"drive_file_id": "VARCHAR(100)", "drive_url": "VARCHAR(500)",
                                   "drive_error": "VARCHAR(500)"}),
+        ("attention_tickets", {"bot_answer": "TEXT"}),
         ("whatsapp_conversations", {"drive_folder_url": "VARCHAR(500)",
                                     "needs_attention": "BOOLEAN NOT NULL DEFAULT 0",
                                     "attention_reason": "VARCHAR(500)",
                                     "attention_at": "DATETIME",
                                     "attention_resolved_by": "VARCHAR(200)",
-                                    "attention_resolved_at": "DATETIME"}),
+                                    "attention_resolved_at": "DATETIME",
+                                    "handled_by": "VARCHAR(200)", "handled_since": "DATETIME",
+                                    "disposition": "VARCHAR(40)", "disposition_note": "VARCHAR(500)",
+                                    "disposition_by": "VARCHAR(200)", "disposition_at": "DATETIME"}),
     ):
         if table in inspector.get_table_names():
             present = [c["name"] for c in inspector.get_columns(table)]

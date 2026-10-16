@@ -14,7 +14,7 @@ from typing import List
 from sqlalchemy.orm import Session
 
 from src.models import Business
-from src.models.inbox import OnboardingDocument, WhatsAppConversation, WhatsAppMessage
+from src.models.inbox import ChatActivity, OnboardingDocument, WhatsAppConversation, WhatsAppMessage
 from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
 from src.services import applications, eko_knowledge, inbox
 from src.services import onboarding_bot as bot
@@ -305,6 +305,18 @@ def timeline(db: Session, conv: WhatsAppConversation) -> List[dict]:
         else:
             lines.append({"at": at, "kind": "said", "text": f"Wrote{voice}: {_quote(said)}"})
 
+    # Handovers between the bot and the team, and the dispositions recorded.
+    from src.services import handover
+    for a in db.query(ChatActivity).filter(ChatActivity.phone == conv.phone).all():
+        name = handover.who(a.by)
+        text = {"to_person": f"{name} took the chat over from the bot",
+                "to_bot": f"{name} handed the chat back to the bot"
+                          + (f" ({handover.label(a.value)})" if a.value else ""),
+                "disposition": f"{name} recorded the outcome: {handover.label(a.value) or a.value}"}.get(a.kind, a.kind)
+        if a.note and a.kind != "to_bot":
+            text += f" — {_quote(a.note, 100)}"
+        lines.append({"at": inbox.aware(a.at), "kind": "team", "text": text})
+
     if conv.upload_token and not conv.documents_submitted_at:
         docs = db.query(OnboardingDocument).filter(OnboardingDocument.phone == conv.phone).count()
         lines.append({"at": None, "kind": "event", "text": "Got the link to upload documents"
@@ -453,14 +465,23 @@ def summarise(db: Session, conv: WhatsAppConversation) -> dict:
         "Wrote to us directly" if direct is not None else "Has not started")
     if conv.needs_attention:
         headline += " · needs attention"
-    from src.services import tickets
+    from src.services import handover, tickets
     ticket = tickets.open_ticket(db, conv.phone) if conv.needs_attention else None
+    short = in_short(conv, len(needing), direct)
+    if conv.bot_paused and conv.handled_by:
+        short += (f" {handover.who(conv.handled_by)} is handling this chat since {_when(conv.handled_since)}; "
+                  "the bot stays quiet until it is handed back.")
+        step_text = ("When you are done, record the outcome and hand the chat back to the bot, which asks again "
+                     "where it left off. " + step_text)
+    disposition = handover.current(conv)
     return {
         "generated_at": inbox.now().isoformat(),
         "ticket_id": ticket.ticket_id if ticket else None,
         "person": _person(db, conv),
         "headline": headline,
-        "in_short": in_short(conv, len(needing), direct),
+        "in_short": short,
+        "disposition": disposition,
+        "handled_by": conv.handled_by if conv.bot_paused else None,
         "direct": direct is not None,
         "timeline": events[-TIMELINE_LIMIT:],
         "timeline_earlier": earlier,

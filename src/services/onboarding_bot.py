@@ -620,7 +620,12 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, **kw):
         conv.bot_data = {**(conv.bot_data or {}), "faq_answered": (data.get("faq_answered") or []) + faq}
         data = conv.bot_data
         if voice:
+            # A transcript can be wrong: answered, and still left for a person to check.
             flag(conv, f"Voice note: {said} (answered from the FAQ: {', '.join(faq)})")
+        else:
+            # The bot answered it itself: a ticket solved by the bot, with its answer.
+            from src.services import tickets
+            tickets.answered_by_bot(db, conv, said, answer)
         body = answer if body == _t(db, conv, "acknowledge") else f"{answer}\n\n{body}"
     elif asked:
         flag(conv, f"Voice note: {said}" if voice and said else ("Voice note" if voice else said))

@@ -51,8 +51,37 @@ class WhatsAppConversation(Base):
     attention_resolved_by = Column(String(200), nullable=True)
     attention_resolved_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Who is answering by hand while the bot is paused (Agent to Human), and
+    # since when; cleared when they hand it back to the bot.
+    handled_by = Column(String(200), nullable=True)
+    handled_since = Column(DateTime(timezone=True), nullable=True)
+    # The outcome the team last recorded for this chat (a disposition key);
+    # the bot's own outcome is read from its step when it is more recent.
+    disposition = Column(String(40), nullable=True)
+    disposition_note = Column(String(500), nullable=True)
+    disposition_by = Column(String(200), nullable=True)
+    disposition_at = Column(DateTime(timezone=True), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class ChatActivity(Base):
+    """
+    What the team did in a chat, in order: handing it from the bot to a
+    person and back, and every disposition recorded, with who and when.
+    """
+    __tablename__ = "chat_activity"
+
+    activity_id = Column(String(32), primary_key=True)
+    phone = Column(String(20), ForeignKey("whatsapp_conversations.phone", ondelete="CASCADE"),
+                   nullable=False, index=True)
+    # "to_person", "to_bot" or "disposition".
+    kind = Column(String(20), nullable=False)
+    value = Column(String(40), nullable=True)
+    note = Column(String(500), nullable=True)
+    by = Column(String(200), nullable=False)
+    at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
 
 class WhatsAppMessage(Base):
@@ -139,6 +168,9 @@ class AttentionTicket(Base):
     raised_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True, index=True)
     resolved_by = Column(String(200), nullable=True)
+    # When the bot answered the question itself from what it knows: the answer
+    # it sent. Such a ticket is raised and solved at once, by "bot".
+    bot_answer = Column(Text, nullable=True)
 
     @property
     def ticket_id(self) -> str:

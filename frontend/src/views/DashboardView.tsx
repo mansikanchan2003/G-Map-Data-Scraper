@@ -6,6 +6,7 @@ import { CollapsiblePanel } from '../components/CollapsiblePanel';
 import { LeadsPanel } from '../components/LeadsPanel';
 import { ScaleBars } from '../components/ScaleBars';
 import { JobDistributionDonut } from '../components/JobDistributionDonut';
+import { DispositionsPanel } from '../components/DispositionsPanel';
 import type { NormalizedSystemStats, DiscoveryStatus, ApiError } from '../types/api';
 import type { NavTab } from '../components/Header';
 import { retryAllFailedJobs, triggerBatchDiscovery, stopDiscovery } from '../api';
@@ -116,6 +117,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </section>
+
+      {/* Every chat's outcome, recorded by the team or read from the bot's step. */}
+      <DispositionsPanel />
 
       {/* Action feedback banner */}
       {actionMsg && (
