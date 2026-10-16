@@ -134,8 +134,9 @@ export const HandoverBar: React.FC<{
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const withPerson = conv.bot_paused && !!conv.handled_by;
-  // The bot has something to carry on with: a step it waits at, in a chat from a campaign.
-  const botCanCarryOn = conv.from_campaign && !!conv.bot_step;
+  // The bot has something to carry on with: it has started its flow here (it
+  // only ever does for people a campaign reached).
+  const botCanCarryOn = !!conv.bot_step;
 
   const takeOver = async () => {
     setBusy(true); setError(null);
