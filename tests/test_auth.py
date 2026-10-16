@@ -700,7 +700,7 @@ class TestAllowedTabs:
         client.post("/api/v1/auth/login", json={"email": admin, "password": GOOD_PASSWORD})
         uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
         client.post(f"/api/v1/auth/users/{uid}/approve")
-        tabs = ["whatsapp-inbox", "applications", "whatsapp-history", "whatsapp-insights"]
+        tabs = ["whatsapp-inbox", "applications", "whatsapp-history", "whatsapp-insights", "dispositions"]
         r = client.put(f"/api/v1/auth/users/{uid}/tabs", json={"tabs": tabs})
         assert r.status_code == 200 and r.json()["allowed_tabs"] == tabs
         assert client.put(f"/api/v1/auth/users/{uid}/tabs", json={"tabs": ["nope"]}).status_code == 400

@@ -11,7 +11,7 @@ export const isReadOnly = (role?: string | null) => role === 'member';
 
 /** The tabs a member has: the data, and nothing that exists to act. */
 const VIEW_ONLY_TABS: NavTab[] = [
-  'dashboard', 'businesses', 'partners', 'whatsapp-templates', 'whatsapp-history', 'whatsapp-insights',
+  'dashboard', 'businesses', 'partners', 'whatsapp-templates', 'whatsapp-history', 'whatsapp-insights', 'dispositions',
 ];
 
 /**

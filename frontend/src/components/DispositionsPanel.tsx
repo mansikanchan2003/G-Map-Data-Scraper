@@ -15,12 +15,13 @@ const GROUPS: [string, string][] = [['positive', 'Going well'], ['follow_up', 'F
 const who = (email: string) => email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 const chat = (phone: string) => `#inbox/${phone.replace(/\D/g, '')}`;
 
-export const DispositionsPanel: React.FC = () => {
+export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => {
   const [d, setD] = useState<DispositionDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    fetchDispositionDashboard(7).then(setD).catch(e => setError(e.message));
-  }, []);
+    setD(null);
+    fetchDispositionDashboard(days).then(setD).catch(e => setError(e.message));
+  }, [days]);
 
   if (error) return <div className="p-3 rounded border border-rose-800 bg-rose-950/70 text-rose-200 text-xs">Chat outcomes: {error}</div>;
   if (!d) return <div className="p-4 rounded-lg border border-slate-800 bg-slate-900 text-xs text-slate-500">Loading chat outcomes…</div>;
