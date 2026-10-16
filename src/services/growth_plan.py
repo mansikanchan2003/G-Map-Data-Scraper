@@ -492,6 +492,10 @@ def agent_brief(db: Session) -> str:
 
     leak = p["funnel"]["biggest_leak"]
     why = " ".join(g.get("reasoning") or [])
+    # The Plan tab's "What to do next", less the call list: it names people,
+    # and calling them is the team's job, not a template's.
+    steps = "\n".join(f"- {st['title']}: {st['detail']} ({st['why']})"
+                      for st in p["next_steps"] if st["icon"] != "call") or "- nothing yet"
     return f"""{business_context.process_text(p.get('business'))}
 
 THE GOAL — read this first. Eko earns from LEADS: business owners who tap Interested, qualify (PIN in our area, 12th pass or more, can invest ₹5 lakh) and submit complete, correct documents, so the branch and LHO approve them. Your goal for {g['label']}, which you set from the numbers above: {g['target']} leads; we have {g['leads']}, with {g['days_left']} days left. Why: {why} A template that gets many replies from people who cannot qualify does not help. Write to win QUALIFIED owners: established shops and agencies with capital and an educated owner, and be honest that it is an investment-backed business.
@@ -504,4 +508,6 @@ WHAT MOVED PEOPLE SO FAR (judged on “{p['judged_on_label']}”, the furthest s
 {lines('body_length', 'Message length')}
 WHERE PEOPLE DROP OUT: {(leak['label'] + ' — ' + leak['advice']) if leak else 'not enough data yet'}
 NOT TRIED YET (worth testing): angles {', '.join(c['untried_angles'][:4]) or 'none'}; layouts {', '.join(c['untried_layouts']) or 'none'}.
+WHAT TO DO NEXT, the plan's own suggestions (Campaign Insights, Plan tab), most effective first. Follow the ones about templates, and write for the places and kinds of business they name (their language, their trade):
+{steps}
 Build on what moved people, avoid what did not, and when nothing is proven, make this template different from the ones above so it teaches us something. Every word on the image must be spelled correctly in its script, short, and readable at a glance."""

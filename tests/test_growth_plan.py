@@ -260,6 +260,9 @@ def test_the_agents_are_told_the_process_and_their_goal(db, context):
     assert brief.startswith("HOW EKO EARNS, from a lead to revenue.")
     assert "Your goal for Oct 2026, which you set from the numbers above: 5 leads; we have 1" in brief
     assert "extra income" in brief
+    # The plan's next steps reach the agent, but not the call list's names.
+    assert "WHAT TO DO NEXT" in brief and "Try a new kind of template" in brief
+    assert "Call the" not in brief
 
 
 def test_delivery_is_measured_only_where_meta_reported(db):
