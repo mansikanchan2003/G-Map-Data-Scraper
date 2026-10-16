@@ -15,7 +15,7 @@ A disposition is the chat's outcome: Interested, Call back later, Not
 reachable and so on. Every chat always has one: the one the team last
 recorded, or, when the bot has moved the chat on since, the one its step
 says (documents submitted, not eligible, outside our area...). Each one
-recorded is kept in chat_activity with who and when, for the Dashboard.
+recorded is kept in chat_activity with who and when, for the Dispositions tab.
 """
 import uuid
 from collections import Counter
@@ -28,7 +28,7 @@ from src.models.inbox import ChatActivity, WhatsAppConversation
 from src.services import inbox, tickets
 from src.services import onboarding_bot as bot
 
-# Key: (label, group). Groups order the Dashboard and colour it.
+# Key: (label, group). Groups order the Dispositions tab and colour it.
 DISPOSITIONS: Dict[str, tuple] = {
     "interested": ("Interested", "positive"),
     "docs_pending": ("Documents pending", "positive"),

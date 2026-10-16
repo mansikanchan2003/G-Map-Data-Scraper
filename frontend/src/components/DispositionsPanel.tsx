@@ -3,7 +3,7 @@ import { fetchDispositionDashboard, type DispositionDashboard } from '../api/inb
 import { formatDateTime } from '../utils/datetime';
 
 /**
- * Every chat's outcome (disposition) at a glance, on the Dashboard: how many
+ * Every chat's outcome (disposition) at a glance, on the Dispositions tab: how many
  * chats stand where, the chats people are handling now, and the outcomes the
  * team recorded lately. Each name opens its chat in the Inbox.
  */
