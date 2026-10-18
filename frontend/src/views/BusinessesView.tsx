@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { BusinessItem, PaginatedResponse, ApiError } from '../types/api';
-import { fetchBusinesses, triggerCsvStream, triggerExcelStream,
+import { fetchBusinesses, fetchBusinessStates, triggerCsvStream, triggerExcelStream,
          fetchLiveSheet, syncLiveSheet, type LiveSheetInfo } from '../api';
 import { DownloadMenu } from '../components/DownloadMenu';
 import { AudienceSelector } from '../components/AudienceSelector';
@@ -26,6 +26,9 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
   // Filters
   const [search, setSearch] = useState<string>(initialSearch);
   const [selectedState, setSelectedState] = useState<string>('All');
+  // The states that have businesses, read from the data, not a fixed list.
+  const [states, setStates] = useState<{ state: string; count: number }[]>([]);
+  useEffect(() => { fetchBusinessStates().then(setStates).catch(() => setStates([])); }, []);
   const [jumpPage, setJumpPage] = useState<string>('');
 
   // Each keystroke starts a load; only the latest one may fill the table, so
@@ -175,12 +178,9 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
               className="h-8 px-2 bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono-code rounded shadow-sm focus:outline-none focus:border-sky-500 cursor-pointer"
             >
               <option value="All">State: All</option>
-              <option value="DELHI">Delhi</option>
-              <option value="UTTAR PRADESH">Uttar Pradesh</option>
-              <option value="HARYANA">Haryana</option>
-              <option value="MAHARASHTRA">Maharashtra</option>
-              <option value="KARNATAKA">Karnataka</option>
-              <option value="TAMIL NADU">Tamil Nadu</option>
+              {states.map(s => (
+                <option key={s.state} value={s.state}>{s.state} ({s.count.toLocaleString('en-IN')})</option>
+              ))}
             </select>
           </div>
 

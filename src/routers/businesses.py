@@ -77,6 +77,16 @@ def get_businesses(
         "has_prev": page > 1
     }
 
+@router.get("/states")
+def business_states(db: Session = Depends(get_db)):
+    """The states the shown businesses are in, with how many, most first: the State filter's choices."""
+    from sqlalchemy import func
+    rows = (db.query(Business.state, func.count(Business.business_id))
+            .filter(CONTACTABLE, NOT_PARTNER, Business.state.isnot(None), Business.state != "")
+            .group_by(Business.state).order_by(func.count(Business.business_id).desc()).all())
+    return [{"state": s, "count": n} for s, n in rows]
+
+
 @router.get("/{business_id}", response_model=BusinessPublicResponse)
 def get_business(business_id: str, db: Session = Depends(get_db)):
     biz = db.query(Business).filter(Business.business_id == business_id).first()

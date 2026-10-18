@@ -224,6 +224,10 @@ export async function fetchBusinesses(params: BusinessFilterParams = {}): Promis
   return request<PaginatedResponse<BusinessItem>>(`/api/v1/businesses?${query.toString()}`);
 }
 
+/** The states the businesses are in, with how many, most first. */
+export const fetchBusinessStates = () =>
+  request<{ state: string; count: number }[]>('/api/v1/businesses/states');
+
 /**
  * Triggers native streaming download of all businesses directly from FastAPI.
  * Zero browser memory allocation or client-side CSV parsing.

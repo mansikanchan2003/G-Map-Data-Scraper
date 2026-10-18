@@ -89,3 +89,21 @@ def test_search_finds_the_kind_of_business_and_the_place(db):
         assert found(search="  ", state="uttar pradesh") == {"k1"}
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+def test_the_state_filter_lists_the_states_in_the_data(db):
+    db.add_all([
+        Business(business_id="s1", job_id="done", name="A", phone="+919811111112", category="Kiosk", state="Punjab",
+                 source_query="q", dedup_key="s1"),
+        Business(business_id="s2", job_id="done", name="B", phone="+919811111113", category="Kiosk", state="Punjab",
+                 source_query="q", dedup_key="s2"),
+        Business(business_id="s3", job_id="done", name="C", phone="+919811111114", category="Kiosk", state="Gujarat",
+                 source_query="q", dedup_key="s3"),
+    ])
+    db.commit()
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        states = TestClient(app).get("/api/v1/businesses/states").json()
+        assert states[:2] == [{"state": "Punjab", "count": 2}, {"state": "Gujarat", "count": 1}]
+    finally:
+        app.dependency_overrides.pop(get_db, None)
