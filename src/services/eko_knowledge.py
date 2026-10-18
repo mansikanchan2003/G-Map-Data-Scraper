@@ -504,6 +504,9 @@ MORE_KEYS: Dict[str, List[str]] = {
     "process": ["aage kya karna", "aage kya", "next step", "shuru kaise", "kaise judein", "kaise jude", "kaise apply",
                 "how to apply", "kitne din lagenge", "kitna time lagega", "kab tak shuru", "जुड़ना", "शुरू कैसे"],
     "services": ["kya kya kaam", "kya services", "kaun kaun se kaam", "account kholna", "cash withdrawal", "पैसे निकालना", "खाता खोलना"],
+    "what_csp": ["csp matlab", "csp meaning", "csp means", "csp arth", "csp kise kehte", "csp kya cheez", "kiosk matlab",
+                 "kiosk meaning", "banking outlet matlab", "customer service point matlab", "सीएसपी मतलब", "सीएसपी अर्थ",
+                 "csp मतलब", "સીએસપી એટલે", "ਸੀਐਸਪੀ ਮਤਲਬ"],
     "reach": ["kahan kahan hai", "kis state", "kitne state", "kitne log", "kitne kiosk", "network", "हर जगह"],
 }
 for _f in FAQ:
@@ -621,20 +624,41 @@ def _same(p: str, w: str, s: str) -> bool:
     return _vowels(p) == _vowels(w)
 
 
+# Words allowed between two words of a key: "csp ka kya matlab" still says "csp matlab".
+GAP = 2
+
+
 def _where(key: str, words: List[str], sounds: List[str]) -> Optional[frozenset]:
-    """The positions of the words a key matches in the message, or None if it does not."""
+    """
+    The positions of the words a key matches in the message, or None if it does not.
+
+    The key's words must come in order, with at most GAP other words between
+    two of them, so a question put in its own words still finds the key.
+    """
     parts = _words(key)
     if not parts:
         return None
-    n = len(parts)
-    for i in range(len(words) - n + 1):
-        if all(_same(parts[j], words[i + j], sounds[i + j]) for j in range(n)):
-            return frozenset(range(i, i + n))
-    # An Indic key may carry a suffix in the message ("सेवा" in "सेवाएँ").
-    if not _LATIN.search(key):
-        for i in range(len(words) - n + 1):
-            if all(parts[j] in words[i + j] for j in range(n)):
-                return frozenset(range(i, i + n))
+    indic = not _LATIN.search(key)
+
+    def same(p: str, i: int) -> bool:
+        # An Indic key may carry a suffix in the message ("सेवा" in "सेवाएँ").
+        return _same(p, words[i], sounds[i]) or (indic and p in words[i])
+
+    def follow(j: int, start: int, at: tuple) -> Optional[tuple]:
+        if j == len(parts):
+            return at
+        for i in range(start, min(len(words), start + GAP + 1)):
+            if same(parts[j], i):
+                found = follow(j + 1, i + 1, at + (i,))
+                if found:
+                    return found
+        return None
+
+    for i in range(len(words)):
+        if same(parts[0], i):
+            found = follow(1, i + 1, (i,))
+            if found:
+                return frozenset(found)
     return None
 
 

@@ -1512,7 +1512,7 @@ SAME_QUESTION = {
     "real": ["kya ye sach me hai", "Eko kya company hai?", "is this genuine or scam"],
     "salary": ["fix salary milegi?", "kya har mahine pakka paisa milega"],
     # The rest of kiosk.eko.in.
-    "what_csp": ["CSP kya hota hai?", "सीएसपी क्या है"],
+    "what_csp": ["CSP kya hota hai?", "सीएसपी क्या है", "Ye CSP ka kya matlab hai?", "csp ka meaning batao"],
     "setup_cost": ["setup ka kharcha kitna", "machine ke paise lagenge?"],
     "who_fits": ["banking experience chahiye?", "housewife kar sakti hai?"],
     "schemes": ["atal pension yojana kar sakte", "pmjjby kya hai"],
