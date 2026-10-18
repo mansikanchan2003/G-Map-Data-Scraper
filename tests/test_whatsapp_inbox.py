@@ -836,12 +836,13 @@ def test_every_language_has_short_education_buttons():
 def test_a_question_marks_the_conversation_and_is_thanked(db):
     tap_campaign(db)
     say(db, SERVED_PIN)
-    say(db, "Isme kitna kamaunga?")
+    # Not in Eko's FAQ ("Isme kitna kamaunga?" now is: the bot answers that itself).
+    say(db, "Kya aap Sunday ko bhi baat karte ho?")
     body = StubMeta.sent[-1][2]
     assert body.startswith(bot_messages.MESSAGES["en"]["question_ack"])
     assert onboarding_bot.ASK_EDUCATION in body  # and the question it left is asked again
     c = conv(db)
-    assert c.needs_attention and c.attention_reason == "Isme kitna kamaunga?"
+    assert c.needs_attention and c.attention_reason == "Kya aap Sunday ko bhi baat karte ho?"
     assert c.bot_step == onboarding_bot.AWAIT_EDUCATION
 
 
@@ -1498,3 +1499,38 @@ def test_the_bot_solves_what_it_knows_and_escalates_the_rest(db, client, emailed
 def test_the_team_emails_go_to_mansi_and_kavya():
     from src.services import auth_service, notifier
     assert "kavya.shukla@eko.co.in" in notifier.team(auth_service.BOOTSTRAP_ADMIN)
+
+
+# --- The bot understands a question however it is put ---------------------------
+
+SAME_QUESTION = {
+    "job": ["Ye bank ki naukari hai?", "Kya yeh bank ki naukri hai?", "kya ye nokri hai", "Kya main bank ka employee banunga?",
+            "क्या ये बैंक की नौकरी है?", "ਕੀ ਇਹ ਬੈਂਕ ਦੀ ਨੌਕਰੀ ਹੈ?", "શું આ બેંકની નોકરી છે?", "is this a bank job?"],
+    "investment": ["kitna paisa lagana padega", "कितना निवेश करना होगा", "ਕਿੰਨਾ ਨਿਵੇਸ਼ ਕਰਨਾ ਪਵੇਗਾ", "કેટલું રોકાણ કરવું પડશે"],
+    "earnings": ["Kamayi kitni hogi mahine ki?", "कितनी कमाई होगी", "ਕਿੰਨੀ ਕਮਾਈ ਹੋਵੇਗੀ", "કેટલી કમાણી થશે", "how much can I earn"],
+    "documents": ["kaun se kagaz lagenge", "कौन से दस्तावेज चाहिए", "ਕਿਹੜੇ ਦਸਤਾਵੇਜ਼ ਚਾਹੀਦੇ", "aadhar card chahiye?"],
+    "real": ["kya ye sach me hai", "Eko kya company hai?", "is this genuine or scam"],
+    "salary": ["fix salary milegi?", "kya har mahine pakka paisa milega"],
+}
+NOT_IN_THE_FAQ = ["Mere ghar ka pata badalna hai, kya karna hoga?", "Kya aap Sunday ko bhi baat karte ho?",
+                  "aapka office kahan hai?", "ATM card kab tak milega sir?", "Thank you", "Namaste sar aaj ki chutti hai kya",
+                  "Shivani madam contact number account list problem", "Thank you for contacting Aditya mobile store!"]
+
+
+@pytest.mark.parametrize("faq_id,question", [(f, q) for f, qs in SAME_QUESTION.items() for q in qs])
+def test_the_same_question_asked_another_way_finds_the_same_answer(faq_id, question):
+    from src.services import eko_knowledge
+    assert eko_knowledge.match(question)[:1] == [faq_id]
+
+
+@pytest.mark.parametrize("question", NOT_IN_THE_FAQ)
+def test_a_question_the_faq_does_not_cover_is_not_forced_onto_it(question):
+    from src.services import eko_knowledge
+    assert eko_knowledge.match(question) == []
+
+
+def test_naukari_spelt_differently_is_answered_by_the_bot(db):
+    tap_campaign(db)
+    say(db, "Ye bank ki naukari hai?")
+    assert StubMeta.sent[-1][2].startswith("No. This is your own business.")
+    assert not conv(db).needs_attention

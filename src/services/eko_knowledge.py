@@ -158,7 +158,7 @@ FAQ: List[dict] = [
     },
     {
         "id": "salary", "question": "Kya fixed salary milegi?",
-        "keys": ["salary", "selery", "fixed salary", "tankhwah", "tankha", "vetan", "pagar", "mahina fix", "fixed", "सैलरी", "वेतन", "तनख्वाह", "પગાર", "ਤਨਖਾਹ"],
+        "keys": ["salary", "selery", "fixed salary", "tankhwah", "vetan", "pagar", "mahina fix", "fixed", "सैलरी", "वेतन", "तनख्वाह", "પગાર", "ਤਨਖਾਹ"],
         "answer": {
             "hinglish": "Nahi. Yeh naukri nahi, business hai. Kamaai commission aur goal-based incentive se hoti hai.",
             "en": "No. This is not a job, it is a business. Earnings come from commission and goal-based incentives.",
@@ -298,6 +298,54 @@ SITE_FAQ: List[dict] = [
 ]
 FAQ = FAQ + SITE_FAQ
 
+# Other ways people ask the same thing (2026-10-18: the team wants the bot to
+# understand a question however it is put, not only in the FAQ's words). The
+# spelling and the script do not need listing: "naukari", "नौकरी" and "ਨੌਕਰੀ"
+# all match "naukri" by sound (see _sound). Only new words and phrasings go here.
+MORE_KEYS: Dict[str, List[str]] = {
+    "job": ["employee", "bank employee", "bank ka employee", "bank ka staff", "karmachari", "bank mein naukri",
+            "bank me job", "permanent", "joining", "recruitment", "bharti", "sarkari naukri",
+            "kya main bank ka", "bank wala ban", "मुलाजिम", "कर्मचारी", "નોકરિયાત", "ਮੁਲਾਜ਼ਮ"],
+    "real": ["sach", "sacha", "sachcha", "bharosa", "vishwas", "trust", "scam", "dhokha", "thagi", "nakli", "legit",
+             "authorized", "authorised", "registered company", "sahi company", "eko kya hai", "eko company", "eko kya company", "kaun si company", "company ka naam",
+             "विश्वास", "नकली", "ठगी", "ભરોસો", "ਭਰੋਸਾ"],
+    "fees": ["fees lagegi", "kitni fees", "form fees", "charge lagega", "registration fees", "apply free",
+             "free hai", "mufat", "muft", "paise lagenge apply", "मुफ्त", "ફ્રી", "ਮੁਫ਼ਤ"],
+    "investment": ["kitna lagana", "kitna lagega", "paise lagane", "paisa lagana", "lagana padega", "cost",
+                   "budget", "capital", "amount lagega", "kitne rupaye", "kitna kharch", "5 lac", "पैसे लगाने",
+                   "कितना लगेगा", "કેટલા પૈસા", "ਕਿੰਨੇ ਪੈਸੇ"],
+    "devices": ["saman", "samaan", "equipment", "atm machine", "fingerprint", "thumb machine", "passbook machine",
+                "kya kya milega", "setup", "सामान", "સામાન", "ਸਮਾਨ"],
+    "with_shop": ["dukan", "shop", "kahan baithna", "jagah chahiye", "counter", "ghar se chala",
+                  "ghar par chala", "kitne baje", "kitne ghante", "દુકાનમાં"],
+    "training": ["sikhaenge", "sikhna", "seekhna", "pariksha", "test dena", "kaise sikhe",
+                 "सीखना", "परीक्षा", "શીખવું", "ਸਿੱਖਣਾ"],
+    "family": ["ghar wale", "gharwale", "beta chala", "wife chala", "koi aur chala", "relative", "rishtedar",
+               "साथ में", "ઘરના", "ਘਰਵਾਲੇ"],
+    "earnings": ["kitna kamaa", "kitna kama", "kitni kamai", "kitne paise milenge", "kitna paisa milega",
+                 "fayda", "faida", "labh", "earn", "how much earn", "income kitni", "mahine ka kitna", "monthly kitna", "kitna banega",
+                 "फायदा", "लाभ", "ફાયદો", "ਫ਼ਾਇਦਾ"],
+    "salary": ["fix paisa", "fixed income", "har mahine fix", "pakka paisa", "guaranteed income", "guarantee income", "income guarantee", "garanti",
+               "fix milega", "पक्का", "ગેરંટી", "ਪੱਕਾ"],
+    "women": ["mahilaon", "ladki", "aurto", "auraton", "beti chala", "lady operator", "स्त्री", "ਔਰਤਾਂ"],
+    # Not "chutti" or "holiday": "aaj chutti hai?" asks whether we are open, not about the penalty.
+    "penalty": ["band rakha", "band kar diya", "lambe samay band", "kitne din band"],
+    "eligibility": ["kaun ban sakta", "main ban sakta", "kya main apply", "kya mai apply", "can i apply",
+                    "qualification", "padhai kitni", "kitna padha", "umar", "age limit", "yogya hun",
+                    "उम्र", "आयु", "ઉંમર", "ਉਮਰ"],
+    "cibil": ["credit report", "loan chal raha", "loan liya", "emi", "default", "credit history", "सिबिल स्कोर"],
+    "documents": ["kya kya lagega", "kya lagega", "proof", "kagzat", "papers chahiye", "aadhar", "aadhaar", "pan card",
+                  "police", "certificate chahiye", "कागजात", "આધાર", "ਆਧਾਰ"],
+    "commission_paid": ["paisa kab aayega", "kab tak milega paisa", "payment date", "kis tareekh", "tarikh",
+                        "account mein kab", "kab credit", "कब मिलेगा", "ક્યારે મળશે", "ਕਦੋਂ ਮਿਲੇਗਾ"],
+    "process": ["aage kya karna", "aage kya", "next step", "shuru kaise", "kaise judein", "kaise jude", "kaise apply",
+                "how to apply", "kitne din lagenge", "kitna time lagega", "kab tak shuru", "जुड़ना", "शुरू कैसे"],
+    "services": ["kya kya kaam", "kya services", "kaun kaun se kaam", "account kholna", "cash withdrawal", "पैसे निकालना", "खाता खोलना"],
+    "reach": ["kahan kahan hai", "kis state", "kitne state", "kitne log", "kitne kiosk", "network", "हर जगह"],
+}
+for _f in FAQ:
+    _f["keys"] = list(dict.fromkeys(_f["keys"] + MORE_KEYS.get(_f["id"], [])))
+
 # Some words belong to more than one question ("fixed salary" names the
 # salary question, not the job one); the longer, more specific key wins.
 _BY_ID = {f["id"]: f for f in FAQ}
@@ -308,21 +356,147 @@ def _norm(text: str) -> str:
     return " " + re.sub(r"[^\wऀ-෿₹]+", " ", (text or "").lower()) + " "
 
 
+# --- Matching by sound --------------------------------------------------------
+# People write the same word many ways: "naukri", "naukari", "nokri", and in
+# Devanagari, Gurmukhi or Gujarati. Each word is reduced to the consonants it
+# is said with, in Latin letters: all of those become "nkr". The Indic scripts
+# share one layout, so Gurmukhi and Gujarati letters are read as Devanagari's.
+_INDIC_BASES = (0x0980, 0x0A00, 0x0A80, 0x0B00, 0x0C00, 0x0C80, 0x0D00)
+_DEVA = {
+    "क": "k", "ख": "k", "ग": "g", "घ": "g", "ङ": "n", "च": "c", "छ": "c", "ज": "j", "झ": "j", "ञ": "n",
+    "ट": "t", "ठ": "t", "ड": "d", "ढ": "d", "ण": "n", "त": "t", "थ": "t", "द": "d", "ध": "d", "न": "n",
+    "प": "p", "फ": "f", "ब": "b", "भ": "b", "म": "m", "य": "y", "र": "r", "ल": "l", "ळ": "l", "व": "v",
+    "श": "s", "ष": "s", "स": "s", "ह": "h", "ं": "n", "ँ": "n", "ॐ": "m",
+    "क़": "k", "ख़": "k", "ग़": "g", "ज़": "j", "ड़": "r", "ढ़": "r", "फ़": "f", "य़": "y",
+}
+_DEVA_VOWELS = set("अआइईउऊऋएऐओऔ")
+_LATIN_FOLD = [("chh", "c"), ("ch", "c"), ("kh", "k"), ("gh", "g"), ("jh", "j"), ("th", "t"), ("dh", "d"),
+               ("ph", "f"), ("bh", "b"), ("sh", "s"), ("ck", "k"), ("q", "k"), ("x", "ks"), ("z", "j"), ("w", "v")]
+
+
+def _devanagari(ch: str) -> str:
+    code = ord(ch)
+    for base in _INDIC_BASES:
+        if base <= code < base + 0x80:
+            return chr(0x0900 + code - base)
+    return ch
+
+
+def _sound(word: str) -> str:
+    """The consonants a word is said with, in Latin letters: naukri, naukari, नौकरी, ਨੌਕਰੀ -> nkr."""
+    word = "".join(_devanagari(c) for c in word.lower())
+    out = []
+    if re.search(r"[ऀ-ॿ]", word):
+        for i, c in enumerate(word):
+            if c in _DEVA:
+                out.append(_DEVA[c])
+            elif c in _DEVA_VOWELS and i == 0:
+                out.append("a")
+            elif c.isascii() and c.isalnum():
+                out.append(c)
+    else:
+        w = word
+        for a, b in _LATIN_FOLD:
+            w = w.replace(a, b)
+        for i, c in enumerate(w):
+            if c in "aeiou":
+                if i == 0:
+                    out.append("a")
+            elif c.isalnum():
+                out.append(c)
+    s = "".join(out)
+    # A y or h inside a word comes and goes with spelling (kamai/kamayi,
+    # pahle/pehle); one at the end is kept, so "tankhah" is not "thank".
+    s = s[:1] + re.sub(r"[yh]", "", s[1:-1]) + s[-1:] if len(s) > 2 else s
+    return re.sub(r"(.)\1+", r"\1", s)
+
+
+_VOWEL_SIGNS = {"ा": "a", "ि": "i", "ी": "i", "ु": "u", "ू": "u", "े": "e", "ै": "e", "ो": "o", "ौ": "o",
+                "आ": "a", "इ": "i", "ई": "i", "उ": "u", "ऊ": "u", "ए": "e", "ऐ": "e", "ओ": "o", "औ": "o"}
+
+
+def _vowels(word: str) -> str:
+    """The vowel signs of an Indic word, read through Devanagari: नौकरी and નોકરી -> "oi"."""
+    return "".join(_VOWEL_SIGNS.get(_devanagari(c), "") for c in word)
+
+
+def _words(text: str) -> List[str]:
+    # Indic vowel signs are not \w, so the Indic blocks are named whole: "ફોર્મ" is one word, not three.
+    return re.findall(r"[\wऀ-෿₹]+", (text or "").lower())
+
+
+def _close(a: str, b: str) -> bool:
+    """Two spellings in Latin letters near enough to be one word: naukari/naukri, commison/commission."""
+    if abs(len(a) - len(b)) > 2:
+        return False
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1] <= max(1, min(len(a), len(b)) // 4)
+
+
+def _same(p: str, w: str, s: str) -> bool:
+    """A key word and a word said are one: the same, or the same sound (and, in Latin letters, a close spelling)."""
+    if p == w:
+        return True
+    k = _sound(p)
+    if len(k) < 3 or k != s:
+        return False
+    latin_p, latin_w = bool(_LATIN.search(p)), bool(_LATIN.search(w))
+    # Both in Latin letters: the spellings must be close too, so "Shivani"
+    # is not "sevayein". Both Indic: the sound, read through one layout, so
+    # Gujarati "નોકરી" is Hindi "नौकरी". Latin against Indic: three consonants
+    # are too few to be sure ("store" is not "स्त्री"), so only longer words.
+    if latin_p and latin_w:
+        return _close(p, w)
+    if latin_p != latin_w:
+        return len(k) >= 5
+    # Both Indic: the vowel signs must agree too ("सीखना" is not "स्कैन").
+    return _vowels(p) == _vowels(w)
+
+
+def _where(key: str, words: List[str], sounds: List[str]) -> Optional[frozenset]:
+    """The positions of the words a key matches in the message, or None if it does not."""
+    parts = _words(key)
+    if not parts:
+        return None
+    n = len(parts)
+    for i in range(len(words) - n + 1):
+        if all(_same(parts[j], words[i + j], sounds[i + j]) for j in range(n)):
+            return frozenset(range(i, i + n))
+    # An Indic key may carry a suffix in the message ("सेवा" in "सेवाएँ").
+    if not _LATIN.search(key):
+        for i in range(len(words) - n + 1):
+            if all(parts[j] in words[i + j] for j in range(n)):
+                return frozenset(range(i, i + n))
+    return None
+
+
 def match(text: str, limit: int = 2) -> List[str]:
-    """The FAQ entries a message asks about, best first; empty when none fits."""
-    norm = _norm(text)
+    """
+    The FAQ entries a message asks about, best first; empty when none fits.
+
+    A key matches its words said in order, spelt or written in any script.
+    The same words are counted once for an entry, so a question naming
+    "commission" is not counted twice for the Hindi and the English key.
+    """
+    words = _words(text)
+    sounds = [_sound(w) for w in words]
     scores: Dict[str, float] = {}
     for f in FAQ:
-        score = 0.0
+        hits = []
         for key in f["keys"]:
-            k = _norm(key).strip()
-            if not k:
-                continue
-            # Latin words must match whole words ("fd" not inside "fdi");
-            # Indic words may carry suffixes, so a substring is enough.
-            hit = f" {k} " in norm if _LATIN.search(k) else k in norm
-            if hit:
-                score += 1 + len(k) / 20
+            at = _where(key, words, sounds)
+            if at is not None:
+                hits.append((1 + len(_norm(key).strip()) / 20, at))
+        covered, score = set(), 0.0
+        for weight, at in sorted(hits, key=lambda h: -h[0]):
+            if not at <= covered:
+                score += weight
+                covered |= at
         if score:
             scores[f["id"]] = score
     ranked = sorted(scores, key=lambda i: -scores[i])
