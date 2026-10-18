@@ -25,6 +25,8 @@ const GROUP: Record<Group, { label: string; icon: string; stroke: string; bar: s
     tint: 'bg-slate-800 text-slate-300', ring: 'border-slate-700', text: 'text-slate-300' },
 };
 const ORDER: Group[] = ['positive', 'follow_up', 'negative', 'other'];
+// The groups' colours on the always-dark banner, where the theme ramps do not apply.
+const ACCENT: Record<Group, string> = { positive: '#34d399', follow_up: '#f9ab10', negative: '#fb7185', other: '#94a3b8' };
 
 const ICON: Record<string, string> = {
   interested: 'thumb_up', docs_pending: 'hourglass_top', submitted: 'task_alt', guidance: 'school',
@@ -33,8 +35,8 @@ const ICON: Record<string, string> = {
   not_eligible: 'person_off', outside_area: 'wrong_location', wrong_number: 'dialpad', other: 'more_horiz',
 };
 
-const Icon: React.FC<{ name: string; className?: string }> = ({ name, className = '' }) =>
-  <span className={`material-symbols-outlined ${className}`}>{name}</span>;
+const Icon: React.FC<{ name: string; className?: string; style?: React.CSSProperties }> = ({ name, className = '', style }) =>
+  <span className={`material-symbols-outlined ${className}`} style={style}>{name}</span>;
 const who = (email: string) => email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 const initials = (text: string) => text.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 const chat = (phone: string) => `#inbox/${phone.replace(/\D/g, '')}`;
@@ -157,43 +159,47 @@ export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => 
 
   return (
     <div className="space-y-5 select-text">
-      {/* The headline and the four groups; each tile filters the breakdown below. */}
-      <section className="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br from-sky-950 via-slate-900 to-violet-950 p-5 sm:p-6 shadow-sm">
-        <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-sky-500/10 blur-3xl pointer-events-none" />
-        <div className="absolute right-40 -bottom-20 h-48 w-48 rounded-full bg-violet-500/10 blur-3xl pointer-events-none" />
-        <div className="relative flex flex-wrap items-end justify-between gap-4">
+      {/* The headline and the four groups, in Campaign Insights' deep-teal banner (dark in
+          both themes); each tile filters the breakdown below. */}
+      <section className="rounded-2xl overflow-hidden shadow-md text-white"
+        style={{ background: 'linear-gradient(120deg, #0a3543 0%, #16435a 55%, #1d5a6e 100%)' }}>
+        <div className="p-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <div className="text-[11px] uppercase tracking-wider font-semibold text-sky-300">Where every chat stands</div>
+            <div className="text-[11px] uppercase tracking-[0.14em] font-semibold flex flex-wrap items-center gap-2" style={{ color: '#f9ab10' }}>
+              Where every chat stands
+              <span className="normal-case tracking-normal font-medium text-[10.5px] px-2 py-0.5 rounded-full bg-white/10 text-white/80">
+                <Icon name="history" className="text-[13px] align-[-2px] mr-0.5" />{d.recent_count} recorded in the last {d.recent_days} days
+              </span>
+            </div>
             <div className="mt-1 flex items-baseline gap-3">
-              <span className="text-4xl sm:text-5xl font-bold tabular-nums text-slate-100">{pct(totals.positive, total)}%</span>
-              <span className="text-sm text-slate-300">going well, of <b className="text-slate-100">{total}</b> chats</span>
+              <span className="text-4xl sm:text-5xl font-semibold tabular-nums">{pct(totals.positive, total)}%</span>
+              <span className="text-sm text-white/75">going well, of <b className="text-white">{total}</b> chats</span>
             </div>
-            <div className="text-[12.5px] text-slate-400 mt-1">
-              {d.by_team} outcomes recorded by the team · the rest read from the bot's step · {d.recent_count} recorded in the last {d.recent_days} days
-            </div>
+            <p className="text-sm text-white/70 mt-1">
+              {d.by_team} outcomes recorded by the team; the rest read from the bot's step.
+            </p>
           </div>
-          <div className="flex items-center gap-2 text-[12px] text-slate-300">
-            <Icon name="support_agent" className="text-[18px] text-violet-300" />
-            <b className="text-slate-100 tabular-nums">{d.with_people.length}</b> {d.with_people.length === 1 ? 'chat is' : 'chats are'} with the team now
+          <div className="rounded-lg bg-white/10 px-4 py-3 min-w-[150px]">
+            <div className="flex items-center gap-1.5 text-white/70 text-[11px]"><Icon name="support_agent" className="text-[15px]" />with the team now</div>
+            <div className="text-2xl font-semibold tabular-nums mt-0.5">{d.with_people.length} <span className="text-sm font-normal text-white/70">{d.with_people.length === 1 ? 'chat' : 'chats'}</span></div>
           </div>
         </div>
-        <div className="relative grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 px-6 pb-6">
           {ORDER.map(g => {
             const on = focus === g;
             return (
               <button key={g} onClick={() => setFocus(on ? 'all' : g)}
-                className={`text-left rounded-xl border p-3.5 bg-slate-900/80 backdrop-blur transition-all cursor-pointer ${on
-                  ? `${GROUP[g].ring} ring-2 ring-sky-500` : 'border-slate-800 hover:-translate-y-0.5 hover:border-slate-700'}`}>
+                className={`text-left rounded-lg px-4 py-3 transition-all cursor-pointer ${on
+                  ? 'bg-white/20 ring-2 ring-[#f9ab10]' : 'bg-white/10 hover:bg-white/15'}`}>
                 <div className="flex items-center justify-between">
-                  <span className={`h-9 w-9 rounded-lg flex items-center justify-center ${GROUP[g].tint}`}><Icon name={GROUP[g].icon} className="text-[20px]" /></span>
-                  <span className="text-2xl font-bold tabular-nums text-slate-100">{totals[g]}</span>
+                  <span className="flex items-center gap-1.5 text-white/75 text-[12px]">
+                    <Icon name={GROUP[g].icon} className="text-[16px]" style={{ color: ACCENT[g] }} />{GROUP[g].label}
+                  </span>
+                  <span className="text-[11.5px] tabular-nums text-white/60">{pct(totals[g], total)}%</span>
                 </div>
-                <div className="flex items-center justify-between mt-2.5">
-                  <span className="text-[13px] font-semibold text-slate-100">{GROUP[g].label}</span>
-                  <span className="text-[12px] tabular-nums text-slate-400">{pct(totals[g], total)}%</span>
-                </div>
-                <div className="h-1.5 rounded-full bg-slate-800 mt-2 overflow-hidden">
-                  <div className={`h-full rounded-full ${GROUP[g].bar}`} style={{ width: `${pct(totals[g], total)}%` }} />
+                <div className="text-2xl font-semibold tabular-nums mt-1">{totals[g]}</div>
+                <div className="h-1.5 rounded-full bg-white/10 mt-2 overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${pct(totals[g], total)}%`, background: ACCENT[g] }} />
                 </div>
               </button>
             );
