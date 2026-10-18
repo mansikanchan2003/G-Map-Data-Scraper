@@ -273,7 +273,7 @@ SITE_FAQ: List[dict] = [
         "id": "services", "question": "Kaun si sevayein de sakte hain?", "source": "kiosk.eko.in",
         # Not "services" or "seva": the Creator Pack's earning_lines answer has those.
         "keys": ["44 services", "kitni services", "kitni sevayein", "kya kya kar sakte", "kya kaam hoga", "account khol",
-                 "aeps", "money transfer", "pmjdy", "pmsby", "pmjjby", "atal pension", "kaun kaun si sevayein",
+                 "aeps", "money transfer", "pmjdy", "kaun kaun si sevayein",
                  "सेवाएं", "કઈ સેવાઓ", "ਕਿਹੜੀਆਂ ਸੇਵਾਵਾਂ"],
         "answer": {
             "hinglish": "SBI ki 44+ sevayein: paise jama aur nikaalna, balance aur mini statement, passbook update, IMPS/NEFT money transfer, khata kholna (PMJDY), Aadhaar seeding, debit card aur cheque book ki request, RD/TD, PPF/SSA jama, PMSBY, PMJJBY aur Atal Pension Yojana, loan aur insurance ke leads, bill payment, recharge aur FASTag.",
@@ -296,6 +296,169 @@ SITE_FAQ: List[dict] = [
         },
     },
 ]
+# The rest of kiosk.eko.in (2026-10-18: the team asked for all of it). The
+# earnings figures are the site's own, said with its own warning that most
+# CSPs earn far less; the outlet is still never called a mini bank or branch.
+SITE_FAQ += [
+    {
+        "id": "what_csp", "question": "CSP kya hota hai?", "source": "kiosk.eko.in",
+        "keys": ["csp kya", "csp kya hai", "csp kya hota", "customer service point", "kiosk kya", "kiosk kya hai",
+                 "banking outlet kya", "what is csp", "what is a csp", "kiosk operator kya", "सीएसपी क्या", "कियोस्क क्या",
+                 "સીએસપી શું", "ਸੀਐਸਪੀ ਕੀ"],
+        "answer": {
+            "hinglish": "CSP (Customer Service Point) ek authorised banking outlet hai jo Kiosk Operator chalata hai, Eko ke SBI-backed platform par. Yahan se aap apne ilaake ke logon ko khata kholna, paise jama aur nikaalna, money transfer aur SBI ki 44+ banking sevayein dete hain.",
+            "en": "A CSP (Customer Service Point) is an authorised banking outlet run by a Kiosk Operator on Eko's SBI-backed platform. From it you give people in your area account opening, cash deposit and withdrawal, money transfer and 44+ other SBI banking services.",
+            "hi": "CSP (कस्टमर सर्विस पॉइंट) एक अधिकृत बैंकिंग आउटलेट है जिसे Kiosk Operator, Eko के SBI-समर्थित प्लेटफ़ॉर्म पर चलाता है। यहाँ से आप अपने इलाके के लोगों को खाता खोलना, पैसे जमा और निकालना, मनी ट्रांसफर और SBI की 44+ बैंकिंग सेवाएँ देते हैं।",
+            "gu": "CSP (કસ્ટમર સર્વિસ પોઇન્ટ) એક અધિકૃત બેંકિંગ આઉટલેટ છે જે Kiosk Operator, Ekoના SBI-સમર્થિત પ્લેટફોર્મ પર ચલાવે છે. અહીંથી તમે તમારા વિસ્તારના લોકોને ખાતું ખોલવું, પૈસા જમા અને ઉપાડ, મની ટ્રાન્સફર અને SBIની 44+ બેંકિંગ સેવાઓ આપો છો.",
+            "pa": "CSP (ਕਸਟਮਰ ਸਰਵਿਸ ਪੁਆਇੰਟ) ਇੱਕ ਅਧਿਕਾਰਤ ਬੈਂਕਿੰਗ ਆਊਟਲੈੱਟ ਹੈ ਜਿਸਨੂੰ Kiosk Operator, Eko ਦੇ SBI-ਸਮਰਥਿਤ ਪਲੇਟਫਾਰਮ 'ਤੇ ਚਲਾਉਂਦਾ ਹੈ। ਇੱਥੋਂ ਤੁਸੀਂ ਆਪਣੇ ਇਲਾਕੇ ਦੇ ਲੋਕਾਂ ਨੂੰ ਖਾਤਾ ਖੋਲ੍ਹਣਾ, ਪੈਸੇ ਜਮ੍ਹਾਂ ਕਰਨਾ ਅਤੇ ਕਢਵਾਉਣਾ, ਮਨੀ ਟ੍ਰਾਂਸਫਰ ਅਤੇ SBI ਦੀਆਂ 44+ ਬੈਂਕਿੰਗ ਸੇਵਾਵਾਂ ਦਿੰਦੇ ਹੋ।",
+        },
+    },
+    {
+        "id": "setup_cost", "question": "Setup ka kharcha hai?", "source": "kiosk.eko.in",
+        "keys": ["setup cost", "setup ka kharcha", "setup charge", "one time", "ek baar ka", "installation charge",
+                 "device ka kharcha", "machine ka paisa", "machine ke paise", "branding ka", "सेटअप का खर्च", "एक बार का",
+                 "સેટઅપ ખર્ચ", "ਸੈੱਟਅਪ ਖਰਚਾ"],
+        "answer": {
+            "hinglish": "Haan. Ek baar ka investment lagta hai jisme Micro-ATM, biometric scanner aur kiosk ki branding aati hai (kul milakar ₹5 lakh tak, location aur setup ke hisaab se). Kuch bhi tay karne se pehle aapka onboarding coordinator poora hisaab batata hai.",
+            "en": "Yes. There is a one-time investment that covers the Micro-ATM, the biometric scanner and the kiosk branding (up to ₹5 lakh in all, depending on location and setup). Your onboarding coordinator shares the full breakdown before you commit to anything.",
+            "hi": "हाँ। एक बार का निवेश लगता है जिसमें माइक्रो-ATM, बायोमेट्रिक स्कैनर और कियोस्क की ब्रांडिंग आती है (कुल मिलाकर ₹5 लाख तक, लोकेशन और सेटअप के हिसाब से)। कुछ भी तय करने से पहले आपका ऑनबोर्डिंग कोऑर्डिनेटर पूरा हिसाब बताता है।",
+            "gu": "હા. એક વખતનું રોકાણ લાગે છે જેમાં માઇક્રો-ATM, બાયોમેટ્રિક સ્કેનર અને કિઓસ્કની બ્રાન્ડિંગ આવે છે (કુલ ₹5 લાખ સુધી, સ્થળ અને સેટઅપ પ્રમાણે). કંઈ પણ નક્કી કરતાં પહેલાં તમારા ઓનબોર્ડિંગ કોઓર્ડિનેટર આખો હિસાબ જણાવે છે.",
+            "pa": "ਹਾਂ। ਇੱਕ ਵਾਰ ਦਾ ਨਿਵੇਸ਼ ਲੱਗਦਾ ਹੈ ਜਿਸ ਵਿੱਚ ਮਾਈਕ੍ਰੋ-ATM, ਬਾਇਓਮੈਟ੍ਰਿਕ ਸਕੈਨਰ ਅਤੇ ਕਿਓਸਕ ਦੀ ਬ੍ਰਾਂਡਿੰਗ ਆਉਂਦੀ ਹੈ (ਕੁੱਲ ₹5 ਲੱਖ ਤੱਕ, ਲੋਕੇਸ਼ਨ ਅਤੇ ਸੈੱਟਅਪ ਮੁਤਾਬਕ)। ਕੁਝ ਵੀ ਤੈਅ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ ਤੁਹਾਡਾ ਆਨਬੋਰਡਿੰਗ ਕੋਆਰਡੀਨੇਟਰ ਪੂਰਾ ਹਿਸਾਬ ਦੱਸਦਾ ਹੈ।",
+        },
+    },
+    {
+        "id": "who_fits", "question": "Kaun log ye achha chala paate hain?", "source": "kiosk.eko.in",
+        "keys": ["dukaan wale", "dukan wala", "shop owner", "shopkeeper", "ghar se chala", "home based", "pehli baar",
+                 "first time", "naya business", "student", "youth", "berozgar", "housewife", "grihini", "shg", "self help group",
+                 "finance background", "banking experience", "experience chahiye", "अनुभव", "दुकानदार", "गृहिणी", "અનુભવ",
+                 "દુકાનદાર", "ਤਜਰਬਾ", "ਦੁਕਾਨਦਾਰ"],
+        "answer": {
+            "hinglish": "Finance ka background zaroori nahi, apne ilaake ka bharosa zaroori hai. Pehli baar business karne wale aur ghar se chalane wale, market ya mohalle mein dukaan wale, naukri dhundh rahe padhe-likhe yuva, aur NGO ya Self-Help Group se aaye log, sab achha karte hain. 12th pass aur CIBIL ki shart sab par lagu hai.",
+            "en": "You don't need a finance background, you need your community's trust. First-time and home-based operators, shop owners in a market or neighbourhood, educated youth looking for steady income, and people nominated by an NGO or Self-Help Group all do well. The 12th-pass and CIBIL requirements apply to everyone.",
+            "hi": "फाइनेंस का बैकग्राउंड ज़रूरी नहीं, अपने इलाके का भरोसा ज़रूरी है। पहली बार बिज़नेस करने वाले और घर से चलाने वाले, बाज़ार या मोहल्ले में दुकान वाले, नौकरी ढूँढ रहे पढ़े-लिखे युवा, और NGO या स्वयं सहायता समूह से आए लोग, सब अच्छा करते हैं। 12वीं पास और CIBIL की शर्त सब पर लागू है।",
+            "gu": "ફાઇનાન્સનું બેકગ્રાઉન્ડ જરૂરી નથી, તમારા વિસ્તારનો ભરોસો જરૂરી છે. પહેલી વાર બિઝનેસ કરનાર અને ઘરેથી ચલાવનાર, બજાર કે મહોલ્લામાં દુકાનવાળા, નોકરી શોધતા ભણેલા યુવાનો, અને NGO કે સ્વ-સહાય જૂથથી આવેલા લોકો, બધા સારું કરે છે. 12મું પાસ અને CIBILની શરત બધાને લાગુ પડે છે.",
+            "pa": "ਫਾਇਨਾਂਸ ਦਾ ਬੈਕਗ੍ਰਾਊਂਡ ਜ਼ਰੂਰੀ ਨਹੀਂ, ਆਪਣੇ ਇਲਾਕੇ ਦਾ ਭਰੋਸਾ ਜ਼ਰੂਰੀ ਹੈ। ਪਹਿਲੀ ਵਾਰ ਕਾਰੋਬਾਰ ਕਰਨ ਵਾਲੇ ਅਤੇ ਘਰੋਂ ਚਲਾਉਣ ਵਾਲੇ, ਬਾਜ਼ਾਰ ਜਾਂ ਮੁਹੱਲੇ ਵਿੱਚ ਦੁਕਾਨ ਵਾਲੇ, ਨੌਕਰੀ ਲੱਭ ਰਹੇ ਪੜ੍ਹੇ-ਲਿਖੇ ਨੌਜਵਾਨ, ਅਤੇ NGO ਜਾਂ ਸਵੈ-ਸਹਾਇਤਾ ਸਮੂਹ ਤੋਂ ਆਏ ਲੋਕ, ਸਾਰੇ ਵਧੀਆ ਕਰਦੇ ਹਨ। 12ਵੀਂ ਪਾਸ ਅਤੇ CIBIL ਦੀ ਸ਼ਰਤ ਸਾਰਿਆਂ 'ਤੇ ਲਾਗੂ ਹੈ।",
+        },
+    },
+    {
+        "id": "schemes", "question": "Kaun si sarkari yojanayein?", "source": "kiosk.eko.in",
+        "keys": ["yojana", "yojna", "scheme", "schemes", "sarkari yojana", "pmsby", "pmjjby", "atal pension", "apy",
+                 "bima yojana", "pension", "insurance scheme", "योजना", "पेंशन", "બીમા યોજના", "યોજના", "ਯੋਜਨਾ"],
+        "answer": {
+            "hinglish": "CSP par sarkari yojanaon mein enrolment hota hai: PMSBY (accident cover ₹20 saal), PMJJBY (life cover ₹436 saal) aur Atal Pension Yojana. Har enrolment par commission/incentive milta hai.",
+            "en": "A CSP enrols people in government schemes: PMSBY (accident cover, ₹20 a year), PMJJBY (life cover, ₹436 a year) and the Atal Pension Yojana. Each enrolment earns a commission or incentive.",
+            "hi": "CSP पर सरकारी योजनाओं में नामांकन होता है: PMSBY (दुर्घटना कवर ₹20 सालाना), PMJJBY (जीवन कवर ₹436 सालाना) और अटल पेंशन योजना। हर नामांकन पर कमीशन/इंसेंटिव मिलता है।",
+            "gu": "CSP પર સરકારી યોજનાઓમાં નોંધણી થાય છે: PMSBY (અકસ્માત કવર ₹20 વાર્ષિક), PMJJBY (જીવન કવર ₹436 વાર્ષિક) અને અટલ પેન્શન યોજના. દરેક નોંધણી પર કમિશન/ઇન્સેન્ટિવ મળે છે.",
+            "pa": "CSP 'ਤੇ ਸਰਕਾਰੀ ਯੋਜਨਾਵਾਂ ਵਿੱਚ ਨਾਮਾਂਕਣ ਹੁੰਦਾ ਹੈ: PMSBY (ਦੁਰਘਟਨਾ ਕਵਰ ₹20 ਸਾਲਾਨਾ), PMJJBY (ਜੀਵਨ ਕਵਰ ₹436 ਸਾਲਾਨਾ) ਅਤੇ ਅਟਲ ਪੈਨਸ਼ਨ ਯੋਜਨਾ। ਹਰ ਨਾਮਾਂਕਣ 'ਤੇ ਕਮਿਸ਼ਨ/ਇੰਸੈਂਟਿਵ ਮਿਲਦਾ ਹੈ।",
+        },
+    },
+    {
+        "id": "security", "question": "Data aur transaction safe hai?", "source": "kiosk.eko.in",
+        "keys": ["security", "secure", "safe hai", "surakshit", "suraksha", "data safe", "hack", "encryption", "gps",
+                 "fraud se bachav", "सुरक्षित", "सुरक्षा", "સુરક્ષિત", "ਸੁਰੱਖਿਅਤ"],
+        "answer": {
+            "hinglish": "Haan. Saara data end-to-end encryption se surakshit hai, RBI ke 2024–25 Cyber Resilience niyamon ke hisaab se. Har AePS transaction GPS-tagged hota hai aur kuch bhi asaamanya ho to apne aap flag hota hai. Bank ke coordinator audit aur surprise visit bhi karte hain.",
+            "en": "Yes. All data is protected with end-to-end encryption, in line with RBI's 2024–25 Master Directions on Cyber Resilience. Every AePS transaction is GPS-tagged and unusual activity is flagged automatically. Bank coordinators also run audits and surprise visits.",
+            "hi": "हाँ। सारा डेटा एंड-टू-एंड एन्क्रिप्शन से सुरक्षित है, RBI के 2024–25 साइबर रेज़िलिएंस नियमों के अनुसार। हर AePS ट्रांज़ैक्शन GPS-टैग होता है और कुछ भी असामान्य हो तो अपने आप फ़्लैग होता है। बैंक के कोऑर्डिनेटर ऑडिट और सरप्राइज़ विज़िट भी करते हैं।",
+            "gu": "હા. બધો ડેટા એન્ડ-ટુ-એન્ડ એન્ક્રિપ્શનથી સુરક્ષિત છે, RBIના 2024–25 સાયબર રેઝિલિયન્સ નિયમો મુજબ. દરેક AePS ટ્રાન્ઝેક્શન GPS-ટેગ થાય છે અને કંઈ પણ અસામાન્ય હોય તો આપમેળે ફ્લેગ થાય છે. બેંકના કોઓર્ડિનેટર ઓડિટ અને સરપ્રાઇઝ વિઝિટ પણ કરે છે.",
+            "pa": "ਹਾਂ। ਸਾਰਾ ਡੇਟਾ ਐਂਡ-ਟੂ-ਐਂਡ ਐਨਕ੍ਰਿਪਸ਼ਨ ਨਾਲ ਸੁਰੱਖਿਅਤ ਹੈ, RBI ਦੇ 2024–25 ਸਾਈਬਰ ਰੈਜ਼ੀਲੀਅੰਸ ਨਿਯਮਾਂ ਮੁਤਾਬਕ। ਹਰ AePS ਟ੍ਰਾਂਜ਼ੈਕਸ਼ਨ GPS-ਟੈਗ ਹੁੰਦਾ ਹੈ ਅਤੇ ਕੁਝ ਵੀ ਅਸਧਾਰਨ ਹੋਵੇ ਤਾਂ ਆਪਣੇ ਆਪ ਫਲੈਗ ਹੁੰਦਾ ਹੈ। ਬੈਂਕ ਦੇ ਕੋਆਰਡੀਨੇਟਰ ਆਡਿਟ ਅਤੇ ਸਰਪ੍ਰਾਈਜ਼ ਵਿਜ਼ਿਟ ਵੀ ਕਰਦੇ ਹਨ।",
+        },
+    },
+    {
+        "id": "audit", "question": "Kya check karne koi aayega?", "source": "kiosk.eko.in",
+        "keys": ["audit", "inspection", "check karne", "jaanch", "janch", "verification visit", "surprise visit",
+                 "koi aayega", "bank wale aayenge", "निरीक्षण", "जाँच", "ઓડિટ", "તપાસ", "ਜਾਂਚ"],
+        "answer": {
+            "hinglish": "Haan. Har Eko CSP bank branch jaise hi KYC/AML aur compliance niyamon par chalta hai. Concurrent audit hote hain aur bank ke coordinator bina bataye physical verification ke liye aa sakte hain. Branch manager live dashboard par transactions dekhte hain.",
+            "en": "Yes. Every Eko CSP follows the same KYC/AML and compliance standards as a bank branch. There are concurrent audits, and bank coordinators can come unannounced for physical verification. Branch managers watch the transactions on a live dashboard.",
+            "hi": "हाँ। हर Eko CSP बैंक ब्रांच जैसे ही KYC/AML और कंप्लायंस नियमों पर चलता है। कंकरेंट ऑडिट होते हैं और बैंक के कोऑर्डिनेटर बिना बताए फ़िज़िकल वेरिफ़िकेशन के लिए आ सकते हैं। ब्रांच मैनेजर लाइव डैशबोर्ड पर ट्रांज़ैक्शन देखते हैं।",
+            "gu": "હા. દરેક Eko CSP બેંક બ્રાન્ચની જેમ જ KYC/AML અને કમ્પ્લાયન્સ નિયમો પર ચાલે છે. કન્કરન્ટ ઓડિટ થાય છે અને બેંકના કોઓર્ડિનેટર જાણ કર્યા વગર ફિઝિકલ વેરિફિકેશન માટે આવી શકે છે. બ્રાન્ચ મેનેજર લાઇવ ડેશબોર્ડ પર ટ્રાન્ઝેક્શન જુએ છે.",
+            "pa": "ਹਾਂ। ਹਰ Eko CSP ਬੈਂਕ ਬ੍ਰਾਂਚ ਵਾਂਗ ਹੀ KYC/AML ਅਤੇ ਕੰਪਲਾਇੰਸ ਨਿਯਮਾਂ 'ਤੇ ਚੱਲਦਾ ਹੈ। ਕੰਕਰੰਟ ਆਡਿਟ ਹੁੰਦੇ ਹਨ ਅਤੇ ਬੈਂਕ ਦੇ ਕੋਆਰਡੀਨੇਟਰ ਬਿਨਾਂ ਦੱਸੇ ਫਿਜ਼ੀਕਲ ਵੈਰੀਫਿਕੇਸ਼ਨ ਲਈ ਆ ਸਕਦੇ ਹਨ। ਬ੍ਰਾਂਚ ਮੈਨੇਜਰ ਲਾਈਵ ਡੈਸ਼ਬੋਰਡ 'ਤੇ ਟ੍ਰਾਂਜ਼ੈਕਸ਼ਨ ਵੇਖਦੇ ਹਨ।",
+        },
+    },
+    {
+        "id": "ngo", "question": "NGO ya SHG kaise jud sakta hai?", "source": "kiosk.eko.in",
+        "keys": ["ngo", "n g o", "ngo kaise jude", "ngo kaise", "ngo partner", "shg partner", "samuh", "sanstha", "federation", "csr", "donor", "funding", "partner banna",
+                 "संस्था", "समूह", "સંસ્થા", "ਸੰਸਥਾ"],
+        "answer": {
+            "hinglish": "NGO aur SHG network Eko ke partner portal se jud sakte hain, bina kisi kharche ke. Aap apne samuh se logon ko Kiosk Operator banne ke liye nominate karte hain; Eko technology, bank ka saath, devices aur branding, training aur compliance deta hai. Donor ke liye equipment grant, working capital aur certification ka program bhi hai.",
+            "en": "NGOs and SHG networks join through Eko's partner portal at no cost. You nominate people from your network to become Kiosk Operators; Eko provides the technology, the bank relationship, devices and branding, training and the compliance framework. Donors can fund equipment, working capital or certification.",
+            "hi": "NGO और SHG नेटवर्क Eko के पार्टनर पोर्टल से जुड़ सकते हैं, बिना किसी खर्च के। आप अपने समूह से लोगों को Kiosk Operator बनने के लिए नॉमिनेट करते हैं; Eko टेक्नोलॉजी, बैंक का साथ, डिवाइस और ब्रांडिंग, ट्रेनिंग और कंप्लायंस देता है। डोनर के लिए उपकरण, वर्किंग कैपिटल और सर्टिफ़िकेशन का प्रोग्राम भी है।",
+            "gu": "NGO અને SHG નેટવર્ક Ekoના પાર્ટનર પોર્ટલથી કોઈ ખર્ચ વગર જોડાઈ શકે છે. તમે તમારા જૂથમાંથી લોકોને Kiosk Operator બનવા માટે નોમિનેટ કરો છો; Eko ટેક્નોલોજી, બેંકનો સાથ, ડિવાઇસ અને બ્રાન્ડિંગ, તાલીમ અને કમ્પ્લાયન્સ આપે છે. દાતાઓ માટે સાધનો, વર્કિંગ કેપિટલ અને સર્ટિફિકેશનનો પ્રોગ્રામ પણ છે.",
+            "pa": "NGO ਅਤੇ SHG ਨੈੱਟਵਰਕ Eko ਦੇ ਪਾਰਟਨਰ ਪੋਰਟਲ ਰਾਹੀਂ ਬਿਨਾਂ ਕਿਸੇ ਖਰਚੇ ਦੇ ਜੁੜ ਸਕਦੇ ਹਨ। ਤੁਸੀਂ ਆਪਣੇ ਸਮੂਹ ਤੋਂ ਲੋਕਾਂ ਨੂੰ Kiosk Operator ਬਣਨ ਲਈ ਨਾਮਜ਼ਦ ਕਰਦੇ ਹੋ; Eko ਤਕਨਾਲੋਜੀ, ਬੈਂਕ ਦਾ ਸਾਥ, ਡਿਵਾਈਸ ਅਤੇ ਬ੍ਰਾਂਡਿੰਗ, ਟ੍ਰੇਨਿੰਗ ਅਤੇ ਕੰਪਲਾਇੰਸ ਦਿੰਦਾ ਹੈ। ਦਾਨੀਆਂ ਲਈ ਉਪਕਰਣ, ਵਰਕਿੰਗ ਕੈਪੀਟਲ ਅਤੇ ਸਰਟੀਫਿਕੇਸ਼ਨ ਦਾ ਪ੍ਰੋਗਰਾਮ ਵੀ ਹੈ।",
+        },
+    },
+    {
+        "id": "apply_online", "question": "Website se apply kaise karein? Contact kab karenge?", "source": "kiosk.eko.in",
+        "keys": ["website", "site se", "online apply", "apply kahan", "form kahan", "form bharna", "kiosk.eko.in",
+                 "call kab", "contact kab", "kab call", "kab contact", "kab sampark", "वेबसाइट", "फॉर्म", "વેબસાઇટ", "ਵੈੱਬਸਾਈਟ"],
+        "answer": {
+            "hinglish": "Aap yahin WhatsApp par apply kar sakte hain, ya kiosk.eko.in par \"Apply Now\" mein apni jaankari bharein. Hamari team 24 ghante ke andar aapse sampark karti hai.",
+            "en": "You can apply right here on WhatsApp, or fill in your details under \"Apply Now\" on kiosk.eko.in. Our team gets in touch within 24 hours.",
+            "hi": "आप यहीं WhatsApp पर अप्लाई कर सकते हैं, या kiosk.eko.in पर \"Apply Now\" में अपनी जानकारी भरें। हमारी टीम 24 घंटे के अंदर आपसे संपर्क करती है।",
+            "gu": "તમે અહીં જ WhatsApp પર અરજી કરી શકો છો, અથવા kiosk.eko.in પર \"Apply Now\"માં તમારી માહિતી ભરો. અમારી ટીમ 24 કલાકમાં તમારો સંપર્ક કરે છે.",
+            "pa": "ਤੁਸੀਂ ਇੱਥੇ ਹੀ WhatsApp 'ਤੇ ਅਪਲਾਈ ਕਰ ਸਕਦੇ ਹੋ, ਜਾਂ kiosk.eko.in 'ਤੇ \"Apply Now\" ਵਿੱਚ ਆਪਣੀ ਜਾਣਕਾਰੀ ਭਰੋ। ਸਾਡੀ ਟੀਮ 24 ਘੰਟਿਆਂ ਵਿੱਚ ਤੁਹਾਡੇ ਨਾਲ ਸੰਪਰਕ ਕਰਦੀ ਹੈ।",
+        },
+    },
+    {
+        "id": "operator_role", "question": "Kiosk Operator ka kaam kya hai?", "source": "kiosk.eko.in",
+        "keys": ["operator ka kaam", "operator kya karta", "csp ka kaam", "role kya", "zimmedari", "jimmedari",
+                 "responsibility", "doorstep", "ghar ghar", "जिम्मेदारी", "ऑपरेटर का काम", "જવાબદારી", "ਜ਼ਿੰਮੇਵਾਰੀ"],
+        "answer": {
+            "hinglish": "Aap apne ilaake ka banking saathi bante hain: logon ke khate kholna, paise jama-nikaalna, transfer, yojanaon mein enrolment, aur insurance, RD, loan ke leads dena. Aap ghar-ghar jaakar bhi banking de sakte hain, aur kisi ki shikayat ho to link branch se milkar use suljhate hain. Eko devices, training, certificate aur lagataar support deta hai.",
+            "en": "You become your area's banking partner: opening accounts, deposits and withdrawals, transfers, scheme enrolments, and leads for insurance, RD and loans. You can also take banking to people's doorsteps, and you own a customer's complaint, working it out with the link branch. Eko provides the devices, training, certification and ongoing support.",
+            "hi": "आप अपने इलाके के बैंकिंग साथी बनते हैं: लोगों के खाते खोलना, पैसे जमा-निकालना, ट्रांसफर, योजनाओं में नामांकन, और इंश्योरेंस, RD, लोन के लीड देना। आप घर-घर जाकर भी बैंकिंग दे सकते हैं, और किसी की शिकायत हो तो लिंक ब्रांच से मिलकर उसे सुलझाते हैं। Eko डिवाइस, ट्रेनिंग, सर्टिफ़िकेट और लगातार सपोर्ट देता है।",
+            "gu": "તમે તમારા વિસ્તારના બેંકિંગ સાથી બનો છો: લોકોનાં ખાતાં ખોલવાં, પૈસા જમા-ઉપાડ, ટ્રાન્સફર, યોજનાઓમાં નોંધણી, અને વીમા, RD, લોનના લીડ આપવા. તમે ઘરે-ઘરે જઈને પણ બેંકિંગ આપી શકો છો, અને કોઈની ફરિયાદ હોય તો લિંક બ્રાન્ચ સાથે મળીને ઉકેલો છો. Eko ડિવાઇસ, તાલીમ, સર્ટિફિકેટ અને સતત સપોર્ટ આપે છે.",
+            "pa": "ਤੁਸੀਂ ਆਪਣੇ ਇਲਾਕੇ ਦੇ ਬੈਂਕਿੰਗ ਸਾਥੀ ਬਣਦੇ ਹੋ: ਲੋਕਾਂ ਦੇ ਖਾਤੇ ਖੋਲ੍ਹਣਾ, ਪੈਸੇ ਜਮ੍ਹਾਂ-ਕਢਵਾਉਣਾ, ਟ੍ਰਾਂਸਫਰ, ਯੋਜਨਾਵਾਂ ਵਿੱਚ ਨਾਮਾਂਕਣ, ਅਤੇ ਬੀਮਾ, RD, ਲੋਨ ਦੇ ਲੀਡ ਦੇਣਾ। ਤੁਸੀਂ ਘਰ-ਘਰ ਜਾ ਕੇ ਵੀ ਬੈਂਕਿੰਗ ਦੇ ਸਕਦੇ ਹੋ, ਅਤੇ ਕਿਸੇ ਦੀ ਸ਼ਿਕਾਇਤ ਹੋਵੇ ਤਾਂ ਲਿੰਕ ਬ੍ਰਾਂਚ ਨਾਲ ਮਿਲ ਕੇ ਉਸਨੂੰ ਸੁਲਝਾਉਂਦੇ ਹੋ। Eko ਡਿਵਾਈਸ, ਟ੍ਰੇਨਿੰਗ, ਸਰਟੀਫਿਕੇਟ ਅਤੇ ਲਗਾਤਾਰ ਸਪੋਰਟ ਦਿੰਦਾ ਹੈ।",
+        },
+    },
+]
+
+# What the site adds to answers the Creator Pack already gives: said after
+# them, so the confirmed answer still comes first.
+SITE_ADDS: Dict[str, Dict[str, str]] = {
+    "earnings": {
+        "hinglish": "Eko ki site ke hisaab se kamaai ₹15,000 se ₹1 lakh+ mahina tak ho sakti hai: banking commission plus PMSBY, PMJJBY, APY jaisi yojanaon ka incentive, seedha aapke SBI khate mein. Eko ke top 10 CSP ka average commission lagbhag ₹33,768 mahina hai (AePS se ₹17,672, balance se ₹5,520, money transfer se ₹4,100, rural incentive ₹1,600 aur baaki), lekin zyadatar CSP isse kaafi kam kamaate hain.",
+        "en": "Per Eko's site, earnings can range from ₹15,000 to ₹1 lakh+ a month: banking commission plus incentives for schemes such as PMSBY, PMJJBY and APY, paid straight into your SBI account. Eko's top 10 CSPs average about ₹33,768 a month in commission (₹17,672 from AePS, ₹5,520 from balances, ₹4,100 from money transfers, a ₹1,600 rural incentive and the rest), but most CSPs earn considerably less.",
+        "hi": "Eko की साइट के अनुसार कमाई ₹15,000 से ₹1 लाख+ महीना तक हो सकती है: बैंकिंग कमीशन और PMSBY, PMJJBY, APY जैसी योजनाओं का इंसेंटिव, सीधे आपके SBI खाते में। Eko के टॉप 10 CSP का औसत कमीशन लगभग ₹33,768 महीना है (AePS से ₹17,672, बैलेंस से ₹5,520, मनी ट्रांसफर से ₹4,100, रूरल इंसेंटिव ₹1,600 और बाकी), लेकिन ज़्यादातर CSP इससे काफ़ी कम कमाते हैं।",
+        "gu": "Ekoની સાઇટ મુજબ કમાણી મહિને ₹15,000થી ₹1 લાખ+ સુધી થઈ શકે છે: બેંકિંગ કમિશન અને PMSBY, PMJJBY, APY જેવી યોજનાઓનો ઇન્સેન્ટિવ, સીધો તમારા SBI ખાતામાં. Ekoના ટોપ 10 CSPનું સરેરાશ કમિશન મહિને લગભગ ₹33,768 છે (AePSથી ₹17,672, બેલેન્સથી ₹5,520, મની ટ્રાન્સફરથી ₹4,100, રૂરલ ઇન્સેન્ટિવ ₹1,600 અને બાકી), પણ મોટાભાગના CSP આનાથી ઘણું ઓછું કમાય છે.",
+        "pa": "Eko ਦੀ ਸਾਈਟ ਮੁਤਾਬਕ ਕਮਾਈ ₹15,000 ਤੋਂ ₹1 ਲੱਖ+ ਮਹੀਨਾ ਤੱਕ ਹੋ ਸਕਦੀ ਹੈ: ਬੈਂਕਿੰਗ ਕਮਿਸ਼ਨ ਅਤੇ PMSBY, PMJJBY, APY ਵਰਗੀਆਂ ਯੋਜਨਾਵਾਂ ਦਾ ਇੰਸੈਂਟਿਵ, ਸਿੱਧਾ ਤੁਹਾਡੇ SBI ਖਾਤੇ ਵਿੱਚ। Eko ਦੇ ਟਾਪ 10 CSP ਦਾ ਔਸਤ ਕਮਿਸ਼ਨ ਲਗਭਗ ₹33,768 ਮਹੀਨਾ ਹੈ (AePS ਤੋਂ ₹17,672, ਬੈਲੇਂਸ ਤੋਂ ₹5,520, ਮਨੀ ਟ੍ਰਾਂਸਫਰ ਤੋਂ ₹4,100, ਰੂਰਲ ਇੰਸੈਂਟਿਵ ₹1,600 ਅਤੇ ਬਾਕੀ), ਪਰ ਜ਼ਿਆਦਾਤਰ CSP ਇਸ ਤੋਂ ਕਾਫ਼ੀ ਘੱਟ ਕਮਾਉਂਦੇ ਹਨ।",
+    },
+    "women": {
+        "hinglish": "Eko ki site ke hisaab se mahila CSP ko 10% zyada commission milta hai. Ghar ke paas kaam, apne naam se kamaai, apni banking aur credit history, ilaake mein apni pehchaan, aur zaroorat par call karne ke liye ek coordinator.",
+        "en": "Per Eko's site, women CSPs earn 10% higher commission. They work close to home, earn in their own name, build their own banking and credit history and standing in the community, and have a coordinator to call.",
+        "hi": "Eko की साइट के अनुसार महिला CSP को 10% ज़्यादा कमीशन मिलता है। घर के पास काम, अपने नाम से कमाई, अपनी बैंकिंग और क्रेडिट हिस्ट्री, इलाके में अपनी पहचान, और ज़रूरत पर कॉल करने के लिए एक कोऑर्डिनेटर।",
+        "gu": "Ekoની સાઇટ મુજબ મહિલા CSPને 10% વધુ કમિશન મળે છે. ઘરની નજીક કામ, પોતાના નામે કમાણી, પોતાની બેંકિંગ અને ક્રેડિટ હિસ્ટ્રી, વિસ્તારમાં પોતાની ઓળખ, અને જરૂર પડે ત્યારે ફોન કરવા માટે એક કોઓર્ડિનેટર.",
+        "pa": "Eko ਦੀ ਸਾਈਟ ਮੁਤਾਬਕ ਮਹਿਲਾ CSP ਨੂੰ 10% ਵੱਧ ਕਮਿਸ਼ਨ ਮਿਲਦਾ ਹੈ। ਘਰ ਦੇ ਨੇੜੇ ਕੰਮ, ਆਪਣੇ ਨਾਮ 'ਤੇ ਕਮਾਈ, ਆਪਣੀ ਬੈਂਕਿੰਗ ਅਤੇ ਕ੍ਰੈਡਿਟ ਹਿਸਟਰੀ, ਇਲਾਕੇ ਵਿੱਚ ਆਪਣੀ ਪਛਾਣ, ਅਤੇ ਲੋੜ ਪੈਣ 'ਤੇ ਕਾਲ ਕਰਨ ਲਈ ਇੱਕ ਕੋਆਰਡੀਨੇਟਰ।",
+    },
+    "real": {
+        "hinglish": "17+ saal ka bharosa: Eko SBI ke sabse achhe Business Correspondents mein gina jaata hai, aur 1,100+ CSP 160+ districts mein kaam kar rahe hain.",
+        "en": "17+ years of trust: Eko is ranked among SBI's best Business Correspondents, with 1,100+ CSPs in 160+ districts.",
+        "hi": "17+ साल का भरोसा: Eko, SBI के सबसे अच्छे बिज़नेस कॉरेस्पॉन्डेंट्स में गिना जाता है, और 1,100+ CSP 160+ ज़िलों में काम कर रहे हैं।",
+        "gu": "17+ વર્ષનો ભરોસો: Eko, SBIના શ્રેષ્ઠ બિઝનેસ કૉરસ્પોન્ડન્ટ્સમાં ગણાય છે, અને 1,100+ CSP 160+ જિલ્લાઓમાં કામ કરે છે.",
+        "pa": "17+ ਸਾਲ ਦਾ ਭਰੋਸਾ: Eko, SBI ਦੇ ਸਭ ਤੋਂ ਵਧੀਆ ਬਿਜ਼ਨਸ ਕੋਰੈਸਪੋਂਡੈਂਟਾਂ ਵਿੱਚ ਗਿਣਿਆ ਜਾਂਦਾ ਹੈ, ਅਤੇ 1,100+ CSP 160+ ਜ਼ਿਲ੍ਹਿਆਂ ਵਿੱਚ ਕੰਮ ਕਰ ਰਹੇ ਹਨ।",
+    },
+    "training": {
+        "hinglish": "Training digital hai, Hindi mein: financial literacy, CRM, compliance, risk aur audit. IIBF aur DRA certification onboarding ke 9 mahine ke andar poora hota hai.",
+        "en": "Training is digital, in Hindi: financial literacy, CRM, compliance, risk and audit. IIBF and DRA certification is completed within 9 months of onboarding.",
+        "hi": "ट्रेनिंग डिजिटल है, हिंदी में: फाइनेंशियल लिटरेसी, CRM, कंप्लायंस, रिस्क और ऑडिट। IIBF और DRA सर्टिफ़िकेशन ऑनबोर्डिंग के 9 महीने के अंदर पूरा होता है।",
+        "gu": "તાલીમ ડિજિટલ છે, હિન્દીમાં: ફાઇનાન્શિયલ લિટરસી, CRM, કમ્પ્લાયન્સ, રિસ્ક અને ઓડિટ. IIBF અને DRA સર્ટિફિકેશન ઓનબોર્ડિંગના 9 મહિનામાં પૂરું થાય છે.",
+        "pa": "ਟ੍ਰੇਨਿੰਗ ਡਿਜੀਟਲ ਹੈ, ਹਿੰਦੀ ਵਿੱਚ: ਫਾਇਨੈਂਸ਼ੀਅਲ ਲਿਟਰੇਸੀ, CRM, ਕੰਪਲਾਇੰਸ, ਰਿਸਕ ਅਤੇ ਆਡਿਟ। IIBF ਅਤੇ DRA ਸਰਟੀਫਿਕੇਸ਼ਨ ਆਨਬੋਰਡਿੰਗ ਦੇ 9 ਮਹੀਨਿਆਂ ਵਿੱਚ ਪੂਰਾ ਹੁੰਦਾ ਹੈ।",
+    },
+    "devices": {
+        "hinglish": "Eko devices aur kiosk ki branding deliver karke set up karta hai: laptop, passbook printer, Micro-ATM, biometric scanner.",
+        "en": "Eko delivers and sets up the devices and the kiosk branding: laptop, passbook printer, Micro-ATM and biometric scanner.",
+        "hi": "Eko डिवाइस और कियोस्क की ब्रांडिंग डिलीवर करके सेट अप करता है: लैपटॉप, पासबुक प्रिंटर, माइक्रो-ATM, बायोमेट्रिक स्कैनर।",
+        "gu": "Eko ડિવાઇસ અને કિઓસ્કની બ્રાન્ડિંગ પહોંચાડીને સેટ અપ કરે છે: લેપટોપ, પાસબુક પ્રિન્ટર, માઇક્રો-ATM, બાયોમેટ્રિક સ્કેનર.",
+        "pa": "Eko ਡਿਵਾਈਸ ਅਤੇ ਕਿਓਸਕ ਦੀ ਬ੍ਰਾਂਡਿੰਗ ਪਹੁੰਚਾ ਕੇ ਸੈੱਟ ਅੱਪ ਕਰਦਾ ਹੈ: ਲੈਪਟਾਪ, ਪਾਸਬੁੱਕ ਪ੍ਰਿੰਟਰ, ਮਾਈਕ੍ਰੋ-ATM, ਬਾਇਓਮੈਟ੍ਰਿਕ ਸਕੈਨਰ।",
+    },
+}
+for _f in FAQ:
+    # The Creator Pack's own words stay for the template agents, who must not quote figures.
+    _f["pack_answer"] = dict(_f["answer"])
+    for _lang, _extra in SITE_ADDS.get(_f["id"], {}).items():
+        _f["answer"][_lang] = f"{_f['answer'][_lang]} {_extra}"
+
 FAQ = FAQ + SITE_FAQ
 
 # Other ways people ask the same thing (2026-10-18: the team wants the bot to
@@ -619,9 +782,15 @@ def agent_section() -> str:
         f"- {code} {name} (priority {prio}; found at {where}). Wants {want}. Holds back: {stop}. "
         f"Hooks: pride “{pride}” · earnings “{earn}” · growth “{grow}”"
         for code, name, prio, where, want, stop, pride, earn, grow in PERSONAS)
-    faq = "\n".join(f"- {f['question']} → {f['answer']['hinglish']}" for f in FAQ)
+    faq = "\n".join(f"- {f['question']} → {f['pack_answer']['hinglish']}" for f in FAQ if "source" not in f)
+    site = "\n".join(f"- {f['question']} → {f['answer']['hinglish']}" for f in SITE_FAQ)
     return f"""WHAT EKO SAYS ABOUT THE BANKING OUTLET (Eko's Creator Pack; the FAQ answers are confirmed by Eko — use them as facts, in the template's language):
 {faq}
+
+FROM EKO'S OWN SITE, kiosk.eko.in (facts too; the word rules below still apply to templates, so never “mini bank” or “mini branch”, and never a monthly earnings figure — the bot may quote the site's figures to someone who asks, a template may not):
+{site}
+- Eko delivers and sets up the devices (laptop, passbook printer, Micro-ATM, biometric scanner) and the kiosk branding, trains in Hindi, and the operator completes IIBF and DRA certification within 9 months. Women operators earn 10% more commission and have a coordinator to call. Eko: 17+ years, ranked among SBI's best Business Correspondents, 1,100+ CSPs in 160+ districts.
+- Real operators on the site: Sunita Devi (Rajasthan) served 10,000+ customers and helped 200+ villagers open savings accounts; Sanjeev Kumar (Chandauli, Bihar) and Alamgeer Ansari (Kokilpatti) say their CSP works like a small branch for daily banking and made them financially independent.
 
 THREE PILLARS — every template should carry pride, earnings and growth, and may close on Eko's promise: “{CLOSING_LINE}” (in the template's language, never with a number attached):
 {bullets(f"{name}: {what}. e.g. {lines}" for name, what, lines in PILLARS)}

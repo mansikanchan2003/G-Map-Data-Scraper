@@ -1511,6 +1511,15 @@ SAME_QUESTION = {
     "documents": ["kaun se kagaz lagenge", "कौन से दस्तावेज चाहिए", "ਕਿਹੜੇ ਦਸਤਾਵੇਜ਼ ਚਾਹੀਦੇ", "aadhar card chahiye?"],
     "real": ["kya ye sach me hai", "Eko kya company hai?", "is this genuine or scam"],
     "salary": ["fix salary milegi?", "kya har mahine pakka paisa milega"],
+    # The rest of kiosk.eko.in.
+    "what_csp": ["CSP kya hota hai?", "सीएसपी क्या है"],
+    "setup_cost": ["setup ka kharcha kitna", "machine ke paise lagenge?"],
+    "who_fits": ["banking experience chahiye?", "housewife kar sakti hai?"],
+    "schemes": ["atal pension yojana kar sakte", "pmjjby kya hai"],
+    "security": ["data surakshit hai?", "क्या ये सुरक्षित है"],
+    "audit": ["koi check karne aayega?"],
+    "ngo": ["hamari NGO kaise jude"],
+    "apply_online": ["aap call kab karenge", "form kahan bharna hai"],
 }
 NOT_IN_THE_FAQ = ["Mere ghar ka pata badalna hai, kya karna hoga?", "Kya aap Sunday ko bhi baat karte ho?",
                   "aapka office kahan hai?", "ATM card kab tak milega sir?", "Thank you", "Namaste sar aaj ki chutti hai kya",
@@ -1534,3 +1543,12 @@ def test_naukari_spelt_differently_is_answered_by_the_bot(db):
     say(db, "Ye bank ki naukari hai?")
     assert StubMeta.sent[-1][2].startswith("No. This is your own business.")
     assert not conv(db).needs_attention
+
+
+def test_the_site_figures_come_with_the_sites_own_warning():
+    from src.services import eko_knowledge
+    said = eko_knowledge.reply(eko_knowledge.match("kitni kamai hogi"), "hi", "kitni kamai hogi")
+    assert "₹15,000" in said and "₹33,768" in said and "kaafi kam" in said
+    assert said.startswith("Har seva aur har enrolment par commission")   # the confirmed answer first
+    # The template agents still get the Creator Pack's words, without figures.
+    assert "₹33,768" not in eko_knowledge.agent_section()
