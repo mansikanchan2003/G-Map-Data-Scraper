@@ -68,3 +68,24 @@ def test_a_row_still_waiting_for_its_email_is_not_shown(db):
     assert listed["total"] == 2
     assert {b["name"] for b in listed["items"]} == {"Shop phone", "Shop email"}
     assert stats["businesses"]["total"] == 2
+
+
+def test_search_finds_the_kind_of_business_and_the_place(db):
+    db.add_all([
+        Business(business_id="k1", job_id="done", name="Sharma Store", phone="+919811111111", category="Kiosk",
+                 district="Agra", state="Uttar Pradesh", source_query="q", dedup_key="k1"),
+        Business(business_id="k2", job_id="done", name="Patel Seva", phone="+919822222222", category="Kiosk",
+                 district="Rajkot", state="Gujarat", source_query="q", dedup_key="k2"),
+    ])
+    db.commit()
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(app)
+        found = lambda **p: {{"Sharma Store": "k1", "Patel Seva": "k2"}[b["name"]] for b in client.get("/api/v1/businesses", params=p).json()["items"]}
+        assert found(search="Kiosk", state="Uttar Pradesh") == {"k1"}
+        assert found(search="kiosk") == {"k1", "k2"}
+        assert found(search="Kiosk Rajkot") == {"k2"}
+        assert found(search="9822222222") == {"k2"}
+        assert found(search="  ", state="uttar pradesh") == {"k1"}
+    finally:
+        app.dependency_overrides.pop(get_db, None)

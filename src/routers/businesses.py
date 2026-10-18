@@ -35,19 +35,21 @@ def get_businesses(
     if district:
         query = query.filter(Business.district == district)
     if state:
-        query = query.filter(Business.state == state)
+        query = query.filter(Business.state.ilike(state.strip()))
     if is_valid is not None:
         query = query.filter(Business.is_valid == is_valid)
     if since:
         query = query.filter(Business.discovered_at >= since)
     if search:
-        search_term = f"%{search}%"
-        query = query.filter(
-            or_(
-                Business.name.ilike(search_term),
-                Business.address.ilike(search_term)
-            )
-        )
+        # Every word must appear somewhere: the name, the kind of business, the
+        # place or the phone. "Kiosk Agra" finds kiosks in Agra.
+        for word in search.split():
+            term = f"%{word}%"
+            query = query.filter(or_(
+                Business.name.ilike(term), Business.category.ilike(term), Business.address.ilike(term),
+                Business.district.ilike(term), Business.tehsil.ilike(term), Business.state.ilike(term),
+                Business.phone.ilike(term),
+            ))
     if pincode:
         # Join with jobs and locations to filter by pincode
         query = query.join(Job, Business.job_id == Job.job_id)\

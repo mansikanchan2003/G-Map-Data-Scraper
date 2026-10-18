@@ -28,29 +28,36 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
   const [selectedState, setSelectedState] = useState<string>('All');
   const [jumpPage, setJumpPage] = useState<string>('');
 
+  // Each keystroke starts a load; only the latest one may fill the table, so
+  // a slower answer for "Kio" cannot overwrite the one for "Kiosk".
+  const latest = React.useRef(0);
   const loadData = async (targetPage = page, searchTerm = search, st = selectedState) => {
+    const ticket = ++latest.current;
     setLoading(true);
     setError(null);
     try {
       const res: PaginatedResponse<BusinessItem> = await fetchBusinesses({
         page: targetPage,
         page_size: pageSize,
-        search: searchTerm,
+        search: searchTerm.trim() || undefined,
         state: st !== 'All' ? st : undefined,
       });
+      if (ticket !== latest.current) return;
       setBusinesses(res.items);
       setTotal(res.total);
       setPage(res.page);
       setTotalPages(res.total_pages || Math.max(1, Math.ceil(res.total / pageSize)));
     } catch (err: any) {
-      setError(err);
+      if (ticket === latest.current) setError(err);
     } finally {
-      setLoading(false);
+      if (ticket === latest.current) setLoading(false);
     }
   };
 
+  // Waits for a pause in typing before searching.
   useEffect(() => {
-    loadData(1, search, selectedState);
+    const t = setTimeout(() => loadData(1, search, selectedState), 300);
+    return () => clearTimeout(t);
   }, [search, selectedState]);
 
   const handlePageChange = (newPage: number) => {
@@ -157,7 +164,7 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by business name or address..."
+                placeholder="Search name, category, district, tehsil or phone, e.g. Kiosk Agra"
                 className="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 rounded pl-8 pr-3 h-8 text-xs font-mono-code text-slate-100 placeholder:text-slate-500 outline-none transition-all"
               />
             </div>
