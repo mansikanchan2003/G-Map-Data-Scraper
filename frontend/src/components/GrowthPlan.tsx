@@ -460,7 +460,7 @@ const Advertise: React.FC<{ plan: Plan }> = ({ plan }) => {
         </div>
       </div>
       <div className="text-[11px] uppercase tracking-wider text-slate-500 mt-5 mb-1.5">Beyond WhatsApp campaigns <span className="normal-case tracking-normal text-slate-600">· ideas, not measured yet; give each its own QR or code so its leads can be counted</span></div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         {ad.channels.map(c => (
           <article key={c.title} className="rounded-lg border border-slate-800 bg-slate-950/60 p-3.5">
             <div className="flex items-center gap-2">
@@ -738,12 +738,13 @@ export const GrowthPlan: React.FC = () => {
       {plan.business && <Business b={plan.business} plan={plan} onSaved={load} />}
       <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
         <NextSteps plan={plan} />
-        <Advertise plan={plan} />
         <div className="space-y-5 min-w-0">
           <Funnel plan={plan} />
           <CallList plan={plan} />
         </div>
       </div>
+      {/* Full width: three lists side by side, then the channels in a row. */}
+      <Advertise plan={plan} />
       <Targets plan={plan} />
       <Creative plan={plan} />
     </div>

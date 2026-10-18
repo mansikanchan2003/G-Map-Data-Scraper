@@ -1,102 +1,318 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { fetchDispositionDashboard, type DispositionDashboard } from '../api/inbox';
 import { formatDateTime } from '../utils/datetime';
 
 /**
- * Every chat's outcome (disposition) at a glance, on the Dispositions tab: how many
- * chats stand where, the chats people are handling now, and the outcomes the
- * team recorded lately. Each name opens its chat in the Inbox.
+ * Every chat's outcome (disposition) at a glance, on the Dispositions tab:
+ * where the chats stand (a donut of the four groups and a ranked breakdown),
+ * what the team recorded each day and who recorded it, who is handling which
+ * chat now, and the latest outcomes. Each name opens its chat in the Inbox.
+ *
+ * The four groups are status colours (going well, follow up, closed, other),
+ * so each always carries its icon and label too: never colour alone.
  */
 
-const BAR: Record<string, string> = {
-  positive: 'bg-emerald-500', follow_up: 'bg-amber-400', negative: 'bg-rose-500', other: 'bg-slate-500',
+type Group = 'positive' | 'follow_up' | 'negative' | 'other';
+
+const GROUP: Record<Group, { label: string; icon: string; stroke: string; bar: string; tint: string; ring: string; text: string }> = {
+  positive: { label: 'Going well', icon: 'trending_up', stroke: 'stroke-emerald-500', bar: 'bg-emerald-500',
+    tint: 'bg-emerald-950 text-emerald-300', ring: 'border-emerald-800/60', text: 'text-emerald-300' },
+  follow_up: { label: 'Follow up', icon: 'schedule', stroke: 'stroke-amber-400', bar: 'bg-amber-400',
+    tint: 'bg-amber-950 text-amber-300', ring: 'border-amber-800/60', text: 'text-amber-300' },
+  negative: { label: 'Closed', icon: 'block', stroke: 'stroke-rose-500', bar: 'bg-rose-500',
+    tint: 'bg-rose-950 text-rose-300', ring: 'border-rose-800/60', text: 'text-rose-300' },
+  other: { label: 'Other', icon: 'more_horiz', stroke: 'stroke-slate-500', bar: 'bg-slate-500',
+    tint: 'bg-slate-800 text-slate-300', ring: 'border-slate-700', text: 'text-slate-300' },
 };
-const GROUPS: [string, string][] = [['positive', 'Going well'], ['follow_up', 'Follow up'], ['negative', 'Closed'], ['other', 'Other']];
+const ORDER: Group[] = ['positive', 'follow_up', 'negative', 'other'];
+
+const ICON: Record<string, string> = {
+  interested: 'thumb_up', docs_pending: 'hourglass_top', submitted: 'task_alt', guidance: 'school',
+  call_back: 'phone_callback', not_reachable: 'phone_disabled', query_answered: 'question_answer',
+  enquiry: 'mail', existing_csp: 'storefront', not_interested: 'thumb_down', cannot_invest: 'money_off',
+  not_eligible: 'person_off', outside_area: 'wrong_location', wrong_number: 'dialpad', other: 'more_horiz',
+};
+
+const Icon: React.FC<{ name: string; className?: string }> = ({ name, className = '' }) =>
+  <span className={`material-symbols-outlined ${className}`}>{name}</span>;
 const who = (email: string) => email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+const initials = (text: string) => text.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 const chat = (phone: string) => `#inbox/${phone.replace(/\D/g, '')}`;
+const pct = (n: number, total: number) => (total ? Math.round((n / total) * 100) : 0);
+const ago = (iso: string | null) => {
+  if (!iso) return '';
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  return m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`;
+};
+const dayLabel = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+
+const Card: React.FC<{ title: string; icon: string; sub?: React.ReactNode; children: React.ReactNode; className?: string }> =
+  ({ title, icon, sub, children, className = '' }) => (
+  <section className={`rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm ${className}`}>
+    <div className="flex items-start justify-between gap-3 mb-4">
+      <h3 className="text-[15px] font-semibold text-slate-100 flex items-center gap-2">
+        <span className="h-8 w-8 rounded-lg bg-sky-950 text-sky-300 flex items-center justify-center"><Icon name={icon} className="text-[18px]" /></span>
+        {title}
+      </h3>
+      {sub && <div className="text-[11.5px] text-slate-500 text-right">{sub}</div>}
+    </div>
+    {children}
+  </section>
+);
+
+/** The four groups as a donut with 2px gaps, the total in the middle; hover a slice for its share. */
+const Donut: React.FC<{ totals: Record<Group, number>; total: number }> = ({ totals, total }) => {
+  const [hover, setHover] = useState<Group | null>(null);
+  const R = 70, W = 22, C = 2 * Math.PI * R, GAP = 3;
+  let offset = 0;
+  const slices = ORDER.filter(g => totals[g] > 0).map(g => {
+    const len = (totals[g] / Math.max(total, 1)) * C;
+    const s = { g, dash: Math.max(len - GAP, 0.5), offset };
+    offset += len;
+    return s;
+  });
+  const shown = hover ? { n: totals[hover], label: GROUP[hover].label } : { n: total, label: 'chats' };
+  return (
+    <div className="relative w-[190px] h-[190px] shrink-0">
+      <svg viewBox="0 0 190 190" className="w-full h-full -rotate-90" role="img" aria-label="Chats by outcome group">
+        <circle cx="95" cy="95" r={R} fill="none" strokeWidth={W} className="stroke-slate-800" />
+        {slices.map(s => (
+          <circle key={s.g} cx="95" cy="95" r={R} fill="none" strokeWidth={hover === s.g ? W + 6 : W}
+            strokeDasharray={`${s.dash} ${C - s.dash}`} strokeDashoffset={-s.offset}
+            className={`${GROUP[s.g].stroke} transition-all duration-200 cursor-pointer`}
+            onMouseEnter={() => setHover(s.g)} onMouseLeave={() => setHover(null)}>
+            <title>{`${GROUP[s.g].label}: ${totals[s.g]} chats (${pct(totals[s.g], total)}%)`}</title>
+          </circle>
+        ))}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <span className="text-3xl font-bold tabular-nums text-slate-100">{shown.n}</span>
+        <span className="text-[11px] uppercase tracking-wider text-slate-500">{shown.label}</span>
+        {hover && <span className="text-[12px] font-semibold text-slate-300">{pct(totals[hover], total)}%</span>}
+      </div>
+    </div>
+  );
+};
+
+/** Outcomes the team recorded each day: thin columns on the baseline, a tooltip on hover. */
+const Columns: React.FC<{ days: { date: string; count: number }[] }> = ({ days }) => {
+  const [hover, setHover] = useState<number | null>(null);
+  const max = Math.max(1, ...days.map(d => d.count));
+  const every = days.length > 31 ? 14 : days.length > 10 ? 5 : 1;
+  return (
+    <div className="relative">
+      <div className="flex items-end gap-[2px] h-36 border-b border-slate-800">
+        {days.map((d, i) => (
+          <div key={d.date} className="flex-1 h-full flex items-end justify-center cursor-pointer"
+            onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+            <div className={`w-full max-w-[44px] mx-auto rounded-t-[4px] transition-colors ${d.count ? (hover === i ? 'bg-sky-400' : 'bg-sky-500') : 'bg-slate-800'}`}
+              style={{ height: d.count ? `${Math.max(6, (d.count / max) * 100)}%` : '3px' }} />
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-[2px] mt-1.5">
+        {days.map((d, i) => (
+          <div key={d.date} className="flex-1 text-center text-[10px] text-slate-500 whitespace-nowrap overflow-visible">
+            {(i % every === 0 || i === days.length - 1) ? dayLabel(d.date) : ''}
+          </div>
+        ))}
+      </div>
+      {hover !== null && (
+        <div className="absolute -top-2 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-[12px] text-slate-200 shadow-lg pointer-events-none whitespace-nowrap"
+          style={{ left: `${((hover + 0.5) / days.length) * 100}%`, transform: 'translate(-50%, -100%)' }}>
+          <b className="tabular-nums">{days[hover].count}</b> recorded · {dayLabel(days[hover].date)}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => {
   const [d, setD] = useState<DispositionDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [focus, setFocus] = useState<Group | 'all'>('all');
   useEffect(() => {
-    setD(null);
+    setD(null); setError(null);
     fetchDispositionDashboard(days).then(setD).catch(e => setError(e.message));
   }, [days]);
 
-  if (error) return <div className="p-3 rounded border border-rose-800 bg-rose-950/70 text-rose-200 text-xs">Chat outcomes: {error}</div>;
-  if (!d) return <div className="p-4 rounded-lg border border-slate-800 bg-slate-900 text-xs text-slate-500">Loading chat outcomes…</div>;
-  const max = Math.max(1, ...d.groups.map(g => g.count));
+  const totals = useMemo(() => {
+    const t = { positive: 0, follow_up: 0, negative: 0, other: 0 } as Record<Group, number>;
+    d?.groups.forEach(g => { t[g.group as Group] += g.count; });
+    return d?.group_totals || t;
+  }, [d]);
+
+  if (error) return <div className="p-4 rounded-xl border border-rose-800/60 bg-rose-950 text-rose-300 text-sm">Could not load the outcomes: {error}</div>;
+  if (!d) return (
+    <div className="grid gap-4 md:grid-cols-4 animate-pulse">
+      {[0, 1, 2, 3].map(i => <div key={i} className="h-28 rounded-2xl bg-slate-900 border border-slate-800" />)}
+    </div>
+  );
+
+  const total = d.total;
+  const rows = d.groups.filter(g => g.count > 0 && (focus === 'all' || g.group === focus)).sort((a, b) => b.count - a.count);
+  const maxRow = Math.max(1, ...rows.map(r => r.count));
+  const byDay = d.by_day || [];
+  const people = d.by_person || [];
 
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-900 p-4 select-text">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-[18px] text-sky-400">fact_check</span>Chat outcomes (dispositions)
-        </h2>
-        <span className="text-[11px] text-slate-500">
-          {d.total} chats · {d.by_team} recorded by the team, the rest from the bot's step
-        </span>
-      </div>
-
-      <div className="grid gap-5 mt-3 lg:grid-cols-[1.3fr_1fr]">
-        <div className="space-y-3">
-          {GROUPS.map(([g, label]) => {
-            const rows = d.groups.filter(x => x.group === g && x.count > 0);
-            if (!rows.length) return null;
+    <div className="space-y-5 select-text">
+      {/* The headline and the four groups; each tile filters the breakdown below. */}
+      <section className="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br from-sky-950 via-slate-900 to-violet-950 p-5 sm:p-6 shadow-sm">
+        <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-sky-500/10 blur-3xl pointer-events-none" />
+        <div className="absolute right-40 -bottom-20 h-48 w-48 rounded-full bg-violet-500/10 blur-3xl pointer-events-none" />
+        <div className="relative flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider font-semibold text-sky-300">Where every chat stands</div>
+            <div className="mt-1 flex items-baseline gap-3">
+              <span className="text-4xl sm:text-5xl font-bold tabular-nums text-slate-100">{pct(totals.positive, total)}%</span>
+              <span className="text-sm text-slate-300">going well, of <b className="text-slate-100">{total}</b> chats</span>
+            </div>
+            <div className="text-[12.5px] text-slate-400 mt-1">
+              {d.by_team} outcomes recorded by the team · the rest read from the bot's step · {d.recent_count} recorded in the last {d.recent_days} days
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-[12px] text-slate-300">
+            <Icon name="support_agent" className="text-[18px] text-violet-300" />
+            <b className="text-slate-100 tabular-nums">{d.with_people.length}</b> {d.with_people.length === 1 ? 'chat is' : 'chats are'} with the team now
+          </div>
+        </div>
+        <div className="relative grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+          {ORDER.map(g => {
+            const on = focus === g;
             return (
-              <div key={g}>
-                <div className="text-[10.5px] uppercase tracking-wider text-slate-500 mb-1">{label}</div>
-                <ul className="space-y-1">
-                  {rows.map(r => (
-                    <li key={r.key} className="grid grid-cols-[150px_1fr_36px] items-center gap-2 text-[12px]">
-                      <span className="text-slate-300 truncate" title={r.label}>{r.label}</span>
-                      <span className="h-2.5 rounded-full bg-slate-800 overflow-hidden">
-                        <span className={`block h-full rounded-full ${BAR[g]}`} style={{ width: `${(r.count / max) * 100}%` }} />
-                      </span>
-                      <span className="text-right tabular-nums text-slate-200 font-semibold">{r.count}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <button key={g} onClick={() => setFocus(on ? 'all' : g)}
+                className={`text-left rounded-xl border p-3.5 bg-slate-900/80 backdrop-blur transition-all cursor-pointer ${on
+                  ? `${GROUP[g].ring} ring-2 ring-sky-500` : 'border-slate-800 hover:-translate-y-0.5 hover:border-slate-700'}`}>
+                <div className="flex items-center justify-between">
+                  <span className={`h-9 w-9 rounded-lg flex items-center justify-center ${GROUP[g].tint}`}><Icon name={GROUP[g].icon} className="text-[20px]" /></span>
+                  <span className="text-2xl font-bold tabular-nums text-slate-100">{totals[g]}</span>
+                </div>
+                <div className="flex items-center justify-between mt-2.5">
+                  <span className="text-[13px] font-semibold text-slate-100">{GROUP[g].label}</span>
+                  <span className="text-[12px] tabular-nums text-slate-400">{pct(totals[g], total)}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-slate-800 mt-2 overflow-hidden">
+                  <div className={`h-full rounded-full ${GROUP[g].bar}`} style={{ width: `${pct(totals[g], total)}%` }} />
+                </div>
+              </button>
             );
           })}
         </div>
+      </section>
 
-        <div className="space-y-4 min-w-0">
-          <div>
-            <div className="text-[10.5px] uppercase tracking-wider text-slate-500 mb-1">With the team now ({d.with_people.length})</div>
-            {d.with_people.length ? (
-              <ul className="space-y-1">
-                {d.with_people.slice(0, 8).map(p => (
-                  <li key={p.phone} className="text-[12px] flex justify-between gap-2">
-                    <a href={chat(p.phone)} className="text-sky-300 hover:underline truncate">{p.name || p.phone}</a>
-                    <span className="text-slate-500 whitespace-nowrap">{who(p.by)}{p.since ? ` · ${formatDateTime(p.since)}` : ''}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : <div className="text-[12px] text-slate-500">No chat is with a person; the bot handles them all.</div>}
+      <div className="grid gap-5 xl:grid-cols-[1.1fr_1.3fr]">
+        <Card title="Outcome mix" icon="donut_large" sub="Hover a slice for its share">
+          <div className="flex flex-col sm:flex-row items-center gap-6">
+            <Donut totals={totals} total={total} />
+            <ul className="flex-1 min-w-[180px] w-full space-y-2.5">
+              {ORDER.map(g => (
+                <li key={g} className="flex items-center gap-2.5 text-[13px]">
+                  <span className={`h-7 w-7 rounded-lg flex items-center justify-center ${GROUP[g].tint}`}><Icon name={GROUP[g].icon} className="text-[16px]" /></span>
+                  <span className="flex-1 text-slate-200 whitespace-nowrap">{GROUP[g].label}</span>
+                  <span className="tabular-nums font-semibold text-slate-100">{totals[g]}</span>
+                  <span className="w-10 text-right tabular-nums text-slate-500">{pct(totals[g], total)}%</span>
+                </li>
+              ))}
+            </ul>
           </div>
-          <div>
-            <div className="text-[10.5px] uppercase tracking-wider text-slate-500 mb-1">
-              Recorded in the last {d.recent_days} days ({d.recent_count})
-            </div>
-            {d.recent.length ? (
-              <ul className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                {d.recent.map((r, i) => (
-                  <li key={i} className="text-[12px]">
-                    <div className="flex justify-between gap-2">
-                      <a href={chat(r.phone)} className="text-sky-300 hover:underline truncate">{r.name || r.phone}</a>
-                      <span className="text-slate-500 whitespace-nowrap">{formatDateTime(r.at)}</span>
-                    </div>
-                    <div className="text-slate-300">{r.label} <span className="text-slate-500">· {who(r.by)}</span></div>
-                    {r.note && <div className="text-slate-500 truncate" title={r.note}>{r.note}</div>}
-                  </li>
-                ))}
-              </ul>
-            ) : <div className="text-[12px] text-slate-500">Nothing recorded yet. Outcomes are recorded when a chat is handed back to the bot, when a question is resolved, or with "Change" above any chat.</div>}
-          </div>
-        </div>
+        </Card>
+
+        <Card title="Every outcome" icon="leaderboard"
+          sub={focus === 'all' ? 'Most common first' : <button onClick={() => setFocus('all')} className="text-sky-300 hover:underline cursor-pointer">Showing {GROUP[focus].label} · show all</button>}>
+          <ul className="space-y-2">
+            {rows.map(r => {
+              const g = GROUP[r.group as Group] || GROUP.other;
+              return (
+                <li key={r.key} className="group grid grid-cols-[28px_minmax(120px,210px)_1fr_64px] items-center gap-2.5 text-[13px]"
+                  title={`${r.label}: ${r.count} chats (${pct(r.count, total)}%)`}>
+                  <span className={`h-7 w-7 rounded-lg flex items-center justify-center ${g.tint}`}><Icon name={ICON[r.key] || 'label'} className="text-[16px]" /></span>
+                  <span className="text-slate-200 truncate">{r.label}</span>
+                  <span className="h-3 rounded-full bg-slate-800 overflow-hidden">
+                    <span className={`block h-full rounded-full ${g.bar} opacity-90 group-hover:opacity-100 transition-all`}
+                      style={{ width: `${(r.count / maxRow) * 100}%` }} />
+                  </span>
+                  <span className="text-right tabular-nums"><b className="text-slate-100">{r.count}</b> <span className="text-slate-500 text-[11.5px]">{pct(r.count, total)}%</span></span>
+                </li>
+              );
+            })}
+            {!rows.length && <li className="text-sm text-slate-500">No chats here.</li>}
+          </ul>
+        </Card>
       </div>
-    </section>
+
+      <div className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
+        <Card title="Recorded by the team, day by day" icon="bar_chart" sub={`Last ${d.recent_days} days · hover a day`}>
+          {byDay.some(x => x.count) ? <Columns days={byDay} /> : (
+            <div className="h-36 flex items-center justify-center text-sm text-slate-500 rounded-xl border border-dashed border-slate-800">
+              Nothing recorded in these days yet.
+            </div>
+          )}
+          {people.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-4">
+              {people.map(p => (
+                <span key={p.by} className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border border-slate-800 bg-slate-950 text-[12px]">
+                  <span className="h-6 w-6 rounded-full bg-violet-950 text-violet-300 text-[10px] font-bold flex items-center justify-center">{initials(who(p.by))}</span>
+                  <span className="text-slate-200">{who(p.by)}</span>
+                  <b className="tabular-nums text-slate-100">{p.count}</b>
+                </span>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card title="With the team now" icon="support_agent" sub={`${d.with_people.length} ${d.with_people.length === 1 ? 'chat' : 'chats'}`}>
+          {d.with_people.length ? (
+            <ul className="space-y-2">
+              {d.with_people.slice(0, 8).map(p => (
+                <li key={p.phone}>
+                  <a href={chat(p.phone)} className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-800 bg-slate-950/60 hover:border-violet-700 transition-colors">
+                    <span className="h-9 w-9 rounded-full bg-slate-800 text-slate-200 text-[12px] font-bold flex items-center justify-center">{initials(p.name || p.phone)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13px] font-semibold text-slate-100 truncate">{p.name || p.phone}</span>
+                      <span className="block text-[11.5px] text-slate-500">with {who(p.by)}</span>
+                    </span>
+                    <span className="text-[11.5px] text-violet-300 whitespace-nowrap flex items-center gap-1"><Icon name="schedule" className="text-[14px]" />{ago(p.since)}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="h-36 flex flex-col items-center justify-center gap-2 text-center rounded-xl border border-dashed border-slate-800">
+              <Icon name="smart_toy" className="text-[28px] text-sky-400" />
+              <span className="text-[13px] text-slate-400">The bot is handling every chat.</span>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <Card title="Latest outcomes" icon="history" sub={`${d.recent_count} in the last ${d.recent_days} days`}>
+        {d.recent.length ? (
+          <ol className="relative ml-3 border-l border-slate-800 space-y-4">
+            {d.recent.map((r, i) => {
+              const grp = (d.groups.find(x => x.key === r.key)?.group || 'other') as Group;
+              const g = GROUP[grp];
+              return (
+                <li key={i} className="pl-5 relative">
+                  <span className={`absolute -left-[13px] top-0.5 h-6 w-6 rounded-full flex items-center justify-center ring-4 ring-slate-900 ${g.tint}`}>
+                    <Icon name={ICON[r.key] || 'label'} className="text-[14px]" />
+                  </span>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <a href={chat(r.phone)} className="text-[13.5px] font-semibold text-sky-300 hover:underline">{r.name || r.phone}</a>
+                    <span className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold ${g.ring} ${g.tint}`}>{r.label}</span>
+                    <span className="text-[11.5px] text-slate-500">by {who(r.by)} · {formatDateTime(r.at)}</span>
+                  </div>
+                  {r.note && <p className="mt-1 text-[12.5px] text-slate-300 bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-1.5 inline-block">{r.note}</p>}
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <div className="py-8 text-center text-sm text-slate-500 rounded-xl border border-dashed border-slate-800">
+            Nothing recorded yet. Outcomes are recorded when a chat is handed back to the bot, when a question is resolved, or with “Change” above any chat.
+          </div>
+        )}
+      </Card>
+    </div>
   );
 };

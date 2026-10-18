@@ -19,7 +19,7 @@ recorded is kept in chat_activity with who and when, for the Dispositions tab.
 """
 import uuid
 from collections import Counter
-from datetime import timedelta
+from datetime import timedelta, timezone
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -180,7 +180,16 @@ def dashboard(db: Session, days: int = 7) -> dict:
               .order_by(ChatActivity.at.desc()).all())
     team_counts = Counter(a.value for a, _ in recent)
     handled = [c for c in convs if c.bot_paused and c.handled_by]
+    # Outcomes the team recorded each day (IST), every day of the range shown, and by whom.
+    ist = timezone(timedelta(hours=5, minutes=30))
+    per_day = Counter(inbox.aware(a.at).astimezone(ist).date().isoformat() for a, _ in recent)
+    today = inbox.now().astimezone(ist).date()
+    groups_now = Counter(DISPOSITIONS[d["key"]][1] for d in now if d["key"] in DISPOSITIONS)
     return {
+        "group_totals": {g: groups_now.get(g, 0) for g in ("positive", "follow_up", "negative", "other")},
+        "by_day": [{"date": (today - timedelta(days=i)).isoformat(),
+                    "count": per_day.get((today - timedelta(days=i)).isoformat(), 0)} for i in range(days - 1, -1, -1)],
+        "by_person": [{"by": who_, "count": n} for who_, n in Counter(a.by for a, _ in recent).most_common()],
         "total": len(convs),
         "by_team": sum(d["source"] == "team" for d in now),
         "groups": [{"key": k, "label": v[0], "group": v[1], "count": by_key.get(k, 0)}

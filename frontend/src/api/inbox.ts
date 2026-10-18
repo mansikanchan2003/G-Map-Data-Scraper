@@ -49,6 +49,10 @@ export interface DispositionDashboard {
   recent_by_disposition: { key: string; label: string; count: number }[];
   recent: { phone: string; name: string | null; key: string; label: string; note: string | null; by: string; at: string }[];
   with_people: { phone: string; name: string | null; by: string; since: string | null }[];
+  group_totals?: Record<'positive' | 'follow_up' | 'negative' | 'other', number>;
+  /** Outcomes the team recorded each day of the range (IST), oldest first. */
+  by_day?: { date: string; count: number }[];
+  by_person?: { by: string; count: number }[];
 }
 
 export interface ThreadMessage {
