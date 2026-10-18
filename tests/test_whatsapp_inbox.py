@@ -1048,10 +1048,11 @@ def test_a_spoken_pin_is_understood_and_answered_in_the_language_spoken(db, hear
 
 def test_a_spoken_question_is_marked_for_a_person(db, heard):
     tap_campaign(db)
-    heard.update(text="इसमें कितना पैसा लगेगा", language="hi")
+    # Not in Eko's FAQ ("इसमें कितना पैसा लगेगा" now is: the bot answers it, and a person still checks).
+    heard.update(text="मेरे घर का पता बदलना है, क्या करना होगा", language="hi")
     _voice(db)
     c = conv(db)
-    assert c.needs_attention and "कितना" in c.attention_reason
+    assert c.needs_attention and "पता" in c.attention_reason
     assert StubMeta.sent[-1][2].startswith(bot_messages.MESSAGES["hi"]["question_ack"])
 
 
