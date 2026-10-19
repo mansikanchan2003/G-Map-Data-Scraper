@@ -131,6 +131,18 @@ const Media: React.FC<{ m: ThreadMessage }> = ({ m }) => {
   const src = mediaUrl(m.id);
   const label = (m.body || '').match(/^\[([^\]]+)\]/)?.[1] || 'File';
 
+  if (p.blocked) {
+    // A file that can carry malware: never fetched, opened or downloaded here.
+    return (
+      <div className="flex items-start gap-2 rounded-md border border-rose-800/60 bg-rose-950 px-2.5 py-2 w-64 max-w-full">
+        <span className="material-symbols-outlined text-[20px] text-rose-300">gpp_bad</span>
+        <div className="min-w-0 text-xs">
+          <div className="font-semibold text-rose-200 truncate">{p.filename || label}: blocked as unsafe</div>
+          <div className="text-rose-300/90 mt-0.5">{p.blocked}. It cannot be opened or downloaded. Do not ask them to send it again.</div>
+        </div>
+      </div>
+    );
+  }
   if (failed || p.fetch_error && !p.available) {
     return (
       <div className="flex items-center gap-2 text-xs text-slate-400">

@@ -687,6 +687,17 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
     if not inbox.from_campaign(db, conv.phone):
         return
 
+    # A file that can carry malware (a .zip, a program...) is blocked, not
+    # answered: the chat goes to a person with a ticket, so the team knows.
+    blocked = inbox.unsafe_reason(msg.payload) if msg.kind in inbox.MEDIA_KINDS else None
+    if blocked:
+        name = (msg.payload or {}).get("filename") or "a file"
+        flag(conv, f"Unsafe file blocked: {name} ({blocked}). Do not ask for it again; treat it as suspicious.")
+        from src.services import tickets
+        tickets.raise_or_update(db, conv)
+        email_attention(db, conv)
+        return
+
     # A voice note is answered as what it says, in the language it was said in.
     if msg.kind == "audio" and message_text(msg):
         spoken = (msg.payload or {}).get("language")

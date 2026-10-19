@@ -127,11 +127,15 @@ def describe_inbound(message: dict):
         media = message.get(kind) or {}
         caption = media.get("caption") or media.get("filename") or ""
         label = _MEDIA_LABELS[kind]
-        return kind, f"[{label}] {caption}".strip(), {
+        payload = {
             "media_id": media.get("id"),
             "mime_type": media.get("mime_type"),
             "filename": media.get("filename"),
         }
+        reason = unsafe_reason(payload)
+        if reason:
+            payload["blocked"] = reason
+        return kind, f"[{label}] {caption}".strip(), payload
 
     if kind == "location":
         loc = message.get("location") or {}
@@ -252,6 +256,35 @@ def send(
 MEDIA_DIR = os.environ.get("INBOX_MEDIA_DIR", os.path.join("data", "inbox_media"))
 MEDIA_KINDS = tuple(_MEDIA_LABELS)
 
+# Files that can carry malware: archives, programs, scripts, shortcuts, macro
+# documents and web pages. Nobody applying needs to send one (2026-10-19: an
+# "SOA.zip" came with "ask your finance head to open it on a computer"). They
+# are never fetched from WhatsApp, never stored and never served: the thread
+# shows that one was blocked, and the chat is left for a person.
+RISKY_EXTENSIONS = {
+    "zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "cab", "iso", "img", "dmg",
+    "exe", "msi", "bat", "cmd", "com", "scr", "pif", "cpl", "dll", "sys", "jar", "apk", "xapk", "aab",
+    "js", "jse", "vbs", "vbe", "wsf", "wsh", "ps1", "psm1", "hta", "sh", "py", "lnk", "url", "reg", "inf",
+    "docm", "dotm", "xlsm", "xltm", "xlam", "pptm", "potm", "ppam", "html", "htm", "xhtml", "svg", "mht",
+}
+RISKY_MIME_WORDS = ("zip", "rar", "7z", "x-tar", "gzip", "msdownload", "msdos", "executable", "x-sh",
+                    "java-archive", "android.package", "javascript", "x-ms-shortcut", "macroenabled",
+                    "text/html", "svg")
+
+
+def unsafe_reason(payload: Optional[dict]) -> Optional[str]:
+    """Why a file someone sent must not be opened here, or None if it is an ordinary file."""
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("blocked"):
+        return payload["blocked"]
+    name = (payload.get("filename") or payload.get("stored") or "").lower()
+    ext = os.path.splitext(name)[1].lstrip(".")
+    mime = (payload.get("mime_type") or "").lower()
+    if ext in RISKY_EXTENSIONS or any(w in mime for w in RISKY_MIME_WORDS):
+        return f"{(ext or mime).upper()} files can carry malware"
+    return None
+
 _EXTENSIONS = {
     "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
     "video/mp4": "mp4", "video/3gpp": "3gp", "audio/ogg": "ogg", "audio/mpeg": "mp3",
@@ -330,6 +363,11 @@ def fetch_media(msg: WhatsAppMessage) -> Optional[str]:
     payload = dict(msg.payload or {})
     if msg.direction != "IN" or msg.kind not in MEDIA_KINDS or payload.get("stored"):
         return None
+    reason = unsafe_reason(payload)
+    if reason:
+        # Never downloaded: kept only as a note that it was sent and blocked.
+        msg.payload = {**payload, "blocked": reason}
+        return f"Blocked: {reason}"
     media_id = payload.get("media_id")
     if not media_id:
         return "Meta sent no media id"

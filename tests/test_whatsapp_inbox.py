@@ -603,9 +603,10 @@ def test_a_file_not_fetched_on_arrival_is_fetched_when_opened(db, client):
 
 
 def test_an_unknown_file_type_is_only_ever_downloaded(db, client):
-    StubMeta.media["d1"] = (b"<html><script>alert(1)</script></html>", "text/html")
+    # (A web page or an archive is blocked outright; see the malware test.)
+    StubMeta.media["d1"] = (b"<b>notes</b>", "application/x-custom-notes")
     msg = inbox.record_inbound(db, {"from": PHONE.lstrip("+"), "id": "wamid.d1", "type": "document",
-                                    "document": {"id": "d1", "filename": "page.html", "mime_type": "text/html"}},
+                                    "document": {"id": "d1", "filename": "notes.xyz", "mime_type": "application/x-custom-notes"}},
                                None)
     db.commit()
     r = client.get(f"/api/v1/inbox/media/{msg.message_id}")
@@ -1575,3 +1576,25 @@ def test_the_team_can_teach_the_bot_a_new_way_of_asking(db, client):
         client.request("DELETE", "/api/v1/inbox/faq/teach",
                        json={"faq_id": "earnings", "question": "Isse ghar chal jayega na?"})
     assert eko_knowledge.LEARNED == {}
+
+
+def test_a_file_that_can_carry_malware_is_blocked_not_opened(db, client, emailed):
+    StubMeta.media["zip1"] = (b"PK\x03\x04 not really", "application/zip")
+    tap_campaign(db)
+    before = len(StubMeta.sent)
+    msg = inbound(db, "document", document={"id": "zip1", "mime_type": "application/x-zip-compressed", "filename": "SOA.zip"})
+    m = db.get(WhatsAppMessage, msg.message_id)
+    assert "malware" in m.payload["blocked"] and "stored" not in m.payload
+    assert inbox.fetch_media(m).startswith("Blocked") and "stored" not in m.payload    # never downloaded
+    r = client.get(f"/api/v1/inbox/media/{msg.message_id}")
+    assert r.status_code == 403
+    thread = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}").json()["messages"]
+    shown = next(t for t in thread if t["id"] == msg.message_id)
+    assert shown["payload"]["blocked"] and "media_id" not in shown["payload"]
+    c = conv(db)
+    assert c.needs_attention and c.attention_reason.startswith("Unsafe file blocked: SOA.zip")
+    assert len(StubMeta.sent) == before        # the bot says nothing to it
+    assert len(emailed) == 1
+    # A PDF is still an ordinary document.
+    assert inbox.unsafe_reason({"filename": "aadhaar.pdf", "mime_type": "application/pdf"}) is None
+    assert inbox.unsafe_reason({"filename": "old.zip", "stored": "data/inbox_media/1/x.zip"})   # stored before the rule

@@ -277,8 +277,13 @@ def inbox_summary(db: Session = Depends(get_db)):
 
 
 def _public_payload(m: WhatsAppMessage):
-    """The payload as the page may see it: whether a file is held, never where."""
-    if not isinstance(m.payload, dict) or "stored" not in m.payload:
+    """The payload as the page may see it: whether a file is held (never where), or why it is blocked."""
+    if not isinstance(m.payload, dict):
+        return m.payload
+    blocked = inbox.unsafe_reason(m.payload) if m.direction == "IN" and m.kind in inbox.MEDIA_KINDS else None
+    if blocked:
+        return {**{k: v for k, v in m.payload.items() if k not in ("stored", "media_id")}, "blocked": blocked}
+    if "stored" not in m.payload:
         return m.payload
     return {**{k: v for k, v in m.payload.items() if k != "stored"}, "available": True}
 
@@ -611,6 +616,10 @@ def get_media(message_id: str, download: bool = False, db: Session = Depends(get
     msg = db.query(WhatsAppMessage).filter(WhatsAppMessage.message_id == message_id).first()
     if msg is None or msg.kind not in inbox.MEDIA_KINDS:
         raise HTTPException(status_code=404, detail="No such file")
+    # A file that can carry malware is never served, even one stored before this rule.
+    blocked = inbox.unsafe_reason(msg.payload) if msg.direction == "IN" else None
+    if blocked:
+        raise HTTPException(status_code=403, detail=f"Blocked as unsafe: {blocked}. It cannot be opened or downloaded here.")
 
     path = (msg.payload or {}).get("stored")
     if not path or not os.path.isfile(path):
