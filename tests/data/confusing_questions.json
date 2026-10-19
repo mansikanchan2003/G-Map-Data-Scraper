@@ -594,5 +594,125 @@
  {
   "faq": "process",
   "question": "main CSP banna chahti hun"
+ },
+ {
+  "faq": "investment",
+  "question": "sbi wala kiosk kholne me kitna lagta hai total"
+ },
+ {
+  "faq": "investment",
+  "question": "paise kitne lagane honge isme"
+ },
+ {
+  "faq": "investment",
+  "question": "मुझे कितना पैसा देना होगा"
+ },
+ {
+  "faq": "process",
+  "question": "eko ke saath kaam shuru karna hai kya karu"
+ },
+ {
+  "faq": "process",
+  "question": "csp lene ka tarika batao"
+ },
+ {
+  "faq": "process",
+  "question": "mujhe kiosk operator banna hai kaise hoga"
+ },
+ {
+  "faq": "eligibility",
+  "question": "kya mai 12 pass ho kar csp le sakti hu"
+ },
+ {
+  "faq": "eligibility",
+  "question": "csp ke liye kitna padha likha hona chahiye"
+ },
+ {
+  "faq": "eligibility",
+  "question": "meri age 55 hai kya mai ban sakta hu"
+ },
+ {
+  "faq": "documents",
+  "question": "registration ke liye kya kya lagega"
+ },
+ {
+  "faq": "documents",
+  "question": "kaun kaun se proof dene padenge"
+ },
+ {
+  "faq": "earnings",
+  "question": "isse kitni kamai ho jayegi mahine me"
+ },
+ {
+  "faq": "earnings",
+  "question": "achha paisa milta hai kya csp me"
+ },
+ {
+  "faq": "job",
+  "question": "kya mujhe bank wali naukri mil jayegi"
+ },
+ {
+  "faq": "what_csp",
+  "question": "csp kis cheez ko kehte hai"
+ },
+ {
+  "faq": "devices",
+  "question": "computer printer sab khud lena hai kya"
+ },
+ {
+  "faq": "training",
+  "question": "kya aap log sikhayenge kaise chalana hai"
+ },
+ {
+  "faq": "real",
+  "question": "aap log asli ho na, pehle bahut fraud dekhe hai"
+ },
+ {
+  "faq": "women",
+  "question": "meri wife ke liye ho sakta hai kya"
+ },
+ {
+  "faq": "cibil",
+  "question": "mera cibil 600 hai chalega kya"
+ },
+ {
+  "faq": "salary",
+  "question": "fix income hogi ya nahi"
+ },
+ {
+  "faq": "commission_paid",
+  "question": "paisa kab tak account me aa jata hai"
+ },
+ {
+  "faq": "with_shop",
+  "question": "mere paas dukaan hai usi me chalega kya"
+ },
+ {
+  "faq": "fees",
+  "question": "form ka koi paisa lagta hai kya"
+ },
+ {
+  "faq": null,
+  "question": "mera passbook print nahi ho raha"
+ },
+ {
+  "faq": null,
+  "question": "customer ka paisa atak gaya hai"
+ },
+ {
+  "faq": null,
+  "question": "kal subah call karna"
+ },
+ {
+  "faq": null,
+  "question": "theek hai sir"
+ },
+ {
+  "faq": null,
+  "question": "maine aapka message dekha"
+ },
+ {
+  "faq": null,
+  "question": "mujhe ye nahi karna"
  }
 ]

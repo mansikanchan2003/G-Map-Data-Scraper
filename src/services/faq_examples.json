@@ -1,0 +1,160 @@
+{
+  "_about": "Ways people ask each of Eko's questions, as they type them: Hinglish (with its spellings), Hindi, Gujarati, Punjabi, English. The bot answers a message that says nearly the same as one of these (eko_knowledge._by_example). Add a phrasing here, or with Teach the bot in the inbox.",
+  "job": [
+    "kya ye bank ki naukri hai", "ye sarkari job hai kya", "bank me job milegi kya", "kya main bank ka staff ban jaunga",
+    "SBI me naukri lag jayegi kya", "ye permanent job hai na", "kya isme bank employee banenge", "bank wali naukri hai ye",
+    "naukri hai ya business", "kya ye vacancy hai", "bharti nikli hai kya", "joining kab hogi bank me",
+    "क्या ये बैंक की नौकरी है", "बैंक में नौकरी मिलेगी क्या", "सरकारी नौकरी है क्या", "શું આ બેંકની નોકરી છે",
+    "ਕੀ ਇਹ ਬੈਂਕ ਦੀ ਨੌਕਰੀ ਹੈ", "is this a bank job", "will I become a bank employee", "is it a government job"
+  ],
+  "real": [
+    "ye asli hai ya nakli", "kahin fraud to nahi", "eko company sahi hai kya", "bharosa kaise karein aap par",
+    "pehle bhi dhokha ho chuka hai", "ye scam to nahi hai", "eko kaun si company hai", "aap log genuine ho kya",
+    "kya eko sach me sbi ke saath hai", "isme paisa doobega to nahi", "registered company hai kya", "eko ka office kahan hai aur kab se hai",
+    "क्या ये असली है", "कहीं धोखा तो नहीं", "Eko कंपनी भरोसेमंद है क्या", "શું આ સાચું છે કે છેતરપિંડી",
+    "ਕੀ ਇਹ ਅਸਲੀ ਹੈ", "is this genuine", "is eko a real company", "is this a scam"
+  ],
+  "fees": [
+    "apply karne ki fees kitni hai", "form bharne ka charge lagega", "registration ke paise dene honge", "apply karne ke liye kuch dena padega",
+    "kya apply free hai", "form ki fees", "allotment ke liye paisa mang rahe hai", "koi charge hai apply ka",
+    "आवेदन की फीस कितनी है", "फॉर्म भरने के पैसे लगेंगे", "અરજી કરવાની ફી કેટલી છે", "ਅਪਲਾਈ ਦੀ ਫੀਸ ਕਿੰਨੀ ਹੈ",
+    "is there any application fee", "do I have to pay to apply"
+  ],
+  "investment": [
+    "kitna paisa lagana padega", "shuru karne me kitna kharcha aayega", "kitne paise invest karne honge", "5 lakh lagenge kya",
+    "total kitna paisa lagega", "paisa kitna dena hoga mujhe", "investment kitna hai", "bina paise ke ho jayega kya",
+    "kam paise me ho sakta hai kya", "kitna capital chahiye", "csp kholne ka kharcha kitna hai", "paise ka kya scene hai",
+    "कितना पैसा लगाना पड़ेगा", "कितना निवेश करना होगा", "शुरू करने में कितना खर्चा आएगा", "કેટલું રોકાણ કરવું પડશે",
+    "કેટલા પૈસા લાગશે", "ਕਿੰਨਾ ਪੈਸਾ ਲੱਗੇਗਾ", "how much money do I need", "how much investment is required"
+  ],
+  "devices": [
+    "kaun si machine chahiye", "laptop lena padega kya", "computer khud kharidna hoga", "biometric machine kahan se milegi",
+    "kya kya saman lagega", "printer bhi chahiye kya", "micro atm milega", "machine aap doge ya mujhe leni hai",
+    "कौन सी मशीन लगेगी", "लैपटॉप चाहिए क्या", "કયું મશીન જોઈએ", "ਕਿਹੜੀ ਮਸ਼ੀਨ ਚਾਹੀਦੀ ਹੈ",
+    "what devices are needed", "do I need my own laptop"
+  ],
+  "with_shop": [
+    "kya meri dukaan me chala sakte hai", "alag jagah chahiye kya", "ghar se chala sakte hai kya", "dukaan nahi hai to kya karein",
+    "kitne ghante kholna padega", "timing kya rahegi", "shop ke saath ye kaam ho jayega", "kiraye ki dukaan chalegi",
+    "क्या दुकान में चला सकते हैं", "अलग जगह चाहिए क्या", "દુકાનમાં ચલાવી શકાય", "ਦੁਕਾਨ ਵਿੱਚ ਚਲਾ ਸਕਦੇ ਹਾਂ",
+    "can I run it from my shop", "do I need a separate space"
+  ],
+  "training": [
+    "training milegi kya", "mujhe kuch nahi aata sikhaoge", "computer chalana nahi aata", "kaun sikhayega",
+    "exam dena padega kya", "certificate milega kya", "iibf kya hai", "kitne din ki training hai",
+    "ट्रेनिंग मिलेगी क्या", "मुझे सिखाओगे", "તાલીમ મળશે", "ਟ੍ਰੇਨਿੰਗ ਮਿਲੇਗੀ",
+    "will I get training", "is there an exam"
+  ],
+  "family": [
+    "beta chala sakta hai kya", "wife ke saath kaam kar sakte", "ghar wale madad kar sakte hai", "bete ke naam pe le sakte",
+    "mere bhai bhi baithega", "family member chala sakta hai", "koi aur chala sakta hai mere badle",
+    "परिवार वाले चला सकते हैं", "બેટો ચલાવી શકે", "ਪੁੱਤਰ ਚਲਾ ਸਕਦਾ ਹੈ", "can my family member run it"
+  ],
+  "earnings": [
+    "kitna kama sakte hai", "mahine ki kitni income hogi", "kitna profit hoga", "isse ghar chal jayega",
+    "kamai kaisi hai isme", "har mahine kitna milega", "kitna fayda hoga", "commission kitna milta hai",
+    "log kitna kama lete hai", "kitni kamai ho jati hai", "income kitni hai", "achhi kamai hogi na",
+    "कितनी कमाई होगी", "महीने का कितना मिलेगा", "कितना मुनाफा होगा", "કેટલી કમાણી થશે",
+    "ਕਿੰਨੀ ਕਮਾਈ ਹੋਵੇਗੀ", "how much can I earn", "what is the monthly income", "is it profitable"
+  ],
+  "salary": [
+    "fix salary milegi", "har mahine pakka paisa milega", "salary kitni milegi", "tankhwah milti hai kya",
+    "guaranteed income hai kya", "fix kitna milega", "वेतन मिलेगा क्या", "पक्की तनख्वाह मिलेगी",
+    "પગાર મળશે", "ਤਨਖਾਹ ਮਿਲੇਗੀ", "is there a fixed salary"
+  ],
+  "women": [
+    "ladies kar sakti hai kya", "mahila ke liye kuch alag hai", "wife ke naam pe mil sakta hai", "ladki chala sakti hai",
+    "auraton ke liye kya fayda hai", "housewife kar sakti hai kya", "महिला चला सकती है", "महिलाओं के लिए क्या है",
+    "મહિલા ચલાવી શકે", "ਔਰਤਾਂ ਲਈ ਕੀ ਹੈ", "can women apply"
+  ],
+  "penalty": [
+    "band rakha to penalty lagegi", "kuch din band rahe to kya hoga", "chutti le sakte hai kya roz kholna padega", "jurmana lagta hai kya",
+    "roz kholna zaroori hai", "जुर्माना लगेगा क्या", "દંડ લાગે", "ਜੁਰਮਾਨਾ ਲੱਗੇਗਾ", "is there a penalty"
+  ],
+  "customer_charges": [
+    "customer se kitna charge lena hai", "grahak se paise le sakte hai", "service charge kaun leta hai", "customer ko kuch dena padega",
+    "ग्राहक से चार्ज लेना है", "ગ્રાહક પાસેથી ચાર્જ", "ਗਾਹਕ ਤੋਂ ਚਾਰਜ", "do customers pay any charges"
+  ],
+  "eligibility": [
+    "kaun apply kar sakta hai", "kya requirements hai", "kaun ban sakta hai operator", "qualification kya chahiye",
+    "12th pass hun kar sakta hun", "10th pass chalega", "age limit kya hai", "kya shartein hai",
+    "graduate hona zaroori hai", "main yogya hun kya", "bank me kaam karta hun kya main bhi le sakta",
+    "कौन आवेदन कर सकता है", "योग्यता क्या है", "उम्र कितनी होनी चाहिए", "કોણ અરજી કરી શકે",
+    "ਯੋਗਤਾ ਕੀ ਹੈ", "who can apply", "what are the requirements", "am I eligible"
+  ],
+  "cibil": [
+    "cibil kitna chahiye", "cibil score kharab hai chalega", "loan chal raha hai to milega", "civil score kam hai",
+    "emi chal rahi hai to problem hogi", "credit score kitna hona chahiye", "सिबिल स्कोर कितना चाहिए", "સિબિલ સ્કોર",
+    "ਸਿਬਿਲ ਸਕੋਰ", "what cibil score is needed"
+  ],
+  "documents": [
+    "kya kya documents chahiye", "kaun se kagaz lagenge", "aadhar pan dena hoga", "police verification chahiye kya",
+    "documents ki list do", "kya papers lagenge", "passbook bhi chahiye", "12th ka certificate lagega",
+    "कौन से दस्तावेज चाहिए", "कागज क्या क्या लगेंगे", "કયા દસ્તાવેજ જોઈએ", "ਕਿਹੜੇ ਦਸਤਾਵੇਜ਼ ਚਾਹੀਦੇ",
+    "what documents are required", "which papers do I need"
+  ],
+  "commission_paid": [
+    "commission kab milta hai", "paisa kab aayega account me", "payment kis account me aata hai", "har mahine kis date ko milta hai",
+    "commission ka paisa kab credit hota hai", "कमीशन कब मिलता है", "पैसा कब आएगा", "કમિશન ક્યારે મળે",
+    "ਕਮਿਸ਼ਨ ਕਦੋਂ ਮਿਲਦਾ", "when is the commission paid"
+  ],
+  "process": [
+    "csp kaise bane", "kiosk operator kaise ban sakte hai", "process kya hai", "kaise shuru karein",
+    "apply kaise karu", "aage kya karna hai", "kitne din me shuru ho jayega", "mujhe csp banna hai",
+    "eko ke saath judna hai", "sbi ka mini bank kholna hai kaise karu", "csp lene ke liye kya karna padega", "steps kya hai",
+    "सीएसपी कैसे बनें", "प्रक्रिया क्या है", "शुरू कैसे करें", "CSP કેવી રીતે બનવું",
+    "ਸੀਐਸਪੀ ਕਿਵੇਂ ਬਣੀਏ", "how do I become a kiosk operator", "how to start", "what is the process"
+  ],
+  "services": [
+    "kaun kaun si services de sakte hai", "kya kya kaam hota hai csp pe", "paise nikal sakte hai log", "khata khol sakte hai kya",
+    "money transfer kar sakte hai", "aeps kar sakte hai kya", "कौन सी सेवाएं दे सकते हैं", "खाता खोल सकते हैं",
+    "કઈ સેવાઓ આપી શકાય", "ਕਿਹੜੀਆਂ ਸੇਵਾਵਾਂ", "what services can I offer"
+  ],
+  "earning_lines": [
+    "outlet me kamai ke raaste kya hai", "kis kis cheez se kamai hoti hai", "loan aur insurance se bhi kamai hogi"
+  ],
+  "what_csp": [
+    "csp kya hota hai", "csp ka matlab kya hai", "kiosk kya hai", "customer service point matlab",
+    "ye csp hai kya cheez", "csp ka meaning batao", "सीएसपी क्या होता है", "सीएसपी का मतलब",
+    "સીએસપી એટલે શું", "ਸੀਐਸਪੀ ਕੀ ਹੈ", "what is a csp"
+  ],
+  "setup_cost": [
+    "setup ka kharcha kitna", "machine ka paisa kaun dega", "branding ka kharcha", "ek baar ka kharcha kitna hai",
+    "सेटअप का खर्च", "machine ke paise lagenge kya", "one time cost kitna hai"
+  ],
+  "who_fits": [
+    "dukaandar kar sakta hai", "experience chahiye kya", "pehli baar business kar raha hun chalega", "student kar sakta hai",
+    "banking experience nahi hai", "अनुभव चाहिए क्या", "અનુભવ જોઈએ", "do I need experience"
+  ],
+  "schemes": [
+    "kaun si yojana kar sakte", "atal pension kar sakte hai", "pmsby pmjjby kya hai", "bima bhi hota hai kya",
+    "sarkari yojana ka kaam", "योजना कौन सी", "બીમા યોજના", "ਯੋਜਨਾ"
+  ],
+  "security": [
+    "data safe hai kya", "fraud ka darr hai", "transaction surakshit hai", "hack to nahi hoga",
+    "सुरक्षित है क्या", "is my data safe"
+  ],
+  "audit": [
+    "koi check karne aayega", "audit hota hai kya", "bank wale jaanch karenge", "surprise visit hoti hai", "जाँच होती है क्या"
+  ],
+  "ngo": [
+    "ngo kaise jude", "hamari sanstha partner ban sakti", "shg wale kaise jude", "हमारी संस्था कैसे जुड़े"
+  ],
+  "apply_online": [
+    "website se apply kar sakte", "form kahan bharna hai", "aap call kab karoge", "online apply kaise",
+    "वेबसाइट से अप्लाई", "when will you call me"
+  ],
+  "operator_role": [
+    "operator ka kaam kya hota hai", "meri zimmedari kya hogi", "roz kya karna hoga", "csp operator kya karta hai",
+    "ऑपरेटर का काम क्या है"
+  ],
+  "reach": [
+    "eko kitni jagah hai", "kitne csp hai eko ke", "kis kis state me hai", "kahan kahan kaam karte ho", "कहाँ कहाँ है"
+  ],
+  "outlet_touchpoint": [
+    "outlet aur touchpoint me kya fark hai", "touchpoint kya hota hai", "dono me difference kya hai"
+  ],
+  "promise": [
+    "eko kya madad karega", "aapka vaada kya hai", "support milega kya", "baad me koi madad karega"
+  ]
+}
