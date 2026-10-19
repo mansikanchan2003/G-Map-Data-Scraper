@@ -574,5 +574,25 @@
  {
   "faq": "fees",
   "question": "fees kitni hai"
+ },
+ {
+  "faq": "eligibility",
+  "question": "Kiosk Operator banne ke liye kya requirements hai?"
+ },
+ {
+  "faq": "eligibility",
+  "question": "Kiosk operator kon ban sakta hai?"
+ },
+ {
+  "faq": "eligibility",
+  "question": "who can become a kiosk operator"
+ },
+ {
+  "faq": "process",
+  "question": "mujhe CSP banna hai"
+ },
+ {
+  "faq": "process",
+  "question": "main CSP banna chahti hun"
  }
 ]
