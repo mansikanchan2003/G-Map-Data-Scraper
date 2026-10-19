@@ -945,3 +945,43 @@ def text(lang: str, key: str, **fields) -> str:
     """A message in `lang`, or in English if that language lacks it."""
     template = MESSAGES.get(lang, {}).get(key) or MESSAGES["en"][key]
     return template.format(**fields) if fields else template
+
+
+# --- Hindi written in Latin letters (Hinglish) ---------------------------------
+# Someone who chose Hindi but writes "Kuch invest krna hoga?" is answered in
+# the same letters, not half in Devanagari (2026-10-19). Used for "hi" while
+# the person's last words were in Latin letters; a key missing here falls back
+# to the Devanagari text. Buttons stay as they are.
+HINGLISH = {
+    "acknowledge": "Aapke message ke liye dhanyavaad! Hamari team ka koi sadasya jald hi aapko jawab dega.",
+    "question_ack": "Aapke sawaal ke liye dhanyavaad! 🙏 Hamari team ka koi sadasya jald hi yahin jawab dega.",
+    "ask_pin": "Aapki ruchi ke liye dhanyavaad! 🙏\n\nKripya apna pin code batayein.",
+    "bad_pin": "Kripya apna 6 ankon ka pin code bhejein, jaise 110001.",
+    "unknown_pin": "Humein pin code {pin} nahi mila. Kripya ise jaanch kar dobara bhejein.",
+    "not_served": "Pin code batane ke liye dhanyavaad. Abhi hum {pin} ke paas uplabdh nahi hain, lekin hum tezi se badh rahe hain aur wahan pahunchte hi aapse sampark karenge.\n\nAgar aap koi doosra pin code jaanchna chahte hain, to use yahan bhej dein.",
+    "not_served_again": "Abhi hum {pin} ke paas uplabdh nahi hain. Agar aap koi doosra pin code jaanchna chahte hain, to use yahan bhej dein.",
+    "ask_education": "Aapne kahan tak padhai ki hai?",
+    "not_eligible": "Humein khed hai, lekin SBI Customer Service Point kholne ke liye kam se kam 12th pass ya diploma hona zaroori hai.",
+    "ask_franchise": "Kya aapke paas franchise background hai?\n\n(Franchise background ka matlab hai ki aapne kisi doosri company ke brand ke naam se business chalaya hai ya chala rahe hain, jaise bank ya payment kiosk, courier, mobile recharge ya bima ka outlet.)",
+    "ask_invest": "Kya aap franchise business shuru karne ke liye 5 lakh rupaye tak nivesh kar sakte hain?\n\n(Franchise business ka matlab hai kisi jaane-maane brand ke naam, uske system aur support ke saath apna outlet chalana. Yahan yeh SBI Customer Service Point hai, jo Eko dwara di jaane wali suvidha hai.)",
+    "invest_explained": "💼 *₹5 lakh tak ka istemal kaise hota hai*\n\n• Inmein se lagbhag *₹1.5–2.5 lakh ke devices* (laptop ya tab, biometric device, micro ATM, passbook printer, GPS dongle) Eko deta hai aur chalana bhi sikhata hai.\n• *Thoda paisa aapke paas rehta hai*, aapke apne e-wallet mein. Isi se aap grahakon ka kaam karte hain.\n• Jab grahak paisa jama ya transfer karta hai, wah aapko nakad deta hai aur rakam aapke e-wallet se uske khate mein chali jaati hai. Jab grahak paisa nikalta hai, aap use nakad dete hain aur rakam aapke e-wallet mein wapas aa jaati hai.\n• E-wallet mein paisa kam ho jaye, to jama hui nakdi bank mein jama karke e-wallet phir se bhar lein aur kaam jaari rakhein.\n• Aapko *har transaction par commission* milta hai.\n• Baaki paisa aapki mini branch set-up karne mein lagta hai, taaki aapke paas saari suvidhayein hon, jaise baithne ki jagah, paani ka intezaam, poster aur banner. Taaki aapki dukaan SBI ki mini branch sirf bane hi nahi, balki dekhne mein bhi lage.",
+    "not_investing": "Batane ke liye dhanyavaad. Agar aage kuch badalta hai, to yahan jawab dein, hamari team aapki madad karegi.",
+    "ask_docs": "Bahut badhiya! Kripya batayein ki kya aapke paas hamare saath onboarding ke liye ye dastavez hain?\n\n{documents}",
+    "docs_required": "Zaroori:",
+    "docs_optional": "Agar hon to ye bhi:",
+    "docs_later": "Koi baat nahi. Jab ye dastavez taiyar ho jayein, to upar *हाँ* dabayein, hum aapko upload karne ka link bhej denge.",
+    "remind_choice": "Kripya neeche *हाँ* ya *नहीं* dabayein.",
+    "send_link": "Bahut badhiya! Chaliye aapka registration karte hain. 📝\n\nKripya bataye gaye dastavez is link par upload karein.",
+    "remind_upload": "Jab aap taiyar hon, is link par apne dastavez upload kar sakte hain.",
+    "thanks": "Dastavez bhejne ke liye dhanyavaad, hamari team ka koi sadasya jald hi aapse sampark karega.",
+    "already_submitted": "Humein aapke dastavez pehle hi mil chuke hain, dhanyavaad! Hamari team ka koi sadasya jald hi aapse sampark karega.",
+    "handover": "Dhanyavaad! Hamari team ka koi sadasya jald hi aapse sampark karega.",
+    "resume": "Dhanyavaad! 🙏 Chaliye, aapka aavedan wahin se aage badhate hain jahan humne chhoda tha:",
+    "nudge": "Namaste! 😊 Hum samajhte hain ki aap kisi kaam mein vyast ho gaye honge, koi baat nahi. Jab bhi aapko samay mile, hum wahin se aage badh sakte hain jahan humne chhoda tha:",
+    "greeting": "Namaste! 👋 Eko se sampark karne ke liye dhanyavaad.\n\nKya aap Eko ke saath SBI Customer Service Point ke roop mein apna business shuru karna chahte hain? Shuru karne ke liye *Interested* dabayein, ya hamari team se personal guidance paane ke liye *{webinar}* dabayein.",
+    "webinar_ask": "Kya aap kal personal guidance session ke liye uplabdh hain?\n\nIs session mein hum aapko shuruaat se sab kuch samjhayenge: aap hamare saath milkar SBI ka Customer Service Point kaise khol sakte hain, aapko kya-kya laabh milenge, aur aap grahakon ko kaun-kaun si sevayein de sakte hain.",
+    "webinar_ask_today": "Kya aap aaj personal guidance session ke liye uplabdh hain?\n\nIs session mein hum aapko shuruaat se sab kuch samjhayenge: aap hamare saath milkar SBI ka Customer Service Point kaise khol sakte hain, aapko kya-kya laabh milenge, aur aap grahakon ko kaun-kaun si sevayein de sakte hain.",
+    "webinar_yes": "Pushti karne ke liye dhanyavaad! 🙏 Hamari team jald hi aapse sampark karegi.\n\nKisi bhi sawaal ke liye aap +91 7291988625 par call/WhatsApp kar sakte hain.",
+    "webinar_no": "Kripya apni uplabdhta batayein: aap personal guidance ke liye kis din aur kis samay uplabdh rahenge?",
+    "webinar_noted": "Dhanyavaad! Humne aapki uplabdhta note kar li hai. Hamari team jald hi aapse sampark karegi.\n\nKisi bhi sawaal ke liye aap +91 7291988625 par call/WhatsApp kar sakte hain.",
+}

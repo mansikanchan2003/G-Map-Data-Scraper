@@ -1635,3 +1635,41 @@ def test_a_confusing_question_finds_the_right_answer_or_a_person(case):
         assert got == []
     else:
         assert got and got[0] == case["faq"]
+
+
+def test_hindi_written_in_latin_letters_is_answered_in_latin_letters(db):
+    tap_campaign(db, lang="hi")
+    say(db, SERVED_PIN)
+    say(db, "Kuch invest krna hoga?")
+    body = StubMeta.sent[-1][2]
+    assert body.startswith("INR 5 lakh tak") and "₹5 lakh tak ka istemal kaise hota hai" in body
+    assert not re.search(r"[\u0900-\u097F]{3,}", body)        # no Devanagari sentences left in it
+    # Written in Devanagari, the bot answers in Devanagari again.
+    say(db, "कितना निवेश करना होगा?")
+    assert "₹5 लाख तक का इस्तेमाल" in StubMeta.sent[-1][2]
+
+
+def test_an_inbox_limited_to_other_chats_never_shows_an_autogmap_one(db, client):
+    from src.routers import inbox as inbox_router
+    tap_campaign(db)                                                     # PHONE: an AutoGMap chat
+    say(db, "Mere ghar ka pata badalna hai, kya karna hoga?")            # with a ticket
+    inbox.record_inbound(db, {"from": OTHER.lstrip("+"), "id": "wamid.other1", "type": "text",
+                              "text": {"body": "ATM card kab milega?"}}, "Other team's contact")
+    db.commit()
+
+    async def not_autogmap():
+        inbox_router._SCOPE.set("not_autogmap")
+    app.dependency_overrides[inbox_router._bind_scope] = not_autogmap
+    try:
+        phones = [c["phone"] for c in client.get("/api/v1/inbox/conversations").json()]
+        assert phones == [OTHER]
+        assert client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}").status_code == 404
+        assert client.get(f"/api/v1/inbox/conversations/{OTHER.lstrip('+')}").status_code == 200
+        assert client.get("/api/v1/inbox/attention-alerts").json() == []
+        assert client.get("/api/v1/inbox/tickets").json() == []
+        assert client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/messages",
+                           json={"message": "hi"}).status_code == 404
+    finally:
+        app.dependency_overrides.pop(inbox_router._bind_scope, None)
+    # Everyone else still sees both.
+    assert {c["phone"] for c in client.get("/api/v1/inbox/conversations").json()} == {PHONE, OTHER}

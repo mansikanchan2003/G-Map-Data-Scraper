@@ -371,7 +371,37 @@ def _say(db, conv, body, **kw) -> WhatsAppMessage:
 
 
 def _t(db, conv, key, **fields) -> str:
-    return bot_messages.text(_lang(db, conv), key, **fields)
+    lang = _lang(db, conv)
+    # Hindi to someone who writes it in Latin letters: in the same letters.
+    if lang == "hi" and (conv.bot_data or {}).get("script") == "latin" and key in bot_messages.HINGLISH:
+        text = bot_messages.HINGLISH[key]
+        return text.format(**fields) if fields else text
+    return bot_messages.text(lang, key, **fields)
+
+
+def _note_script(conv, msg) -> None:
+    """
+    Remember whether the person writes in Latin letters or in an Indic script.
+
+    A sentence counts, not one word ("Hindi", typed to choose the language,
+    says nothing about how they write); a voice note is answered in the
+    script of its language.
+    """
+    kind = getattr(msg, "kind", None)
+    if kind == "audio" or getattr(msg, "voice", False):
+        script = "indic"
+    else:
+        said = message_text(msg) if kind == "text" else None
+        if not said or len(re.findall(r"\w+", said)) < 2:
+            return
+        if re.search(r"[ऀ-෿]", said):
+            script = "indic"
+        elif re.search(r"[A-Za-z]{2,}", said):
+            script = "latin"
+        else:
+            return
+    if (conv.bot_data or {}).get("script") != script:
+        conv.bot_data = {**(conv.bot_data or {}), "script": script}
 
 
 def _move(conv, step, **data):
@@ -706,6 +736,7 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
                              "lang_campaign": _campaign_lang(db, conv)}
         msg = _Spoken(msg, message_text(msg))
 
+    _note_script(conv, msg)
     flagged_before = inbox.aware(conv.attention_at) if conv.needs_attention else None
     token = _CURRENT.set(msg)
     try:
