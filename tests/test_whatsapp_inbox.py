@@ -1522,8 +1522,10 @@ SAME_QUESTION = {
     "audit": ["koi check karne aayega?"],
     "ngo": ["hamari NGO kaise jude"],
     "apply_online": ["aap call kab karenge", "form kahan bharna hai"],
+    "process": ["Eko ke saath me SBI ki CSP kese ban sakti hoon?", "Eko ke saath me Kiosk Operator kese ban sakti hoon?",
+                "How do I become a Kiosk Operator?", "SBI CSP kaise milega", "सीएसपी कैसे बनें"],
 }
-NOT_IN_THE_FAQ = ["Mere ghar ka pata badalna hai, kya karna hoga?", "Kya aap Sunday ko bhi baat karte ho?",
+NOT_IN_THE_FAQ = ["Mere ghar ka pata badalna hai, kya karna hoga?", "mera account kaise ban jayega", "Kya aap Sunday ko bhi baat karte ho?",
                   "aapka office kahan hai?", "ATM card kab tak milega sir?", "Thank you", "Namaste sar aaj ki chutti hai kya",
                   "Shivani madam contact number account list problem", "Thank you for contacting Aditya mobile store!"]
 

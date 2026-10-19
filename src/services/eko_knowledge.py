@@ -247,7 +247,7 @@ SITE_FAQ: List[dict] = [
     },
     {
         "id": "commission_paid", "question": "Commission kab aur kahan milta hai?", "source": "kiosk.eko.in",
-        "keys": ["commission kab", "kab milega commission", "payment kab", "paisa kab", "kab aayega", "kab milta", "settlement",
+        "keys": ["commission kab", "kab milega commission", "payment kab", "paisa kab", "settlement",
                  "kis account", "kahan aayega", "कमीशन कब", "पैसा कब", "भुगतान कब", "કમિશન ક્યારે", "પૈસા ક્યારે", "ਕਮਿਸ਼ਨ ਕਦੋਂ", "ਪੈਸੇ ਕਦੋਂ"],
         "answer": {
             "hinglish": "Commission har mahine ki 10 tareekh se pehle seedha aapke registered SBI savings account mein aata hai, wahi account jo onboarding mein diya tha.",
@@ -259,7 +259,7 @@ SITE_FAQ: List[dict] = [
     },
     {
         "id": "process", "question": "Process kya hai? Kaise shuru hoga?", "source": "kiosk.eko.in",
-        "keys": ["process", "prakriya", "steps", "kaise bane", "kaise shuru", "kaise start", "how to become", "how to start",
+        "keys": ["process", "prakriya", "steps", "kaise shuru", "kaise start", "how to become", "how to start",
                  "approval", "प्रक्रिया", "कैसे शुरू", "પ્રક્રિયા", "કેવી રીતે શરૂ", "ਪ੍ਰਕਿਰਿਆ", "ਕਿਵੇਂ ਸ਼ੁਰੂ"],
         "answer": {
             "hinglish": "6 kadam: 1) documents jama karein, 2) SBI approve karta hai, 3) devices aur kiosk ki setting, 4) Hindi mein digital training, 5) IIBF certification, 6) kaam aur kamaai shuru. Har kadam par Eko ki team saath rehti hai.",
@@ -501,7 +501,10 @@ MORE_KEYS: Dict[str, List[str]] = {
                   "police", "certificate chahiye", "कागजात", "આધાર", "ਆਧਾਰ"],
     "commission_paid": ["paisa kab aayega", "kab tak milega paisa", "payment date", "kis tareekh", "tarikh",
                         "account mein kab", "kab credit", "कब मिलेगा", "ક્યારે મળશે", "ਕਦੋਂ ਮਿਲੇਗਾ"],
-    "process": ["aage kya karna", "kya karna hai aage", "ab kya karna", "kitne din", "kab shuru", "shuru ho jayega", "kab tak chalu", "कितने दिन", "आगे क्या करना", "aage kya karna", "aage kya", "next step", "shuru kaise", "kaise judein", "kaise jude", "kaise apply",
+    "process": ["csp ban", "kiosk operator ban", "operator ban", "kiosk ban", "csp kaise", "csp lena",
+                "csp kholna", "kiosk kholna", "csp kaise milega", "how do i become", "how to become", "become kiosk operator",
+                "become csp", "become a csp", "join eko", "eko ke saath judna", "eko ke saath kaam", "sbi csp", "सीएसपी कैसे",
+                "कियोस्क ऑपरेटर कैसे", "કેવી રીતે બની", "ਕਿਵੇਂ ਬਣ", "aage kya karna", "kya karna hai aage", "ab kya karna", "kitne din", "kab shuru", "shuru ho jayega", "kab tak chalu", "कितने दिन", "आगे क्या करना", "aage kya karna", "aage kya", "next step", "shuru kaise", "kaise judein", "kaise jude", "kaise apply",
                 "how to apply", "kitne din lagenge", "kitna time lagega", "kab tak shuru", "जुड़ना", "शुरू कैसे"],
     "services": ["paise nikal sakte", "paise nikal", "nikal sakte", "jama kar sakte", "kya kya kar sakte log", "पैसे निकाल सकते", "kya kya kaam", "kya services", "kaun kaun se kaam", "account kholna", "cash withdrawal", "पैसे निकालना", "खाता खोलना"],
     "setup_cost": ["machine ka kharcha", "kharcha kaun dega", "device ka paisa kaun", "machine kaun dega", "मशीन का खर्चा"],
@@ -588,9 +591,29 @@ def _vowels(word: str) -> str:
     return "".join(_VOWEL_SIGNS.get(_devanagari(c), "") for c in word)
 
 
+# The many ways short, common Hinglish words are typed, read as one: too short
+# to be matched by sound ("kese" and "kaise" are both "ks"), and in every question.
+_SAME_WORD = {
+    "kaise": ("kese", "kaisey", "kaese", "kesy", "kaisay", "kase", "kese", "kesay", "kaisa", "kesa", "kaisi", "kesi"),
+    "kya": ("kia", "kyaa", "kyà", "kiya"),
+    "nahi": ("nhi", "nahin", "nai", "nhin", "nahee", "nahi"),
+    "ban": ("bane", "banu", "banoon", "banun", "banna", "bano", "banne", "bnu", "banunga", "banungi", "banenge",
+            "banega", "banegi", "banta", "banti", "banate", "bnna", "bnne"),
+    "sakta": ("sakti", "sakte", "skta", "skti", "skte", "sakhta", "sakhti", "sakoon", "saku", "sakun", "sakenge"),
+    "hun": ("hoon", "hu", "hoo", "hn"),
+    "karna": ("krna", "karni", "krni", "karne", "krne"),
+    "milega": ("milegi", "milenge", "milta", "milti", "milte", "milega", "mlega", "milegaa"),
+    "chahiye": ("chahie", "chaiye", "chahiyea", "chahye", "chaiya", "chahiya"),
+    "paisa": ("paise", "pese", "paisay", "paisa", "pesa", "paiso"),
+    "lena": ("leni", "lene", "lu", "loon", "lun"),
+    "kholna": ("kholni", "kholne", "kholu", "kholun", "kholoon"),
+}
+_CANON = {v: k for k, vs in _SAME_WORD.items() for v in vs}
+
+
 def _words(text: str) -> List[str]:
     # Indic vowel signs are not \w, so the Indic blocks are named whole: "ફોર્મ" is one word, not three.
-    return re.findall(r"[\wऀ-෿₹]+", (text or "").lower())
+    return [_CANON.get(w, w) for w in re.findall(r"[\wऀ-෿₹]+", (text or "").lower())]
 
 
 def _close(a: str, b: str) -> bool:
