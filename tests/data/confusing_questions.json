@@ -1,0 +1,578 @@
+[
+ {
+  "faq": "investment",
+  "question": "Eko ke saath SBI CSP kholne ke liye kuch paisa lagega?"
+ },
+ {
+  "faq": "investment",
+  "question": "SBI ka CSP lene me kitna paisa lagta hai"
+ },
+ {
+  "faq": "investment",
+  "question": "kiosk shuru karne ke liye kitne paise chahiye"
+ },
+ {
+  "faq": "investment",
+  "question": "CSP ke liye 5 lakh lagenge kya?"
+ },
+ {
+  "faq": "investment",
+  "question": "Eko CSP me investment kitna hai"
+ },
+ {
+  "faq": "investment",
+  "question": "सीएसपी खोलने में कितना पैसा लगेगा"
+ },
+ {
+  "faq": "investment",
+  "question": "ਸੀਐਸਪੀ ਖੋਲ੍ਹਣ ਲਈ ਕਿੰਨਾ ਪੈਸਾ ਲੱਗੇਗਾ"
+ },
+ {
+  "faq": "investment",
+  "question": "how much investment is needed for SBI CSP"
+ },
+ {
+  "faq": "investment",
+  "question": "bina paise ke CSP mil sakta hai kya"
+ },
+ {
+  "faq": "process",
+  "question": "Eko ke saath me SBI ki CSP kese ban sakti hoon?"
+ },
+ {
+  "faq": "process",
+  "question": "SBI CSP kaise milega mujhe"
+ },
+ {
+  "faq": "process",
+  "question": "kiosk operator banne ka process kya hai"
+ },
+ {
+  "faq": "process",
+  "question": "CSP ke liye apply kaise karu"
+ },
+ {
+  "faq": "process",
+  "question": "सीएसपी कैसे बनें"
+ },
+ {
+  "faq": "process",
+  "question": "how can I start an SBI CSP with Eko"
+ },
+ {
+  "faq": "documents",
+  "question": "CSP kholne ke liye kya documents chahiye"
+ },
+ {
+  "faq": "documents",
+  "question": "SBI CSP ke liye kaun kaun se kagaz lagenge"
+ },
+ {
+  "faq": "documents",
+  "question": "kiosk ke liye aadhar pan dena hoga?"
+ },
+ {
+  "faq": "documents",
+  "question": "सीएसपी के लिए कौन से दस्तावेज चाहिए"
+ },
+ {
+  "faq": "eligibility",
+  "question": "CSP kholne ke liye kya qualification chahiye"
+ },
+ {
+  "faq": "eligibility",
+  "question": "10th pass CSP khol sakta hai kya"
+ },
+ {
+  "faq": "eligibility",
+  "question": "SBI CSP ke liye age limit kya hai"
+ },
+ {
+  "faq": "eligibility",
+  "question": "kya main graduate hun to CSP le sakta hun"
+ },
+ {
+  "faq": "earnings",
+  "question": "CSP kholke kitna kama sakte hai"
+ },
+ {
+  "faq": "earnings",
+  "question": "SBI CSP se mahine ki kitni income hoti hai"
+ },
+ {
+  "faq": "earnings",
+  "question": "kiosk se kitna profit hoga"
+ },
+ {
+  "faq": "earnings",
+  "question": "सीएसपी से कितनी कमाई होगी"
+ },
+ {
+  "faq": "earnings",
+  "question": "how much can a CSP earn per month"
+ },
+ {
+  "faq": "salary",
+  "question": "CSP me fix salary milegi kya"
+ },
+ {
+  "faq": "salary",
+  "question": "SBI CSP operator ko tankhwah milti hai?"
+ },
+ {
+  "faq": "job",
+  "question": "SBI CSP ek sarkari naukri hai kya"
+ },
+ {
+  "faq": "job",
+  "question": "kya CSP operator bank ka employee hota hai"
+ },
+ {
+  "faq": "job",
+  "question": "Eko me job hai kya"
+ },
+ {
+  "faq": "what_csp",
+  "question": "CSP ka matlab kya hota hai"
+ },
+ {
+  "faq": "what_csp",
+  "question": "SBI CSP kya cheez hai"
+ },
+ {
+  "faq": "what_csp",
+  "question": "ye kiosk kya hota hai bhai"
+ },
+ {
+  "faq": "devices",
+  "question": "CSP ke liye kaun si machine chahiye"
+ },
+ {
+  "faq": "devices",
+  "question": "SBI kiosk me kya kya device lagta hai"
+ },
+ {
+  "faq": "setup_cost",
+  "question": "CSP ki machine ka kharcha kaun dega"
+ },
+ {
+  "faq": "training",
+  "question": "CSP chalane ki training milegi kya"
+ },
+ {
+  "faq": "training",
+  "question": "IIBF exam dena padega CSP ke liye?"
+ },
+ {
+  "faq": "fees",
+  "question": "CSP apply karne ki fees kitni hai"
+ },
+ {
+  "faq": "fees",
+  "question": "kya Eko CSP ke liye registration fees leta hai"
+ },
+ {
+  "faq": "real",
+  "question": "Eko ka CSP asli hai ya fraud"
+ },
+ {
+  "faq": "real",
+  "question": "Eko company bharosemand hai kya"
+ },
+ {
+  "faq": "commission_paid",
+  "question": "CSP ka commission kab milta hai"
+ },
+ {
+  "faq": "commission_paid",
+  "question": "SBI CSP ka payment kis account me aata hai"
+ },
+ {
+  "faq": "women",
+  "question": "kya ladies CSP khol sakti hai"
+ },
+ {
+  "faq": "women",
+  "question": "mahila ke liye CSP me kuch extra hai"
+ },
+ {
+  "faq": "services",
+  "question": "CSP pe kaun kaun si services de sakte hai"
+ },
+ {
+  "faq": "services",
+  "question": "kiosk se paise nikal sakte hai log?"
+ },
+ {
+  "faq": "with_shop",
+  "question": "kya meri dukaan me CSP chala sakta hun"
+ },
+ {
+  "faq": "family",
+  "question": "CSP beti ke naam pe le sakte hai?"
+ },
+ {
+  "faq": "cibil",
+  "question": "CSP ke liye cibil score kitna chahiye"
+ },
+ {
+  "faq": "cibil",
+  "question": "mera loan chal raha hai to CSP milega?"
+ },
+ {
+  "faq": "schemes",
+  "question": "CSP pe atal pension yojana kar sakte hai"
+ },
+ {
+  "faq": "security",
+  "question": "kiosk ka data safe rehta hai?"
+ },
+ {
+  "faq": "who_fits",
+  "question": "kya housewife CSP chala sakti hai"
+ },
+ {
+  "faq": "penalty",
+  "question": "CSP band rakha to penalty lagegi?"
+ },
+ {
+  "faq": "apply_online",
+  "question": "Eko ki website se CSP apply kar sakte hai?"
+ },
+ {
+  "faq": "reach",
+  "question": "Eko ke kitne CSP hai aur kahan kahan"
+ },
+ {
+  "faq": null,
+  "question": "Mera SBI CSP ka account band ho gaya hai"
+ },
+ {
+  "faq": null,
+  "question": "CSP me kal se transaction nahi ho raha"
+ },
+ {
+  "faq": null,
+  "question": "Mere CSP ka ID password bhool gaya"
+ },
+ {
+  "faq": null,
+  "question": "SBI branch manager ka number do"
+ },
+ {
+  "faq": null,
+  "question": "mere ghar ka pata badalna hai"
+ },
+ {
+  "faq": null,
+  "question": "aapka office kahan hai"
+ },
+ {
+  "faq": null,
+  "question": "Sunday ko baat ho sakti hai?"
+ },
+ {
+  "faq": null,
+  "question": "ATM card kab tak milega"
+ },
+ {
+  "faq": null,
+  "question": "Thank you"
+ },
+ {
+  "faq": null,
+  "question": "ok ji"
+ },
+ {
+  "faq": null,
+  "question": "Mera CSP agreement june 2027 tak valid hai"
+ },
+ {
+  "faq": null,
+  "question": "Hamare paise chahiye"
+ },
+ {
+  "faq": null,
+  "question": "isko install karna hai sir"
+ },
+ {
+  "faq": "investment",
+  "question": "sir csp k liye kitna rupya lagega"
+ },
+ {
+  "faq": "investment",
+  "question": "Mujhe SBI ka kiosk lena hai, total kharcha kitna aayega?"
+ },
+ {
+  "faq": "investment",
+  "question": "eko wale kitna paisa mangte hai csp ke liye"
+ },
+ {
+  "faq": "investment",
+  "question": "मुझे SBI CSP लेना है पैसा कितना लगेगा"
+ },
+ {
+  "faq": "process",
+  "question": "SBI CSP lene ke liye kya karna padega"
+ },
+ {
+  "faq": "process",
+  "question": "mujhe eko ke saath judna hai kaise hoga"
+ },
+ {
+  "faq": "process",
+  "question": "CSP chalu hone me kitne din lagte hai"
+ },
+ {
+  "faq": "documents",
+  "question": "csp ke liye kon kon se document lagte hai"
+ },
+ {
+  "faq": "documents",
+  "question": "pan card aadhar card aur kya chahiye CSP ke liye"
+ },
+ {
+  "faq": "eligibility",
+  "question": "meri padhai 12th tak hai kya mujhe CSP mil sakta hai"
+ },
+ {
+  "faq": "eligibility",
+  "question": "50 saal ki umar me CSP le sakte hai?"
+ },
+ {
+  "faq": "earnings",
+  "question": "csp me kamai kaisi hai"
+ },
+ {
+  "faq": "earnings",
+  "question": "CSP se ghar chal jayega itna kama lete hai log?"
+ },
+ {
+  "faq": "earnings",
+  "question": "SBI kiosk ka monthly income kitna hai"
+ },
+ {
+  "faq": "job",
+  "question": "ye SBI bank ki job hai na?"
+ },
+ {
+  "faq": "job",
+  "question": "kya mujhe SBI me naukri mil jayegi"
+ },
+ {
+  "faq": "what_csp",
+  "question": "SBI CSP matlab kya"
+ },
+ {
+  "faq": "devices",
+  "question": "kiosk ke liye computer khud lena padega?"
+ },
+ {
+  "faq": "training",
+  "question": "mujhe computer chalana nahi aata, CSP chala paunga?"
+ },
+ {
+  "faq": "fees",
+  "question": "Form bharne ka koi charge hai?"
+ },
+ {
+  "faq": "real",
+  "question": "pehle bhi kisi ne CSP ke naam pe paise le liye, aap sahi ho?"
+ },
+ {
+  "faq": "commission_paid",
+  "question": "CSP commission har mahine kab tak aata hai"
+ },
+ {
+  "faq": "women",
+  "question": "meri wife ke naam pe CSP mil sakta hai kya, wo ghar pe hi rehti hai"
+ },
+ {
+  "faq": "with_shop",
+  "question": "CSP ke liye alag dukaan chahiye ya ghar se chala sakte"
+ },
+ {
+  "faq": "cibil",
+  "question": "mera cibil kharab hai CSP milega?"
+ },
+ {
+  "faq": "salary",
+  "question": "har mahine fix paisa milega ya commission"
+ },
+ {
+  "faq": null,
+  "question": "sir mera CSP ka paisa nahi aaya is mahine"
+ },
+ {
+  "faq": null,
+  "question": "AEPS me error aa raha hai"
+ },
+ {
+  "faq": null,
+  "question": "fingerprint machine kaam nahi kar rahi"
+ },
+ {
+  "faq": null,
+  "question": "mujhe abhi interest nahi hai"
+ },
+ {
+  "faq": null,
+  "question": "baad me baat karte hai"
+ },
+ {
+  "faq": null,
+  "question": "Good morning"
+ },
+ {
+  "faq": "investment",
+  "question": "CSP open karne me kitna kharch aata hai bhaiya"
+ },
+ {
+  "faq": "investment",
+  "question": "kitna amount invest karna padega SBI kiosk me"
+ },
+ {
+  "faq": "investment",
+  "question": "sbi csp ke liye paise ka kya scene hai"
+ },
+ {
+  "faq": "process",
+  "question": "SBI ka mini bank kholna hai, kaise karu"
+ },
+ {
+  "faq": "process",
+  "question": "mujhe bhi CSP chahiye, process batao"
+ },
+ {
+  "faq": "process",
+  "question": "csp lena hai mujhe"
+ },
+ {
+  "faq": "documents",
+  "question": "kaunse papers lagenge sir"
+ },
+ {
+  "faq": "documents",
+  "question": "CSP ke liye police verification bhi chahiye kya"
+ },
+ {
+  "faq": "eligibility",
+  "question": "main 10th fail hun kya CSP ho sakta hai"
+ },
+ {
+  "faq": "eligibility",
+  "question": "CSP ke liye kya shart hai"
+ },
+ {
+  "faq": "earnings",
+  "question": "kitni kamai ho jati hai csp se"
+ },
+ {
+  "faq": "earnings",
+  "question": "CSP wale mahine ka kitna kamate hai"
+ },
+ {
+  "faq": "job",
+  "question": "kya ye permanent job hai"
+ },
+ {
+  "faq": "salary",
+  "question": "salary kitni milegi"
+ },
+ {
+  "faq": "what_csp",
+  "question": "csp hota kya hai samjhaiye"
+ },
+ {
+  "faq": "devices",
+  "question": "biometric machine apni leni padegi?"
+ },
+ {
+  "faq": "training",
+  "question": "kaun sikhayega CSP chalana"
+ },
+ {
+  "faq": "fees",
+  "question": "registration ke liye kuch dena hai?"
+ },
+ {
+  "faq": "real",
+  "question": "ye scam to nahi hai na"
+ },
+ {
+  "faq": "commission_paid",
+  "question": "commission ka paisa kab aayega"
+ },
+ {
+  "faq": "women",
+  "question": "ladki ke liye CSP sahi rahega?"
+ },
+ {
+  "faq": "with_shop",
+  "question": "mere paas apni dukaan nahi hai"
+ },
+ {
+  "faq": "cibil",
+  "question": "civil score kam hai mera"
+ },
+ {
+  "faq": "schemes",
+  "question": "PMSBY wala bima bhi kar sakte hai"
+ },
+ {
+  "faq": "security",
+  "question": "online fraud ka darr hai"
+ },
+ {
+  "faq": "penalty",
+  "question": "agar kuch din kiosk band rakhu to?"
+ },
+ {
+  "faq": null,
+  "question": "mera AEPS transaction fail ho gaya"
+ },
+ {
+  "faq": null,
+  "question": "sir please call back"
+ },
+ {
+  "faq": null,
+  "question": "maine documents bhej diye the"
+ },
+ {
+  "faq": null,
+  "question": "ji theek hai"
+ },
+ {
+  "faq": null,
+  "question": "Mera commission nhi aaya abhi Tak"
+ },
+ {
+  "faq": null,
+  "question": "Sr 5din se csp band hai please"
+ },
+ {
+  "faq": null,
+  "question": "Other bank aeps withdrawal problem"
+ },
+ {
+  "faq": null,
+  "question": "2 din se bank band h paisa nhi aaya sirf pmsby  pmjjby kro"
+ },
+ {
+  "faq": null,
+  "question": "bacchon ki padhai ka kharcha"
+ },
+ {
+  "faq": null,
+  "question": "Kya isse EMI bhar paunga?"
+ },
+ {
+  "faq": null,
+  "question": "Isse bacchon ki school fees nikal aayegi na?"
+ },
+ {
+  "faq": "fees",
+  "question": "fees kitni hai"
+ }
+]

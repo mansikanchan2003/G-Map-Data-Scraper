@@ -109,7 +109,7 @@ def db():
     # was sent one; the test that it ignores others uses another number.
     campaign_id = uuid.uuid4().hex
     session.add(WhatsAppCampaign(campaign_id=campaign_id, name="Delhi CSP", data_source_type="scraped",
-                                 status="COMPLETED", total_contacts=1))
+                                 status="COMPLETED", total_contacts=50))
     session.add(WhatsAppCampaignRecipient(recipient_id=uuid.uuid4().hex, campaign_id=campaign_id,
                                           phone=PHONE, status="READ", provider_message_id="wamid.campaign.base"))
     session.commit()
@@ -1508,7 +1508,7 @@ def test_the_team_emails_go_to_mansi_and_kavya():
 SAME_QUESTION = {
     "job": ["Ye bank ki naukari hai?", "Kya yeh bank ki naukri hai?", "kya ye nokri hai", "Kya main bank ka employee banunga?",
             "क्या ये बैंक की नौकरी है?", "ਕੀ ਇਹ ਬੈਂਕ ਦੀ ਨੌਕਰੀ ਹੈ?", "શું આ બેંકની નોકરી છે?", "is this a bank job?"],
-    "investment": ["kitna paisa lagana padega", "कितना निवेश करना होगा", "ਕਿੰਨਾ ਨਿਵੇਸ਼ ਕਰਨਾ ਪਵੇਗਾ", "કેટલું રોકાણ કરવું પડશે"],
+    "investment": ["Eko ke saath SBI CSP kholne ke liye kuch paisa lagega?", "Kuch invest krna hoga?", "kitna paisa lagana padega", "कितना निवेश करना होगा", "ਕਿੰਨਾ ਨਿਵੇਸ਼ ਕਰਨਾ ਪਵੇਗਾ", "કેટલું રોકાણ કરવું પડશે"],
     "earnings": ["Kamayi kitni hogi mahine ki?", "कितनी कमाई होगी", "ਕਿੰਨੀ ਕਮਾਈ ਹੋਵੇਗੀ", "કેટલી કમાણી થશે", "how much can I earn"],
     "documents": ["kaun se kagaz lagenge", "कौन से दस्तावेज चाहिए", "ਕਿਹੜੇ ਦਸਤਾਵੇਜ਼ ਚਾਹੀਦੇ", "aadhar card chahiye?"],
     "real": ["kya ye sach me hai", "Eko kya company hai?", "is this genuine or scam"],
@@ -1561,22 +1561,22 @@ def test_the_site_figures_come_with_the_sites_own_warning():
 def test_the_team_can_teach_the_bot_a_new_way_of_asking(db, client):
     from src.services import eko_knowledge
     tap_campaign(db)
-    say(db, "Isse ghar chal jayega na?")      # not recognised: to a person
+    say(db, "Isse bacchon ki school fees nikal aayegi na?")      # not recognised: to a person
     assert conv(db).needs_attention
     r = client.post("/api/v1/inbox/faq/teach", json={"faq_id": "earnings", "phone": PHONE,
-                                                       "question": "Isse ghar chal jayega na?"})
+                                                       "question": "Isse bacchon ki school fees nikal aayegi na?"})
     assert r.status_code == 200, r.text
     assert r.json()["answer"].startswith("Commission on every service")
     try:
         # Asked again, a little differently, the bot now answers it itself.
-        assert eko_knowledge.match("isse ghar chal jayega kya") == ["earnings"]
+        assert eko_knowledge.match("isse bacchon ki school fees nikal aayegi kya") == ["earnings"]
         assert eko_knowledge.match("ghar ka pata badalna hai") == []
         listed = {a["id"]: a for a in client.get("/api/v1/inbox/faq").json()}
-        assert listed["earnings"]["taught"] == ["Isse ghar chal jayega na?"]
+        assert listed["earnings"]["taught"] == ["Isse bacchon ki school fees nikal aayegi na?"]
         assert client.post("/api/v1/inbox/faq/teach", json={"faq_id": "nope", "question": "x"}).status_code == 400
     finally:
         client.request("DELETE", "/api/v1/inbox/faq/teach",
-                       json={"faq_id": "earnings", "question": "Isse ghar chal jayega na?"})
+                       json={"faq_id": "earnings", "question": "Isse bacchon ki school fees nikal aayegi na?"})
     assert eko_knowledge.LEARNED == {}
 
 
@@ -1600,3 +1600,38 @@ def test_a_file_that_can_carry_malware_is_blocked_not_opened(db, client, emailed
     # A PDF is still an ordinary document.
     assert inbox.unsafe_reason({"filename": "aadhaar.pdf", "mime_type": "application/pdf"}) is None
     assert inbox.unsafe_reason({"filename": "old.zip", "stored": "data/inbox_media/1/x.zip"})   # stored before the rule
+
+
+def test_the_teams_solved_test_tickets_are_left_out_not_deleted(db, client, monkeypatch):
+    from src.services import campaign_insights
+    tap_campaign(db)
+    say(db, "Mere ghar ka pata badalna hai, kya karna hoga?")
+    client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/attention", json={"needed": False})
+    assert len(client.get("/api/v1/inbox/tickets?status=resolved").json()) == 1
+    # The same number turns out to be the team's own test phone.
+    monkeypatch.setattr(campaign_insights, "team_phones", lambda db: {PHONE})
+    assert client.get("/api/v1/inbox/tickets?status=resolved").json() == []
+    assert client.get("/api/v1/inbox/tickets/recently-resolved").json() == []
+    assert len(client.get("/api/v1/inbox/tickets?status=resolved&include_tests=true").json()) == 1   # still kept
+    # An open ticket from a test number still shows, for testing the flow.
+    say(db, "Kya aap Sunday ko bhi baat karte ho?")
+    assert len(client.get("/api/v1/inbox/tickets?status=open").json()) == 1
+
+
+# Questions that name the subject (CSP, SBI, Eko, kiosk) but ask different
+# things, typed the many ways people type; and complaints from people already
+# running a CSP, which are the team's to answer. faq null: goes to a person.
+import json as _json
+import pathlib as _pathlib
+
+CONFUSING = _json.loads((_pathlib.Path(__file__).parent / "data" / "confusing_questions.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("case", CONFUSING, ids=[c["question"][:40] for c in CONFUSING])
+def test_a_confusing_question_finds_the_right_answer_or_a_person(case):
+    from src.services import eko_knowledge
+    got = eko_knowledge.match(case["question"])
+    if case["faq"] is None:
+        assert got == []
+    else:
+        assert got and got[0] == case["faq"]

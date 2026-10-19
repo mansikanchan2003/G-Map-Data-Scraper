@@ -180,7 +180,7 @@ FAQ: List[dict] = [
     },
     {
         "id": "penalty", "question": "Koi penalty bhi hai?",
-        "keys": ["penalty", "penality", "jurmana", "fine", "dand", "outlet band", "kiosk band", "csp band", "band rahe to", "जुर्माना", "पेनल्टी", "दंड", "દંડ", "પેનલ્ટી", "ਜੁਰਮਾਨਾ", "ਪੈਨਲਟੀ"],
+        "keys": ["penalty", "penality", "jurmana", "fine", "dand", "band rahe to", "जुर्माना", "पेनल्टी", "दंड", "દંડ", "પેનલ્ટી", "ਜੁਰਮਾਨਾ", "ਪੈਨਲਟੀ"],
         "answer": {
             "hinglish": "Haan. Outlet lambe samay tak band rahe toh bank penalty lagata hai. Isliye roz chalana zaroori hai.",
             "en": "Yes. If the outlet stays closed for long, the bank charges a penalty. So it must open every day.",
@@ -273,7 +273,7 @@ SITE_FAQ: List[dict] = [
         "id": "services", "question": "Kaun si sevayein de sakte hain?", "source": "kiosk.eko.in",
         # Not "services" or "seva": the Creator Pack's earning_lines answer has those.
         "keys": ["44 services", "kitni services", "kitni sevayein", "kya kya kar sakte", "kya kaam hoga", "account khol",
-                 "aeps", "money transfer", "pmjdy", "kaun kaun si sevayein",
+                 "aeps kar sakte", "money transfer", "pmjdy", "kaun kaun si sevayein",
                  "सेवाएं", "કઈ સેવાઓ", "ਕਿਹੜੀਆਂ ਸੇਵਾਵਾਂ"],
         "answer": {
             "hinglish": "SBI ki 44+ sevayein: paise jama aur nikaalna, balance aur mini statement, passbook update, IMPS/NEFT money transfer, khata kholna (PMJDY), Aadhaar seeding, debit card aur cheque book ki request, RD/TD, PPF/SSA jama, PMSBY, PMJJBY aur Atal Pension Yojana, loan aur insurance ke leads, bill payment, recharge aur FASTag.",
@@ -302,7 +302,7 @@ SITE_FAQ: List[dict] = [
 SITE_FAQ += [
     {
         "id": "what_csp", "question": "CSP kya hota hai?", "source": "kiosk.eko.in",
-        "keys": ["csp kya", "csp kya hai", "csp kya hota", "customer service point", "kiosk kya", "kiosk kya hai",
+        "keys": ["csp kya hai", "csp kya hota", "customer service point", "kiosk kya hai", "kiosk kya hota",
                  "banking outlet kya", "what is csp", "what is a csp", "kiosk operator kya", "सीएसपी क्या", "कियोस्क क्या",
                  "સીએસપી શું", "ਸੀਐਸਪੀ ਕੀ"],
         "answer": {
@@ -354,7 +354,7 @@ SITE_FAQ += [
     },
     {
         "id": "security", "question": "Data aur transaction safe hai?", "source": "kiosk.eko.in",
-        "keys": ["security", "secure", "safe hai", "surakshit", "suraksha", "data safe", "hack", "encryption", "gps",
+        "keys": ["online fraud", "fraud ka darr", "darr hai", "security", "secure", "safe hai", "surakshit", "suraksha", "data safe", "hack", "encryption", "gps",
                  "fraud se bachav", "सुरक्षित", "सुरक्षा", "સુરક્ષિત", "ਸੁਰੱਖਿਅਤ"],
         "answer": {
             "hinglish": "Haan. Saara data end-to-end encryption se surakshit hai, RBI ke 2024–25 Cyber Resilience niyamon ke hisaab se. Har AePS transaction GPS-tagged hota hai aur kuch bhi asaamanya ho to apne aap flag hota hai. Bank ke coordinator audit aur surprise visit bhi karte hain.",
@@ -469,44 +469,49 @@ MORE_KEYS: Dict[str, List[str]] = {
     "job": ["bank kaam milega", "bank kaam", "bank naukri milegi", "बैंक नौकरी मिलेगी", "बैंक काम", "employee", "bank employee", "bank ka employee", "bank ka staff", "karmachari", "bank mein naukri",
             "bank me job", "permanent", "joining", "recruitment", "bharti", "sarkari naukri",
             "kya main bank ka", "bank wala ban", "मुलाजिम", "कर्मचारी", "નોકરિયાત", "ਮੁਲਾਜ਼ਮ"],
-    "real": ["sach", "sacha", "sachcha", "bharosa", "vishwas", "trust", "scam", "dhokha", "thagi", "nakli", "legit",
+    "real": ["aap sahi ho", "sahi ho", "paise le liye", "thag liya", "thage gaye", "fraud hua", "dhokha hua", "sach", "sacha", "sachcha", "bharosa", "vishwas", "trust", "scam", "dhokha", "thagi", "nakli", "legit",
              "authorized", "authorised", "registered company", "sahi company", "eko kya hai", "eko company", "eko kya company", "kaun si company", "company ka naam",
              "विश्वास", "नकली", "ठगी", "ભરોસો", "ਭਰੋਸਾ"],
-    "fees": ["fees lagegi", "kitni fees", "form fees", "charge lagega", "registration fees", "apply free",
+    "fees": ["form ka charge", "bharne ka charge", "form bharne ka charge", "koi charge", "apply ka charge", "fees lagegi", "kitni fees", "form fees", "charge lagega", "registration fees", "apply free",
              "free hai", "mufat", "muft", "paise lagenge apply", "मुफ्त", "ફ્રી", "ਮੁਫ਼ਤ"],
-    "investment": ["paisa kitna dena", "kitna dena hoga", "kitna paisa dena", "how much money", "money need", "need to start", "kitne paise dene", "शुरू करने के लिए कितना", "kitna lagana", "kitna lagega", "paise lagane", "paisa lagana", "lagana padega", "cost",
+    "investment": ["paise ka kya", "paise ka scene", "paisa ka kya", "bina paisa", "bina invest", "zero investment", "paisa lagega", "paisa lagana", "kuch paisa", "paisa dena", "kuch invest", "invest karna",
+                   "lagat lagegi", "kharcha lagega", "kharcha hoga", "paisa chahiye hoga", "पैसा लगेगा", "पैसे लगेंगे",
+                   "નાણાં લાગશે", "ਪੈਸਾ ਲੱਗੇਗਾ", "paisa kitna dena", "kitna dena hoga", "kitna paisa dena", "how much money", "money need", "need to start", "kitne paise dene", "शुरू करने के लिए कितना", "kitna lagana", "kitna lagega", "paise lagane", "paisa lagana", "lagana padega", "cost",
                    "budget", "capital", "amount lagega", "kitne rupaye", "kitna kharch", "5 lac", "पैसे लगाने",
                    "कितना लगेगा", "કેટલા પૈસા", "ਕਿੰਨੇ ਪੈਸੇ"],
     "devices": ["saman", "samaan", "equipment", "atm machine", "fingerprint", "thumb machine", "passbook machine",
                 "kya kya milega", "setup", "सामान", "સામાન", "ਸਮਾਨ"],
     "with_shop": ["dukan", "shop", "kahan baithna", "jagah chahiye", "counter", "ghar se chala",
                   "ghar par chala", "kitne baje", "kitne ghante", "દુકાનમાં"],
-    "training": ["sikhaoge", "sikha denge", "kuch nahi aata", "nahi aata", "computer nahi aata", "सिखाओगे", "नहीं आता", "sikhaenge", "sikhna", "seekhna", "pariksha", "test dena", "kaise sikhe",
+    "training": ["sikhayega", "kaun sikhaye", "kaun sikhayega", "sikhaoge", "sikha denge", "kuch nahi aata", "nahi aata", "computer nahi aata", "सिखाओगे", "नहीं आता", "sikhaenge", "sikhna", "seekhna", "pariksha", "test dena", "kaise sikhe",
                  "सीखना", "परीक्षा", "શીખવું", "ਸਿੱਖਣਾ"],
-    "family": ["bete ke naam", "beti ke naam", "patni ke naam", "pati ke naam", "naam pe le", "naam par le", "बेटे के नाम", "ghar wale", "gharwale", "beta chala", "wife chala", "koi aur chala", "relative", "rishtedar",
+    "family": ["bete ke naam", "beti ke naam", "pati ke naam", "bhai ke naam", "papa ke naam", "ke naam pe le sakte", "बेटे के नाम", "ghar wale", "gharwale", "beta chala", "wife chala", "koi aur chala", "relative", "rishtedar",
                "साथ में", "ઘરના", "ਘਰਵਾਲੇ"],
-    "earnings": ["हर महीने कितना", "कितना मिलेगा", "mahine kitna milega", "kitna milega mahine", "kitna nikal", "kitna bachega", "kitna kamaa", "kitna kama", "kitni kamai", "kitne paise milenge", "kitna paisa milega",
+    "earnings": ["kama lete", "kitna kama lete", "ghar chal jayega", "kamai kaisi", "kamai kaisi hai", "हर महीने कितना", "कितना मिलेगा", "mahine kitna milega", "kitna milega mahine", "kitna nikal", "kitna bachega", "kitna kamaa", "kitna kama", "kitni kamai", "kitne paise milenge", "kitna paisa milega",
                  "fayda", "faida", "labh", "earn", "how much earn", "income kitni", "mahine ka kitna", "monthly kitna", "kitna banega",
                  "फायदा", "लाभ", "ફાયદો", "ਫ਼ਾਇਦਾ"],
-    "salary": ["fix paisa", "fixed income", "har mahine fix", "pakka paisa", "guaranteed income", "guarantee income", "income guarantee", "garanti",
+    "salary": ["salary kitni", "salary milegi", "kitni salary", "fix paisa", "fixed income", "har mahine fix", "pakka paisa", "guaranteed income", "guarantee income", "income guarantee", "garanti",
                "fix milega", "पक्का", "ગેરંટી", "ਪੱਕਾ"],
-    "women": ["mahilaon", "ladki", "aurto", "auraton", "beti chala", "lady operator", "स्त्री", "ਔਰਤਾਂ"],
+    "women": ["wife ke naam", "patni ke naam", "biwi ke naam", "mahila ke naam", "ghar pe rehti", "housewife ke naam",
+              "mahilaon", "ladki", "aurto", "auraton", "beti chala", "lady operator", "स्त्री", "ਔਰਤਾਂ"],
     # Not "chutti" or "holiday": "aaj chutti hai?" asks whether we are open, not about the penalty.
-    "penalty": ["band rakha", "band kar diya", "lambe samay band", "kitne din band"],
-    "eligibility": ["12th pass", "10th pass", "kar sakta hun", "kar sakti hun", "kar sakta hoon", "kar sakti hoon", "main kar sakta", "graduate hun", "12वीं पास", "कर सकता हूँ", "kaun ban sakta", "main ban sakta", "kya main apply", "kya mai apply", "can i apply",
+    "penalty": ["band rakhu", "band rakhe", "kuch din band", "band rakha", "band kar diya", "lambe samay band", "kitne din band"],
+    "eligibility": ["10th fail", "12th fail", "fail hun", "kya shart hai", "12th tak", "meri padhai", "padhai kitni chahiye", "kitna padha", "mil sakta hai kya mujhe", "12th pass", "10th pass", "kar sakta hun", "kar sakti hun", "kar sakta hoon", "kar sakti hoon", "main kar sakta", "graduate hun", "12वीं पास", "कर सकता हूँ", "kaun ban sakta", "main ban sakta", "kya main apply", "kya mai apply", "can i apply",
                     "qualification", "padhai kitni", "kitna padha", "umar", "age limit", "yogya hun",
                     "उम्र", "आयु", "ઉંમર", "ਉਮਰ"],
     "cibil": ["credit report", "loan chal raha", "loan liya", "emi", "default", "credit history", "सिबिल स्कोर"],
     "documents": ["kya kya chahiye hoga", "apply karne ke liye kya", "kya kya lagega", "kya lagega", "proof", "kagzat", "papers chahiye", "aadhar", "aadhaar", "pan card",
                   "police", "certificate chahiye", "कागजात", "આધાર", "ਆਧਾਰ"],
-    "commission_paid": ["paisa kab aayega", "kab tak milega paisa", "payment date", "kis tareekh", "tarikh",
+    "commission_paid": ["kab tak aata", "kab aata hai", "commission kab tak", "kab credit hota", "paisa kab aayega", "kab tak milega paisa", "payment date", "kis tareekh", "tarikh",
                         "account mein kab", "kab credit", "कब मिलेगा", "ક્યારે મળશે", "ਕਦੋਂ ਮਿਲੇਗਾ"],
-    "process": ["csp ban", "kiosk operator ban", "operator ban", "kiosk ban", "csp kaise", "csp lena",
+    "process": ["csp lena hai", "csp chahiye", "mini bank kholna", "bank kholna hai", "process batao", "lene ke liye kya karna", "kya karna padega", "judna hai", "judna chahta", "judna chahti", "jodna hai",
+                "how can i start", "start a csp", "start csp", "start an sbi csp", "csp kaise milega", "csp milega kaise",
+                "apply kaise", "apply kaise kar", "apply karna hai", "csp ban", "kiosk operator ban", "operator ban", "kiosk ban", "csp kaise",
                 "csp kholna", "kiosk kholna", "csp kaise milega", "how do i become", "how to become", "become kiosk operator",
                 "become csp", "become a csp", "join eko", "eko ke saath judna", "eko ke saath kaam", "sbi csp", "सीएसपी कैसे",
                 "कियोस्क ऑपरेटर कैसे", "કેવી રીતે બની", "ਕਿਵੇਂ ਬਣ", "aage kya karna", "kya karna hai aage", "ab kya karna", "kitne din", "kab shuru", "shuru ho jayega", "kab tak chalu", "कितने दिन", "आगे क्या करना", "aage kya karna", "aage kya", "next step", "shuru kaise", "kaise judein", "kaise jude", "kaise apply",
                 "how to apply", "kitne din lagenge", "kitna time lagega", "kab tak shuru", "जुड़ना", "शुरू कैसे"],
-    "services": ["paise nikal sakte", "paise nikal", "nikal sakte", "jama kar sakte", "kya kya kar sakte log", "पैसे निकाल सकते", "kya kya kaam", "kya services", "kaun kaun se kaam", "account kholna", "cash withdrawal", "पैसे निकालना", "खाता खोलना"],
+    "services": ["kaun kaun si services", "services de sakte", "kya services de", "kaun si services", "paise nikal sakte", "paise nikal", "nikal sakte", "jama kar sakte", "kya kya kar sakte log", "पैसे निकाल सकते", "kya kya kaam", "kya services", "kaun kaun se kaam", "account kholna", "cash withdrawal", "पैसे निकालना", "खाता खोलना"],
     "setup_cost": ["machine ka kharcha", "kharcha kaun dega", "device ka paisa kaun", "machine kaun dega", "मशीन का खर्चा"],
     "schemes": ["bima", "insurance", "beema", "बीमा", "વીમો", "ਬੀਮਾ"],
     "what_csp": ["csp matlab", "csp meaning", "csp means", "csp arth", "csp kise kehte", "csp kya cheez", "kiosk matlab",
@@ -649,6 +654,28 @@ def _same(p: str, w: str, s: str) -> bool:
     return _vowels(p) == _vowels(w)
 
 
+# Keys that only name the subject ("SBI CSP", "CSP kholna"): nearly every
+# question has them, so they tell the process question from the rest only
+# when nothing else is asked. "CSP kholne ke liye paisa lagega?" is about money.
+SUBJECT_KEYS = {"sbi csp", "csp kholna", "kiosk kholna", "join eko", "eko ke saath judna", "eko ke saath kaam",
+                "csp kaise",
+                # Said in every second question: "kya kya" asks nothing by itself.
+                "kya kya"}
+
+# Single words with more than one meaning ("school fees", "padhai ka kharcha",
+# "EMI bhar paunga"): alone they are not enough to answer; with another sign
+# of the question ("apply ki fees", "kitni fees", "CSP ka kharcha") they are.
+LOOSE_KEYS = {"fee", "fees", "kharcha", "lagat", "emi", "loan", "charges", "charge", "cost", "budget", "amount",
+              "default", "photo", "machine", "computer", "time", "salary", "fixed", "certificate", "exam", "course",
+              "फीस", "खर्चा", "लागत", "ફી", "ખર્ચ", "ਫੀਸ", "ਖਰਚਾ"}
+
+# Words that ask (not "kya", which is in everything): with one of these, a
+# loose word does count ("fees kitni hai", "kaun si machine milegi").
+_ASKING = ("kitna", "kitni", "kitne", "kaun", "kaunsi", "konsi", "kon si", "kaun si", "chahiye", "lagega", "lagegi",
+           "lagenge", "lagta", "lagti", "dena padega", "lena padega", "dena hoga", "lena hoga", "milega", "kab",
+           "how much", "what", "which", "need", "कितना", "कितनी", "कितने", "कौन", "चाहिए", "लगेगा", "ਕਿੰਨਾ", "ਕਿੰਨੀ",
+           "ਕਿਹੜੀ", "ਚਾਹੀਦਾ", "કેટલું", "કેટલી", "કયા", "જોઈએ")
+
 # Words allowed between two words of a key: "csp ka kya matlab" still says "csp matlab".
 GAP = 2
 
@@ -687,6 +714,20 @@ def _where(key: str, words: List[str], sounds: List[str]) -> Optional[frozenset]
     return None
 
 
+# Words of a complaint from someone already running a CSP ("AEPS me error aa
+# raha hai", "paisa nahi aaya", "machine kaam nahi kar rahi"): the team's to
+# answer, so no FAQ answer is given even when the FAQ's words are in it.
+_COMPLAINT = ("bhej diye", "bhej diya", "bhej di", "submit kar diya", "jama kar diya", "error", "kaam nahi kar", "nahi chal raha", "nahi chal rahi", "nahi aaya", "nahi aa raha", "nahi ho raha",
+              "problem", "issue", "band ho gaya", "band ho gayi", "fail ho gaya", "fail ho gayi", "failed", "transaction fail", "not working", "complaint",
+              "shikayat", "atak gaya", "atka hua", "nahi mila", "काम नहीं", "नहीं आया", "समस्या", "शिकायत", "ਕੰਮ ਨਹੀਂ",
+              "કામ નથી")
+
+
+def is_complaint(text: str) -> bool:
+    said = " " + " ".join(_words(text)) + " "
+    return any(f" {' '.join(_words(c))} " in said for c in _COMPLAINT)
+
+
 def match(text: str, limit: int = 2) -> List[str]:
     """
     The FAQ entries a message asks about, best first; empty when none fits.
@@ -695,21 +736,33 @@ def match(text: str, limit: int = 2) -> List[str]:
     The same words are counted once for an entry, so a question naming
     "commission" is not counted twice for the Hindi and the English key.
     """
+    if is_complaint(text):
+        return []
     words = _words(text)
     sounds = [_sound(w) for w in words]
+    # Does the message ask something ("kitni", "kaun si", "chahiye", "lagega")?
+    said = " " + " ".join(words) + " "
+    asks = any(f" {' '.join(_words(q))} " in said for q in _ASKING)
     scores: Dict[str, float] = {}
     for f in FAQ:
         hits = []
         for key in f["keys"]:
             at = _where(key, words, sounds)
             if at is not None:
-                hits.append((1 + len(_norm(key).strip()) / 20, at))
+                k = _norm(key).strip()
+                loose = k in LOOSE_KEYS and not asks
+                weight = 0.3 if k in SUBJECT_KEYS else 0.6 if loose else 1 + len(k) / 20
+                # Words spread out with others between them are a weaker sign than words side by side.
+                if max(at) - min(at) + 1 > len(at):
+                    weight *= 0.7
+                hits.append((weight, at))
         covered, score = set(), 0.0
         for weight, at in sorted(hits, key=lambda h: -h[0]):
             if not at <= covered:
                 score += weight
                 covered |= at
-        if score:
+        # Only the subject named ("SBI CSP") asks nothing: no answer from that alone.
+        if score >= 0.9:
             scores[f["id"]] = score
     ranked = sorted(scores, key=lambda i: -scores[i])
     # A second answer only when it is about as strong as the first.
