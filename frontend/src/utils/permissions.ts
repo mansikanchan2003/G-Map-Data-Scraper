@@ -21,7 +21,9 @@ const VIEW_ONLY_TABS: NavTab[] = [
  */
 export const canOpen = (role: string | null | undefined, tab: NavTab, allowed?: string[] | null): boolean => {
   if (tab === 'approvals') return role === 'admin';
-  if (allowed && allowed.length && role !== 'admin' && !allowed.includes(tab)) return false;
+  // Tabs the admin chose for an account are exactly what it sees, a view-only
+  // one included (it still cannot change anything: the server refuses that).
+  if (allowed && allowed.length && role !== 'admin') return allowed.includes(tab);
   if (isReadOnly(role)) return VIEW_ONLY_TABS.includes(tab);
   return true;
 };

@@ -814,7 +814,7 @@ const Details: React.FC<{
 
 // --- The view ----------------------------------------------------------------
 
-export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }) => {
+export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not_autogmap' | null }> = ({ readOnly = false, scope = null }) => {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
@@ -1055,7 +1055,9 @@ export const InboxView: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }
           {/* Wrapped onto a second line rather than scrolled: a scroll bar
               under five chips looked out of place. */}
           <div className="flex flex-wrap gap-1">
-            {([['all', 'All'], ['attention', `Needs attention${attentionTotal ? ` (${attentionTotal})` : ''}`], ['autogmap', 'From AutoGMap'], ['unread', 'Unread'], ['bot', 'With bot'], ['docs', 'Documents']] as const).map(([k, label]) => (
+            {([['all', 'All'], ['attention', `Needs attention${attentionTotal ? ` (${attentionTotal})` : ''}`], ['autogmap', 'From AutoGMap'], ['unread', 'Unread'], ['bot', 'With bot'], ['docs', 'Documents']] as const)
+              // An inbox without AutoGMap's chats has no campaign, bot or attention filters to offer.
+              .filter(([k]) => scope !== 'not_autogmap' || k === 'all' || k === 'unread').map(([k, label]) => (
               <button key={k} onClick={() => setFilter(k)}
                 className={`text-[11px] px-2 py-1 rounded-full border whitespace-nowrap cursor-pointer ${
                   filter === k ? 'border-sky-600 bg-sky-950 text-sky-300' : 'border-slate-800 text-slate-400 hover:text-slate-200'}`}>

@@ -14,6 +14,7 @@ bot tries first, and only what it cannot answer goes to a person.
 from datetime import timedelta
 from typing import List, Optional
 
+from sqlalchemy import true
 from sqlalchemy.orm import Session
 
 from src.models.inbox import AttentionTicket, WhatsAppConversation
@@ -85,9 +86,23 @@ def as_dict(t: AttentionTicket) -> dict:
     }
 
 
-def history(db: Session, status: Optional[str] = None, limit: int = 500) -> List[dict]:
-    """Tickets newest first; status "open" or "resolved" narrows them."""
+def _test_phones(db: Session) -> set:
+    """The team's own numbers (the ones test campaigns go to): their solved tickets were tests."""
+    from src.services import campaign_insights
+    return campaign_insights.team_phones(db)
+
+
+def history(db: Session, status: Optional[str] = None, limit: int = 500, include_tests: bool = False) -> List[dict]:
+    """
+    Tickets newest first; status "open" or "resolved" narrows them. Solved
+    tickets from the team's own numbers were tests (2026-10-19, the team's
+    call) and are left out unless asked for; they are kept, not deleted.
+    """
     q = db.query(AttentionTicket)
+    if not include_tests:
+        tests = _test_phones(db)
+        if tests:
+            q = q.filter(~(AttentionTicket.phone.in_(tests) & AttentionTicket.resolved_at.isnot(None)))
     if status == "open":
         q = q.filter(AttentionTicket.resolved_at.is_(None))
     elif status == "resolved":
@@ -99,7 +114,9 @@ def history(db: Session, status: Optional[str] = None, limit: int = 500) -> List
 def recently_resolved(db: Session) -> List[dict]:
     since = inbox.now() - ANNOUNCE_RESOLVED_FOR
     # Not the bot's own answers: nobody was waiting on those, so nothing to announce.
+    tests = _test_phones(db)
     rows = (db.query(AttentionTicket).filter(AttentionTicket.resolved_at >= since,
-                                             AttentionTicket.resolved_by != "bot")
+                                             AttentionTicket.resolved_by != "bot",
+                                             ~AttentionTicket.phone.in_(tests) if tests else true())
             .order_by(AttentionTicket.resolved_at.desc()).limit(20).all())
     return [as_dict(t) for t in rows]

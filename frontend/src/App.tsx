@@ -233,7 +233,7 @@ export default function App() {
 
           {shownTab === 'whatsapp-studio' && <TemplateStudioView />}
 
-          {shownTab === 'whatsapp-inbox' && <InboxView readOnly={readOnly} />}
+          {shownTab === 'whatsapp-inbox' && <InboxView readOnly={readOnly} scope={user.inbox_scope} />}
 
           {shownTab === 'applications' && <ApplicationsView readOnly={readOnly} />}
           {shownTab === 'dispositions' && <DispositionsView />}

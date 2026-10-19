@@ -25,6 +25,10 @@ class User(Base):
     # The tabs this person sees, when narrower than their role's (["whatsapp-inbox", ...]);
     # empty means everything the role allows.
     allowed_tabs = Column(JSON, nullable=True)
+    # Which chats the Inbox shows this person: None for all, "autogmap" for
+    # those an AutoGMap campaign reached, "not_autogmap" for every other.
+    # Enforced on the server, not only hidden on the page.
+    inbox_scope = Column(String(20), nullable=True)
     # PENDING -> APPROVED | REJECTED, and DISABLED for revoking later.
     status = Column(String(20), nullable=False, default="PENDING", index=True)
 

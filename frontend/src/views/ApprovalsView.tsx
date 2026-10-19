@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { approveUser, fetchUsers, rejectUser, revokeUser, type AuthUser, type GrantRole } from '../api';
+import { approveUser, fetchUsers, rejectUser, revokeUser, setInboxScope, setUserTabs, type AuthUser, type GrantRole } from '../api';
 
 /**
  * The approvals queue.
@@ -23,7 +23,72 @@ const when = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric',
                                                   hour: '2-digit', minute: '2-digit' }) : '—';
 
+// The tabs an admin can give an account, in the sidebar's order.
+const TABS: [string, string][] = [
+  ['dashboard', 'Dashboard'], ['businesses', 'Business Data'], ['partners', 'Partner Organisations'],
+  ['jobs', 'Jobs Monitor'], ['config', 'Configuration'], ['whatsapp-inbox', 'Inbox'], ['applications', 'Applications'],
+  ['dispositions', 'Dispositions'], ['whatsapp-campaign', 'WhatsApp Campaign'], ['whatsapp-templates', 'Templates'],
+  ['whatsapp-studio', 'Template Studio'], ['whatsapp-history', 'Campaign History'], ['whatsapp-insights', 'Campaign Insights'],
+];
+const SCOPES: [string, string][] = [['', 'All chats'], ['not_autogmap', 'Only chats not from AutoGMap'], ['autogmap', 'Only AutoGMap chats']];
+const tabLabel = (key: string) => TABS.find(([k]) => k === key)?.[1] || key;
+
+/** What an account may see: its tabs and which chats its Inbox shows. Saved on the server, which enforces it. */
+const AccessEditor: React.FC<{ user: AuthUser; onSaved: () => void; onClose: () => void }> = ({ user, onSaved, onClose }) => {
+  const [tabs, setTabs] = useState<string[]>(user.allowed_tabs || []);
+  const [scope, setScope] = useState<string>(user.inbox_scope || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const toggle = (k: string) => setTabs(t => t.includes(k) ? t.filter(x => x !== k) : [...t, k]);
+  const save = async () => {
+    setSaving(true); setError(null);
+    try {
+      // Kept in the sidebar's order, so the first is where the account lands.
+      await setUserTabs(user.user_id, tabs.length ? TABS.map(([k]) => k).filter(k => tabs.includes(k)) : null);
+      await setInboxScope(user.user_id, (scope || null) as 'autogmap' | 'not_autogmap' | null);
+      onSaved(); onClose();
+    } catch (e: any) { setError(e?.message || 'Could not save.'); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="p-3 bg-slate-950 border-t border-slate-800 space-y-3">
+      <div>
+        <div className="text-[11px] font-semibold text-slate-400 mb-1.5">
+          Tabs {user.email} sees <span className="font-normal text-slate-500">(none ticked: every tab the role allows)</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {TABS.map(([k, label]) => (
+            <label key={k} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded border text-[11.5px] cursor-pointer ${tabs.includes(k)
+              ? 'border-sky-700 bg-sky-950 text-sky-200' : 'border-slate-700 text-slate-400 hover:border-slate-600'}`}>
+              <input type="checkbox" checked={tabs.includes(k)} onChange={() => toggle(k)} className="accent-sky-500" />{label}
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-semibold text-slate-400">Inbox shows</span>
+        <select value={scope} onChange={e => setScope(e.target.value)}
+          className="h-7 px-1.5 rounded text-[11.5px] border border-slate-700 bg-slate-900 text-slate-200 cursor-pointer">
+          {SCOPES.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+        <span className="text-[11px] text-slate-500">
+          An account limited to some chats can reply and work only in the Inbox; it can change nothing else.
+        </span>
+      </div>
+      {error && <div className="text-[11.5px] text-rose-300">{error}</div>}
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="h-7 px-3 rounded text-[11.5px] text-slate-400 hover:text-slate-200 cursor-pointer">Cancel</button>
+        <button onClick={save} disabled={saving}
+          className="h-7 px-3 rounded text-[11.5px] font-semibold border border-emerald-800 bg-emerald-950 text-emerald-300 hover:bg-emerald-900 cursor-pointer disabled:opacity-40">
+          {saving ? 'Saving…' : 'Save access'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export const ApprovalsView: React.FC = () => {
+  const [editing, setEditing] = useState<string | null>(null);
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -163,7 +228,8 @@ export const ApprovalsView: React.FC = () => {
                 </td></tr>
               ) : (
                 ordered.map(u => (
-                  <tr key={u.user_id} className="hover:bg-slate-800/40 transition-colors">
+                  <React.Fragment key={u.user_id}>
+                  <tr className="hover:bg-slate-800/40 transition-colors">
                     <td className="px-3 py-2.5 max-w-[220px]">
                       <span className="block font-medium text-slate-200 truncate">
                         {u.full_name || u.email.split('@')[0]}
@@ -172,6 +238,15 @@ export const ApprovalsView: React.FC = () => {
                             title={u.email}>
                         {u.email}
                       </span>
+                      {u.status === 'APPROVED' && u.role !== 'admin' && (
+                        <button onClick={() => setEditing(editing === u.user_id ? null : u.user_id)}
+                          title="Which tabs and chats this account sees"
+                          className="mt-1 text-left text-[10.5px] text-sky-400 hover:text-sky-300 cursor-pointer">
+                          {u.allowed_tabs?.length ? u.allowed_tabs.map(tabLabel).join(', ') : 'All tabs'}
+                          {u.inbox_scope ? ` · Inbox: ${u.inbox_scope === 'not_autogmap' ? 'not AutoGMap' : 'AutoGMap only'}` : ''}
+                          {' · '}<span className="underline">Edit access</span>
+                        </button>
+                      )}
                     </td>
                     <td className="px-3 py-2.5">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold border
@@ -297,6 +372,12 @@ export const ApprovalsView: React.FC = () => {
                       </div>
                     </td>
                   </tr>
+                  {editing === u.user_id && (
+                    <tr><td colSpan={5} className="p-0">
+                      <AccessEditor user={u} onSaved={load} onClose={() => setEditing(null)} />
+                    </td></tr>
+                  )}
+                  </React.Fragment>
                 ))
               )}
             </tbody>

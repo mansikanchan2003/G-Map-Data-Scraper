@@ -710,3 +710,27 @@ class TestAllowedTabs:
         assert client.get("/api/v1/auth/me").json()["allowed_tabs"] == tabs
         # Only an admin may change it.
         assert client.put(f"/api/v1/auth/users/{uid}/tabs", json={"tabs": None}).status_code == 403
+
+
+class TestInboxScope:
+    def test_an_account_kept_to_other_chats_can_reply_there_and_change_nothing_else(self, client):
+        client.post("/api/v1/auth/signup", json={"email": "amit.singh@eko.co.in", "password": GOOD_PASSWORD})
+        admin = make_admin()
+        client.post("/api/v1/auth/login", json={"email": admin, "password": GOOD_PASSWORD})
+        uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+        client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "operator"})
+        client.put(f"/api/v1/auth/users/{uid}/tabs", json={"tabs": ["whatsapp-inbox"]})
+        r = client.put(f"/api/v1/auth/users/{uid}/inbox-scope", json={"scope": "not_autogmap"})
+        assert r.status_code == 200 and r.json()["inbox_scope"] == "not_autogmap"
+        assert client.put(f"/api/v1/auth/users/{uid}/inbox-scope", json={"scope": "nope"}).status_code == 400
+
+        client.post("/api/v1/auth/logout")
+        client.post("/api/v1/auth/login", json={"email": "amit.singh@eko.co.in", "password": GOOD_PASSWORD})
+        me = client.get("/api/v1/auth/me").json()
+        assert me["allowed_tabs"] == ["whatsapp-inbox"] and me["inbox_scope"] == "not_autogmap"
+        # Outside the Inbox nothing can be changed, whatever is called.
+        r = client.put("/api/v1/whatsapp/insights/revenue-goal", json={"inr": 1})
+        assert r.status_code == 403 and "Inbox" in r.json()["detail"]
+        assert client.post("/api/v1/discovery/trigger", json={}).status_code == 403
+        # Inside the Inbox it may act (here: no such chat, not "forbidden").
+        assert client.post("/api/v1/inbox/conversations/919000000099/messages", json={"message": "hi"}).status_code == 404

@@ -14,7 +14,9 @@ import os
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from contextvars import ContextVar
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
@@ -31,7 +33,38 @@ from src.services import drive_uploads, inbox, onboarding_bot
 
 logger = logging.getLogger("gmap_scraper.inbox")
 
-router = APIRouter(prefix="/api/v1/inbox", tags=["WhatsApp Inbox"])
+# Which chats the signed-in account may see: None for all, "autogmap" for those
+# a campaign reached, "not_autogmap" for every other (users.inbox_scope). Set
+# per request by the auth middleware, bound here for the routes below.
+_SCOPE: ContextVar[Optional[str]] = ContextVar("inbox_scope", default=None)
+
+
+async def _bind_scope(request: Request) -> None:
+    # Async, so it runs in the request's own context and the routes, run in a
+    # thread with a copy of it, see the value.
+    _SCOPE.set(getattr(request.state, "inbox_scope", None))
+
+
+router = APIRouter(prefix="/api/v1/inbox", tags=["WhatsApp Inbox"], dependencies=[Depends(_bind_scope)])
+
+
+def _scoped(db: Session, query):
+    """A conversations query narrowed to the chats this account may see."""
+    scope = _SCOPE.get()
+    if not scope:
+        return query
+    ours = (db.query(WhatsAppCampaignRecipient.phone)
+            .filter(WhatsAppCampaignRecipient.provider_message_id.isnot(None)))
+    inside = WhatsAppConversation.phone.in_(ours)
+    return query.filter(inside if scope == "autogmap" else ~inside)
+
+
+def _may_see(db: Session, phone: str) -> bool:
+    scope = _SCOPE.get()
+    if not scope:
+        return True
+    ours = inbox.from_campaign(db, phone)
+    return ours if scope == "autogmap" else not ours
 
 
 class ConversationSummary(BaseModel):
@@ -162,7 +195,8 @@ def _phone(digits: str) -> str:
 
 def _get_conversation(db: Session, digits: str) -> WhatsAppConversation:
     conv = db.query(WhatsAppConversation).filter(WhatsAppConversation.phone == _phone(digits)).first()
-    if conv is None:
+    # A chat outside this account's inbox is as if it did not exist.
+    if conv is None or not _may_see(db, conv.phone):
         raise HTTPException(status_code=404, detail="No conversation with this number")
     return conv
 
@@ -231,7 +265,7 @@ def list_conversations(
     db: Session = Depends(get_db),
 ):
     """Conversations, most recent first. `q` matches a number or a name."""
-    query = db.query(WhatsAppConversation)
+    query = _scoped(db, db.query(WhatsAppConversation))
     if q and q.strip():
         term = q.strip()
         digits = "".join(ch for ch in term if ch.isdigit())
@@ -271,7 +305,7 @@ def list_conversations(
 @router.get("/summary")
 def inbox_summary(db: Session = Depends(get_db)):
     """How many conversations have something unread, for the sidebar badge."""
-    convs = db.query(WhatsAppConversation).all()
+    convs = _scoped(db, db.query(WhatsAppConversation)).all()
     unread = _unread(db, convs)
     return {"unread_conversations": sum(1 for n in unread.values() if n)}
 
@@ -360,7 +394,7 @@ def attention_alerts(db: Session = Depends(get_db)):
     Every conversation waiting for a person, newest first: shown on every page
     of the app until someone presses "Question resolved" in the chat.
     """
-    convs = (db.query(WhatsAppConversation).filter(WhatsAppConversation.needs_attention.is_(True))
+    convs = (_scoped(db, db.query(WhatsAppConversation)).filter(WhatsAppConversation.needs_attention.is_(True))
              .order_by(WhatsAppConversation.attention_at.desc()).all())
     names = _names(db, [c.phone for c in convs])
     out = []
@@ -373,15 +407,16 @@ def attention_alerts(db: Session = Depends(get_db)):
 
 
 @router.get("/tickets")
-def list_tickets(status: Optional[str] = Query(None, pattern="^(open|resolved)$"), db: Session = Depends(get_db)):
-    """Every ticket raised, newest first: who raised it, why, and when it was solved."""
-    return tickets.history(db, status)
+def list_tickets(status: Optional[str] = Query(None, pattern="^(open|resolved)$"), include_tests: bool = False,
+                 db: Session = Depends(get_db)):
+    """Every ticket raised, newest first: who raised it, why, and when it was solved (the team's solved tests left out)."""
+    return [t for t in tickets.history(db, status, include_tests=include_tests) if _may_see(db, t["phone"])]
 
 
 @router.get("/tickets/recently-resolved")
 def recently_resolved_tickets(db: Session = Depends(get_db)):
     """Tickets solved in the last two hours, announced across the app."""
-    return tickets.recently_resolved(db)
+    return [t for t in tickets.recently_resolved(db) if _may_see(db, t["phone"])]
 
 
 @router.get("/conversations/{digits}/summary")
@@ -568,6 +603,8 @@ def update_bot_settings(payload: BotSettings, db: Session = Depends(get_db)):
 @router.get("/documents/{document_id}")
 def get_document(document_id: str, download: bool = False, db: Session = Depends(get_db)):
     doc = db.query(OnboardingDocument).filter(OnboardingDocument.document_id == document_id).first()
+    if doc is not None and not _may_see(db, doc.phone):
+        raise HTTPException(status_code=404, detail="Document not found")
     # Once in Drive the local copy is gone; Drive decides who may open it.
     if doc is not None and doc.drive_url and not os.path.isfile(doc.stored_path):
         return RedirectResponse(doc.drive_url, status_code=302)
@@ -614,7 +651,7 @@ def get_media(message_id: str, download: bool = False, db: Session = Depends(get
     before this existed, it is fetched now, while Meta still keeps it.
     """
     msg = db.query(WhatsAppMessage).filter(WhatsAppMessage.message_id == message_id).first()
-    if msg is None or msg.kind not in inbox.MEDIA_KINDS:
+    if msg is None or msg.kind not in inbox.MEDIA_KINDS or not _may_see(db, msg.phone):
         raise HTTPException(status_code=404, detail="No such file")
     # A file that can carry malware is never served, even one stored before this rule.
     blocked = inbox.unsafe_reason(msg.payload) if msg.direction == "IN" else None

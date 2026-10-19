@@ -70,6 +70,8 @@ class UserResponse(BaseModel):
     last_login_at: Optional[datetime] = None
     # Tabs this account is limited to; None means all its role allows.
     allowed_tabs: Optional[List[str]] = None
+    # Which chats its Inbox shows: None (all), "autogmap" or "not_autogmap".
+    inbox_scope: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -417,6 +419,29 @@ TAB_KEYS = {"dashboard", "businesses", "partners", "jobs", "config", "whatsapp-c
 class TabsRequest(BaseModel):
     # None or [] gives the account every tab its role allows.
     tabs: Optional[List[str]] = None
+
+
+INBOX_SCOPES = {"autogmap", "not_autogmap"}
+
+
+class InboxScopeRequest(BaseModel):
+    # None shows every chat; "autogmap" only those a campaign reached; "not_autogmap" every other.
+    scope: Optional[str] = None
+
+
+@router.put("/users/{user_id}/inbox-scope", response_model=UserResponse)
+def set_inbox_scope(user_id: str, payload: InboxScopeRequest, db: Session = Depends(get_db),
+                    admin: User = Depends(current_admin)):
+    """Which chats an account's Inbox shows (admin only); enforced on the server."""
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="No such account")
+    if payload.scope and payload.scope not in INBOX_SCOPES:
+        raise HTTPException(status_code=400, detail="Unknown inbox scope")
+    user.inbox_scope = payload.scope or None
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 @router.put("/users/{user_id}/tabs", response_model=UserResponse)

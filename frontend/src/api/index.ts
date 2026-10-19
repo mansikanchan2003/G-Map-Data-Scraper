@@ -502,6 +502,8 @@ export interface AuthUser {
   last_login_at: string | null;
   /** Tabs this account is limited to; null means every tab its role allows. */
   allowed_tabs?: string[] | null;
+  /** Which chats its Inbox shows: null for all, 'autogmap' or 'not_autogmap'. */
+  inbox_scope?: 'autogmap' | 'not_autogmap' | null;
 }
 
 export interface SignupResult {
@@ -576,6 +578,20 @@ export async function approveUser(userId: string, role: GrantRole = 'member'): P
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ role }),
+  });
+}
+
+/** Limits an account to some tabs; null gives it every tab its role allows. */
+export async function setUserTabs(userId: string, tabs: string[] | null): Promise<AuthUser> {
+  return request<AuthUser>(`/api/v1/auth/users/${userId}/tabs`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tabs }),
+  });
+}
+
+/** Which chats an account's Inbox shows; enforced on the server. */
+export async function setInboxScope(userId: string, scope: 'autogmap' | 'not_autogmap' | null): Promise<AuthUser> {
+  return request<AuthUser>(`/api/v1/auth/users/${userId}/inbox-scope`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope }),
   });
 }
 

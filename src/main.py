@@ -183,6 +183,14 @@ async def require_session(request, call_next):
 
         if not user:
             return JSONResponse({"detail": "Not signed in"}, status_code=401)
+        # Which chats this account's Inbox may show; the inbox routes read it.
+        request.state.inbox_scope = getattr(user, "inbox_scope", None)
+        # An account kept to part of the Inbox (Amit's: the chats not from
+        # AutoGMap) may reply and work in the Inbox, and change nothing else:
+        # no campaigns, templates or settings, whatever it calls.
+        if (request.state.inbox_scope and request.method not in ("GET", "HEAD", "OPTIONS")
+                and not path.startswith(("/api/v1/inbox/", "/api/v1/auth/"))):
+            return JSONResponse({"detail": "Your account can only work in the Inbox."}, status_code=403)
 
         # A view-only role is refused here, once, for every route there is
         # or will be: hiding the buttons would stop nobody who called the
