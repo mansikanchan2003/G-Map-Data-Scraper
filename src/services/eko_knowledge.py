@@ -180,7 +180,7 @@ FAQ: List[dict] = [
     },
     {
         "id": "penalty", "question": "Koi penalty bhi hai?",
-        "keys": ["penalty", "penality", "jurmana", "fine", "dand", "band rahe", "band ho", "जुर्माना", "पेनल्टी", "दंड", "દંડ", "પેનલ્ટી", "ਜੁਰਮਾਨਾ", "ਪੈਨਲਟੀ"],
+        "keys": ["penalty", "penality", "jurmana", "fine", "dand", "outlet band", "kiosk band", "csp band", "band rahe to", "जुर्माना", "पेनल्टी", "दंड", "દંડ", "પેનલ્ટી", "ਜੁਰਮਾਨਾ", "ਪੈਨਲਟੀ"],
         "answer": {
             "hinglish": "Haan. Outlet lambe samay tak band rahe toh bank penalty lagata hai. Isliye roz chalana zaroori hai.",
             "en": "Yes. If the outlet stays closed for long, the bank charges a penalty. So it must open every day.",
@@ -466,7 +466,7 @@ FAQ = FAQ + SITE_FAQ
 # spelling and the script do not need listing: "naukari", "नौकरी" and "ਨੌਕਰੀ"
 # all match "naukri" by sound (see _sound). Only new words and phrasings go here.
 MORE_KEYS: Dict[str, List[str]] = {
-    "job": ["employee", "bank employee", "bank ka employee", "bank ka staff", "karmachari", "bank mein naukri",
+    "job": ["bank kaam milega", "bank kaam", "bank naukri milegi", "बैंक नौकरी मिलेगी", "बैंक काम", "employee", "bank employee", "bank ka employee", "bank ka staff", "karmachari", "bank mein naukri",
             "bank me job", "permanent", "joining", "recruitment", "bharti", "sarkari naukri",
             "kya main bank ka", "bank wala ban", "मुलाजिम", "कर्मचारी", "નોકરિયાત", "ਮੁਲਾਜ਼ਮ"],
     "real": ["sach", "sacha", "sachcha", "bharosa", "vishwas", "trust", "scam", "dhokha", "thagi", "nakli", "legit",
@@ -474,18 +474,18 @@ MORE_KEYS: Dict[str, List[str]] = {
              "विश्वास", "नकली", "ठगी", "ભરોસો", "ਭਰੋਸਾ"],
     "fees": ["fees lagegi", "kitni fees", "form fees", "charge lagega", "registration fees", "apply free",
              "free hai", "mufat", "muft", "paise lagenge apply", "मुफ्त", "ફ્રી", "ਮੁਫ਼ਤ"],
-    "investment": ["kitna lagana", "kitna lagega", "paise lagane", "paisa lagana", "lagana padega", "cost",
+    "investment": ["paisa kitna dena", "kitna dena hoga", "kitna paisa dena", "how much money", "money need", "need to start", "kitne paise dene", "शुरू करने के लिए कितना", "kitna lagana", "kitna lagega", "paise lagane", "paisa lagana", "lagana padega", "cost",
                    "budget", "capital", "amount lagega", "kitne rupaye", "kitna kharch", "5 lac", "पैसे लगाने",
                    "कितना लगेगा", "કેટલા પૈસા", "ਕਿੰਨੇ ਪੈਸੇ"],
     "devices": ["saman", "samaan", "equipment", "atm machine", "fingerprint", "thumb machine", "passbook machine",
                 "kya kya milega", "setup", "सामान", "સામાન", "ਸਮਾਨ"],
     "with_shop": ["dukan", "shop", "kahan baithna", "jagah chahiye", "counter", "ghar se chala",
                   "ghar par chala", "kitne baje", "kitne ghante", "દુકાનમાં"],
-    "training": ["sikhaenge", "sikhna", "seekhna", "pariksha", "test dena", "kaise sikhe",
+    "training": ["sikhaoge", "sikha denge", "kuch nahi aata", "nahi aata", "computer nahi aata", "सिखाओगे", "नहीं आता", "sikhaenge", "sikhna", "seekhna", "pariksha", "test dena", "kaise sikhe",
                  "सीखना", "परीक्षा", "શીખવું", "ਸਿੱਖਣਾ"],
-    "family": ["ghar wale", "gharwale", "beta chala", "wife chala", "koi aur chala", "relative", "rishtedar",
+    "family": ["bete ke naam", "beti ke naam", "patni ke naam", "pati ke naam", "naam pe le", "naam par le", "बेटे के नाम", "ghar wale", "gharwale", "beta chala", "wife chala", "koi aur chala", "relative", "rishtedar",
                "साथ में", "ઘરના", "ਘਰਵਾਲੇ"],
-    "earnings": ["kitna kamaa", "kitna kama", "kitni kamai", "kitne paise milenge", "kitna paisa milega",
+    "earnings": ["हर महीने कितना", "कितना मिलेगा", "mahine kitna milega", "kitna milega mahine", "kitna nikal", "kitna bachega", "kitna kamaa", "kitna kama", "kitni kamai", "kitne paise milenge", "kitna paisa milega",
                  "fayda", "faida", "labh", "earn", "how much earn", "income kitni", "mahine ka kitna", "monthly kitna", "kitna banega",
                  "फायदा", "लाभ", "ફાયદો", "ਫ਼ਾਇਦਾ"],
     "salary": ["fix paisa", "fixed income", "har mahine fix", "pakka paisa", "guaranteed income", "guarantee income", "income guarantee", "garanti",
@@ -493,17 +493,19 @@ MORE_KEYS: Dict[str, List[str]] = {
     "women": ["mahilaon", "ladki", "aurto", "auraton", "beti chala", "lady operator", "स्त्री", "ਔਰਤਾਂ"],
     # Not "chutti" or "holiday": "aaj chutti hai?" asks whether we are open, not about the penalty.
     "penalty": ["band rakha", "band kar diya", "lambe samay band", "kitne din band"],
-    "eligibility": ["kaun ban sakta", "main ban sakta", "kya main apply", "kya mai apply", "can i apply",
+    "eligibility": ["12th pass", "10th pass", "kar sakta hun", "kar sakti hun", "kar sakta hoon", "kar sakti hoon", "main kar sakta", "graduate hun", "12वीं पास", "कर सकता हूँ", "kaun ban sakta", "main ban sakta", "kya main apply", "kya mai apply", "can i apply",
                     "qualification", "padhai kitni", "kitna padha", "umar", "age limit", "yogya hun",
                     "उम्र", "आयु", "ઉંમર", "ਉਮਰ"],
     "cibil": ["credit report", "loan chal raha", "loan liya", "emi", "default", "credit history", "सिबिल स्कोर"],
-    "documents": ["kya kya lagega", "kya lagega", "proof", "kagzat", "papers chahiye", "aadhar", "aadhaar", "pan card",
+    "documents": ["kya kya chahiye hoga", "apply karne ke liye kya", "kya kya lagega", "kya lagega", "proof", "kagzat", "papers chahiye", "aadhar", "aadhaar", "pan card",
                   "police", "certificate chahiye", "कागजात", "આધાર", "ਆਧਾਰ"],
     "commission_paid": ["paisa kab aayega", "kab tak milega paisa", "payment date", "kis tareekh", "tarikh",
                         "account mein kab", "kab credit", "कब मिलेगा", "ક્યારે મળશે", "ਕਦੋਂ ਮਿਲੇਗਾ"],
-    "process": ["aage kya karna", "aage kya", "next step", "shuru kaise", "kaise judein", "kaise jude", "kaise apply",
+    "process": ["aage kya karna", "kya karna hai aage", "ab kya karna", "kitne din", "kab shuru", "shuru ho jayega", "kab tak chalu", "कितने दिन", "आगे क्या करना", "aage kya karna", "aage kya", "next step", "shuru kaise", "kaise judein", "kaise jude", "kaise apply",
                 "how to apply", "kitne din lagenge", "kitna time lagega", "kab tak shuru", "जुड़ना", "शुरू कैसे"],
-    "services": ["kya kya kaam", "kya services", "kaun kaun se kaam", "account kholna", "cash withdrawal", "पैसे निकालना", "खाता खोलना"],
+    "services": ["paise nikal sakte", "paise nikal", "nikal sakte", "jama kar sakte", "kya kya kar sakte log", "पैसे निकाल सकते", "kya kya kaam", "kya services", "kaun kaun se kaam", "account kholna", "cash withdrawal", "पैसे निकालना", "खाता खोलना"],
+    "setup_cost": ["machine ka kharcha", "kharcha kaun dega", "device ka paisa kaun", "machine kaun dega", "मशीन का खर्चा"],
+    "schemes": ["bima", "insurance", "beema", "बीमा", "વીમો", "ਬੀਮਾ"],
     "what_csp": ["csp matlab", "csp meaning", "csp means", "csp arth", "csp kise kehte", "csp kya cheez", "kiosk matlab",
                  "kiosk meaning", "banking outlet matlab", "customer service point matlab", "सीएसपी मतलब", "सीएसपी अर्थ",
                  "csp मतलब", "સીએસપી એટલે", "ਸੀਐਸਪੀ ਮਤਲਬ"],
@@ -690,7 +692,54 @@ def match(text: str, limit: int = 2) -> List[str]:
     # A second answer only when it is about as strong as the first.
     if len(ranked) > 1 and scores[ranked[1]] < scores[ranked[0]] * 0.6:
         ranked = ranked[:1]
+    if not ranked:
+        taught = _taught(words, sounds)
+        if taught:
+            return [taught]
     return ranked[:limit]
+
+
+# --- What the team has taught the bot -----------------------------------------
+# A question the bot left for a person, that the team says one of these answers
+# covers ("Teach the bot" in the inbox). Kept in app_settings (faq_learning), and
+# a later question saying nearly the same thing gets that answer. Filled at
+# startup and on every teaching by faq_learning.load.
+LEARNED: Dict[str, List[str]] = {}
+
+# Words every question has, which say nothing about what is asked.
+_FILLER = {
+    "kya", "kyaa", "kia", "hai", "hain", "he", "h", "ho", "hoga", "hogi", "ki", "ka", "ke", "ko", "se", "me", "mein", "mai",
+    "main", "mujhe", "muje", "mera", "meri", "mere", "hum", "hame", "hamein", "aap", "ap", "aapka", "aapki", "ye", "yeh",
+    "yah", "wo", "woh", "to", "toh", "bhi", "sir", "ji", "g", "sar", "madam", "please", "plz", "pls", "bhai", "namaste",
+    "the", "is", "a", "an", "to", "do", "i", "of", "and", "or", "it", "this", "kaise", "kab", "kitna", "kitni", "kitne",
+    "क्या", "है", "हैं", "की", "का", "के", "को", "से", "में", "मैं", "मुझे", "मेरा", "आप", "ये", "यह", "तो", "भी", "जी",
+}
+
+
+def _content(words: List[str], sounds: List[str]) -> List[tuple]:
+    return [(w, s) for w, s in zip(words, sounds) if w not in _FILLER and not w.isdigit()]
+
+
+def _taught(words: List[str], sounds: List[str]) -> Optional[str]:
+    """The FAQ entry whose taught question this message nearly repeats, if one does."""
+    said = _content(words, sounds)
+    if len(said) < 2:
+        return None
+    best, best_share = None, 0.0
+    for faq_id, examples in LEARNED.items():
+        if faq_id not in _BY_ID:
+            continue
+        for example in examples:
+            ew = _words(example)
+            known = _content(ew, [_sound(w) for w in ew])
+            if len(known) < 2:
+                continue
+            hit = sum(1 for p, _ in known if any(_same(p, w, s) for w, s in said))
+            share = hit / max(len(known), len(said))
+            if hit >= 2 and share > best_share:
+                best, best_share = faq_id, share
+    # Most of what is asked must be the same as what was taught.
+    return best if best_share >= 0.6 else None
 
 
 def answer(faq_id: str, lang: str, said: str = "") -> str:

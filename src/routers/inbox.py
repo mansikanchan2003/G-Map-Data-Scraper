@@ -127,6 +127,13 @@ class HandoverRequest(BaseModel):
     resume: bool = True
 
 
+class TeachRequest(BaseModel):
+    faq_id: str = Field(..., max_length=40)
+    question: str = Field(..., min_length=1, max_length=300)
+    # The conversation it came from: the answer comes back in that person's language.
+    phone: Optional[str] = Field(None, max_length=20)
+
+
 class DispositionRequest(BaseModel):
     disposition: str = Field(..., max_length=40)
     note: Optional[str] = Field(None, max_length=500)
@@ -485,6 +492,41 @@ def chat_activity(digits: str, db: Session = Depends(get_db)):
     """Handovers and dispositions in this chat, oldest first."""
     conv = _get_conversation(db, digits)
     return handover.activity(db, conv.phone)
+
+
+@router.get("/faq")
+def faq_answers(db: Session = Depends(get_db)):
+    """Every answer the bot can give, and the questions the team has taught it for each."""
+    from src.services import faq_learning
+    return faq_learning.answers(db)
+
+
+@router.post("/faq/teach")
+def teach_the_bot(payload: TeachRequest, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """
+    Tie a question the bot did not recognise to the answer that covers it, so
+    the bot answers it (and questions like it) itself from now on. Returns the
+    answer in the person's language, ready to send.
+    """
+    from src.services import eko_knowledge, faq_learning
+    try:
+        faq_learning.teach(db, payload.faq_id, payload.question)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    lang = "hi"
+    if payload.phone:
+        conv = db.get(WhatsAppConversation, inbox.normalize_phone(payload.phone))
+        if conv is not None:
+            lang = (conv.bot_data or {}).get("lang") or "hi"
+    logger.info(f"inbox event=BOT_TAUGHT faq={payload.faq_id} by={user.email}")
+    return {"faq_id": payload.faq_id, "answer": eko_knowledge.answer(payload.faq_id, lang, payload.question)}
+
+
+@router.delete("/faq/teach")
+def forget_a_teaching(payload: TeachRequest, db: Session = Depends(get_db)):
+    from src.services import faq_learning
+    faq_learning.forget(db, payload.faq_id, payload.question)
+    return {"status": "ok"}
 
 
 @router.get("/dispositions")

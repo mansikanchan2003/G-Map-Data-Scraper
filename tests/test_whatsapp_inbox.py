@@ -1553,3 +1553,25 @@ def test_the_site_figures_come_with_the_sites_own_warning():
     assert said.startswith("Har seva aur har enrolment par commission")   # the confirmed answer first
     # The template agents still get the Creator Pack's words, without figures.
     assert "₹33,768" not in eko_knowledge.agent_section()
+
+
+def test_the_team_can_teach_the_bot_a_new_way_of_asking(db, client):
+    from src.services import eko_knowledge
+    tap_campaign(db)
+    say(db, "Isse ghar chal jayega na?")      # not recognised: to a person
+    assert conv(db).needs_attention
+    r = client.post("/api/v1/inbox/faq/teach", json={"faq_id": "earnings", "phone": PHONE,
+                                                       "question": "Isse ghar chal jayega na?"})
+    assert r.status_code == 200, r.text
+    assert r.json()["answer"].startswith("Commission on every service")
+    try:
+        # Asked again, a little differently, the bot now answers it itself.
+        assert eko_knowledge.match("isse ghar chal jayega kya") == ["earnings"]
+        assert eko_knowledge.match("ghar ka pata badalna hai") == []
+        listed = {a["id"]: a for a in client.get("/api/v1/inbox/faq").json()}
+        assert listed["earnings"]["taught"] == ["Isse ghar chal jayega na?"]
+        assert client.post("/api/v1/inbox/faq/teach", json={"faq_id": "nope", "question": "x"}).status_code == 400
+    finally:
+        client.request("DELETE", "/api/v1/inbox/faq/teach",
+                       json={"faq_id": "earnings", "question": "Isse ghar chal jayega na?"})
+    assert eko_knowledge.LEARNED == {}

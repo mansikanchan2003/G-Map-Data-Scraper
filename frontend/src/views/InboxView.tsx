@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ATTENTION_CHANGED, fetchBotSettings, fetchChatSummary, fetchTickets, fetchConversation, fetchConversations, markConversationRead, setAttention, sendInboxMedia,
+  ATTENTION_CHANGED, fetchBotSettings, fetchFaqAnswers, teachTheBot, type FaqAnswer, fetchChatSummary, fetchTickets, fetchConversation, fetchConversations, markConversationRead, setAttention, sendInboxMedia,
   saveBotSettings, saveDocumentsToDrive, sendInboxMessage, documentUrl, mediaUrl,
   type BotSettings, type ChatSummary, type ConversationDetail, type Ticket, type ConversationSummary, type ThreadMessage,
 } from '../api/inbox';
@@ -481,6 +481,58 @@ const TicketsPanel: React.FC<{ initial: 'open' | 'resolved'; onClose: () => void
  * what else they wrote, and what to send next, so nobody has to read the
  * whole chat first. Built on the server from the chat itself.
  */
+/**
+ * "Teach the bot": tie a question the bot did not recognise to the answer
+ * that covers it, so it answers that question (and ones like it) itself next
+ * time. The answer comes back in the person's language, ready to send.
+ */
+let faqCache: FaqAnswer[] | null = null;
+const TeachTheBot: React.FC<{ phone: string; question: string; onUseReply?: (text: string) => void }> = ({ phone, question, onUseReply }) => {
+  const [open, setOpen] = useState(false);
+  const [faqs, setFaqs] = useState<FaqAnswer[]>(faqCache || []);
+  const [pick, setPick] = useState('');
+  const [done, setDone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || faqCache) return;
+    fetchFaqAnswers().then(f => { faqCache = f; setFaqs(f); }).catch(e => setError(errMsg(e)));
+  }, [open]);
+  const save = async () => {
+    if (!pick) return;
+    setError(null);
+    try { const r = await teachTheBot(pick, question, phone); setDone(r.answer); faqCache = null; }
+    catch (e) { setError(errMsg(e)); }
+  };
+  if (done) return (
+    <div className="mt-1.5 text-[12px] text-emerald-300">
+      <span className="material-symbols-outlined text-[14px] align-[-2px]">school</span> Taught: the bot answers this itself from now on.
+      {onUseReply && <button onClick={() => onUseReply(done)} className="ml-1 text-sky-300 font-semibold hover:underline cursor-pointer">Send them the answer</button>}
+    </div>
+  );
+  if (!open) return (
+    <button data-edit onClick={() => setOpen(true)} className="mt-1 inline-flex items-center gap-1 text-[11.5px] text-sky-300 hover:underline cursor-pointer">
+      <span className="material-symbols-outlined text-[14px]">school</span>Teach the bot this question
+    </button>
+  );
+  return (
+    <div className="mt-1.5 rounded-md border border-slate-700 bg-slate-900 p-2 space-y-1.5">
+      <div className="text-[11.5px] text-slate-400">Which of Eko's answers covers it?</div>
+      <select value={pick} onChange={e => setPick(e.target.value)}
+        className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[12px] text-slate-200 outline-none focus:border-sky-500">
+        <option value="">Choose an answer…</option>
+        {faqs.map(f => <option key={f.id} value={f.id}>{f.question}</option>)}
+      </select>
+      {pick && <div className="text-[11.5px] text-slate-400 max-h-20 overflow-y-auto">{faqs.find(f => f.id === pick)?.answer}</div>}
+      {error && <div className="text-[11.5px] text-rose-300">{error}</div>}
+      <div className="flex justify-end gap-2">
+        <button onClick={() => setOpen(false)} className="text-[11.5px] text-slate-400 hover:text-slate-200 cursor-pointer">Cancel</button>
+        <button onClick={save} disabled={!pick}
+          className="px-2.5 py-1 rounded bg-emerald-500 text-white text-[11.5px] font-semibold disabled:opacity-40 cursor-pointer">Teach</button>
+      </div>
+    </div>
+  );
+};
+
 const SummaryCard: React.FC<{
   phone: string;
   version: string;
@@ -564,7 +616,8 @@ const SummaryCard: React.FC<{
                       Ready answer: {answer}
                       {onUseReply && <button onClick={() => onUseReply(answer)} className="ml-1 text-sky-300 font-semibold hover:underline cursor-pointer">Use</button>}
                     </div>
-                  ) : <div className="text-[12px] text-amber-300 mt-0.5">No ready answer: please reply yourself.</div>}
+                  ) : <div className="text-[12px] text-amber-300 mt-0.5">No ready answer: please reply yourself, or teach the bot if one of Eko's answers covers it.</div>}
+                  {!answer && onUseReply && <TeachTheBot phone={phone} question={q.text} onUseReply={onUseReply} />}
                 </li>
               );
             })}

@@ -147,6 +147,15 @@ export const setAttention = (phone: string, needed: boolean, disposition?: strin
     method: 'POST', body: JSON.stringify({ needed, disposition, note }),
   });
 
+/** An answer the bot can give, and the questions the team has taught it for it. */
+export interface FaqAnswer { id: string; question: string; source: string; answer: string; taught: string[] }
+export const fetchFaqAnswers = () => call<FaqAnswer[]>('/faq');
+/** Tie a question the bot did not recognise to the answer that covers it; returns that answer in the person's language. */
+export const teachTheBot = (faqId: string, question: string, phone?: string) =>
+  call<{ faq_id: string; answer: string }>('/faq/teach', {
+    method: 'POST', body: JSON.stringify({ faq_id: faqId, question, phone }),
+  });
+
 export const fetchDispositionOptions = () => call<DispositionOption[]>('/dispositions');
 
 export const recordDisposition = (phone: string, disposition: string, note?: string) =>

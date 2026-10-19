@@ -64,6 +64,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Could not copy earlier replies into the inbox: {e}")
     logger.info("Database schema initialized")
+    # What the team has taught the bot about how people ask.
+    try:
+        from src.database import SessionLocal
+        from src.services import faq_learning
+        db = SessionLocal()
+        try:
+            faq_learning.load(db)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Could not load what the bot was taught: {e}")
 
     # The scraping autopilot. It idles until switched on from the dashboard,
     # and runs in this process so it shares the one browser-capable worker.
