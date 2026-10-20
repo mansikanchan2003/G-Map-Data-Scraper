@@ -26,8 +26,8 @@ from src.schemas.whatsapp import (
 )
 from src.models.inbox import WhatsAppMessage
 from src.models.user import User
-from src.routers.auth import current_user
-from src.services import auth_service, inbox, notifier, onboarding_bot, pricing
+from src.routers.auth import current_admin, current_user
+from src.services import auth_service, inbox, notifier, number_usage, onboarding_bot, pricing
 from src.services.whatsapp_normalizer import WhatsAppNormalizer
 from src.services.meta_whatsapp_service import MetaWhatsAppService
 # We will import whatsapp_service here later for campaign execution.
@@ -38,6 +38,16 @@ logger = logging.getLogger("gmap_scraper.whatsapp")
 router = APIRouter(prefix="/api/v1/whatsapp", tags=["WhatsApp Campaigns"])
 
 # --- Accounts ---
+
+@router.get("/number-usage")
+def number_usage_report(days: int = Query(7, ge=1, le=90), db: Session = Depends(get_db),
+                        user=Depends(current_admin)):
+    """
+    What the shared WhatsApp number was used for, per day: AutoGMap's sends, and the
+    messages other apps on it sent (seen through Meta's delivery updates), with their cost.
+    """
+    return number_usage.report(db, days)
+
 
 @router.get("/accounts", response_model=List[WhatsAppAccountResponse])
 def list_accounts(db: Session = Depends(get_db)):
@@ -954,7 +964,7 @@ def _parse_ts(raw) -> datetime:
         return datetime.now(timezone.utc)
 
 
-def _apply_status_event(db: Session, status: dict) -> None:
+def _apply_status_event(db: Session, status: dict) -> bool:
     """
     Record one delivery status against the recipient it belongs to.
 
@@ -966,13 +976,13 @@ def _apply_status_event(db: Session, status: dict) -> None:
     msg_id = status.get("id")
     stage = (status.get("status") or "").upper()
     if not msg_id or not stage:
-        return
+        return False
 
     recipient = db.query(WhatsAppCampaignRecipient).filter(
         WhatsAppCampaignRecipient.provider_message_id == msg_id
     ).first()
     if not recipient:
-        return
+        return False
 
     at = _parse_ts(status.get("timestamp"))
     # How far along the lifecycle each stage sits, so a late-arriving earlier
@@ -1012,7 +1022,7 @@ def _apply_status_event(db: Session, status: dict) -> None:
         if recipient.status != "FAILED" and RANK.get(stage, 0) > RANK.get(recipient.status, 0):
             recipient.status = stage
     else:
-        return
+        return True
 
     db.add(WhatsAppCampaignLog(
         log_id=uuid.uuid4().hex,
@@ -1023,6 +1033,7 @@ def _apply_status_event(db: Session, status: dict) -> None:
         provider_code=recipient.failure_code if stage == "FAILED" else None,
         error_reason=recipient.reason if stage == "FAILED" else None,
     ))
+    return True
 
 
 def _lead_details(db: Session, recipient, button_text, clicked_at) -> dict:
@@ -1171,8 +1182,9 @@ async def receive_webhook(request: Request, background: BackgroundTasks,
                 value = change.get("value", {})
                 for status in value.get("statuses", []):
                     # A message sent from the inbox, or else a campaign send.
-                    if not inbox.apply_status(db, status):
-                        _apply_status_event(db, status)
+                    if not inbox.apply_status(db, status) and not _apply_status_event(db, status):
+                        # Another app on the number sent it: counted, not acted on.
+                        number_usage.record(db, status)
                 # The name each sender set in WhatsApp, keyed by their number.
                 names = {
                     c.get("wa_id"): (c.get("profile") or {}).get("name")

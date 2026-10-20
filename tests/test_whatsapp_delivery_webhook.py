@@ -320,3 +320,51 @@ class TestWebhookEndpoint:
         # payload must not turn into a retry loop.
         res = self.signed(client, {"entry": [{"changes": [{"value": {}}]}]})
         assert res.status_code == 200
+
+
+class TestOtherAppsOnTheNumber:
+    """Updates for messages other apps sent from the shared number are counted, not acted on."""
+
+    def test_an_update_for_another_apps_message_is_kept_with_only_four_digits(self, db):
+        from src.models import NumberActivity
+        from src.services import number_usage
+        other = {"id": "wamid.OTHER", "status": "delivered", "timestamp": "1700000000", "recipient_id": "919812345678",
+                 "pricing": {"billable": True, "category": "marketing"},
+                 "conversation": {"origin": {"type": "marketing"}}}
+        try:
+            assert _apply_status_event(db, other) is False          # not one of ours
+            number_usage.record(db, other)
+            number_usage.record(db, {**other, "status": "read", "timestamp": "1700000090"})
+            number_usage.record(db, other)                            # Meta repeats itself
+            db.flush()
+            row = db.get(NumberActivity, "wamid.OTHER")
+            assert row.recipient_last4 == "5678" and row.category == "marketing" and row.billable
+            assert row.sent_at and row.delivered_at and row.read_at and row.read_at > row.delivered_at
+            assert db.query(NumberActivity).count() == 1
+            # Ours stays ours.
+            assert _apply_status_event(db, status_event("delivered")) is True
+        finally:
+            db.query(NumberActivity).delete()
+            db.commit()
+
+    def test_the_report_tells_autogmap_from_the_other_apps(self, db):
+        from src.models import NumberActivity
+        from src.services import number_usage
+        from src.services import inbox as inbox_service
+        ts = str(int(inbox_service.now().timestamp()))
+        try:
+            for i, cat in enumerate(["marketing", "marketing", "utility"]):
+                number_usage.record(db, {"id": f"wamid.O{i}", "status": "sent", "timestamp": ts, "recipient_id": "9198000000{:02d}".format(i),
+                                         "pricing": {"billable": True, "category": cat}})
+            # An id that is in fact a campaign's is not counted as another app's.
+            number_usage.record(db, {"id": MSG_ID, "status": "sent", "timestamp": ts})
+            db.flush()
+            r = number_usage.report(db, days=7)
+            assert r["others_total"] == 3 and r["autogmap_total"] == 1
+            today = r["days"][-1]
+            assert today["others_by_category"] == {"marketing": 2, "utility": 1}
+            assert today["others_cost_inr"] == round(2 * 0.8631 + 0.115, 2)
+            assert r["last_other_message_at"]
+        finally:
+            db.query(NumberActivity).delete()
+            db.commit()

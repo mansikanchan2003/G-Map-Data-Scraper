@@ -244,3 +244,27 @@ class WhatsAppReply(Base):
     # Who typed it, so a shared console still says who answered.
     sent_by = Column(String(200), nullable=True)
     sent_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+
+class NumberActivity(Base):
+    """
+    A message another app sent from our WhatsApp number, seen through the
+    delivery updates Meta sends every app on the number (2026-10-20: the team
+    wanted to know what the number is used for besides AutoGMap). Only the
+    last four digits of the recipient are kept.
+    """
+    __tablename__ = "number_activity"
+
+    message_id = Column(String(100), primary_key=True)
+    first_seen_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    failed_at = Column(DateTime(timezone=True), nullable=True)
+    # Meta's pricing category (marketing, utility, service...) and whether it was charged.
+    category = Column(String(30), nullable=True)
+    billable = Column(Boolean, nullable=True)
+    # Who opened the conversation: business_initiated, user_initiated, service...
+    origin = Column(String(40), nullable=True)
+    recipient_last4 = Column(String(4), nullable=True)
+    error_code = Column(String(20), nullable=True)

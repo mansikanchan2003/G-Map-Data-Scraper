@@ -740,3 +740,16 @@ export const updateAutopilot = (changes: Partial<AutopilotSettings>) =>
 
 export const clearAutopilotCooldown = () =>
   request<AutopilotStatus>('/api/v1/discovery/autopilot/clear-cooldown', { method: 'POST' });
+
+/** What the shared WhatsApp number was used for: AutoGMap's sends and the other apps' (admin only). */
+export interface NumberUsage {
+  days: { day: string; autogmap: number; others: number; others_by_category: Record<string, number>;
+          others_delivered: number; others_read: number; others_cost_inr: number }[];
+  since: string;
+  others_total: number;
+  others_cost_inr: number;
+  autogmap_total: number;
+  last_other_message_at: string | null;
+  note: string;
+}
+export const fetchNumberUsage = (days = 7) => request<NumberUsage>(`/api/v1/whatsapp/number-usage?days=${days}`);

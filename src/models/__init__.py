@@ -11,7 +11,7 @@ from .insights import CampaignInsight, InsightSnapshot
 from .studio import StudioImagePrompt
 from .inbox import AttentionTicket, ChatActivity, WhatsAppConversation, WhatsAppMessage, OnboardingDocument
 from .application import ApplicationComment, ApplicationRemoval, QualifiedLead
-from .whatsapp import WhatsAppAccount, WhatsAppTemplate, WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppCampaignLog, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppReply
+from .whatsapp import WhatsAppAccount, WhatsAppTemplate, WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppCampaignLog, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppReply, NumberActivity
 
 __all__ = [
     "Location",
@@ -28,6 +28,7 @@ __all__ = [
     "WhatsAppLinkClick",
     "WhatsAppButtonClick",
     "WhatsAppReply",
+    "NumberActivity",
     "WhatsAppConversation",
     "WhatsAppMessage",
     "OnboardingDocument",
