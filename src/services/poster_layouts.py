@@ -211,3 +211,57 @@ def build_mirror(poster: dict, language_code: str, photo: bytes, photo_mime: str
 <div class="abs grid">{cells}</div>
 <div class="abs cta">{_esc(poster.get("cta"))}<span class="ms">arrow_forward</span></div>
 """ + _footer(poster)
+
+
+def build_spotlight(poster: dict, language_code: str, photo: bytes, photo_mime: str) -> str:
+    """
+    Bold and sparse, for a phone screen, after the team's CDM poster: a big
+    headline on deep navy, the callout as one large white card, three
+    benefits, and the photo left clear of boxes.
+
+    The other layouts set ten blocks of text; at the size WhatsApp shows a
+    header (about 350px wide) their small lines could not be read, and the
+    user found them unattractive (2026-10-21). The subline and the
+    opportunity card are left out here; the body carries them.
+    """
+    rows = "".join(
+        f'<div class="row"><span class="ms">{_icon(b)}</span><div class="fit rt" data-min="22">{_esc(b.get("text"))}</div></div>'
+        for b in (poster.get("benefits") or [])[:3]
+    )
+    css = f"""
+body{{background:#0F1C44}}
+.photo{{left:560px;top:0;width:976px;height:904px;background:url('{_photo(photo, photo_mime)}') center/cover no-repeat}}
+.fade{{left:560px;top:0;width:360px;height:904px;background:linear-gradient(90deg,#0F1C44 0%,rgba(15,28,68,.75) 40%,rgba(15,28,68,0) 100%)}}
+.panel{{left:0;top:0;width:560px;height:904px;background:#0F1C44}}
+.glow{{left:-200px;top:-220px;width:760px;height:760px;border-radius:380px;background:radial-gradient(circle,rgba(255,194,26,.16),rgba(255,194,26,0) 70%)}}
+.logo{{left:0;top:0;padding:22px 40px 20px 52px;background:#fff;border-bottom-right-radius:30px}} .logo svg{{height:66px;width:auto;display:block}}
+.headline{{left:52px;top:150px;width:800px;height:250px;font-size:84px;font-weight:800;line-height:1.14;color:#fff;
+  text-shadow:0 4px 18px rgba(0,0,0,.35)}}
+.headline .hl{{color:#FFC21A}}
+.card{{left:52px;top:428px;width:700px;height:150px;background:#fff;border-radius:26px;padding:18px 30px;
+  display:flex;align-items:center;box-shadow:0 16px 36px rgba(0,0,0,.35)}}
+.card .fit{{width:100%;max-height:118px;font-size:38px;font-weight:800;line-height:1.24;color:#0F1C44}}
+.card .hl{{color:#E08E00}}
+.rows{{left:52px;top:604px;width:640px;height:186px;display:flex;flex-direction:column;gap:6px}}
+.row{{display:flex;align-items:center;gap:16px;height:58px}}
+.row .ms{{flex:none;font-size:40px;color:#FFC21A}}
+.row .rt{{flex:1;font-size:30px;font-weight:700;color:#fff;height:50px;display:flex;align-items:center}}
+.cta{{left:52px;top:808px;height:72px;padding:0 36px;background:#FFC21A;color:#0F1C44;border-radius:36px;
+  font-size:32px;font-weight:800;display:flex;align-items:center;gap:14px;white-space:nowrap;
+  box-shadow:0 10px 26px rgba(0,0,0,.3)}} .cta .ms{{font-size:38px}}
+.badge{{right:34px;bottom:150px;display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.95);border-radius:40px;
+  padding:10px 24px 10px 12px;box-shadow:0 10px 26px rgba(0,0,0,.28)}}
+.badge .st{{font-size:24px;font-weight:800;color:#14234B;height:32px;max-width:330px}}
+.badge .en{{font-family:"Noto Sans",sans-serif;font-size:16px;font-weight:700;color:#1E3A8A;letter-spacing:.4px}}
+.foot{{background:#13214A;border-top:3px solid #FFC21A}}
+"""
+    return _head(language_code, css) + f"""
+<div class="abs photo"></div><div class="abs panel"></div><div class="abs fade"></div><div class="abs glow"></div>
+<div class="abs logo">{_logo_svg()}</div>
+<div class="abs headline fit" id="headline" data-min="52">{_headline(poster)}</div>
+<div class="abs card"><div class="fit" id="callout" data-min="26">{_highlight(poster.get("callout", ""), poster.get("callout_highlight"), "hl")}</div></div>
+<div class="abs rows">{rows}</div>
+<div class="abs cta">{_esc(poster.get("cta"))}<span class="ms">arrow_forward</span></div>
+<div class="abs badge">{SBI_MARK}<div><div class="st fit" id="sign_title" data-min="16">{_esc(poster.get("sign_title"))}</div>
+  <div class="en">SBI CUSTOMER SERVICE POINT</div></div></div>
+""" + _footer(poster)

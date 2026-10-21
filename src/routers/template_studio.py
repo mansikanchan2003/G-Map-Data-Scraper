@@ -12,7 +12,7 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,7 @@ from src.database import get_db
 from src.models.user import User
 from src.models.whatsapp import WhatsAppTemplate
 from src.routers.auth import current_user
-from src.services import creative_brief, template_studio
+from src.services import creative_brief, real_photos, template_studio
 from src.services.gemini_client import GeminiClient
 
 router = APIRouter(prefix="/api/v1/whatsapp/studio", tags=["Template Studio"])
@@ -119,6 +119,54 @@ def image_prompt_record(db: Session = Depends(get_db)):
     """Which image prompts have worked: per style, and the latest images asked for."""
     from src.services import image_prompts
     return image_prompts.summary(db)
+
+
+class RealPhoto(BaseModel):
+    photo_id: str
+    media_id: str
+    state: Optional[str] = None
+    note: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    active: bool
+    times_used: int
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RealPhotoEdit(BaseModel):
+    active: bool
+
+
+@router.get("/real-photos", response_model=List[RealPhoto])
+def list_real_photos(db: Session = Depends(get_db)):
+    return real_photos.listing(db)
+
+
+@router.post("/real-photos", response_model=RealPhoto)
+async def upload_real_photo(file: UploadFile = File(...), state: str = Form(""), note: str = Form(""),
+                            consent: bool = Form(False), db: Session = Depends(get_db),
+                            user: User = Depends(current_user)):
+    """A real photo of a CSP for the posters; refused without the consent of the people in it."""
+    data = await file.read(real_photos.MAX_BYTES + 1)
+    try:
+        if not consent:
+            raise real_photos.PhotoRefused(
+                "Confirm that the people in the photo agreed to it being used in Eko's posters.")
+        ext = real_photos.check_image(data)
+        media_id = template_studio._save_media(data, ext)
+        return real_photos.add(db, media_id, state=state, note=note, uploaded_by=user.email, consent=consent)
+    except real_photos.PhotoRefused as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/real-photos/{photo_id}", response_model=RealPhoto)
+def edit_real_photo(photo_id: str, edit: RealPhotoEdit, db: Session = Depends(get_db)):
+    row = real_photos.set_active(db, photo_id, edit.active)
+    if not row:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return row
 
 
 @router.get("/drafts", response_model=List[StudioDraft])

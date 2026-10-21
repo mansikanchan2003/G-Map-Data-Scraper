@@ -42,3 +42,29 @@ class StudioImagePrompt(Base):
     outcome = Column(String(20), nullable=False, default="unused")
     # Why it failed, in a few words, for the agent to read next time.
     note = Column(String(300), nullable=True)
+
+
+class StudioRealPhoto(Base):
+    """
+    A real photograph of an SBI Customer Service Point, uploaded by the team
+    for the posters.
+
+    The AI photos looked AI-made and showed no CSP (2026-10-21), so a poster
+    is set on one of these first, and the AI photo is the fallback when none
+    is left for the state. Uploading one records that the people in it agreed
+    to its use. A photo is retired, never deleted, so drafts made from it
+    keep their image.
+    """
+    __tablename__ = "studio_real_photos"
+
+    photo_id = Column(String(32), primary_key=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    media_id = Column(String(64), nullable=False)
+    # The state it may be used for; empty means any state.
+    state = Column(String(100), nullable=True, index=True)
+    note = Column(String(300), nullable=True)
+    uploaded_by = Column(String(255), nullable=True)
+    consent = Column(Boolean, nullable=False, default=False)
+    active = Column(Boolean, nullable=False, default=True)
+    times_used = Column(Integer, nullable=False, default=0)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)

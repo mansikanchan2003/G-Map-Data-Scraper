@@ -151,8 +151,8 @@ def db(monkeypatch, tmp_path):
     finally:
         session.rollback()
         from src.models import AppSetting
-        from src.models.studio import StudioImagePrompt
-        for model in (AppSetting, StudioImagePrompt, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppCampaignRecipient,
+        from src.models.studio import StudioImagePrompt, StudioRealPhoto
+        for model in (AppSetting, StudioImagePrompt, StudioRealPhoto, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppCampaignRecipient,
                       WhatsAppCampaign, WhatsAppTemplate, Business, Job, Location):
             session.query(model).delete()
         session.commit()
@@ -1015,3 +1015,88 @@ def test_the_standing_language_lessons_reach_every_gujarati_draft():
     assert any("મળતા ખાસ લાભો" in l and "મળતી ખાસ સુવિધાઓ" in l for l in lessons)
     assert any("કમિશનથી કમાણી" in l for l in lessons)
     assert studio.language_lessons("hi") == []
+
+
+
+# --- real CSP photos (2026-10-21) --------------------------------------------
+
+def _jpeg(w=1200, h=800, colour=(30, 60, 140)):
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (w, h), colour).save(buf, "JPEG")
+    return buf.getvalue()
+
+
+def _real_photo(db, state=None, colour=(30, 60, 140)):
+    from src.services import real_photos
+    media_id = template_studio._save_media(_jpeg(colour=colour), ".jpg")
+    return real_photos.add(db, media_id, state=state, note=None, uploaded_by="kavya@eko.co.in", consent=True)
+
+
+def test_a_real_photo_for_the_state_is_used_and_no_ai_photo_is_made(db, monkeypatch):
+    used = []
+    monkeypatch.setattr(template_studio.poster_renderer, "render",
+                        lambda poster, lang, photo, mime, layout="classic": used.append(layout) or b"\xff\xd8JPEG")
+    photo = _real_photo(db, "Punjab")
+    [draft] = generate(db)
+    assert FakeGemini.images == 0
+    assert draft.status == template_studio.AWAITING_APPROVAL
+    assert draft.generation["image_mode"] == "real_photo"
+    assert draft.generation["real_photo_id"] == photo.photo_id
+    assert draft.generation["photo_media_id"] == photo.media_id
+    assert used == [template_studio.REAL_PHOTO_LAYOUT] and draft.generation["layout"] == "spotlight"
+
+
+def test_another_states_photo_is_not_used(db):
+    _real_photo(db, "Gujarat")
+    [draft] = generate(db)  # Punjab
+    assert draft.generation["image_mode"] != "real_photo" and FakeGemini.images >= 1
+
+
+def test_photos_take_turns_own_state_first(db):
+    from src.services import real_photos
+    anywhere = _real_photo(db, None)
+    first = _real_photo(db, "Punjab")
+    second = _real_photo(db, "Punjab")
+    picks = [real_photos.pick(db, "Punjab").photo_id for _ in range(3)]
+    assert set(picks[:2]) == {first.photo_id, second.photo_id}
+    assert picks[2] in {first.photo_id, second.photo_id}  # own state still before "any state"
+    assert real_photos.pick(db, "Kerala").photo_id == anywhere.photo_id
+
+
+def test_a_retired_photo_is_not_used(db):
+    from src.services import real_photos
+    row = _real_photo(db, "Punjab")
+    real_photos.set_active(db, row.photo_id, False)
+    assert real_photos.pick(db, "Punjab") is None
+
+
+def test_new_photo_moves_on_to_another_real_photo(db):
+    _real_photo(db, "Punjab")
+    _real_photo(db, "Punjab", colour=(200, 120, 20))
+    [draft] = generate(db)
+    before = draft.generation["photo_media_id"]
+    template_studio.run_new_photo(draft.template_id)
+    db.expire_all()
+    after = db.get(WhatsAppTemplate, draft.template_id).generation
+    assert after["image_mode"] == "real_photo" and after["photo_media_id"] != before
+
+
+def test_a_photo_without_consent_or_too_small_is_refused(db):
+    import pytest as _pytest
+    from src.services import real_photos
+    with _pytest.raises(real_photos.PhotoRefused):
+        real_photos.add(db, "x.jpg", state=None, note=None, uploaded_by=None, consent=False)
+    with _pytest.raises(real_photos.PhotoRefused):
+        real_photos.check_image(_jpeg(400, 300))
+    with _pytest.raises(real_photos.PhotoRefused):
+        real_photos.check_image(b"not a photo at all")
+    assert real_photos.check_image(_jpeg()) == ".jpg"
+
+
+def test_the_spotlight_layout_sets_the_poster_text():
+    from src.services import poster_layouts
+    html = poster_layouts.build_spotlight(PA_POSTER, "pa", PNG, "image/png")
+    assert PA_POSTER["headline_line1"] in html and PA_POSTER["cta"] in html
+    assert PA_POSTER["benefits"][0]["text"] in html and PA_POSTER["benefits"][3]["text"] not in html

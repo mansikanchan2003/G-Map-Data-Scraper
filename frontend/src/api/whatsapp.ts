@@ -632,7 +632,7 @@ export interface StudioDraft {
     /** When a PHOTO_PENDING draft is next tried, ISO time. */
     photo_retry_at?: string;
     /** How the header was made: the photo's own sign read back correctly, or the typeset poster. */
-    image_mode?: 'photo_text' | 'typeset';
+    image_mode?: 'photo_text' | 'typeset' | 'real_photo';
     image_phrase?: string | null;
     /** The sign was not tried: signs have kept coming out misspelt. */
     sign_skipped?: boolean;
@@ -739,6 +739,36 @@ export const studioMediaUrl = (headerContent: string | null): string | null => {
 
 export const fetchImageAllowance = () => studioCall<ImageAllowance>('/image-allowance');
 export const fetchImagePromptRecord = () => studioCall<ImagePromptRecord>('/image-prompts');
+
+/** A real photo of a CSP the team uploaded; posters are set on these before any AI photo. */
+export interface RealPhoto {
+  photo_id: string;
+  media_id: string;
+  state: string | null;
+  note: string | null;
+  uploaded_by: string | null;
+  active: boolean;
+  times_used: number;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export const realPhotoUrl = (mediaId: string) => `${getApiBaseUrl()}/api/v1/whatsapp/media/${mediaId}`;
+export const fetchRealPhotos = () => studioCall<RealPhoto[]>('/real-photos');
+export const setRealPhotoActive = (id: string, active: boolean) =>
+  studioCall<RealPhoto>(`/real-photos/${id}`, { method: 'PATCH', body: JSON.stringify({ active }) });
+export const uploadRealPhoto = async (file: File, state: string, note: string, consent: boolean): Promise<RealPhoto> => {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('state', state);
+  form.append('note', note);
+  form.append('consent', consent ? 'true' : 'false');
+  // No JSON header: the browser sets the multipart boundary itself.
+  const res = await fetch(`${STUDIO}/real-photos`, { credentials: 'include', method: 'POST', body: form });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(errorText(json.detail) || `Upload failed (${res.status})`);
+  return json as RealPhoto;
+};
 
 export const fetchStudioStatus = () => studioCall<{ ready: boolean; error: string | null }>('/status');
 export const fetchStudioRules = () => studioCall<StudioRules>('/rules');

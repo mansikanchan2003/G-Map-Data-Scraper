@@ -243,14 +243,15 @@ def _capture(page_html: str, language_code: str) -> bytes:
 
 # The poster's structures, rotated so drafts do not all look alike; see
 # poster_layouts for the ones after "classic".
-LAYOUTS = ("classic", "list", "banner", "mirror")
+LAYOUTS = ("classic", "list", "banner", "mirror", "spotlight")
 
 
 def build_layout(layout: str, poster: dict, language_code: str, photo: bytes, photo_mime: str) -> str:
     from src.services import poster_layouts
 
     builders = {"classic": build_html, "list": poster_layouts.build_list,
-                "banner": poster_layouts.build_banner, "mirror": poster_layouts.build_mirror}
+                "banner": poster_layouts.build_banner, "mirror": poster_layouts.build_mirror,
+                "spotlight": poster_layouts.build_spotlight}
     return builders.get(layout, build_html)(poster, language_code, photo, photo_mime)
 
 

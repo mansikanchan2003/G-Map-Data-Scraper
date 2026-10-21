@@ -39,7 +39,7 @@ from src.models.whatsapp import (
     WhatsAppLinkClick, WhatsAppTemplate, HUMAN_LINK_CLICK,
 )
 from src.services import eko_knowledge
-from src.services import campaign_buttons, creative_brief, image_prompts, poster_renderer, variety
+from src.services import campaign_buttons, creative_brief, image_prompts, poster_renderer, real_photos, variety
 from src.services.gemini_client import GeminiClient, GeminiError, ImageUnavailable
 
 logger = logging.getLogger("gmap_scraper.template_studio")
@@ -901,8 +901,9 @@ def _apply_url() -> str:
     return os.environ.get("CAMPAIGN_LINK_TARGET_URL", "https://kiosk.eko.in/signup?utm_source=AutoGMap")
 
 
-def _render_into(tmpl: WhatsAppTemplate, poster: dict, photo: bytes, photo_mime: str) -> None:
-    layout = (tmpl.generation or {}).get("layout") or "classic"
+def _render_into(tmpl: WhatsAppTemplate, poster: dict, photo: bytes, photo_mime: str,
+                 layout: Optional[str] = None) -> None:
+    layout = layout or (tmpl.generation or {}).get("layout") or "classic"
     image = poster_renderer.render(poster, tmpl.language_code, photo, photo_mime, layout)
     media_id = _save_media(image, ".jpg")
     tmpl.header_type = "IMAGE"
@@ -964,6 +965,36 @@ def _usable_without_photo(tmpl: WhatsAppTemplate) -> bool:
     return bool(tmpl.header_content) or (tmpl.generation or {}).get("kind") == "business"
 
 
+# A real photo already shows the CSP and its signboard, so it is set in the
+# sparse layout, whose small badge does not cover it with a second sign.
+REAL_PHOTO_LAYOUT = "spotlight"
+
+
+def _real_photo_header(tmpl: WhatsAppTemplate, variant: dict, state: str) -> Optional[dict]:
+    """The poster on the next real photo for the state; None when there is none."""
+    if not (_has_poster(variant) and tmpl.language_code in creative_brief.LANGUAGES):
+        return None
+    avoid = variant.get("photo_media_id") if variant.get("image_mode") == "real_photo" else None
+    picked = image_prompts.with_db(lambda db: _picked(real_photos.pick(db, state, avoid)))
+    if not picked:
+        return None
+    photo_id, media_id = picked
+    try:
+        photo = _read_media(media_id)
+    except OSError:
+        logger.warning(f"template_studio event=REAL_PHOTO_MISSING photo_id={photo_id} media_id={media_id}")
+        return None
+    mime = "image/png" if photo[:4] == b"\x89PNG" else "image/jpeg"
+    _render_into(tmpl, variant["poster"], photo, mime, REAL_PHOTO_LAYOUT)
+    return {"image_mode": "real_photo", "real_photo_id": photo_id, "photo_media_id": media_id,
+            "layout": REAL_PHOTO_LAYOUT, "photo_check": None, "photo_prompt": None, "photo_style": None,
+            "text_photo_attempts": []}
+
+
+def _picked(row) -> Optional[tuple]:
+    return (row.photo_id, row.media_id) if row else None
+
+
 def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, state: str) -> dict:
     """
     Makes the header image once the copy is written, and returns what to
@@ -978,7 +1009,13 @@ def _make_header(client: GeminiClient, tmpl: WhatsAppTemplate, variant: dict, st
     already made and rejected is recorded in `variant["text_photo_attempts"]`,
     so a draft finished later goes straight to the typeset poster rather than
     spending another run on the sign.
+
+    Before any of that, a real photo of a CSP the team uploaded for the state
+    (real_photos) is used when there is one: no AI photo is made at all.
     """
+    real = _real_photo_header(tmpl, variant, state)
+    if real:
+        return real
     phrase = (variant.get("image_phrase") or "").strip()
     written = " ".join([tmpl.body or ""] + [v for v in (variant.get("poster") or {}).values() if isinstance(v, str)])
     if phrase and _letters(phrase) not in _letters(written):

@@ -15,6 +15,7 @@ import { POSTER_EDIT_FIELDS } from '../components/PosterTextEditor';
 import { formatDateTime } from '../utils/datetime';
 import { SignNote } from '../components/SignNote';
 import { PhotoPromptRecord } from '../components/PhotoPromptRecord';
+import { RealPhotoLibrary } from '../components/RealPhotoLibrary';
 import { ImageAllowance } from '../components/ImageAllowance';
 
 // Three ways to make a template.
@@ -265,6 +266,7 @@ export const TemplateStudioView: React.FC = () => {
 
       <PerformanceTable rows={performance} />
       </>}
+      {mode !== 'sheet' && <RealPhotoLibrary states={states} />}
       {mode !== 'sheet' && <PhotoPromptRecord />}
 
       {zoom && (
@@ -341,6 +343,9 @@ const DraftCard: React.FC<{
           <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">{draft.target_state}</span>
           <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">{draft.language_code}</span>
           <span className="px-2 py-0.5 rounded bg-sky-900/40 text-sky-300">{draft.status.replace(/_/g, ' ')}</span>
+          {gen.image_mode === 'real_photo' && (
+            <span className="px-2 py-0.5 rounded bg-amber-900/40 text-amber-300">Real CSP photo</span>
+          )}
           {check && (
             <span className={`px-2 py-0.5 rounded ${check.passed ? 'bg-emerald-900/40 text-emerald-300' : 'bg-amber-900/40 text-amber-300'}`}
               title={(check.issues || []).join('; ')}>
