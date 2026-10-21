@@ -315,7 +315,8 @@ def timeline(db: Session, conv: WhatsAppConversation) -> List[dict]:
         text = {"to_person": f"{name} took the chat over from the bot",
                 "to_bot": f"{name} handed the chat back to the bot"
                           + (f" ({handover.label(a.value)})" if a.value else ""),
-                "disposition": f"{name} recorded the outcome: {handover.label(a.value) or a.value}"}.get(a.kind, a.kind)
+                "disposition": f"{name} recorded the outcome: {handover.label(a.value) or a.value}",
+                "stage": f"The lead moved to {a.value}"}.get(a.kind, a.kind)
         if a.note and a.kind != "to_bot":
             text += f" — {_quote(a.note, 100)}"
         lines.append({"at": inbox.aware(a.at), "kind": "team", "text": text})

@@ -4,9 +4,10 @@ import { formatDateTime } from '../utils/datetime';
 
 /**
  * Every chat's outcome (disposition) at a glance, on the Dispositions tab:
- * where the chats stand (a donut of the four groups and a ranked breakdown),
- * what the team recorded each day and who recorded it, who is handling which
- * chat now, and the latest outcomes. Each name opens its chat in the Inbox.
+ * where the chats stand (a donut of the four groups, and every category and
+ * sub-category of the team's "Call Dispositions" sheet with its count), what
+ * the team recorded each day and who recorded it, who is handling which chat
+ * now, and the latest outcomes. Each name opens its chat in the Inbox.
  *
  * The four groups are status colours (going well, follow up, closed, other),
  * so each always carries its icon and label too: never colour alone.
@@ -28,12 +29,6 @@ const ORDER: Group[] = ['positive', 'follow_up', 'negative', 'other'];
 // The groups' colours on the always-dark banner, where the theme ramps do not apply.
 const ACCENT: Record<Group, string> = { positive: '#34d399', follow_up: '#f9ab10', negative: '#fb7185', other: '#94a3b8' };
 
-const ICON: Record<string, string> = {
-  interested: 'thumb_up', docs_pending: 'hourglass_top', submitted: 'task_alt', guidance: 'school',
-  call_back: 'phone_callback', not_reachable: 'phone_disabled', query_answered: 'question_answer',
-  enquiry: 'mail', existing_csp: 'storefront', not_interested: 'thumb_down', cannot_invest: 'money_off',
-  not_eligible: 'person_off', outside_area: 'wrong_location', wrong_number: 'dialpad', other: 'more_horiz',
-};
 
 const Icon: React.FC<{ name: string; className?: string; style?: React.CSSProperties }> = ({ name, className = '', style }) =>
   <span className={`material-symbols-outlined ${className}`} style={style}>{name}</span>;
@@ -152,8 +147,9 @@ export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => 
   );
 
   const total = d.total;
-  const rows = d.groups.filter(g => g.count > 0 && (focus === 'all' || g.group === focus)).sort((a, b) => b.count - a.count);
-  const maxRow = Math.max(1, ...rows.map(r => r.count));
+  const categories = (d.categories || []).filter(c => focus === 'all' || c.group === focus);
+  // A disposition's icon is its category's.
+  const iconOf = (key: string) => (d.categories || []).find(c => c.subs.some(s => s.key === key))?.icon || 'label';
   const byDay = d.by_day || [];
   const people = d.by_person || [];
 
@@ -179,9 +175,15 @@ export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => 
               {d.by_team} outcomes recorded by the team; the rest read from the bot's step.
             </p>
           </div>
-          <div className="rounded-lg bg-white/10 px-4 py-3 min-w-[150px]">
-            <div className="flex items-center gap-1.5 text-white/70 text-[11px]"><Icon name="support_agent" className="text-[15px]" />with the team now</div>
-            <div className="text-2xl font-semibold tabular-nums mt-0.5">{d.with_people.length} <span className="text-sm font-normal text-white/70">{d.with_people.length === 1 ? 'chat' : 'chats'}</span></div>
+          <div className="flex gap-3">
+            <div className="rounded-lg bg-white/10 px-4 py-3 min-w-[140px]">
+              <div className="flex items-center gap-1.5 text-white/70 text-[11px]"><Icon name="rocket_launch" className="text-[15px]" style={{ color: '#34d399' }} />moved to CAT 1</div>
+              <div className="text-2xl font-semibold tabular-nums mt-0.5">{d.cat1 ?? 0} <span className="text-sm font-normal text-white/70">{(d.cat1 ?? 0) === 1 ? 'lead' : 'leads'}</span></div>
+            </div>
+            <div className="rounded-lg bg-white/10 px-4 py-3 min-w-[140px]">
+              <div className="flex items-center gap-1.5 text-white/70 text-[11px]"><Icon name="support_agent" className="text-[15px]" />with the team now</div>
+              <div className="text-2xl font-semibold tabular-nums mt-0.5">{d.with_people.length} <span className="text-sm font-normal text-white/70">{d.with_people.length === 1 ? 'chat' : 'chats'}</span></div>
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 px-6 pb-6">
@@ -207,7 +209,7 @@ export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => 
         </div>
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-[1.1fr_1.3fr]">
+      <div className="grid gap-5 xl:grid-cols-[1fr_1.35fr]">
         <Card title="Outcome mix" icon="donut_large" sub="Hover a slice for its share">
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <Donut totals={totals} total={total} />
@@ -224,30 +226,6 @@ export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => 
           </div>
         </Card>
 
-        <Card title="Every outcome" icon="leaderboard"
-          sub={focus === 'all' ? 'Most common first' : <button onClick={() => setFocus('all')} className="text-sky-300 hover:underline cursor-pointer">Showing {GROUP[focus].label} · show all</button>}>
-          <ul className="space-y-2">
-            {rows.map(r => {
-              const g = GROUP[r.group as Group] || GROUP.other;
-              return (
-                <li key={r.key} className="group grid grid-cols-[28px_minmax(120px,210px)_1fr_64px] items-center gap-2.5 text-[13px]"
-                  title={`${r.label}: ${r.count} chats (${pct(r.count, total)}%)`}>
-                  <span className={`h-7 w-7 rounded-lg flex items-center justify-center ${g.tint}`}><Icon name={ICON[r.key] || 'label'} className="text-[16px]" /></span>
-                  <span className="text-slate-200 truncate">{r.label}</span>
-                  <span className="h-3 rounded-full bg-slate-800 overflow-hidden">
-                    <span className={`block h-full rounded-full ${g.bar} opacity-90 group-hover:opacity-100 transition-all`}
-                      style={{ width: `${(r.count / maxRow) * 100}%` }} />
-                  </span>
-                  <span className="text-right tabular-nums"><b className="text-slate-100">{r.count}</b> <span className="text-slate-500 text-[11.5px]">{pct(r.count, total)}%</span></span>
-                </li>
-              );
-            })}
-            {!rows.length && <li className="text-sm text-slate-500">No chats here.</li>}
-          </ul>
-        </Card>
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
         <Card title="Recorded by the team, day by day" icon="bar_chart" sub={`Last ${d.recent_days} days · hover a day`}>
           {byDay.some(x => x.count) ? <Columns days={byDay} /> : (
             <div className="h-36 flex items-center justify-center text-sm text-slate-500 rounded-xl border border-dashed border-slate-800">
@@ -266,7 +244,41 @@ export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => 
             </div>
           )}
         </Card>
+      </div>
 
+      <Card title="Every disposition" icon="checklist"
+        sub={focus === 'all' ? 'The team\'s sheet: eleven categories and their sub-categories' : <button onClick={() => setFocus('all')} className="text-sky-300 hover:underline cursor-pointer">Showing {GROUP[focus].label} · show all</button>}>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {categories.map(c => {
+            const g = GROUP[c.group as Group] || GROUP.other;
+            const max = Math.max(1, ...c.subs.map(x => x.count));
+            return (
+              <div key={c.key} className={`rounded-xl border ${g.ring} bg-slate-950/50 p-3.5`}>
+                <div className="flex items-center gap-2.5">
+                  <span className={`h-8 w-8 rounded-lg flex items-center justify-center ${g.tint}`}><Icon name={c.icon} className="text-[17px]" /></span>
+                  <span className="flex-1 text-[13.5px] font-semibold text-slate-100">{c.label}</span>
+                  <span className="text-lg font-semibold tabular-nums text-slate-100">{c.count}</span>
+                </div>
+                <ul className="mt-2.5 space-y-1.5">
+                  {c.subs.map(x => (
+                    <li key={x.key} className="text-[12.5px]" title={x.action ? `${x.action}${x.owner ? ` · ${x.owner}` : ''}` : x.label}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={x.count ? 'text-slate-300' : 'text-slate-500'}>{x.label}</span>
+                        <span className={`tabular-nums ${x.count ? 'font-semibold text-slate-100' : 'text-slate-600'}`}>{x.count}</span>
+                      </div>
+                      <div className="h-1 rounded-full bg-slate-800 mt-1 overflow-hidden">
+                        <div className={`h-full rounded-full ${g.bar}`} style={{ width: `${(x.count / max) * 100}%`, opacity: x.count ? 1 : 0 }} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      <div className="grid gap-5 xl:grid-cols-[1fr_1.35fr]">
         <Card title="With the team now" icon="support_agent" sub={`${d.with_people.length} ${d.with_people.length === 1 ? 'chat' : 'chats'}`}>
           {d.with_people.length ? (
             <ul className="space-y-2">
@@ -290,35 +302,34 @@ export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => 
             </div>
           )}
         </Card>
+        <Card title="Latest outcomes" icon="history" sub={`${d.recent_count} in the last ${d.recent_days} days`}>
+          {d.recent.length ? (
+            <ol className="relative ml-3 border-l border-slate-800 space-y-4">
+              {d.recent.map((r, i) => {
+                const grp = (d.groups.find(x => x.key === r.key)?.group || 'other') as Group;
+                const g = GROUP[grp];
+                return (
+                  <li key={i} className="pl-5 relative">
+                    <span className={`absolute -left-[13px] top-0.5 h-6 w-6 rounded-full flex items-center justify-center ring-4 ring-slate-900 ${g.tint}`}>
+                      <Icon name={iconOf(r.key)} className="text-[14px]" />
+                    </span>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <a href={chat(r.phone)} className="text-[13.5px] font-semibold text-sky-300 hover:underline">{r.name || r.phone}</a>
+                      <span className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold ${g.ring} ${g.tint}`}>{r.label}</span>
+                      <span className="text-[11.5px] text-slate-500">by {who(r.by)} · {formatDateTime(r.at)}</span>
+                    </div>
+                    {r.note && <p className="mt-1 text-[12.5px] text-slate-300 bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-1.5 inline-block">{r.note}</p>}
+                  </li>
+                );
+              })}
+            </ol>
+          ) : (
+            <div className="py-8 text-center text-sm text-slate-500 rounded-xl border border-dashed border-slate-800">
+              Nothing recorded yet. Outcomes are recorded when a chat is handed back to the bot, when a question is resolved, or with “Change” above any chat.
+            </div>
+          )}
+        </Card>
       </div>
-
-      <Card title="Latest outcomes" icon="history" sub={`${d.recent_count} in the last ${d.recent_days} days`}>
-        {d.recent.length ? (
-          <ol className="relative ml-3 border-l border-slate-800 space-y-4">
-            {d.recent.map((r, i) => {
-              const grp = (d.groups.find(x => x.key === r.key)?.group || 'other') as Group;
-              const g = GROUP[grp];
-              return (
-                <li key={i} className="pl-5 relative">
-                  <span className={`absolute -left-[13px] top-0.5 h-6 w-6 rounded-full flex items-center justify-center ring-4 ring-slate-900 ${g.tint}`}>
-                    <Icon name={ICON[r.key] || 'label'} className="text-[14px]" />
-                  </span>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <a href={chat(r.phone)} className="text-[13.5px] font-semibold text-sky-300 hover:underline">{r.name || r.phone}</a>
-                    <span className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold ${g.ring} ${g.tint}`}>{r.label}</span>
-                    <span className="text-[11.5px] text-slate-500">by {who(r.by)} · {formatDateTime(r.at)}</span>
-                  </div>
-                  {r.note && <p className="mt-1 text-[12.5px] text-slate-300 bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-1.5 inline-block">{r.note}</p>}
-                </li>
-              );
-            })}
-          </ol>
-        ) : (
-          <div className="py-8 text-center text-sm text-slate-500 rounded-xl border border-dashed border-slate-800">
-            Nothing recorded yet. Outcomes are recorded when a chat is handed back to the bot, when a question is resolved, or with “Change” above any chat.
-          </div>
-        )}
-      </Card>
     </div>
   );
 };

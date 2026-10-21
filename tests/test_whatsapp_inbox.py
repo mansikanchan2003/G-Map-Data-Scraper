@@ -80,6 +80,10 @@ class StubMeta:
         StubMeta.sent.append(("link", to, body, {"text": text, "url": url}))
         return self._result()
 
+    def send_template_message(self, to, name, language="en_US", components=None):
+        StubMeta.sent.append(("template", to, name, {"language": language}))
+        return self._result()
+
 
 @pytest.fixture(autouse=True)
 def stub_meta(monkeypatch, tmp_path):
@@ -117,7 +121,8 @@ def db():
         yield session
     finally:
         session.rollback()
-        for model in (ChatActivity, AttentionTicket, OnboardingDocument, WhatsAppMessage, WhatsAppConversation, WhatsAppReply,
+        from src.models.inbox import FollowUp
+        for model in (FollowUp, ChatActivity, AttentionTicket, OnboardingDocument, WhatsAppMessage, WhatsAppConversation, WhatsAppReply,
                       WhatsAppButtonClick, WhatsAppCampaignRecipient, WhatsAppCampaign,
                       WhatsAppTemplate, Location, AppSetting):
             session.query(model).delete()
@@ -1364,12 +1369,14 @@ def test_a_reply_by_hand_takes_the_chat_over_and_handing_back_asks_again(db, cli
     # The bot asks again the question it was waiting on, after a short thank-you.
     body = StubMeta.sent[-1][2]
     assert body.startswith(bot_messages.MESSAGES["en"]["resume"]) and bot_messages.MESSAGES["en"]["ask_education"] in body
-    assert r.json()["disposition"]["key"] == "interested" and r.json()["disposition"]["source"] == "team"
+    # An old key is still understood, and comes back as the sheet's.
+    assert r.json()["disposition"]["key"] == "int_ready" and r.json()["disposition"]["source"] == "team"
     kinds = [a["kind"] for a in client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/activity").json()]
-    assert kinds == ["to_person", "disposition", "to_bot"]
+    # Ready to proceed moves the lead to CAT 1, as the sheet says.
+    assert kinds == ["to_person", "disposition", "stage", "to_bot"]
     lines = [t["text"] for t in chat_summary.summarise(db, conv(db))["timeline"]]
     assert "Admin took the chat over from the bot" in lines
-    assert "Admin handed the chat back to the bot (Interested)" in lines
+    assert "Admin handed the chat back to the bot (Ready to proceed)" in lines
 
     # The bot moving the chat on later makes its own outcome the current one.
     qualify(db)
@@ -1379,15 +1386,17 @@ def test_a_reply_by_hand_takes_the_chat_over_and_handing_back_asks_again(db, cli
 def test_every_chat_has_a_disposition_and_the_dashboard_counts_them(db, client):
     tap_campaign(db)
     say(db, SERVED_PIN)
-    assert client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}").json()["disposition"]["key"] == "interested"
+    assert client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}").json()["disposition"]["key"] == "int_ready"
     r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/disposition",
                     json={"disposition": "call_back", "note": "Call after 6 PM"})
-    assert r.status_code == 200 and r.json()["label"] == "Call back later"
+    assert r.status_code == 200 and r.json()["label"] == "Asked to call later"
     assert client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/disposition",
                        json={"disposition": "nonsense"}).status_code == 400
     d = client.get("/api/v1/inbox/dispositions/dashboard").json()
     assert d["total"] == 1 and d["by_team"] == 1 and d["recent_count"] == 1
-    assert next(g for g in d["groups"] if g["key"] == "call_back")["count"] == 1
+    assert next(g for g in d["groups"] if g["key"] == "busy_later")["count"] == 1
+    busy = next(c for c in d["categories"] if c["key"] == "busy")
+    assert busy["label"] == "Busy / Callback" and busy["count"] == 1
     assert d["recent"][0]["note"] == "Call after 6 PM"
 
 
@@ -1397,7 +1406,7 @@ def test_question_resolved_records_the_disposition(db, client):
     r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/attention",
                     json={"needed": False, "disposition": "query_answered"})
     assert r.status_code == 200, r.text
-    assert conv(db).disposition == "query_answered"
+    assert conv(db).disposition == "int_more_info"
 
 
 def test_the_bot_solves_what_it_knows_and_escalates_the_rest(db, client, emailed):
@@ -1685,3 +1694,219 @@ def test_someone_left_at_the_old_availability_question_is_answered_the_new_way(d
 def test_every_language_has_the_guidance_messages():
     for lang, msgs in bot_messages.MESSAGES.items():
         assert msgs["guidance_open"] and msgs["guidance_more"] and msgs["guidance_intro"], lang
+
+
+
+# --- The dispositions sheet, and nudges standing in for calls (2026-10-21) ----
+
+from src.services import dispositions as dz, followups, nudge_messages, reply_language  # noqa: E402
+
+
+def _followups(db):
+    from src.models.inbox import FollowUp
+    return db.query(FollowUp).filter(FollowUp.phone == PHONE).order_by(FollowUp.created_at, FollowUp.due_at).all()
+
+
+def _a_day_ago(db):
+    """Move the chat's messages back two days, as if the nudge had been sent a day ago after them."""
+    from datetime import timedelta
+    for m in db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == PHONE).all():
+        m.created_at = inbox.aware(m.created_at) - timedelta(days=2)
+    db.commit()
+
+
+def _record(client, key, **extra):
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/disposition", json={"disposition": key, **extra})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_the_sheet_has_its_eleven_categories_and_every_sub_category():
+    sheet = [c for c in dz.CATEGORIES if c.key != "other"]
+    assert [c.label for c in sheet] == [
+        "Interested", "Not Interested", "Rejected", "Busy / Callback", "RNR", "Unreachable", "Invalid Lead",
+        "Duplicate / Existing", "Not Decision Maker", "Hold / Future Prospect", "Language Barrier"]
+    labels = {s.label for c in sheet for s in c.subs}
+    for wanted in ("Physical visit required", "Ready to proceed", "More information required", "Callback requested",
+                   "Documents pending", "Investment issue", "Applied by mistake", "No requirement",
+                   "Not interested currently", "BM not agree", "Low credit score", "Eligibility criteria not met",
+                   "Busy", "Asked to call later", "Call at specific time", "No answer", "Ringing but not picked",
+                   "Switched off", "Out of coverage", "Number not reachable", "Wrong number", "Invalid number",
+                   "Person denied applying", "Incorrect customer details", "Duplicate lead", "Already in process",
+                   "Existing customer / existing CSP", "Person contacted is not applicant",
+                   "Decision maker not available", "Interested later", "Financial constraint currently",
+                   "Wants to proceed after certain date", "Replacement not available in current AO",
+                   "Cannot communicate due to language mismatch"):
+        assert wanted in labels, wanted
+    # Every older key still means something.
+    assert all(dz.normalise(k) in dz.SUBS for k in dz.LEGACY)
+
+
+def test_every_nudge_is_written_in_every_language_without_blanks():
+    for purpose in nudge_messages.PURPOSES:
+        for v in nudge_messages.VARIANTS:
+            text = nudge_messages.TEXT[purpose].get(v)
+            assert text, (purpose, v)
+            assert "{{" not in text and "Eko" in text
+    # Every step of every disposition has its nudge.
+    assert {st.purpose for s in dz.SUBS.values() for st in s.steps} <= set(nudge_messages.PURPOSES)
+
+
+@pytest.mark.parametrize("text,chat,expected", [
+    ("મને વધુ માહિતી જોઈએ છે", "en", ("gu", False)),
+    ("ਮੈਨੂੰ ਹੋਰ ਜਾਣਕਾਰੀ ਚਾਹੀਦੀ ਹੈ", "en", ("pa", False)),
+    ("मुझे और जानकारी चाहिए", "en", ("hi", False)),
+    ("मला अधिक माहिती हवी आहे", "mr", ("mr", False)),
+    ("Mujhe aur jankari chahiye bhai", "en", ("hi", True)),
+    ("Please call me in the evening", "hi", ("en", False)),
+    ("ok", "hi", None),
+])
+def test_the_language_of_a_reply_is_read_from_its_letters(text, chat, expected):
+    assert reply_language.of_text(text, chat) == expected
+
+
+def test_a_nudge_goes_in_the_language_of_their_last_message(db, client):
+    tap_campaign(db, lang="en")
+    say(db, "મને પછી ફોન કરજો, અત્યારે હું વ્યસ્ત છું")
+    _record(client, "busy_busy")
+    assert StubMeta.sent[-1][2] == nudge_messages.text("callback_confirm", "gu")
+    callback = [f for f in _followups(db) if f.purpose == "callback_due"][0]
+    assert callback.status == "scheduled" and callback.wants == dz.CALL
+
+
+def test_hindi_in_latin_letters_gets_the_hinglish_nudge(db, client):
+    tap_campaign(db, lang="hi")
+    say(db, "Abhi paisa nahi hai mere paas")
+    _record(client, "ni_investment")
+    assert StubMeta.sent[-1][2] == nudge_messages.text("lower_investment", nudge_messages.HINGLISH)
+
+
+def test_a_callback_at_a_set_time_is_due_then(db, client):
+    from datetime import timedelta
+    tap_campaign(db)
+    when = inbox.now() + timedelta(hours=3)
+    _record(client, "busy_at_time", at=when.isoformat())
+    due = [f for f in _followups(db) if f.purpose == "callback_due"][0]
+    assert abs((inbox.aware(due.due_at) - when).total_seconds()) < 2
+
+
+def test_calls_the_sheet_asks_for_go_as_nudges_until_calling_is_on(db, client):
+    tap_campaign(db)
+    say(db, "I have a few questions about the setup")
+    _record(client, "int_more_info")
+    f = _followups(db)[0]
+    assert f.wants == "whatsapp_call" and f.channel == "whatsapp_nudge" and f.status == "sent"
+    assert "WhatsApp call: WhatsApp calling is not switched on yet" in f.note
+
+
+def test_no_answer_in_a_day_is_rnr_and_tried_again_the_next_day(db, client):
+    from datetime import timedelta
+    tap_campaign(db)
+    say(db, "I have a few questions about the setup")
+    _record(client, "int_more_info")
+    _a_day_ago(db)
+    f = _followups(db)[0]
+    f.sent_at = inbox.now() - timedelta(hours=25)
+    db.commit()
+    followups.tick(db)
+    db.expire_all()
+    assert conv(db).disposition == "rnr_no_answer" and conv(db).disposition_by == "bot"
+    retry = [x for x in _followups(db) if x.purpose == "missed_you"][0]
+    assert retry.attempt == 2 and retry.status == "scheduled"
+    assert inbox.aware(retry.due_at) > inbox.now()
+
+
+def test_a_reply_answers_it_and_cancels_the_next_day_retry(db, client):
+    tap_campaign(db)
+    _record(client, "rnr_no_answer")
+    retry = _followups(db)[0]
+    assert retry.status == "scheduled"
+    # Meta stamps messages to the second; the reply comes a while after.
+    from datetime import timedelta
+    retry.created_at = inbox.now() - timedelta(minutes=5)
+    db.commit()
+    say(db, "Sorry, I missed your message")
+    followups.tick(db)
+    db.expire_all()
+    assert _followups(db)[0].status == "cancelled"
+
+
+def test_an_undelivered_nudge_is_unreachable_and_tried_again(db, client):
+    tap_campaign(db)
+    StubMeta.ok = False
+    _record(client, "int_more_info")
+    db.expire_all()
+    assert conv(db).disposition == "unr_not_reachable"
+    assert any(x.purpose == "missed_you" and x.attempt == 2 for x in _followups(db))
+
+
+def test_retries_stop_after_three_attempts(db, client):
+    from datetime import timedelta
+    tap_campaign(db)
+    say(db, "I have a few questions about the setup")
+    _record(client, "int_more_info")
+    _a_day_ago(db)
+    f = _followups(db)[0]
+    f.attempt, f.sent_at = followups.MAX_ATTEMPTS, inbox.now() - timedelta(hours=25)
+    db.commit()
+    followups.tick(db)
+    db.expire_all()
+    assert conv(db).disposition == "int_more_info"            # not chased again
+    assert "Stopped after 3 attempts" in _followups(db)[0].note
+
+
+def test_outside_the_window_it_waits_for_an_approved_template_then_sends_it(db, client):
+    from datetime import timedelta
+    from src.models.whatsapp import WhatsAppTemplate
+    tap_campaign(db)
+    c = conv(db)
+    c.last_inbound_at = inbox.now() - timedelta(days=2)
+    db.commit()
+    _record(client, "hold_later", at=(inbox.now() - timedelta(days=1)).isoformat())   # due already
+    followups.tick(db)
+    f = [x for x in _followups(db) if x.purpose == "checking_in"][0]
+    assert f.status == "waiting" and "not approved" in f.note
+    db.add(WhatsAppTemplate(template_id=uuid.uuid4().hex, name="nudge_checking_in_en", status="APPROVED",
+                            meta_template_name="eko_nudge_checking_in", language_code="en", body="x", origin="nudge"))
+    db.commit()
+    followups.tick(db)
+    db.expire_all()
+    assert [x for x in _followups(db) if x.purpose == "checking_in"][0].status == "sent"
+    assert StubMeta.sent[-1][:3] == ("template", PHONE, "eko_nudge_checking_in")
+
+
+def test_a_visit_is_a_task_for_the_district_coordinator(db, client):
+    tap_campaign(db)
+    _record(client, "int_visit")
+    task = [f for f in _followups(db) if f.wants == dz.TASK][0]
+    assert task.owner == "dc" and "District Coordinator" in task.task
+    board = client.get("/api/v1/inbox/dispositions/followups").json()
+    assert [t["id"] for t in board["tasks"]] == [task.followup_id]
+    assert client.post(f"/api/v1/inbox/followups/{task.followup_id}/done", json={"note": "Visited"}).status_code == 200
+    assert client.get("/api/v1/inbox/dispositions/followups").json()["tasks"] == []
+
+
+def test_ready_to_proceed_moves_the_lead_to_cat_1(db, client):
+    tap_campaign(db)
+    _record(client, "int_ready")
+    assert conv(db).bot_data["stage"] == "CAT 1"
+    assert client.get("/api/v1/inbox/dispositions/dashboard").json()["cat1"] == 1
+
+
+def test_a_closing_disposition_cancels_everything_pending(db, client):
+    tap_campaign(db)
+    _record(client, "int_visit")
+    _record(client, "inv_wrong_number")
+    assert not any(f.status in ("scheduled", "waiting") for f in _followups(db))
+
+
+def test_nudge_templates_are_listed_for_review_and_kept_out_of_campaigns(db, client):
+    from src.models.whatsapp import WhatsAppTemplate
+    listed = client.get("/api/v1/inbox/dispositions/nudge-templates").json()
+    assert len(listed) == len(nudge_messages.PURPOSES)
+    assert all(len(p["variants"]) == 12 and all(v["status"] == "NOT_SUBMITTED" for v in p["variants"]) for p in listed)
+    assert {v["meta_name"] for v in listed[0]["variants"]} == {"eko_nudge_visit_planned", "eko_nudge_visit_planned_hinglish"}
+    db.add(WhatsAppTemplate(template_id=uuid.uuid4().hex, name="nudge_missed_you_en", status="APPROVED",
+                            meta_template_name="eko_nudge_missed_you", language_code="en", body="x", origin="nudge"))
+    db.commit()
+    assert all(t["name"] != "nudge_missed_you_en" for t in client.get("/api/v1/whatsapp/templates").json())

@@ -933,11 +933,11 @@ export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not
     lastCount.current = count;
   }, [detail?.messages.length]);
 
-  const changeAttention = async (needed: boolean, disposition?: string, note?: string) => {
+  const changeAttention = async (needed: boolean, disposition?: string, note?: string, at?: string | null) => {
     if (!selected) return;
     setAttentionBusy(true);
     try {
-      await setAttention(selected, needed, disposition, note);
+      await setAttention(selected, needed, disposition, note, at);
       // The alerts shown on every page follow at once.
       window.dispatchEvent(new Event(ATTENTION_CHANGED));
       await loadThread(selected);
@@ -1196,7 +1196,7 @@ export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not
                 hint="How does the chat stand now? The ticket is solved and the outcome recorded."
                 current={detail?.disposition?.source === 'team' ? detail.disposition.key : null}
                 onCancel={() => setResolving(false)}
-                onConfirm={async (key, note) => { await changeAttention(false, key, note); setResolving(false); }} />
+                onConfirm={async (key, note, _resume, at) => { await changeAttention(false, key, note, at); setResolving(false); }} />
             )}
 
             <div className="flex-1 flex min-h-0">

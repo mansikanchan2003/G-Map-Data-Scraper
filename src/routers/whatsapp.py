@@ -215,6 +215,8 @@ def list_templates(db: Session = Depends(get_db)):
     return (
         db.query(WhatsAppTemplate)
         .filter(~((WhatsAppTemplate.origin == "agent") & WhatsAppTemplate.status.in_(DRAFT_STATUSES)))
+        # Disposition nudges are sent one at a time by the follow-ups, never as a campaign.
+        .filter(WhatsAppTemplate.origin != "nudge")
         .order_by(WhatsAppTemplate.created_at.desc())
         .all()
     )

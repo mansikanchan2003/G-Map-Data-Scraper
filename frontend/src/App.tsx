@@ -236,7 +236,7 @@ export default function App() {
           {shownTab === 'whatsapp-inbox' && <InboxView readOnly={readOnly} scope={user.inbox_scope} />}
 
           {shownTab === 'applications' && <ApplicationsView readOnly={readOnly} />}
-          {shownTab === 'dispositions' && <DispositionsView />}
+          {shownTab === 'dispositions' && <DispositionsView readOnly={readOnly} />}
           {shownTab === 'partners' && <PartnersView />}
 
           {shownTab === 'whatsapp-history' && <WhatsAppHistoryView />}

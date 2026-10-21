@@ -28,7 +28,7 @@ from src.models.inbox import OnboardingDocument, WhatsAppConversation, WhatsAppM
 from src.models.user import User
 from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppTemplate
 from src.routers.auth import current_user
-from src.services import handover, tickets
+from src.services import dispositions as dz, followups, handover, nudge_templates, tickets
 from src.services import drive_uploads, inbox, onboarding_bot
 
 logger = logging.getLogger("gmap_scraper.inbox")
@@ -149,6 +149,8 @@ class AttentionRequest(BaseModel):
     # Recorded with "Question resolved": how the chat ended up.
     disposition: Optional[str] = Field(None, max_length=40)
     note: Optional[str] = Field(None, max_length=500)
+    # The time to call back, or the date to follow up on, for dispositions that ask.
+    at: Optional[datetime] = None
 
 
 class HandoverRequest(BaseModel):
@@ -158,6 +160,7 @@ class HandoverRequest(BaseModel):
     note: Optional[str] = Field(None, max_length=500)
     # Ask again the question the bot was waiting on (on handing back).
     resume: bool = True
+    at: Optional[datetime] = None
 
 
 class TeachRequest(BaseModel):
@@ -169,6 +172,12 @@ class TeachRequest(BaseModel):
 
 class DispositionRequest(BaseModel):
     disposition: str = Field(..., max_length=40)
+    note: Optional[str] = Field(None, max_length=500)
+    # The time to call back, or the date to follow up on, for dispositions that ask.
+    at: Optional[datetime] = None
+
+
+class TaskDoneRequest(BaseModel):
     note: Optional[str] = Field(None, max_length=500)
 
 
@@ -500,15 +509,16 @@ def hand_over(digits: str, payload: HandoverRequest, db: Session = Depends(get_d
     the disposition, solves an open ticket and lets the bot ask its question again.
     """
     conv = _get_conversation(db, digits)
-    if payload.disposition and payload.disposition not in handover.DISPOSITIONS:
+    if payload.disposition and dz.normalise(payload.disposition) not in handover.DISPOSITIONS:
         raise HTTPException(status_code=400, detail="Unknown disposition")
     sent = None
     if payload.to == "person":
         handover.take_over(db, conv, user.email)
         if payload.disposition:
-            handover.record(db, conv, payload.disposition, user.email, payload.note)
+            handover.record(db, conv, payload.disposition, user.email, payload.note, at=payload.at)
     else:
-        sent = handover.hand_back(db, conv, user.email, payload.disposition, payload.note, payload.resume)
+        sent = handover.hand_back(db, conv, user.email, payload.disposition, payload.note, payload.resume,
+                                  at=payload.at)
     db.commit()
     return {"bot_paused": conv.bot_paused, "handled_by": conv.handled_by, "bot_said": sent,
             "disposition": handover.current(conv)}
@@ -520,7 +530,7 @@ def set_disposition(digits: str, payload: DispositionRequest, db: Session = Depe
     """Record how the chat ended up (Interested, Call back later, Not reachable...)."""
     conv = _get_conversation(db, digits)
     try:
-        now = handover.record(db, conv, payload.disposition, user.email, payload.note)
+        now = handover.record(db, conv, payload.disposition, user.email, payload.note, at=payload.at)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
@@ -578,6 +588,49 @@ def disposition_options():
 def disposition_dashboard(days: int = Query(7, ge=1, le=90), db: Session = Depends(get_db)):
     """Every chat's disposition now, the team's recent ones, and the chats people are handling."""
     return handover.dashboard(db, days)
+
+
+@router.get("/dispositions/followups")
+def followup_board(days: int = Query(7, ge=1, le=90), db: Session = Depends(get_db)):
+    """The nudges coming up, the team's and the District Coordinator's tasks, and how recent nudges went."""
+    return followups.board(db, days)
+
+
+@router.post("/followups/{followup_id}/done")
+def finish_task(followup_id: str, payload: TaskDoneRequest, db: Session = Depends(get_db),
+                user: User = Depends(current_user)):
+    """A task (a visit, a reassignment) is done."""
+    f = followups.complete_task(db, followup_id, user.email, payload.note)
+    if f is None:
+        raise HTTPException(status_code=404, detail="Follow-up not found")
+    db.commit()
+    return followups.as_dict(f)
+
+
+@router.get("/conversations/{digits}/followups")
+def chat_followups(digits: str, db: Session = Depends(get_db)):
+    """What this chat's dispositions have set in motion, latest first."""
+    conv = _get_conversation(db, digits)
+    return followups.for_chat(db, conv.phone)
+
+
+@router.get("/dispositions/nudge-templates")
+def nudge_template_list(db: Session = Depends(get_db)):
+    """Every nudge in every language, and where each stands with Meta."""
+    try:
+        nudge_templates.refresh(db)
+    except Exception:
+        logger.exception("inbox event=NUDGE_TEMPLATE_REFRESH_FAILED")
+    return nudge_templates.listing(db)
+
+
+@router.post("/dispositions/nudge-templates/{purpose}/submit")
+def submit_nudge_templates(purpose: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Send one nudge, in every language, to Meta for review. Only when a person presses Submit."""
+    try:
+        return nudge_templates.submit(db, purpose, user.email)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/bot-settings", response_model=BotSettingsResponse)
@@ -697,14 +750,14 @@ def set_attention(digits: str, payload: AttentionRequest, db: Session = Depends(
         onboarding_bot.flag(conv, payload.reason or f"Marked by {user.email}")
         ticket = tickets.raise_or_update(db, conv, via=user.email)
     else:
-        if payload.disposition and payload.disposition not in handover.DISPOSITIONS:
+        if payload.disposition and dz.normalise(payload.disposition) not in handover.DISPOSITIONS:
             raise HTTPException(status_code=400, detail="Unknown disposition")
         conv.needs_attention = False
         conv.attention_resolved_by = user.email
         conv.attention_resolved_at = inbox.now()
         ticket = tickets.resolve(db, conv.phone, user.email)
         if payload.disposition:
-            handover.record(db, conv, payload.disposition, user.email, payload.note)
+            handover.record(db, conv, payload.disposition, user.email, payload.note, at=payload.at)
     db.commit()
     return {"needs_attention": conv.needs_attention, "attention_reason": conv.attention_reason,
             "ticket": tickets.as_dict(ticket) if ticket else None}

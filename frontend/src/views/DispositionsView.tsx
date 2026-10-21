@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { DispositionsPanel } from '../components/DispositionsPanel';
+import { FollowUpsPanel } from '../components/FollowUpsPanel';
+import { NudgeTemplatesPanel } from '../components/NudgeTemplatesPanel';
 
 /**
  * Every chat's outcome (disposition) on a tab of its own, for those who work
  * the chats without the Dashboard: how many stand where, who is handling
- * which chat now, and what the team recorded lately.
+ * which chat now, and what the team recorded lately; then what each
+ * disposition set in motion (nudges standing in for calls, tasks for the
+ * team and the District Coordinator), and the nudges' templates to review.
  */
-export const DispositionsView: React.FC = () => {
+export const DispositionsView: React.FC<{ readOnly?: boolean }> = ({ readOnly }) => {
   const [days, setDays] = useState(7);
   return (
     <div className="flex-1 overflow-y-auto bg-slate-950 text-slate-100">
@@ -26,6 +30,10 @@ export const DispositionsView: React.FC = () => {
       </div>
       <div className="px-4 sm:px-6 py-4 max-w-[1300px] mx-auto">
         <DispositionsPanel days={days} />
+        <div className="mt-5 space-y-5">
+          <FollowUpsPanel days={days} />
+          <NudgeTemplatesPanel readOnly={readOnly} />
+        </div>
       </div>
     </div>
   );

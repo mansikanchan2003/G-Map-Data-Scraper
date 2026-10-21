@@ -253,6 +253,29 @@ def send(
     return msg
 
 
+def send_template(db: Session, phone: str, meta_name: str, language: str, body: str, *,
+                  sent_by: str) -> WhatsAppMessage:
+    """
+    Send an approved template, for when the 24-hour window is shut, and record
+    it in the thread with the words it carries. Recorded as sent or failed,
+    like send().
+    """
+    ok, provider_id, _s, error, _c = MetaWhatsAppService().send_template_message(phone, meta_name, language)
+    conv = conversation(db, phone)
+    msg = WhatsAppMessage(
+        message_id=uuid.uuid4().hex, phone=phone, direction="OUT", kind="text", body=body,
+        payload={"template": meta_name, "language": language}, provider_message_id=provider_id,
+        status="SENT" if ok else "FAILED", error_reason=None if ok else (error or "Unknown error")[:500],
+        sent_by=sent_by, created_at=now(),
+    )
+    db.add(msg)
+    conv.last_message_at = msg.created_at
+    db.flush()
+    if not ok:
+        logger.warning(f"inbox event=TEMPLATE_SEND_FAILED phone=...{phone[-4:]} template={meta_name} reason={msg.error_reason}")
+    return msg
+
+
 MEDIA_DIR = os.environ.get("INBOX_MEDIA_DIR", os.path.join("data", "inbox_media"))
 MEDIA_KINDS = tuple(_MEDIA_LABELS)
 

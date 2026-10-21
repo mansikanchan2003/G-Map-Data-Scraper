@@ -36,9 +36,35 @@ export interface Disposition {
   by: string | null;
   at: string;
   source: 'team' | 'bot';
+  /** The sheet's category it belongs to (interested, busy, rnr...). */
+  category?: string | null;
 }
 
-export interface DispositionOption { key: string; label: string; group: 'positive' | 'follow_up' | 'negative' | 'other' }
+/** A sub-category of the "Call Dispositions" sheet, with what it sets in motion. */
+export interface DispositionOption {
+  key: string;
+  label: string;
+  group: 'positive' | 'follow_up' | 'negative' | 'other';
+  category: string;
+  category_label: string;
+  category_icon: string;
+  /** The sheet's action item and owner, as written there. */
+  action: string;
+  owner: string;
+  /** "time": asks when to call back; "date": asks when to follow up. */
+  asks: 'time' | 'date' | null;
+  /** What happens after it, in words. */
+  plan: string[];
+}
+
+export interface DispositionCategory {
+  key: string;
+  label: string;
+  group: DispositionOption['group'];
+  icon: string;
+  count: number;
+  subs: { key: string; label: string; count: number; action: string; owner: string }[];
+}
 
 export interface DispositionDashboard {
   total: number;
@@ -53,6 +79,49 @@ export interface DispositionDashboard {
   /** Outcomes the team recorded each day of the range (IST), oldest first. */
   by_day?: { date: string; count: number }[];
   by_person?: { by: string; count: number }[];
+  /** The sheet's eleven categories (and Other), with their sub-categories. */
+  categories?: DispositionCategory[];
+  /** Leads moved to CAT 1 (ready to onboard). */
+  cat1?: number;
+}
+
+/** One contact or task a disposition set in motion. */
+export interface FollowUpItem {
+  id: string;
+  phone: string;
+  name: string | null;
+  disposition: string;
+  disposition_label: string | null;
+  purpose: string;
+  owner: 'bot' | 'human' | 'dc';
+  /** What the sheet asks for (whatsapp_call, whatsapp_nudge, task) and what was used. */
+  wants: string;
+  channel: string | null;
+  due_at: string;
+  status: 'scheduled' | 'waiting' | 'sent' | 'replied' | 'no_answer' | 'failed' | 'done' | 'cancelled';
+  attempt: number;
+  expects_reply: boolean;
+  task: string | null;
+  language: string | null;
+  note: string | null;
+  created_by: string;
+  sent_at: string | null;
+  done_at: string | null;
+  done_by: string | null;
+}
+
+export interface FollowUpBoard {
+  channels: { name: string; label: string; on: boolean; note: string }[];
+  counts: Record<'scheduled' | 'waiting' | 'tasks' | 'sent' | 'replied' | 'no_answer' | 'failed' | 'cancelled', number>;
+  coming: FollowUpItem[];
+  tasks: FollowUpItem[];
+  recent: FollowUpItem[];
+}
+
+export interface NudgeTemplate {
+  purpose: string;
+  about: string;
+  variants: { variant: string; text: string; meta_name: string; meta_language: string; status: string }[];
 }
 
 export interface ThreadMessage {
@@ -142,9 +211,9 @@ export const markConversationRead = (phone: string) =>
   call<{ status: string }>(`/conversations/${digits(phone)}/read`, { method: 'POST' });
 
 /** Mark a campaign conversation as needing attention, or resolve it. */
-export const setAttention = (phone: string, needed: boolean, disposition?: string, note?: string) =>
+export const setAttention = (phone: string, needed: boolean, disposition?: string, note?: string, at?: string | null) =>
   call<{ needs_attention: boolean }>(`/conversations/${digits(phone)}/attention`, {
-    method: 'POST', body: JSON.stringify({ needed, disposition, note }),
+    method: 'POST', body: JSON.stringify({ needed, disposition, note, at: at || undefined }),
   });
 
 /** An answer the bot can give, and the questions the team has taught it for it. */
@@ -158,17 +227,27 @@ export const teachTheBot = (faqId: string, question: string, phone?: string) =>
 
 export const fetchDispositionOptions = () => call<DispositionOption[]>('/dispositions');
 
-export const recordDisposition = (phone: string, disposition: string, note?: string) =>
+/** `at`: the time to call back or the date to follow up on, for dispositions that ask (ISO). */
+export const recordDisposition = (phone: string, disposition: string, note?: string, at?: string | null) =>
   call<Disposition>(`/conversations/${digits(phone)}/disposition`, {
-    method: 'POST', body: JSON.stringify({ disposition, note }),
+    method: 'POST', body: JSON.stringify({ disposition, note, at: at || undefined }),
   });
 
 /** Agent to Human ("person") or Human to Agent ("bot"), with the outcome so far. */
-export const handOver = (phone: string, to: 'person' | 'bot', disposition?: string, note?: string, resume = true) =>
+export const handOver = (phone: string, to: 'person' | 'bot', disposition?: string, note?: string, resume = true,
+                         at?: string | null) =>
   call<{ bot_paused: boolean; handled_by: string | null; bot_said: string | null; disposition: Disposition }>(
     `/conversations/${digits(phone)}/handover`, {
-      method: 'POST', body: JSON.stringify({ to, disposition, note, resume }),
+      method: 'POST', body: JSON.stringify({ to, disposition, note, resume, at: at || undefined }),
     });
+
+export const fetchFollowUpBoard = (days = 7) => call<FollowUpBoard>(`/dispositions/followups?days=${days}`);
+export const completeFollowUpTask = (id: string, note?: string) =>
+  call<FollowUpItem>(`/followups/${id}/done`, { method: 'POST', body: JSON.stringify({ note }) });
+export const fetchChatFollowUps = (phone: string) => call<FollowUpItem[]>(`/conversations/${digits(phone)}/followups`);
+export const fetchNudgeTemplates = () => call<NudgeTemplate[]>('/dispositions/nudge-templates');
+export const submitNudgeTemplates = (purpose: string) =>
+  call<{ variant: string; status: string; error?: string }[]>(`/dispositions/nudge-templates/${purpose}/submit`, { method: 'POST' });
 
 export const fetchDispositionDashboard = (days = 7) => call<DispositionDashboard>(`/dispositions/dashboard?days=${days}`);
 

@@ -179,3 +179,43 @@ class AttentionTicket(Base):
     @property
     def status(self) -> str:
         return "Resolved" if self.resolved_at else "Not resolved"
+
+
+class FollowUp(Base):
+    """
+    One contact or task a disposition calls for: a nudge now, another
+    tomorrow, a callback at the time asked, a visit for the District
+    Coordinator. See dispositions.py for which, and followups.py for how
+    they are carried out.
+
+    `wants` is what the operations sheet asks for (mostly a call); `channel`
+    is what was actually used, a WhatsApp nudge until calls are switched on.
+    """
+    __tablename__ = "follow_ups"
+
+    followup_id = Column(String(32), primary_key=True)
+    phone = Column(String(20), ForeignKey("whatsapp_conversations.phone", ondelete="CASCADE"),
+                   nullable=False, index=True)
+    disposition = Column(String(40), nullable=False)
+    purpose = Column(String(40), nullable=False)
+    # bot, human or dc.
+    owner = Column(String(10), nullable=False)
+    wants = Column(String(20), nullable=False)
+    channel = Column(String(20), nullable=True)
+    due_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    # scheduled, waiting (no way to send yet), sent, replied, no_answer,
+    # failed, done (a task), cancelled.
+    status = Column(String(20), nullable=False, default="scheduled", index=True)
+    attempt = Column(Integer, nullable=False, default=1)
+    expects_reply = Column(Boolean, nullable=False, default=False)
+    cancel_on_reply = Column(Boolean, nullable=False, default=True)
+    task = Column(String(300), nullable=True)
+    # The language variant the nudge went out in (en, hi, hinglish, gu...).
+    language = Column(String(12), nullable=True)
+    message_id = Column(String(64), nullable=True)
+    note = Column(String(500), nullable=True)
+    created_by = Column(String(200), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    done_at = Column(DateTime(timezone=True), nullable=True)
+    done_by = Column(String(200), nullable=True)

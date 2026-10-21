@@ -92,13 +92,18 @@ async def lifespan(app: FastAPI):
     if os.environ.get("BOT_NUDGE_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
         from src.services import nudges
         nudges.start()
+    # Carries out what each disposition calls for: nudges, callbacks, next-day retries.
+    if os.environ.get("FOLLOWUP_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
+        from src.services import followups
+        followups.start()
     yield
     # --- Shutdown ---
     try:
-        from src.services import discovery_autopilot, nudges, photo_queue
+        from src.services import discovery_autopilot, followups, nudges, photo_queue
         discovery_autopilot.stop()
         photo_queue.stop()
         nudges.stop()
+        followups.stop()
     except Exception:
         pass
     logger.info("Shutdown complete")

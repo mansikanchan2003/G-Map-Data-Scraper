@@ -21,9 +21,6 @@ const GROUP_STYLE: Record<string, string> = {
   negative: 'border-rose-800/60 bg-rose-950 text-rose-300',
   other: 'border-slate-700 bg-slate-800 text-slate-300',
 };
-const GROUP_LABEL: Record<string, string> = {
-  positive: 'Going well', follow_up: 'Follow up', negative: 'Closed', other: 'Other',
-};
 
 let cached: DispositionOption[] | null = null;
 export const useDispositionOptions = () => {
@@ -50,9 +47,20 @@ export const DispositionChip: React.FC<{ d: Disposition | null; opts: Dispositio
   );
 };
 
+/** A date or datetime input's value, in the browser's time, as ISO; a date alone is 11 AM. */
+const toIso = (local: string, dateOnly: boolean) => {
+  if (!local) return null;
+  const d = new Date(dateOnly ? `${local}T11:00` : local);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+};
+
 /**
- * Choose an outcome (and a note). Used when handing back to the bot, when a
- * question is resolved, and to record or change the outcome at any time.
+ * Choose an outcome (and a note), from the "Call Dispositions" sheet: its
+ * categories, each opening onto its sub-categories. The chosen one shows the
+ * sheet's action and owner and what will happen next; a callback at a set
+ * time asks for the time, a hold asks for the follow-up date. Used when
+ * handing back to the bot, when a question is resolved, and to record or
+ * change the outcome at any time.
  */
 export const DispositionDialog: React.FC<{
   title: string;
@@ -61,45 +69,91 @@ export const DispositionDialog: React.FC<{
   current?: string | null;
   askResume?: boolean;
   onCancel: () => void;
-  onConfirm: (key: string, note: string, resume: boolean) => Promise<void>;
+  onConfirm: (key: string, note: string, resume: boolean, at: string | null) => Promise<void>;
 }> = ({ title, hint, confirm, current, askResume, onCancel, onConfirm }) => {
   const opts = useDispositionOptions();
   const [key, setKey] = useState<string>(current || '');
+  const chosen = opts.find(o => o.key === key);
+  const [openCat, setOpenCat] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [when, setWhen] = useState('');
   const [resume, setResume] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (chosen && !openCat) setOpenCat(chosen.category); }, [chosen, openCat]);
+  const categories = opts.reduce<{ key: string; label: string; icon: string; group: string; subs: DispositionOption[] }[]>(
+    (acc, o) => {
+      let c = acc.find(x => x.key === o.category);
+      if (!c) { c = { key: o.category, label: o.category_label, icon: o.category_icon, group: o.group, subs: [] }; acc.push(c); }
+      c.subs.push(o);
+      return acc;
+    }, []);
   const go = async () => {
     if (!key) { setError('Choose an outcome first.'); return; }
+    if (chosen?.asks === 'time' && !when) { setError('Set the time to call back.'); return; }
     setBusy(true); setError(null);
-    try { await onConfirm(key, note.trim(), resume); }
+    try { await onConfirm(key, note.trim(), resume, chosen?.asks ? toIso(when, chosen.asks === 'date') : null); }
     catch (e: any) { setError(e.message || 'Something went wrong'); setBusy(false); }
   };
-  const groups = ['positive', 'follow_up', 'negative', 'other'];
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onCancel}>
-      <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-xl max-h-[90vh] overflow-y-auto"
+      <div className="w-full max-w-xl rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-xl max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}>
         <h3 className="text-[15px] font-semibold text-slate-100">{title}</h3>
         {hint && <p className="text-[12.5px] text-slate-400 mt-1">{hint}</p>}
-        <div className="mt-3 space-y-2.5">
-          {groups.map(g => (
-            <div key={g}>
-              <div className="text-[10.5px] uppercase tracking-wider text-slate-500 mb-1">{GROUP_LABEL[g]}</div>
-              <div className="flex flex-wrap gap-1.5">
-                {opts.filter(o => o.group === g).map(o => (
-                  <button key={o.key} onClick={() => setKey(o.key)}
-                    className={`px-2.5 py-1 rounded-full border text-[12px] cursor-pointer ${key === o.key
-                      ? `${GROUP_STYLE[g]} ring-2 ring-sky-500` : 'border-slate-700 text-slate-300 hover:bg-slate-800'}`}>
-                    {o.label}
-                  </button>
-                ))}
+        <div className="mt-3 space-y-1.5">
+          {categories.map(c => {
+            const open = openCat === c.key;
+            const has = c.subs.some(o => o.key === key);
+            return (
+              <div key={c.key} className={`rounded-lg border ${has ? GROUP_STYLE[c.group] : 'border-slate-800'}`}>
+                <button onClick={() => setOpenCat(open ? null : c.key)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left cursor-pointer">
+                  <span className="material-symbols-outlined text-[17px] text-slate-400">{c.icon}</span>
+                  <span className="flex-1 text-[13px] font-semibold text-slate-200">{c.label}</span>
+                  {has && !open && <span className="text-[11.5px] text-slate-300">{chosen?.label}</span>}
+                  <span className="material-symbols-outlined text-[18px] text-slate-500">{open ? 'expand_less' : 'expand_more'}</span>
+                </button>
+                {open && (
+                  <div className="flex flex-wrap gap-1.5 px-3 pb-2.5">
+                    {c.subs.map(o => (
+                      <button key={o.key} onClick={() => { setKey(o.key); setWhen(''); }}
+                        className={`px-2.5 py-1 rounded-full border text-[12px] cursor-pointer ${key === o.key
+                          ? `${GROUP_STYLE[c.group]} ring-2 ring-sky-500` : 'border-slate-700 text-slate-300 hover:bg-slate-800'}`}>
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
+        {chosen && (
+          <div className="mt-3 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-[12.5px]">
+            {chosen.action && (
+              <div className="text-slate-300"><span className="text-slate-500">Action:</span> {chosen.action}
+                {chosen.owner && <span className="text-slate-500"> · {chosen.owner}</span>}</div>
+            )}
+            {chosen.plan.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5 text-slate-400">
+                {chosen.plan.map(p => (
+                  <li key={p} className="flex gap-1.5"><span className="material-symbols-outlined text-[14px] text-sky-400 mt-px">arrow_right</span>{p}</li>
+                ))}
+              </ul>
+            )}
+            {chosen.asks && (
+              <label className="mt-2 flex flex-wrap items-center gap-2 text-slate-300">
+                {chosen.asks === 'time' ? 'Call back at' : 'Follow up on'}
+                <input type={chosen.asks === 'time' ? 'datetime-local' : 'date'} value={when} onChange={e => setWhen(e.target.value)}
+                  className="h-8 px-2 rounded border border-slate-700 bg-slate-900 text-slate-200" />
+                {chosen.asks === 'date' && !when && <span className="text-slate-500">(in 30 days if left empty)</span>}
+              </label>
+            )}
+          </div>
+        )}
         <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} maxLength={500}
-          placeholder="Note (optional), e.g. call after 6 PM, asked about the devices"
+          placeholder="Note (optional), e.g. asked about the devices, prefers evenings"
           className="mt-3 w-full px-2.5 py-2 rounded-lg border border-slate-700 bg-slate-950 text-[13px] text-slate-200 outline-none focus:border-sky-500 resize-none" />
         {askResume && (
           <label className="mt-2 flex items-center gap-2 text-[12.5px] text-slate-300 cursor-pointer">
@@ -192,8 +246,8 @@ export const HandoverBar: React.FC<{
           confirm={botCanCarryOn ? 'Hand back' : 'Save'} current={conv.disposition?.source === 'team' ? conv.disposition.key : null}
           askResume={botCanCarryOn}
           onCancel={() => setDialog(null)}
-          onConfirm={async (key, note, resume) => {
-            await handOver(conv.phone, 'bot', key, note, botCanCarryOn && resume);
+          onConfirm={async (key, note, resume, at) => {
+            await handOver(conv.phone, 'bot', key, note, botCanCarryOn && resume, at);
             setDialog(null); onChanged();
           }} />
       )}
@@ -201,7 +255,7 @@ export const HandoverBar: React.FC<{
         <DispositionDialog title="Record the outcome of this chat" confirm="Save"
           current={conv.disposition?.key}
           onCancel={() => setDialog(null)}
-          onConfirm={async (key, note) => { await recordDisposition(conv.phone, key, note); setDialog(null); onChanged(); }} />
+          onConfirm={async (key, note, _resume, at) => { await recordDisposition(conv.phone, key, note, at); setDialog(null); onChanged(); }} />
       )}
     </div>
   );
