@@ -130,4 +130,12 @@ def status() -> List[dict]:
                  + (" Switched on, but not built yet." if calling else "")},
         {"name": "whatsapp_nudge", "label": "WhatsApp nudge", "on": True,
          "note": "In the language of their last message; a template once Meta approves it when their 24-hour window is shut."},
+        {"name": "eko_acquisition_api", "label": "Eko Acquisition API", "on": _acquisition_ready(),
+         "note": "Leads whose documents are in go to Eko Acquisition through their API."
+                 + ("" if _acquisition_ready() else " Not set up yet: their API address and key are needed; leads wait until then.")},
     ]
+
+
+def _acquisition_ready() -> bool:
+    from src.services import acquisition_handover
+    return acquisition_handover.configured()

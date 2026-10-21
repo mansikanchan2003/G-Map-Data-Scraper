@@ -607,6 +607,20 @@ def finish_task(followup_id: str, payload: TaskDoneRequest, db: Session = Depend
     return followups.as_dict(f)
 
 
+@router.get("/conversations/{digits}/journey")
+def chat_journey(digits: str, db: Session = Depends(get_db)):
+    """This lead's journey: each step with its date, and what we did after it."""
+    from src.services import lead_journey
+    return lead_journey.build(db, _get_conversation(db, digits))
+
+
+@router.get("/dispositions/journeys")
+def journeys(limit: int = Query(200, ge=1, le=1000), db: Session = Depends(get_db)):
+    """Every campaign lead's journey in short, most recently active first."""
+    from src.services import lead_journey
+    return lead_journey.board(db, limit)
+
+
 @router.get("/conversations/{digits}/followups")
 def chat_followups(digits: str, db: Session = Depends(get_db)):
     """What this chat's dispositions have set in motion, latest first."""
@@ -757,7 +771,8 @@ def set_attention(digits: str, payload: AttentionRequest, db: Session = Depends(
         conv.attention_resolved_at = inbox.now()
         ticket = tickets.resolve(db, conv.phone, user.email)
         if payload.disposition:
-            handover.record(db, conv, payload.disposition, user.email, payload.note, at=payload.at)
+            # Resolving a ticket must not open the next one: the team is emailed, nothing more.
+            handover.record(db, conv, payload.disposition, user.email, payload.note, at=payload.at, ticket=False)
     db.commit()
     return {"needs_attention": conv.needs_attention, "attention_reason": conv.attention_reason,
             "ticket": tickets.as_dict(ticket) if ticket else None}

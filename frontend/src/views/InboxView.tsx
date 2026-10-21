@@ -5,6 +5,7 @@ import {
   type BotSettings, type ChatSummary, type ConversationDetail, type Ticket, type ConversationSummary, type ThreadMessage,
 } from '../api/inbox';
 import { DispositionChip, DispositionDialog, HandoverBar, useDispositionOptions } from '../components/Handover';
+import { JourneyTimeline } from '../components/LeadJourney';
 
 /**
  * Every conversation with the business number, and the place to answer it.
@@ -1326,6 +1327,16 @@ export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not
                 <div className="panel-dark hidden xl:block w-80 shrink-0 border-l border-slate-800 bg-slate-900 p-4 overflow-y-auto">
                   <SummaryCard phone={selected} version={`${detail.messages.length}-${detail.needs_attention}`}
                     onUseReply={readOnly ? undefined : putReply} />
+                  <div className="my-4 border-t border-slate-800" />
+                  <details className="group">
+                    <summary className="flex items-center gap-1.5 text-xs font-semibold text-violet-300 cursor-pointer list-none">
+                      <span className="material-symbols-outlined text-[16px]">route</span>Lead journey
+                      <span className="material-symbols-outlined text-[18px] text-slate-500 ml-auto group-open:rotate-180 transition-transform">expand_more</span>
+                    </summary>
+                    <div className="mt-3">
+                      <JourneyTimeline phone={selected} version={`${detail.messages.length}-${detail.disposition?.key}`} stagesOnly />
+                    </div>
+                  </details>
                   <div className="my-4 border-t border-slate-800" />
                   <Details conv={detail} onChanged={() => { loadThread(selected); loadList(); }} />
                 </div>

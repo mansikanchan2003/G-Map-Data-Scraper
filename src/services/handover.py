@@ -37,7 +37,7 @@ DISPOSITIONS: Dict[str, tuple] = {k: (v.label, dz.CATEGORY[v.category].group) fo
 
 # The outcome the bot's own step stands for.
 _FROM_STEP = {
-    bot.SUBMITTED: "int_submitted",
+    bot.SUBMITTED: "int_visit",
     bot.AWAIT_UPLOAD: "int_docs_pending",
     bot.AWAIT_DOCS: "int_docs_pending",
     bot.NOT_ELIGIBLE: "rej_eligibility",
@@ -63,7 +63,8 @@ def options() -> List[dict]:
 def bot_disposition(conv: WhatsAppConversation) -> str:
     """What the chat's state says, without the team: from the bot's step, or an enquiry."""
     if conv.documents_submitted_at:
-        return "int_submitted"
+        # Documents in: AutoGMap's part is done and Eko Acquisition takes over.
+        return "int_visit"
     if conv.bot_step in _FROM_STEP:
         return _FROM_STEP[conv.bot_step]
     if conv.bot_step:
@@ -97,7 +98,7 @@ def _log(db: Session, conv: WhatsAppConversation, kind: str, by: str, value: str
 
 
 def record(db: Session, conv: WhatsAppConversation, key: str, by: str, note: Optional[str] = None,
-           at: Optional[datetime] = None, attempt: int = 1, run_now: bool = True) -> dict:
+           at: Optional[datetime] = None, attempt: int = 1, run_now: bool = True, ticket: bool = True) -> dict:
     """
     Record the chat's disposition and plan what it calls for. `at` is the
     time to call back or the date to follow up on, for those that ask.
@@ -110,7 +111,7 @@ def record(db: Session, conv: WhatsAppConversation, key: str, by: str, note: Opt
     conv.disposition, conv.disposition_by, conv.disposition_at = key, by, inbox.now()
     conv.disposition_note = (note or "").strip()[:500] or None
     _log(db, conv, "disposition", by, key, note)
-    followups.plan(db, conv, key, by, at=at, attempt=attempt, run_now=run_now)
+    followups.plan(db, conv, key, by, at=at, attempt=attempt, run_now=run_now, note=note, ticket=ticket)
     return current(conv)
 
 
@@ -133,7 +134,8 @@ def hand_back(db: Session, conv: WhatsAppConversation, by: str, disposition: Opt
     if disposition:
         # The bot carrying on asks its question; a nudge due now would be a second message.
         carries_on = resume and inbox.window_open(conv) and bot.pending_question(db, conv) is not None
-        record(db, conv, disposition, by, note, at=at, run_now=not carries_on)
+        # The person handing back is the one handling it: the team is emailed, no new ticket opens.
+        record(db, conv, disposition, by, note, at=at, run_now=not carries_on, ticket=False)
         if carries_on:
             _bot_carries_on(db, conv)
     conv.bot_paused = False
@@ -197,7 +199,6 @@ def dashboard(db: Session, days: int = 7) -> dict:
     per_day = Counter(inbox.aware(a.at).astimezone(ist).date().isoformat() for a, _ in recent)
     today = inbox.now().astimezone(ist).date()
     groups_now = Counter(DISPOSITIONS[d["key"]][1] for d in now if d["key"] in DISPOSITIONS)
-    stages = Counter((c.bot_data or {}).get("stage") for c in convs)
     return {
         "group_totals": {g: groups_now.get(g, 0) for g in ("positive", "follow_up", "negative", "other")},
         "by_day": [{"date": (today - timedelta(days=i)).isoformat(),
@@ -212,7 +213,8 @@ def dashboard(db: Session, days: int = 7) -> dict:
                         "count": sum(by_key.get(s.key, 0) for s in c.subs),
                         "subs": [{"key": s.key, "label": s.label, "count": by_key.get(s.key, 0), "action": s.action,
                                   "owner": s.owner} for s in c.subs]} for c in dz.CATEGORIES],
-        "cat1": stages.get("CAT 1", 0),
+        # Documents uploaded, or marked Physical visit required: over to Eko Acquisition.
+        "handed_over": sum(1 for c, d in zip(convs, now) if d["key"] == "int_visit"),
         "recent_days": days,
         "recent_count": len(recent),
         "recent_by_disposition": [{"key": k, "label": label(k), "count": n} for k, n in team_counts.most_common()],

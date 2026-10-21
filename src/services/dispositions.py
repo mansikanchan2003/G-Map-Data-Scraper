@@ -15,6 +15,14 @@ Coordinator), and whether the person is expected to answer, so that no
 answer can be recorded as RNR and tried again the next day, as the sheet
 says for calls.
 
+AutoGMap's part ends with "Physical visit required": once someone has
+uploaded their documents, Eko Acquisition takes the lead over (assigns the
+District Coordinator, the visit, onboarding). So that disposition hands over
+and sets nothing in motion here. "Ready to proceed / Move to CAT 1" and
+"BM not agree / connect for other bank proposal" are Eko Acquisition's own
+steps, after the bank has the application, and are not AutoGMap's (the
+user, 2026-10-21).
+
 Keys used before this sheet are still read (LEGACY), so earlier outcomes in
 the history keep their meaning.
 """
@@ -27,6 +35,9 @@ NOW, EOD, NEXT_DAY, AT_TIME, ON_DATE, IN_2_DAYS = "now", "eod", "next_day", "at_
 BOT, HUMAN, DC = "bot", "human", "dc"
 # What the sheet asks for, as a channel; contact_channels decides what is used.
 CALL, NUDGE, TASK = "whatsapp_call", "whatsapp_nudge", "task"
+# Who takes a lead over when AutoGMap's part is done, and how it reaches them.
+HANDED_TO = "Eko Acquisition"
+API = "eko_acquisition_api"
 
 
 @dataclass(frozen=True)
@@ -55,7 +66,7 @@ class Sub:
     asks: Optional[str] = None
     # Ends the chase: pending contacts are cancelled.
     closes: bool = False
-    # The lead's stage moves on (Move to CAT 1).
+    # The lead moves on to another team (handed to Eko Acquisition).
     stage: Optional[str] = None
 
 
@@ -69,18 +80,8 @@ class Category:
     subs: List[Sub] = field(default_factory=list)
 
 
-def _visit_task() -> Step:
-    return Step("visit_planned", NOW, DC, TASK, cancel_on_reply=False,
-                task="Assign to the District Coordinator and schedule the visit; the DC reports to Eko")
-
-
 CATEGORIES: List[Category] = [
     Category("interested", "Interested", "positive", "thumb_up", [
-        Sub("int_visit", "Physical visit required", "interested",
-            "Assign to DC, schedule visit, DC will give report to Eko", "DCs",
-            (_visit_task(), Step("visit_planned", NOW, BOT, NUDGE))),
-        Sub("int_ready", "Ready to proceed", "interested", "Move to CAT 1", "DCs/Bot",
-            (Step("next_steps", NOW, BOT, NUDGE),), stage="CAT 1"),
         Sub("int_more_info", "More information required", "interested", "Call", "Human",
             (Step("more_info", NOW, HUMAN, CALL, expects_reply=True),)),
         Sub("int_callback", "Callback requested", "interested",
@@ -92,9 +93,12 @@ CATEGORIES: List[Category] = [
              Step("docs_reminder", IN_2_DAYS, BOT, CALL, expects_reply=True))),
         # Not in the sheet, and only ever read from the bot's step: someone who
         # tapped Interested and is still in its questions. Sets nothing in motion.
-        Sub("int_in_bot_flow", "Answering the bot's questions", "interested", "", "Bot"),
-        # Not in the sheet: what the bot records itself once documents arrive.
-        Sub("int_submitted", "Documents submitted", "interested", "Move to CAT 1", "Bot", stage="CAT 1"),
+        Sub("int_in_bot_flow", "Interested: in the bot's questions", "interested", "", "Bot"),
+        # The end of AutoGMap's journey: documents are in, and Eko Acquisition
+        # takes over. The bot's own outcome once documents are uploaded.
+        Sub("int_visit", "Physical visit required", "interested",
+            "Assign to DC, schedule visit, DC will give report to Eko", "DCs", closes=True,
+            stage=HANDED_TO, steps=(Step("acquisition_handover", NOW, BOT, API, cancel_on_reply=False),)),
     ]),
     Category("not_interested", "Not Interested", "negative", "thumb_down", [
         Sub("ni_investment", "Investment issue", "not_interested", "Connect for BT proposal", "Human",
@@ -104,8 +108,6 @@ CATEGORIES: List[Category] = [
         Sub("ni_currently", "Not interested currently", "not_interested", "", "", closes=True),
     ]),
     Category("rejected", "Rejected", "negative", "block", [
-        Sub("rej_bm", "BM not agree", "rejected", "Connect for other bank proposal", "Human",
-            (Step("other_bank", NOW, HUMAN, CALL, expects_reply=True),)),
         Sub("rej_credit", "Low credit score", "rejected", "Connect for BT/other proposal", "Bot - Human",
             (Step("lower_investment", NOW, BOT, CALL, expects_reply=True),)),
         Sub("rej_eligibility", "Eligibility criteria not met", "rejected", "Connect for BT/other proposal", "Bot - Human",
@@ -191,9 +193,12 @@ CATEGORY: Dict[str, Category] = {c.key: c for c in CATEGORIES}
 
 # Keys recorded before the sheet, and what they are now.
 LEGACY = {
-    "interested": "int_ready",
+    "interested": "int_in_bot_flow",
     "docs_pending": "int_docs_pending",
-    "submitted": "int_submitted",
+    "submitted": "int_visit",
+    # Briefly in the sheet's first version here (21 Oct), now Eko Acquisition's.
+    "int_ready": "int_in_bot_flow",
+    "int_submitted": "int_visit",
     "guidance": "int_more_info",
     "query_answered": "int_more_info",
     "call_back": "busy_later",
@@ -243,18 +248,31 @@ def plan_text(s: Sub) -> List[str]:
                 ON_DATE: "on the date you set", IN_2_DAYS: "in 2 days"}[st.when]
         if st.wants == TASK:
             out.append(f"{_who(st.owner)}: {st.task}")
+        elif st.wants == API:
+            out.append(f"Sent to {HANDED_TO} through their API")
         else:
             out.append(f"WhatsApp nudge {when}: {st.purpose.replace('_', ' ')}"
                        + (" (a WhatsApp call once calling is on)" if st.wants == CALL else ""))
     if s.stage:
-        out.append(f"Lead moves to {s.stage}")
-    if s.closes:
+        out.append(f"Handed over to {s.stage}: AutoGMap's part ends and nothing more is sent from here")
+    elif s.closes:
         out.append("Closes the lead: nothing more is sent")
     return out
+
+
+def needs_team(s: Optional[Sub]) -> bool:
+    """
+    Whether a person has to act on it: only where the sheet's owner column
+    names a human ("Human", "Bot - Human", "Bot & Human"). These go to Kavya
+    and Mansi as a ticket and an email (the user, 2026-10-21); nothing else
+    emails.
+    """
+    return s is not None and "human" in (s.owner or "").lower()
 
 
 def options() -> List[dict]:
     """Every sub-category, grouped by category, for the inbox and the tab."""
     return [{"key": s.key, "label": s.label, "group": c.group, "category": c.key, "category_label": c.label,
              "category_icon": c.icon, "action": s.action, "owner": s.owner, "asks": s.asks,
-             "plan": plan_text(s)} for c in CATEGORIES for s in c.subs]
+             "plan": plan_text(s) + (["Ticket and email to Kavya and Mansi"] if needs_team(s) else [])}
+            for c in CATEGORIES for s in c.subs]

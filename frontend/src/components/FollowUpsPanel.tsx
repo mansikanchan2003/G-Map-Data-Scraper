@@ -47,7 +47,9 @@ const Row: React.FC<{ f: FollowUpItem; when: string; children?: React.ReactNode 
         <span className={`inline-flex items-center gap-1 text-[11.5px] ${st.cls}`}><Icon name={st.icon} className="text-[14px]" />{st.label}</span>
       </div>
       <div className="mt-1 text-[12.5px] text-slate-300">
-        {f.task || <>{nice(f.purpose)} nudge{f.wants === 'whatsapp_call' && <span className="text-slate-500"> (for a call)</span>}</>}
+        {f.task || (f.wants === 'eko_acquisition_api'
+          ? <>Hand-over to Eko Acquisition <span className="text-slate-500">(their API)</span></>
+          : <>{nice(f.purpose)} nudge{f.wants === 'whatsapp_call' && <span className="text-slate-500"> (for a call)</span>}</>)}
       </div>
       <div className="mt-0.5 text-[11.5px] text-slate-500 flex flex-wrap gap-x-3">
         <span>{when}</span>
@@ -98,8 +100,8 @@ export const FollowUpsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => {
             <span key={c.name} title={c.note}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11.5px] ${c.on
                 ? 'border-emerald-800/60 bg-emerald-950 text-emerald-300' : 'border-slate-700 bg-slate-950 text-slate-400'}`}>
-              <Icon name={c.name === 'whatsapp_call' ? 'call' : 'chat'} className="text-[14px]" />
-              {c.label}: {c.on ? 'on' : 'coming soon'}
+              <Icon name={c.name === 'whatsapp_call' ? 'call' : c.name === 'eko_acquisition_api' ? 'handshake' : 'chat'} className="text-[14px]" />
+              {c.label}: {c.on ? 'on' : c.name === 'eko_acquisition_api' ? 'not set up yet' : 'coming soon'}
             </span>
           ))}
         </div>

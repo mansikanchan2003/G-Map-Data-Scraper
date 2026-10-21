@@ -81,8 +81,8 @@ export interface DispositionDashboard {
   by_person?: { by: string; count: number }[];
   /** The sheet's eleven categories (and Other), with their sub-categories. */
   categories?: DispositionCategory[];
-  /** Leads moved to CAT 1 (ready to onboard). */
-  cat1?: number;
+  /** Leads whose documents are in: handed to Eko Acquisition (Physical visit required). */
+  handed_over?: number;
 }
 
 /** One contact or task a disposition set in motion. */
@@ -240,6 +240,35 @@ export const handOver = (phone: string, to: 'person' | 'bot', disposition?: stri
     `/conversations/${digits(phone)}/handover`, {
       method: 'POST', body: JSON.stringify({ to, disposition, note, resume, at: at || undefined }),
     });
+
+/** One step of a lead's journey: what they did (or what happened) and what we did next. */
+export interface JourneyStep {
+  kind: 'stage' | 'event';
+  key: string;
+  at: string | null;
+  what: string | null;
+  action: string | null;
+  action_at: string | null;
+  by: string;
+  tone: 'positive' | 'negative' | 'warning' | 'handover' | 'planned' | 'neutral';
+  detail: string | null;
+}
+
+export interface Journey {
+  phone: string;
+  name: string | null;
+  steps: JourneyStep[];
+  funnel: { key: string; label: string; at: string | null }[];
+  furthest: number;
+  outcome: 'handed_over' | 'closed' | 'in_progress';
+  now: { label: string; key: string; since: string };
+  last: { what: string; at: string | null } | null;
+  last_activity: string | null;
+}
+export type JourneyRow = Omit<Journey, 'steps'>;
+
+export const fetchJourney = (phone: string) => call<Journey>(`/conversations/${digits(phone)}/journey`);
+export const fetchJourneys = () => call<JourneyRow[]>('/dispositions/journeys');
 
 export const fetchFollowUpBoard = (days = 7) => call<FollowUpBoard>(`/dispositions/followups?days=${days}`);
 export const completeFollowUpTask = (id: string, note?: string) =>

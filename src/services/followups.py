@@ -79,11 +79,16 @@ def _cancel(db: Session, phone: str, why: str, tasks_too: bool) -> int:
 
 
 def plan(db: Session, conv: WhatsAppConversation, key: str, by: str, at: Optional[datetime] = None,
-         attempt: int = 1, run_now: bool = True) -> List[FollowUp]:
-    """Schedule what a disposition calls for, replacing the bot's pending contacts."""
+         attempt: int = 1, run_now: bool = True, note: Optional[str] = None, ticket: bool = True) -> List[FollowUp]:
+    """
+    Schedule what a disposition calls for, replacing the bot's pending
+    contacts, and tell the team when a person has to act on it.
+    """
     s = dz.sub(key)
     if s is None:
         return []
+    if dz.needs_team(s):
+        _tell_team(db, conv, s, by, note, ticket)
     now = inbox.now()
     _cancel(db, conv.phone, f"Replaced by a new disposition: {s.label}", tasks_too=s.closes)
     if s.stage:
@@ -109,7 +114,110 @@ def plan(db: Session, conv: WhatsAppConversation, key: str, by: str, at: Optiona
     return made
 
 
+def _tell_team(db: Session, conv: WhatsAppConversation, s: "dz.Sub", by: str, note: Optional[str],
+               ticket: bool = True) -> None:
+    """
+    A ticket in the inbox and an email to Kavya and Mansi: the lead, the
+    sheet's action, what AutoGMap has done, and the journey so far. No ticket
+    when it was recorded while solving one or handing the chat back.
+    """
+    from src.services import onboarding_bot as bot, tickets
+
+    if ticket:
+        bot.flag(conv, f"{s.label}: {s.action}" if s.action else s.label)
+        tickets.raise_or_update(db, conv, via=by)
+        db.flush()
+    try:
+        text = _team_email_text(db, conv, s, by, note)
+    except Exception:
+        logger.exception(f"followups event=TEAM_EMAIL_TEXT_FAILED phone=...{conv.phone[-4:]}")
+        return
+    who = conv.profile_name or conv.phone
+    threading.Thread(target=_email_team, args=(f"AutoGMap: {s.label} — {who}", text), daemon=True).start()
+
+
+def _team_email_text(db: Session, conv: WhatsAppConversation, s: "dz.Sub", by: str, note: Optional[str]) -> str:
+    import os
+    from src.services import lead_journey
+    from src.services.handover import who
+
+    cov = (conv.bot_data or {}).get("coverage") or {}
+    place = ", ".join(x for x in (cov.get("district"), cov.get("state")) if x)
+    lines = [
+        f"{who(by) if by != 'bot' else 'The bot'} recorded \"{s.label}\" ({dz.CATEGORY[s.category].label}) for "
+        f"{conv.profile_name or 'a lead'}.",
+        "",
+        f"Phone        {conv.phone}",
+    ]
+    if place or cov.get("pincode"):
+        lines.append(f"Place        {place}{' — PIN ' + cov['pincode'] if cov.get('pincode') else ''}")
+    if note:
+        lines.append(f"Note         {note}")
+    lines += ["", f"To do (the sheet): {s.action or 'see the chat'}" + (f"  · owner: {s.owner}" if s.owner else "")]
+    done = dz.plan_text(s)
+    if done:
+        lines += ["AutoGMap does:"] + [f"  - {d}" for d in done]
+    stages = [x for x in lead_journey.build(db, conv)["steps"] if x["kind"] == "stage"]
+    if stages:
+        lines += ["", "Journey so far:"]
+        for x in stages:
+            when = (x["at"] or "")[:16].replace("T", " ")
+            lines.append(f"  {when}  {x['what']}" + (f"  →  {x['action']}" if x["action"] else ""))
+    base = (os.environ.get("APP_PUBLIC_URL") or os.environ.get("PUBLIC_BASE_URL") or "").rstrip("/")
+    lines += ["", f"Open the chat: {base}/#inbox/{conv.phone.lstrip('+')}" if base else "Open the chat in AutoGMap's Inbox.",
+              f"WhatsApp: https://wa.me/{conv.phone.lstrip('+')}"]
+    return "\n".join(lines) + "\n"
+
+
+def _email_team(subject: str, body: str) -> None:
+    from src.services import auth_service, notifier
+    try:
+        notifier.notify_team(auth_service.BOOTSTRAP_ADMIN, subject, body)
+    except Exception:
+        logger.exception("followups event=TEAM_EMAIL_FAILED")
+
+
+def hand_over(db: Session, conv: WhatsAppConversation, by: str = "bot") -> Optional[FollowUp]:
+    """Queue the lead for Eko Acquisition, once: documents in or Physical visit required."""
+    existing = db.query(FollowUp).filter(FollowUp.phone == conv.phone, FollowUp.wants == dz.API,
+                                         FollowUp.status.in_(PENDING + ("sent",))).first()
+    if existing:
+        return existing
+    now = inbox.now()
+    f = FollowUp(followup_id=uuid.uuid4().hex, phone=conv.phone, disposition="int_visit",
+                 purpose="acquisition_handover", owner=dz.BOT, wants=dz.API, due_at=now, status="scheduled",
+                 attempt=1, expects_reply=False, cancel_on_reply=False, created_by=by, created_at=now)
+    db.add(f)
+    db.flush()
+    return f
+
+
+API_RETRY_EVERY = timedelta(hours=1)
+API_MAX_ATTEMPTS = 24
+
+
+def _send_to_acquisition(db: Session, conv: WhatsAppConversation, f: FollowUp, now: datetime) -> None:
+    from src.services import acquisition_handover
+
+    f.channel = dz.API
+    sent, waiting, why = acquisition_handover.send(db, conv)
+    if sent:
+        f.status, f.sent_at, f.done_at, f.note = "sent", now, now, None
+    elif waiting and acquisition_handover.configured() and f.attempt >= API_MAX_ATTEMPTS:
+        f.status, f.done_at, f.note = "failed", now, f"{why}; gave up after {API_MAX_ATTEMPTS} tries"
+    elif waiting:
+        f.status, f.note = "waiting", why
+        if acquisition_handover.configured():
+            f.attempt += 1
+            f.due_at = now + API_RETRY_EVERY
+    else:
+        f.status, f.done_at, f.note = "failed", now, why
+
+
 def _send(db: Session, conv: WhatsAppConversation, f: FollowUp, now: datetime) -> None:
+    if f.wants == dz.API:
+        _send_to_acquisition(db, conv, f, now)
+        return
     channel, skipped = contact_channels.pick(db, conv, f.wants)
     out = channel.reach(db, conv, f)
     f.channel, f.language = channel.name, out.language
@@ -178,6 +286,14 @@ def tick(db: Session, now: Optional[datetime] = None) -> int:
             _retry(db, conv, f, "rnr_no_answer")
     db.commit()
 
+    # Steps planned before the visit and CAT 1 became Eko Acquisition's (21 Oct): not ours to carry out.
+    from src.services import nudge_messages
+    for f in db.query(FollowUp).filter(FollowUp.status.in_(PENDING)).all():
+        if (f.wants not in (dz.TASK, dz.API) and f.purpose not in nudge_messages.PURPOSES) or \
+                (f.wants == dz.TASK and dz.normalise(f.disposition) == "int_visit"):
+            f.status, f.note, f.done_at = "cancelled", f"{dz.HANDED_TO}'s step, not AutoGMap's", now
+    db.commit()
+
     tried = 0
     pending = (db.query(FollowUp).filter(FollowUp.status.in_(PENDING), FollowUp.wants != dz.TASK)
                .order_by(FollowUp.due_at).all())
@@ -187,7 +303,10 @@ def tick(db: Session, now: Optional[datetime] = None) -> int:
         if conv is None or f.status not in PENDING:
             continue
         try:
-            if f.cancel_on_reply and _replied_since(db, f.phone, inbox.aware(f.created_at)):
+            if conv.documents_submitted_at and f.wants != dz.API:
+                # Documents are in: the lead is Eko Acquisition's now, and nothing more goes from here.
+                f.status, f.note, f.done_at = "cancelled", f"Documents uploaded: handed to {dz.HANDED_TO}", now
+            elif f.cancel_on_reply and f.wants != dz.API and _replied_since(db, f.phone, inbox.aware(f.created_at)):
                 f.status, f.note, f.done_at = "cancelled", "They replied before it was due", now
             elif inbox.aware(f.due_at) <= now:
                 _send(db, conv, f, now)

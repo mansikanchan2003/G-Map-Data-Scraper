@@ -208,6 +208,11 @@ def notify_webinar(admin_email: str, details: dict) -> bool:
     return _send(team(admin_email), f"AutoGMap: personal guidance — {who}", "\n".join(lines) + "\n")
 
 
+def notify_team(admin_email: str, subject: str, body: str) -> bool:
+    """An email to the admin and NOTIFY_ALSO (Kavya): a disposition a person has to act on."""
+    return _send(team(admin_email), subject, body)
+
+
 def notify_attention(admin_email: str, summary: dict, text: str, inbox_url: str) -> bool:
     """
     Tell the admin a campaign contact needs a person: what they asked or

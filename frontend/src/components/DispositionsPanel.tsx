@@ -177,8 +177,8 @@ export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => 
           </div>
           <div className="flex gap-3">
             <div className="rounded-lg bg-white/10 px-4 py-3 min-w-[140px]">
-              <div className="flex items-center gap-1.5 text-white/70 text-[11px]"><Icon name="rocket_launch" className="text-[15px]" style={{ color: '#34d399' }} />moved to CAT 1</div>
-              <div className="text-2xl font-semibold tabular-nums mt-0.5">{d.cat1 ?? 0} <span className="text-sm font-normal text-white/70">{(d.cat1 ?? 0) === 1 ? 'lead' : 'leads'}</span></div>
+              <div className="flex items-center gap-1.5 text-white/70 text-[11px]"><Icon name="handshake" className="text-[15px]" style={{ color: '#c4b5fd' }} />to Eko Acquisition</div>
+              <div className="text-2xl font-semibold tabular-nums mt-0.5">{d.handed_over ?? 0} <span className="text-sm font-normal text-white/70">{(d.handed_over ?? 0) === 1 ? 'lead' : 'leads'}</span></div>
             </div>
             <div className="rounded-lg bg-white/10 px-4 py-3 min-w-[140px]">
               <div className="flex items-center gap-1.5 text-white/70 text-[11px]"><Icon name="support_agent" className="text-[15px]" />with the team now</div>

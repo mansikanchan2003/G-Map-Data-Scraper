@@ -990,8 +990,12 @@ def pending_question(db: Session, conv: WhatsAppConversation):
 
 def documents_submitted(db: Session, conv: WhatsAppConversation) -> WhatsAppMessage:
     """The upload page was submitted: thank the person in the chat."""
+    from src.services import followups
+
     conv.documents_submitted_at = inbox.now()
     _move(conv, SUBMITTED)
+    # AutoGMap's part is done: the lead goes to Eko Acquisition (Physical visit required).
+    followups.hand_over(db, conv, "bot")
     return _say(db, conv, _t(db, conv, "thanks"))
 
 

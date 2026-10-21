@@ -1369,14 +1369,13 @@ def test_a_reply_by_hand_takes_the_chat_over_and_handing_back_asks_again(db, cli
     # The bot asks again the question it was waiting on, after a short thank-you.
     body = StubMeta.sent[-1][2]
     assert body.startswith(bot_messages.MESSAGES["en"]["resume"]) and bot_messages.MESSAGES["en"]["ask_education"] in body
-    # An old key is still understood, and comes back as the sheet's.
-    assert r.json()["disposition"]["key"] == "int_ready" and r.json()["disposition"]["source"] == "team"
+    # An old key is still understood, and comes back as today's.
+    assert r.json()["disposition"]["key"] == "int_in_bot_flow" and r.json()["disposition"]["source"] == "team"
     kinds = [a["kind"] for a in client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/activity").json()]
-    # Ready to proceed moves the lead to CAT 1, as the sheet says.
-    assert kinds == ["to_person", "disposition", "stage", "to_bot"]
+    assert kinds == ["to_person", "disposition", "to_bot"]
     lines = [t["text"] for t in chat_summary.summarise(db, conv(db))["timeline"]]
     assert "Admin took the chat over from the bot" in lines
-    assert "Admin handed the chat back to the bot (Ready to proceed)" in lines
+    assert "Admin handed the chat back to the bot (Interested: in the bot's questions)" in lines
 
     # The bot moving the chat on later makes its own outcome the current one.
     qualify(db)
@@ -1728,9 +1727,9 @@ def test_the_sheet_has_its_eleven_categories_and_every_sub_category():
         "Interested", "Not Interested", "Rejected", "Busy / Callback", "RNR", "Unreachable", "Invalid Lead",
         "Duplicate / Existing", "Not Decision Maker", "Hold / Future Prospect", "Language Barrier"]
     labels = {s.label for c in sheet for s in c.subs}
-    for wanted in ("Physical visit required", "Ready to proceed", "More information required", "Callback requested",
+    for wanted in ("Physical visit required", "More information required", "Callback requested",
                    "Documents pending", "Investment issue", "Applied by mistake", "No requirement",
-                   "Not interested currently", "BM not agree", "Low credit score", "Eligibility criteria not met",
+                   "Not interested currently", "Low credit score", "Eligibility criteria not met",
                    "Busy", "Asked to call later", "Call at specific time", "No answer", "Ringing but not picked",
                    "Switched off", "Out of coverage", "Number not reachable", "Wrong number", "Invalid number",
                    "Person denied applying", "Incorrect customer details", "Duplicate lead", "Already in process",
@@ -1750,7 +1749,7 @@ def test_every_nudge_is_written_in_every_language_without_blanks():
             assert text, (purpose, v)
             assert "{{" not in text and "Eko" in text
     # Every step of every disposition has its nudge.
-    assert {st.purpose for s in dz.SUBS.values() for st in s.steps} <= set(nudge_messages.PURPOSES)
+    assert {st.purpose for s in dz.SUBS.values() for st in s.steps if st.wants != dz.API} <= set(nudge_messages.PURPOSES)
 
 
 @pytest.mark.parametrize("text,chat,expected", [
@@ -1876,27 +1875,9 @@ def test_outside_the_window_it_waits_for_an_approved_template_then_sends_it(db, 
     assert StubMeta.sent[-1][:3] == ("template", PHONE, "eko_nudge_checking_in")
 
 
-def test_a_visit_is_a_task_for_the_district_coordinator(db, client):
-    tap_campaign(db)
-    _record(client, "int_visit")
-    task = [f for f in _followups(db) if f.wants == dz.TASK][0]
-    assert task.owner == "dc" and "District Coordinator" in task.task
-    board = client.get("/api/v1/inbox/dispositions/followups").json()
-    assert [t["id"] for t in board["tasks"]] == [task.followup_id]
-    assert client.post(f"/api/v1/inbox/followups/{task.followup_id}/done", json={"note": "Visited"}).status_code == 200
-    assert client.get("/api/v1/inbox/dispositions/followups").json()["tasks"] == []
-
-
-def test_ready_to_proceed_moves_the_lead_to_cat_1(db, client):
-    tap_campaign(db)
-    _record(client, "int_ready")
-    assert conv(db).bot_data["stage"] == "CAT 1"
-    assert client.get("/api/v1/inbox/dispositions/dashboard").json()["cat1"] == 1
-
-
 def test_a_closing_disposition_cancels_everything_pending(db, client):
     tap_campaign(db)
-    _record(client, "int_visit")
+    _record(client, "lang_barrier")
     _record(client, "inv_wrong_number")
     assert not any(f.status in ("scheduled", "waiting") for f in _followups(db))
 
@@ -1906,7 +1887,7 @@ def test_nudge_templates_are_listed_for_review_and_kept_out_of_campaigns(db, cli
     listed = client.get("/api/v1/inbox/dispositions/nudge-templates").json()
     assert len(listed) == len(nudge_messages.PURPOSES)
     assert all(len(p["variants"]) == 12 and all(v["status"] == "NOT_SUBMITTED" for v in p["variants"]) for p in listed)
-    assert {v["meta_name"] for v in listed[0]["variants"]} == {"eko_nudge_visit_planned", "eko_nudge_visit_planned_hinglish"}
+    assert {v["meta_name"] for v in listed[0]["variants"]} == {"eko_nudge_more_info", "eko_nudge_more_info_hinglish"}
     db.add(WhatsAppTemplate(template_id=uuid.uuid4().hex, name="nudge_missed_you_en", status="APPROVED",
                             meta_template_name="eko_nudge_missed_you", language_code="en", body="x", origin="nudge"))
     db.commit()
@@ -1923,3 +1904,202 @@ def test_the_interested_journey_sets_nothing_in_motion(db):
     assert conv(db).disposition is None and _followups(db) == []
     from src.services import handover
     assert handover.current(conv(db))["key"] == "int_in_bot_flow"
+
+
+
+# --- Where AutoGMap's part ends, and every lead's journey (2026-10-21) --------
+
+def _upload(db, client):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)
+    tap(db, "invest:yes")
+    tap(db, "docs:yes")
+    c = conv(db)
+    assert client.post(f"/onboard/{c.upload_token}/submit").status_code in (200, 400)
+    c.documents_submitted_at = c.documents_submitted_at or inbox.now()
+    c.bot_step = onboarding_bot.SUBMITTED
+    db.commit()
+
+
+def test_ready_to_proceed_and_cat_1_are_eko_acquisitions_not_ours():
+    labels = {s.label for s in dz.SUBS.values()}
+    assert "Ready to proceed" not in labels and not any(s.stage == "CAT 1" for s in dz.SUBS.values())
+    assert "BM not agree" not in labels
+    for gone in ("next_steps", "visit_planned", "other_bank"):
+        assert gone not in nudge_messages.PURPOSES
+
+
+def test_physical_visit_required_hands_over_and_sets_nothing_in_motion(db, client):
+    tap_campaign(db)
+    _record(client, "int_docs_pending")
+    assert any(f.status == "scheduled" for f in _followups(db))
+    _record(client, "int_visit")
+    # Nothing goes to the person any more; the lead is queued for Eko Acquisition's API.
+    assert not any(f.status in ("scheduled", "waiting") and f.wants != dz.API for f in _followups(db))
+    assert not any(f.wants == dz.TASK for f in _followups(db))
+    to_them = [f for f in _followups(db) if f.wants == dz.API]
+    assert len(to_them) == 1 and to_them[0].status == "waiting" and "not set up yet" in to_them[0].note
+    d = client.get("/api/v1/inbox/dispositions/dashboard").json()
+    assert d["handed_over"] == 1 and "cat1" not in d
+
+
+def test_uploading_documents_ends_our_part_and_stops_reminders(db, client):
+    tap_campaign(db)
+    _record(client, "int_docs_pending")                    # a reminder due in 2 days
+    c = conv(db)
+    c.documents_submitted_at = inbox.now()
+    db.commit()
+    followups.tick(db)
+    db.expire_all()
+    assert all(f.status != "scheduled" for f in _followups(db))
+    from src.services import handover
+    assert handover.current(conv(db))["key"] == "int_visit"
+
+
+def test_a_leads_journey_has_each_step_with_its_date_and_our_action(db, client):
+    from src.services import lead_journey
+    _upload(db, client)
+    j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
+    stages = [s for s in j["steps"] if s["kind"] == "stage"]
+    keys = [s["key"] for s in stages]
+    for k in ("interested", "pin", "education", "investment", "docs_ready", "uploaded", "handed_over"):
+        assert k in keys, (k, keys)
+    assert keys.index("interested") < keys.index("pin") < keys.index("investment") < keys.index("handed_over")
+    pin = next(s for s in stages if s["key"] == "pin")
+    assert pin["at"] and pin["action"] == "Asked about their education" and pin["action_at"]
+    last = stages[-1]
+    assert last["key"] == "handed_over" and last["by"] == "Eko Acquisition"
+    assert "Assign to DC, schedule visit, DC will give report to Eko" in last["action"]
+    assert j["outcome"] == "handed_over" and j["furthest"] == lead_journey.FUNNEL.index("handed_over")
+
+
+def test_the_journey_shows_negative_turns_and_team_actions(db, client):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)
+    tap(db, "invest:no")                                    # cannot invest
+    _record(client, "ni_investment", note="Asked about EMI")
+    j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
+    whats = [s["what"] for s in j["steps"] if s["what"]]
+    assert "Cannot invest right now" in whats
+    rec = next(s for s in j["steps"] if s["key"] == "disposition:ni_investment")
+    assert rec["detail"] == "Asked about EMI" and rec["by"] == "admin@eko.co.in"
+    assert any(s["key"] == "nudge" and "lower-investment" in s["action"] for s in j["steps"])
+    assert j["outcome"] == "closed"
+
+
+def test_the_journeys_list_has_every_lead_that_did_something(db, client):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    rows = client.get("/api/v1/inbox/dispositions/journeys").json()
+    assert [r["phone"] for r in rows] == [PHONE]
+    assert rows[0]["furthest"] >= 3 and rows[0]["outcome"] == "in_progress"
+
+
+def test_bot_messages_are_recognised_in_every_language():
+    from src.services import lead_journey
+    for lang, msgs in bot_messages.MESSAGES.items():
+        assert lead_journey.classify(msgs["ask_education"]) == "ask_education", lang
+        assert lead_journey.classify(msgs["nudge"] + "\n\n" + msgs["ask_pin"]) == "nudge", lang
+    assert lead_journey.classify(bot_messages.HINGLISH["ask_pin"]) == "ask_pin"
+    assert lead_journey.classify("Training is given free by Eko.") is None
+
+
+def test_steps_planned_before_the_handover_rules_are_cancelled(db):
+    from src.models.inbox import FollowUp
+    tap_campaign(db)
+    db.add(FollowUp(followup_id=uuid.uuid4().hex, phone=PHONE, disposition="int_visit", purpose="visit_planned",
+                    owner="dc", wants=dz.TASK, due_at=inbox.now(), status="scheduled", created_by="x", task="Visit"))
+    db.add(FollowUp(followup_id=uuid.uuid4().hex, phone=PHONE, disposition="int_ready", purpose="next_steps",
+                    owner="bot", wants=dz.NUDGE, due_at=inbox.now(), status="waiting", created_by="x"))
+    db.commit()
+    followups.tick(db)
+    db.expire_all()
+    assert {f.status for f in _followups(db)} == {"cancelled"}
+
+
+
+# --- Who hears about a disposition, and the hand-over to Eko Acquisition ------
+
+@pytest.fixture
+def team_mail(monkeypatch):
+    """The team emails, sent at once rather than on a thread."""
+    sent = []
+
+    class Now:
+        def __init__(self, target, args=(), daemon=None):
+            self.target, self.args = target, args
+
+        def start(self):
+            self.target(*self.args)
+
+    monkeypatch.setattr(followups.threading, "Thread", Now)
+    monkeypatch.setattr(followups, "_email_team", lambda subject, body: sent.append((subject, body)))
+    return sent
+
+
+def test_only_dispositions_the_sheet_gives_a_person_email_the_team():
+    human = {k for k, s in dz.SUBS.items() if dz.needs_team(s)}
+    assert human == {"int_more_info", "ni_investment", "rej_credit", "rej_eligibility", "inv_denied",
+                     "ndm_not_applicant", "ndm_unavailable", "hold_later", "hold_financial", "hold_after_date",
+                     "hold_no_replacement"}
+
+
+def test_a_disposition_for_a_person_raises_a_ticket_and_emails_the_team(db, client, team_mail):
+    from src.services import tickets
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    _record(client, "ni_investment", note="Can manage 2 lakh")
+    assert conv(db).needs_attention and tickets.open_ticket(db, PHONE) is not None
+    [(subject, body)] = team_mail
+    assert "Investment issue" in subject
+    assert "Connect for BT proposal" in body and "Can manage 2 lakh" in body and "Journey so far:" in body
+
+
+def test_a_disposition_for_the_bot_emails_nobody(db, client, team_mail):
+    tap_campaign(db)
+    _record(client, "busy_busy")
+    _record(client, "lang_barrier")
+    assert team_mail == [] and not conv(db).needs_attention
+
+
+def test_uploaded_documents_go_to_eko_acquisitions_api(db, client, monkeypatch):
+    from src.services import acquisition_handover
+    posted = []
+
+    class Resp:
+        status_code, text = 201, "created"
+
+    import requests
+    monkeypatch.setattr(requests, "post", lambda url, json=None, headers=None, timeout=None: posted.append((url, json, headers)) or Resp())
+    tap_campaign(db)
+    c = conv(db)
+    onboarding_bot.documents_submitted(db, c)
+    db.commit()
+    f = [x for x in _followups(db) if x.wants == dz.API][0]
+    assert f.status == "scheduled"
+    followups.tick(db)
+    assert f.status == "waiting" and "not set up yet" in f.note and posted == []
+    monkeypatch.setenv("EKO_ACQUISITION_API_URL", "https://acquisition.example/leads")
+    monkeypatch.setenv("EKO_ACQUISITION_API_KEY", "secret")
+    followups.tick(db)
+    db.expire_all()
+    assert [x for x in _followups(db) if x.wants == dz.API][0].status == "sent"
+    url, body, headers = posted[0]
+    assert url == "https://acquisition.example/leads" and headers["Authorization"] == "Bearer secret"
+    assert body["phone"] == PHONE and body["requested_action"].startswith("Assign to DC")
+    assert any(s["stage"] == "handed_over" for s in body["journey"])
+    assert acquisition_handover.configured()
+
+
+def test_resolving_with_a_persons_disposition_emails_but_opens_no_new_ticket(db, client, team_mail):
+    from src.services import tickets
+    tap_campaign(db)
+    say(db, "Mere ghar ka pata badalna hai, kya karna hoga?")          # a ticket for the team
+    team_mail.clear()
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/attention",
+                    json={"needed": False, "disposition": "hold_later"})
+    assert r.status_code == 200, r.text
+    assert not conv(db).needs_attention and tickets.open_ticket(db, PHONE) is None
+    assert len(team_mail) == 1 and "Interested later" in team_mail[0][0]
