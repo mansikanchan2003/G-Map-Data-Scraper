@@ -1386,7 +1386,8 @@ def test_a_reply_by_hand_takes_the_chat_over_and_handing_back_asks_again(db, cli
 def test_every_chat_has_a_disposition_and_the_dashboard_counts_them(db, client):
     tap_campaign(db)
     say(db, SERVED_PIN)
-    assert client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}").json()["disposition"]["key"] == "int_ready"
+    # Read from the bot's step: in its questions, not yet ready to proceed.
+    assert client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}").json()["disposition"]["key"] == "int_in_bot_flow"
     r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/disposition",
                     json={"disposition": "call_back", "note": "Call after 6 PM"})
     assert r.status_code == 200 and r.json()["label"] == "Asked to call later"
@@ -1910,3 +1911,15 @@ def test_nudge_templates_are_listed_for_review_and_kept_out_of_campaigns(db, cli
                             meta_template_name="eko_nudge_missed_you", language_code="en", body="x", origin="nudge"))
     db.commit()
     assert all(t["name"] != "nudge_missed_you_en" for t in client.get("/api/v1/whatsapp/templates").json())
+
+
+
+def test_the_interested_journey_sets_nothing_in_motion(db):
+    # Tapping Interested and answering the bot records no disposition and plans no follow-up:
+    # only a person recording one does.
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)
+    assert conv(db).disposition is None and _followups(db) == []
+    from src.services import handover
+    assert handover.current(conv(db))["key"] == "int_in_bot_flow"

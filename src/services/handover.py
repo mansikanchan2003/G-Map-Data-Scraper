@@ -67,7 +67,7 @@ def bot_disposition(conv: WhatsAppConversation) -> str:
     if conv.bot_step in _FROM_STEP:
         return _FROM_STEP[conv.bot_step]
     if conv.bot_step:
-        return "int_ready"
+        return "int_in_bot_flow"
     return "enquiry"
 
 

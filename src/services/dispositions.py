@@ -90,6 +90,9 @@ CATEGORIES: List[Category] = [
         Sub("int_docs_pending", "Documents pending", "interested", "Follow up by calls & notifications", "DCs/Bot",
             (Step("docs_reminder", NOW, BOT, NUDGE),
              Step("docs_reminder", IN_2_DAYS, BOT, CALL, expects_reply=True))),
+        # Not in the sheet, and only ever read from the bot's step: someone who
+        # tapped Interested and is still in its questions. Sets nothing in motion.
+        Sub("int_in_bot_flow", "Answering the bot's questions", "interested", "", "Bot"),
         # Not in the sheet: what the bot records itself once documents arrive.
         Sub("int_submitted", "Documents submitted", "interested", "Move to CAT 1", "Bot", stage="CAT 1"),
     ]),
