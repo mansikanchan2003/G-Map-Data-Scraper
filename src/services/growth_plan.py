@@ -237,7 +237,7 @@ def warm_people(people: List[WhatsAppConversation]) -> List[dict]:
 
     order = {bot.AWAIT_UPLOAD: 0, bot.AWAIT_DOCS: 1, bot.AWAIT_INVEST: 2, bot.AWAIT_EDUCATION: 3,
              bot.AWAIT_PIN: 4, bot.CHOOSE_LANG: 5, bot.WEBINAR_CONFIRMED: 6, bot.WEBINAR_AVAILABILITY: 6,
-             bot.AWAIT_WEBINAR: 7, bot.AWAIT_AVAILABILITY: 7}
+             bot.AWAIT_WEBINAR: 7, bot.AWAIT_AVAILABILITY: 7, bot.GUIDANCE_QA: 7}
     out = []
     for c in people:
         if c.documents_submitted_at or c.bot_step not in order:

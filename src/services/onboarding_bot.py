@@ -76,6 +76,9 @@ AWAIT_WEBINAR = "AWAIT_WEBINAR"
 AWAIT_AVAILABILITY = "AWAIT_AVAILABILITY"
 WEBINAR_CONFIRMED = "WEBINAR_CONFIRMED"
 WEBINAR_AVAILABILITY = "WEBINAR_AVAILABILITY"
+# Personal guidance since 2026-10-21: the person asks, the bot answers what it
+# knows and leaves the rest to a person, until they say they are interested.
+GUIDANCE_QA = "GUIDANCE_QA"
 
 STEP_LABELS = {
     CHOOSE_LANG: "Choosing a language",
@@ -94,6 +97,7 @@ STEP_LABELS = {
     AWAIT_AVAILABILITY: "Asked guidance availability",
     WEBINAR_CONFIRMED: "Personal guidance confirmed",
     WEBINAR_AVAILABILITY: "Guidance time shared",
+    GUIDANCE_QA: "Personal guidance: asking questions",
 }
 
 # Which flow a language choice leads into.
@@ -474,11 +478,60 @@ def _ask_language_again(db, conv):
 def _begin(db, conv, flow: str):
     """The first question of a flow, in the chosen language."""
     if flow == WEBINAR:
-        _move(conv, AWAIT_WEBINAR)
-        _say(db, conv, _guidance_ask(db, conv), buttons=YES_NO("webinar", _lang(db, conv)))
+        # Not a booking: an invitation to ask, and a way to start when ready.
+        _move(conv, GUIDANCE_QA)
+        _say(db, conv, _t(db, conv, "guidance_open"), buttons=_interested_button())
     else:
         _move(conv, AWAIT_PIN, pin_attempts=0)
         _say(db, conv, _t(db, conv, "ask_pin"))
+
+
+def _interested_button() -> list:
+    return [{"id": START_INTERESTED, "title": campaign_buttons.INTERESTED}]
+
+
+# Saying they want to start, in their own words, while asking questions.
+_START_WORDS = {"interested", "intrested", "intersted", "interseted", "intrsted", "इंटरेस्टेड", "इच्छुक", "ઇન્ટરેસ્ટેડ",
+                "ਇੰਟਰੈਸਟਡ"}
+_START_PHRASES = ("judna hai", "judna chahta", "judna chahti", "jodna hai", "shuru karna hai", "shuru karna chahta",
+                  "shuru karna chahti", "start karna hai", "apply karna hai", "csp chahiye", "csp lena hai",
+                  "kiosk chahiye", "kiosk lena hai", "i want to start", "i want to apply", "i want to join", "main taiyar",
+                  "mai taiyar", "main tayar", "mai tayar", "ready hun", "ready hoon", "ready hu", "जुड़ना है", "शुरू करना है",
+                  "ਸ਼ੁਰੂ ਕਰਨਾ", "શરૂ કરવું છે")
+_NOT_NOW = ("not interested", "interested nahi", "interested nhi", "nahi chahiye", "nhi chahiye", "nahi karna",
+            "nhi karna", "abhi nahi", "no thanks", "नहीं चाहिए", "इंटरेस्टेड नहीं")
+
+
+def wants_to_start(text: Optional[str]) -> bool:
+    """Whether someone asking about personal guidance says they want to begin the application."""
+    said = " " + " ".join(re.findall(r"[\w\u0900-\u0DFF]+", (text or "").lower())) + " "
+    if any(f" {p} " in said for p in _NOT_NOW):
+        return False
+    if any(f" {w} " in said for w in _START_WORDS):
+        return True
+    return any(f" {p} " in said for p in _START_PHRASES)
+
+
+def _guidance_reply(db, conv, msg) -> None:
+    """
+    Personal guidance: answer a question from Eko's FAQ, kindly; leave one it
+    does not cover to a person; begin the application when they want to.
+    """
+    said = message_text(msg)
+    if said and wants_to_start(said):
+        _understood(conv)
+        _start(db, conv, msg, ONBOARD)
+        return
+    # A PIN code on its own: they are checking whether we serve them, so the
+    # application begins with it.
+    if _only_a_pin(msg):
+        _understood(conv)
+        kept = {k: v for k, v in (conv.bot_data or {}).items() if k in _REMEMBERED}
+        conv.bot_data = {**kept, "trigger": "PIN during personal guidance"}
+        _move(conv, AWAIT_PIN, pin_attempts=0)
+        _on_pin(db, conv, msg)
+        return
+    _fallback(db, conv, _t(db, conv, "guidance_more"), buttons=_interested_button(), kind_intro=True)
 
 
 def _guidance_day(conv) -> str:
@@ -616,7 +669,7 @@ def flag(conv, reason: str) -> None:
     conv.attention_resolved_at = None
 
 
-def _fallback(db, conv, body, gap=FALLBACK_GAP, **kw):
+def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
     """
     Answer a message the bot did not understand, if it has not just done so.
 
@@ -644,6 +697,8 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, **kw):
     asked = looks_like_question(said) or voice or bool(faq)
     if faq:
         answer = eko_knowledge.reply(faq, _lang(db, conv), said)
+        if kind_intro:
+            answer = f"{_t(db, conv, 'guidance_intro')} {answer}"
         if "investment" in faq:
             # How much, then what the money is for: it stays theirs.
             answer += "\n\n" + _t(db, conv, "invest_explained")
@@ -676,24 +731,6 @@ def _understood(conv):
     data = conv.bot_data or {}
     if data.get("fallback_streak") or data.get("fallback_at"):
         conv.bot_data = {k: v for k, v in data.items() if k not in ("fallback_streak", "fallback_at")}
-
-
-def _tell_team(conv, what: str, availability: Optional[str] = None):
-    """
-    Email the team a personal-guidance answer, and mark the chat for a person,
-    so it shows as Attention needed with a ticket until someone has called.
-    """
-    from src.services import auth_service, notifier
-
-    flag(conv, f"Personal guidance: {what}" + (f" ({availability})" if availability else ""))
-
-    try:
-        notifier.notify_webinar(auth_service.BOOTSTRAP_ADMIN, {
-            "name": conv.profile_name, "phone": conv.phone, "answer": what,
-            "availability": availability, "language": LANGUAGE_NAMES.get((conv.bot_data or {}).get("lang")),
-        })
-    except Exception:
-        logger.exception("onboarding_bot event=WEBINAR_NOTIFY_FAILED")
 
 
 class _Spoken:
@@ -786,17 +823,12 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
             _ask_language_again(db, conv)
         return
 
-    if step == AWAIT_AVAILABILITY:
-        # Whatever they write is when they can attend.
-        if msg.kind in ("text", "audio"):
-            _understood(conv)
-            said = msg.body if msg.kind == "text" else "(voice message — listen in the inbox)"
-            _move(conv, WEBINAR_AVAILABILITY,
-                  webinar={"answer": "availability", "availability": said, "at": inbox.now().isoformat()})
-            _say(db, conv, _t(db, conv, "webinar_noted"))
-            _tell_team(conv, "Not available tomorrow; shared their availability", said)
-        else:
-            _fallback(db, conv, _t(db, conv, "webinar_no"))
+    # Personal guidance (and anyone still at the old availability questions):
+    # their questions answered, until they want to start.
+    if step in (GUIDANCE_QA, AWAIT_WEBINAR, AWAIT_AVAILABILITY):
+        if step != GUIDANCE_QA:
+            _move(conv, GUIDANCE_QA)
+        _guidance_reply(db, conv, msg)
         return
 
     # A PIN code is checked whenever one is sent, not only when asked for:
@@ -883,21 +915,6 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
             _fallback(db, conv, _t(db, conv, "remind_upload"),
                       link={"text": _t(db, conv, "link_button"), "url": upload_url(conv)})
 
-    elif step == AWAIT_WEBINAR:
-        answer = _answer(msg, "webinar")
-        if answer is True:
-            _understood(conv)
-            _move(conv, WEBINAR_CONFIRMED, webinar={"answer": "yes", "at": inbox.now().isoformat()})
-            _say(db, conv, _t(db, conv, "webinar_yes"))
-            _tell_team(conv, f"Confirmed for personal guidance {_guidance_day(conv)}")
-        elif answer is False:
-            _understood(conv)
-            _move(conv, AWAIT_AVAILABILITY)
-            _say(db, conv, _t(db, conv, "webinar_no"))
-        else:
-            _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n" + _guidance_ask(db, conv),
-                      buttons=YES_NO("webinar", lang))
-
     elif step == SUBMITTED:
         _fallback(db, conv, _t(db, conv, "already_submitted"))
 
@@ -935,7 +952,7 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
 # Steps where the bot is waiting for an answer; someone who goes quiet at one
 # of these is nudged (see nudges.py).
 NUDGE_STEPS = (CHOOSE_LANG, AWAIT_PIN, AWAIT_EDUCATION, AWAIT_FRANCHISE, AWAIT_INVEST,
-               AWAIT_DOCS, AWAIT_UPLOAD, AWAIT_WEBINAR, AWAIT_AVAILABILITY)
+               AWAIT_DOCS, AWAIT_UPLOAD)
 
 
 def pending_question(db: Session, conv: WhatsAppConversation):
@@ -966,10 +983,8 @@ def pending_question(db: Session, conv: WhatsAppConversation):
         return _t(db, conv, "ask_docs", documents=document_list(lang)), {"buttons": YES_NO("docs", lang)}
     if step == AWAIT_UPLOAD and conv.upload_token:
         return _t(db, conv, "remind_upload"), {"link": {"text": _t(db, conv, "link_button"), "url": upload_url(conv)}}
-    if step == AWAIT_WEBINAR:
-        return _guidance_ask(db, conv), {"buttons": YES_NO("webinar", lang)}
-    if step == AWAIT_AVAILABILITY:
-        return _t(db, conv, "webinar_no"), {}
+    if step in (GUIDANCE_QA, AWAIT_WEBINAR, AWAIT_AVAILABILITY):
+        return _t(db, conv, "guidance_open"), {"buttons": _interested_button()}
     return None
 
 

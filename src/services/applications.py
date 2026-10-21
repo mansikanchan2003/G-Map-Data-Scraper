@@ -44,7 +44,7 @@ REQUIRED_KEYS = [d["key"] for d in bot.REQUIRED_DOCUMENTS]
 
 # Asking for personal guidance is a response to a campaign too, and is counted
 # as an application (the team's call, 2026-10-15); its stage says which it is.
-GUIDANCE_STEPS = {bot.AWAIT_WEBINAR, bot.AWAIT_AVAILABILITY, bot.WEBINAR_CONFIRMED, bot.WEBINAR_AVAILABILITY}
+GUIDANCE_STEPS = {bot.GUIDANCE_QA, bot.AWAIT_WEBINAR, bot.AWAIT_AVAILABILITY, bot.WEBINAR_CONFIRMED, bot.WEBINAR_AVAILABILITY}
 
 
 def is_application(conv: WhatsAppConversation) -> bool:

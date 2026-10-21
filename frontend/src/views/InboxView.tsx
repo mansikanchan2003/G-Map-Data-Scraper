@@ -21,7 +21,7 @@ const THREAD_POLL_MS = 5000;
 
 // Steps where the bot is still waiting for an answer, so it may reply on its
 // own; at any other step the conversation is a person's to handle.
-const BOT_WAITING = ['CHOOSE_LANG', 'AWAIT_PIN', 'AWAIT_EDUCATION', 'AWAIT_FRANCHISE', 'AWAIT_INVEST', 'AWAIT_DOCS', 'AWAIT_UPLOAD', 'AWAIT_WEBINAR', 'AWAIT_AVAILABILITY'];
+const BOT_WAITING = ['CHOOSE_LANG', 'AWAIT_PIN', 'AWAIT_EDUCATION', 'AWAIT_FRANCHISE', 'AWAIT_INVEST', 'AWAIT_DOCS', 'AWAIT_UPLOAD', 'AWAIT_WEBINAR', 'AWAIT_AVAILABILITY', 'GUIDANCE_QA'];
 
 const LANGUAGE_NAMES: Record<string, string> = {
   en: 'English', hi: 'Hindi', mr: 'Marathi', pa: 'Punjabi', gu: 'Gujarati', bn: 'Bengali',

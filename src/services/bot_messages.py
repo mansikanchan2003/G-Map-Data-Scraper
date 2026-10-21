@@ -985,3 +985,49 @@ HINGLISH = {
     "webinar_no": "Kripya apni uplabdhta batayein: aap personal guidance ke liye kis din aur kis samay uplabdh rahenge?",
     "webinar_noted": "Dhanyavaad! Humne aapki uplabdhta note kar li hai. Hamari team jald hi aapse sampark karegi.\n\nKisi bhi sawaal ke liye aap +91 7291988625 par call/WhatsApp kar sakte hain.",
 }
+
+
+# --- Personal guidance: a conversation, not a booking ---------------------------
+# (2026-10-21) Tapping "Personal Guidance chahiye" now invites questions; the
+# bot answers what Eko's FAQ covers, leaves the rest to a person, and starts
+# the application when they say they are interested. No availability is asked.
+_GUIDANCE_OPEN = {
+    "en": "Happy to guide you! 🙏 Please ask any doubts you have right here, so we can answer them and guide you accordingly.\n\nWhenever you are ready to start, tap *Interested*.",
+    "hi": "आपका मार्गदर्शन करके हमें खुशी होगी! 🙏 आपके जो भी सवाल हैं, कृपया यहीं पूछें, ताकि हम उनका जवाब देकर आपको सही मार्गदर्शन दे सकें।\n\nजब भी आप शुरू करना चाहें, *Interested* दबाएँ।",
+    "pa": "ਤੁਹਾਡੀ ਰਹਿਨੁਮਾਈ ਕਰਕੇ ਸਾਨੂੰ ਖੁਸ਼ੀ ਹੋਵੇਗੀ! 🙏 ਤੁਹਾਡੇ ਜੋ ਵੀ ਸਵਾਲ ਹਨ, ਕਿਰਪਾ ਕਰਕੇ ਇੱਥੇ ਹੀ ਪੁੱਛੋ, ਤਾਂ ਜੋ ਅਸੀਂ ਉਹਨਾਂ ਦਾ ਜਵਾਬ ਦੇ ਕੇ ਤੁਹਾਨੂੰ ਸਹੀ ਰਹਿਨੁਮਾਈ ਦੇ ਸਕੀਏ।\n\nਜਦੋਂ ਵੀ ਤੁਸੀਂ ਸ਼ੁਰੂ ਕਰਨਾ ਚਾਹੋ, *Interested* ਦਬਾਓ।",
+    "gu": "તમને માર્ગદર્શન આપવામાં અમને આનંદ થશે! 🙏 તમારા જે પણ પ્રશ્નો હોય, કૃપા કરીને અહીં જ પૂછો, જેથી અમે તેના જવાબ આપીને તમને યોગ્ય માર્ગદર્શન આપી શકીએ.\n\nજ્યારે પણ તમે શરૂ કરવા તૈયાર હો, *Interested* દબાવો.",
+    "mr": "तुम्हाला मार्गदर्शन करताना आम्हाला आनंद होईल! 🙏 तुमचे जे काही प्रश्न आहेत, कृपया इथेच विचारा, म्हणजे आम्ही त्यांची उत्तरे देऊन तुम्हाला योग्य मार्गदर्शन करू शकू.\n\nजेव्हा तुम्ही सुरू करायला तयार असाल, तेव्हा *Interested* दाबा.",
+    "bn": "আপনাকে গাইড করতে পেরে আমরা খুশি! 🙏 আপনার যা প্রশ্ন আছে, অনুগ্রহ করে এখানেই জিজ্ঞাসা করুন, যাতে আমরা উত্তর দিয়ে আপনাকে সঠিক পথ দেখাতে পারি।\n\nশুরু করতে প্রস্তুত হলে *Interested* চাপুন।",
+    "ta": "உங்களுக்கு வழிகாட்டுவதில் மகிழ்ச்சி! 🙏 உங்களுக்கு உள்ள சந்தேகங்களை இங்கேயே கேளுங்கள், நாங்கள் பதில் அளித்து உங்களுக்கு வழிகாட்டுவோம்.\n\nதொடங்கத் தயாரானதும் *Interested* அழுத்துங்கள்.",
+    "te": "మీకు మార్గదర్శనం చేయడం మాకు సంతోషం! 🙏 మీకు ఉన్న సందేహాలను ఇక్కడే అడగండి, మేము సమాధానం ఇచ్చి మీకు సరైన మార్గదర్శనం చేస్తాము.\n\nప్రారంభించడానికి సిద్ధంగా ఉన్నప్పుడు *Interested* నొక్కండి.",
+    "kn": "ನಿಮಗೆ ಮಾರ್ಗದರ್ಶನ ನೀಡಲು ಸಂತೋಷ! 🙏 ನಿಮಗೆ ಇರುವ ಸಂದೇಹಗಳನ್ನು ಇಲ್ಲೇ ಕೇಳಿ, ನಾವು ಉತ್ತರಿಸಿ ನಿಮಗೆ ಸರಿಯಾದ ಮಾರ್ಗದರ್ಶನ ನೀಡುತ್ತೇವೆ.\n\nಪ್ರಾರಂಭಿಸಲು ಸಿದ್ಧರಾದಾಗ *Interested* ಒತ್ತಿ.",
+    "ml": "നിങ്ങളെ നയിക്കാൻ സന്തോഷം! 🙏 നിങ്ങളുടെ സംശയങ്ങൾ ഇവിടെത്തന്നെ ചോദിക്കൂ, ഞങ്ങൾ മറുപടി നൽകി നിങ്ങളെ ശരിയായി നയിക്കാം.\n\nതുടങ്ങാൻ തയ്യാറാകുമ്പോൾ *Interested* അമർത്തൂ.",
+    "or": "ଆପଣଙ୍କୁ ମାର୍ଗଦର୍ଶନ କରି ଆମେ ଖୁସି! 🙏 ଆପଣଙ୍କର ଯେଉଁ ପ୍ରଶ୍ନ ଅଛି, ଦୟାକରି ଏଠାରେ ହିଁ ପଚାରନ୍ତୁ, ଯାହାଦ୍ୱାରା ଆମେ ଉତ୍ତର ଦେଇ ଆପଣଙ୍କୁ ଠିକ୍ ମାର୍ଗଦର୍ଶନ କରିପାରିବା।\n\nଆରମ୍ଭ କରିବାକୁ ପ୍ରସ୍ତୁତ ହେଲେ *Interested* ଦବାନ୍ତୁ।",
+}
+_GUIDANCE_MORE = {
+    "en": "😊 Feel free to ask anything else. When you are ready to start, tap *Interested*.",
+    "hi": "😊 कोई और सवाल हो तो बेझिझक पूछें। शुरू करना चाहें तो *Interested* दबाएँ।",
+    "pa": "😊 ਕੋਈ ਹੋਰ ਸਵਾਲ ਹੋਵੇ ਤਾਂ ਬੇਝਿਜਕ ਪੁੱਛੋ। ਸ਼ੁਰੂ ਕਰਨਾ ਚਾਹੋ ਤਾਂ *Interested* ਦਬਾਓ।",
+    "gu": "😊 બીજો કોઈ પ્રશ્ન હોય તો ખચકાટ વગર પૂછો. શરૂ કરવું હોય તો *Interested* દબાવો.",
+    "mr": "😊 आणखी काही प्रश्न असल्यास नक्की विचारा. सुरू करायचे असल्यास *Interested* दाबा.",
+    "bn": "😊 আর কোনো প্রশ্ন থাকলে নির্দ্বিধায় জিজ্ঞাসা করুন। শুরু করতে চাইলে *Interested* চাপুন।",
+    "ta": "😊 வேறு ஏதேனும் கேள்வி இருந்தால் தயங்காமல் கேளுங்கள். தொடங்க *Interested* அழுத்துங்கள்.",
+    "te": "😊 ఇంకేమైనా ప్రశ్నలు ఉంటే అడగండి. ప్రారంభించాలంటే *Interested* నొక్కండి.",
+    "kn": "😊 ಬೇರೆ ಪ್ರಶ್ನೆಗಳಿದ್ದರೆ ಕೇಳಿ. ಪ್ರಾರಂಭಿಸಲು *Interested* ಒತ್ತಿ.",
+    "ml": "😊 മറ്റെന്തെങ്കിലും ചോദിക്കാനുണ്ടെങ്കിൽ ചോദിക്കൂ. തുടങ്ങാൻ *Interested* അമർത്തൂ.",
+    "or": "😊 ଆଉ କିଛି ପ୍ରଶ୍ନ ଥିଲେ ପଚାରନ୍ତୁ। ଆରମ୍ଭ କରିବାକୁ *Interested* ଦବାନ୍ତୁ।",
+}
+for _lang in MESSAGES:
+    MESSAGES[_lang]["guidance_open"] = _GUIDANCE_OPEN.get(_lang, _GUIDANCE_OPEN["en"])
+    MESSAGES[_lang]["guidance_more"] = _GUIDANCE_MORE.get(_lang, _GUIDANCE_MORE["en"])
+HINGLISH["guidance_open"] = ("Aapka margdarshan karke humein khushi hogi! 🙏 Aapke jo bhi sawaal hain, kripya yahin poochhiye, "
+                             "taaki hum unka jawab dekar aapko sahi guidance de sakein.\n\nJab bhi aap shuru karna chahein, "
+                             "*Interested* dabayein.")
+HINGLISH["guidance_more"] = ("😊 Koi aur sawaal ho to bejhijhak poochhiye. "
+                             "Shuru karna chahein to *Interested* dabayein.")
+_GUIDANCE_INTRO = {"en": "Good question! 😊", "hi": "अच्छा सवाल! 😊", "pa": "ਵਧੀਆ ਸਵਾਲ! 😊", "gu": "સરસ પ્રશ્ન! 😊",
+                   "mr": "छान प्रश्न! 😊", "bn": "ভালো প্রশ্ন! 😊", "ta": "நல்ல கேள்வி! 😊", "te": "మంచి ప్రశ్న! 😊",
+                   "kn": "ಒಳ್ಳೆಯ ಪ್ರಶ್ನೆ! 😊", "ml": "നല്ല ചോദ്യം! 😊", "or": "ଭଲ ପ୍ରଶ୍ନ! 😊"}
+for _lang in MESSAGES:
+    MESSAGES[_lang]["guidance_intro"] = _GUIDANCE_INTRO.get(_lang, _GUIDANCE_INTRO["en"])
+HINGLISH["guidance_intro"] = "Achha sawaal! 😊"

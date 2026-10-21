@@ -704,43 +704,7 @@ def told(monkeypatch):
     return calls
 
 
-def test_webinar_yes(db, told):
-    tap_campaign(db, text=campaign_buttons.WEBINAR["en"], lang="hi")
-    kind, _to, body, buttons = StubMeta.sent[-1]
-    assert body == bot_messages.MESSAGES["hi"]["webinar_ask"]
-    assert [b["id"] for b in buttons] == ["webinar:yes", "webinar:no"]
-    tap(db, "webinar:yes")
-    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["hi"]["webinar_yes"]
-    assert "7291988625" in StubMeta.sent[-1][2]
-    assert conv(db).bot_step == onboarding_bot.WEBINAR_CONFIRMED
-    assert told and told[0]["phone"] == PHONE
 
-
-def test_webinar_no_asks_when_and_records_it(db, told):
-    tap_campaign(db, text=campaign_buttons.WEBINAR["en"], lang="en")
-    tap(db, "webinar:no")
-    assert StubMeta.sent[-1][2] == onboarding_bot.WEBINAR_NO
-    say(db, "Saturday after 4 pm")
-    assert StubMeta.sent[-1][2] == onboarding_bot.WEBINAR_NOTED
-    c = conv(db)
-    assert c.bot_step == onboarding_bot.WEBINAR_AVAILABILITY
-    assert c.bot_data["webinar"]["availability"] == "Saturday after 4 pm"
-    assert told[-1]["availability"] == "Saturday after 4 pm"
-
-
-def test_the_webinar_button_in_a_regional_language_is_recognised(db):
-    _punjabi_campaign(db)
-    tap_campaign(db, text=campaign_buttons.WEBINAR["pa"], lang="pa")
-    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["pa"]["webinar_ask"]
-
-
-def test_the_language_is_remembered_for_the_next_flow(db, told):
-    tap_campaign(db, text=campaign_buttons.WEBINAR["en"], lang="hi")
-    tap(db, "webinar:yes")
-    count = len(StubMeta.sent)
-    tap_campaign(db, lang=None)  # Interested, after the webinar
-    assert len(StubMeta.sent) == count + 1
-    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["hi"]["ask_pin"]
 
 
 def test_every_language_has_every_message_and_short_buttons():
@@ -761,17 +725,16 @@ def test_every_language_has_every_message_and_short_buttons():
     assert not campaign_buttons.is_webinar("Interested")
 
 
-def test_a_new_campaign_in_another_language_asks_again(db, told):
+def test_a_new_campaign_in_another_language_asks_again(db):
     # Chose Hindi while the newest campaign was English...
     tap_campaign(db, text=campaign_buttons.WEBINAR["en"], lang="hi")
-    tap(db, "webinar:yes")
     # ...then a Punjabi campaign arrives, and its button is tapped.
     _punjabi_campaign(db)
     tap_campaign(db, text=campaign_buttons.WEBINAR["pa"], lang=None)
     kind, _to, body, buttons = StubMeta.sent[-1]
     assert [b["id"] for b in buttons] == ["lang:en", "lang:hi", "lang:pa"]
     tap(db, "lang:pa")
-    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["pa"]["webinar_ask"]
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["pa"]["guidance_open"]
 
 
 def test_one_stray_letter_does_not_change_a_templates_language():
@@ -1172,39 +1135,6 @@ def _tapped_at(monkeypatch, hour, minute):
     monkeypatch.setattr(inbox, "now", lambda: at)
 
 
-def test_guidance_before_6_pm_is_offered_for_today(db, told, monkeypatch):
-    _tapped_at(monkeypatch, 17, 59)
-    tap_campaign(db, text=campaign_buttons.WEBINAR["hi"], lang="hi")
-    body = StubMeta.sent[-1][2]
-    assert body == bot_messages.MESSAGES["hi"]["webinar_ask_today"]
-    assert body.startswith("क्या आप आज पर्सनल गाइडेंस सेशन")
-    tap(db, "webinar:yes")
-    assert told[-1]["answer"] == "Confirmed for personal guidance today"
-
-
-def test_guidance_from_6_pm_is_offered_for_tomorrow(db, told, monkeypatch):
-    _tapped_at(monkeypatch, 18, 0)
-    tap_campaign(db, text=campaign_buttons.WEBINAR["hi"], lang="hi")
-    assert StubMeta.sent[-1][2].startswith("क्या आप कल पर्सनल गाइडेंस सेशन")
-    tap(db, "webinar:yes")
-    assert told[-1]["answer"] == "Confirmed for personal guidance tomorrow"
-
-
-def test_the_guidance_day_stays_as_offered_when_asked_again(db, monkeypatch):
-    _tapped_at(monkeypatch, 17, 30)
-    tap_campaign(db, text=campaign_buttons.WEBINAR["en"], lang="en")
-    later = inbox.now() + timedelta(hours=1)        # past 6 PM by now
-    monkeypatch.setattr(inbox, "now", lambda: later)
-    monkeypatch.setattr(onboarding_bot, "FALLBACK_GAP", timedelta(0))
-    say(db, "hmm")
-    assert bot_messages.MESSAGES["en"]["webinar_ask_today"] in StubMeta.sent[-1][2]
-
-
-def test_every_language_can_offer_guidance_today():
-    for lang, msgs in bot_messages.MESSAGES.items():
-        assert msgs["webinar_ask_today"] != msgs["webinar_ask"], lang
-
-
 def test_a_new_education_answer_after_not_eligible_carries_on(db):
     tap_campaign(db)
     say(db, SERVED_PIN)
@@ -1377,17 +1307,6 @@ def test_a_ticket_is_raised_once_and_solved_with_question_resolved(db, client, e
     say(db, "Ek aur sawal hai, aapka office kahan hai?")
     ids = [x["ticket_id"] for x in client.get("/api/v1/inbox/tickets").json()]
     assert len(ids) == 2 and ids[1] == first and ids[0] > first
-
-
-def test_personal_guidance_answers_raise_a_ticket(db, told, emailed):
-    from src.services import tickets
-    tap_campaign(db, text=campaign_buttons.WEBINAR["en"], lang="en")
-    tap(db, "webinar:yes")
-    c = conv(db)
-    assert c.needs_attention and c.attention_reason.startswith("Personal guidance: Confirmed")
-    t = tickets.open_ticket(db, PHONE)
-    assert t is not None and t.question.startswith("Personal guidance")
-    assert len(emailed) == 1 and told
 
 
 def test_team_emails_go_to_the_admin_and_kavya_once_each(monkeypatch):
@@ -1673,3 +1592,96 @@ def test_an_inbox_limited_to_other_chats_never_shows_an_autogmap_one(db, client)
         app.dependency_overrides.pop(inbox_router._bind_scope, None)
     # Everyone else still sees both.
     assert {c["phone"] for c in client.get("/api/v1/inbox/conversations").json()} == {PHONE, OTHER}
+
+
+
+# --- Personal guidance: ask, get answers, start when ready (2026-10-21) -------------
+
+def _guidance(db, lang="hi"):
+    tap_campaign(db, text=campaign_buttons.WEBINAR["en"], lang=lang)
+
+
+def test_personal_guidance_invites_questions_instead_of_booking(db):
+    _guidance(db)
+    kind, _to, body, buttons = StubMeta.sent[-1]
+    assert body == bot_messages.MESSAGES["hi"]["guidance_open"]
+    assert [b["id"] for b in buttons] == [onboarding_bot.START_INTERESTED]
+    assert conv(db).bot_step == onboarding_bot.GUIDANCE_QA
+    assert "available" not in body.lower() and "उपलब्ध" not in body
+
+
+def test_a_guidance_question_the_faq_covers_is_answered_kindly(db, emailed):
+    _guidance(db)
+    say(db, "Kitna invest karna hoga?")
+    body = StubMeta.sent[-1][2]
+    assert body.startswith("Achha sawaal! 😊") and "5 lakh" in body
+    assert body.rstrip().endswith(bot_messages.HINGLISH["guidance_more"])
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.GUIDANCE_QA and not c.needs_attention and emailed == []
+
+
+def test_a_guidance_question_it_cannot_answer_goes_to_a_person(db, emailed):
+    from src.services import tickets
+    _guidance(db, lang="en")
+    say(db, "Kya aap Sunday ko bhi baat karte ho?")
+    body = StubMeta.sent[-1][2]
+    assert body.startswith(bot_messages.HINGLISH["question_ack"]) or body.startswith(bot_messages.MESSAGES["en"]["question_ack"])
+    c = conv(db)
+    assert c.needs_attention and c.bot_step == onboarding_bot.GUIDANCE_QA
+    assert tickets.open_ticket(db, PHONE) is not None and len(emailed) == 1
+
+
+@pytest.mark.parametrize("said", ["Haan main interested hoon", "mujhe judna hai", "I want to start", "मुझे शुरू करना है"])
+def test_saying_they_are_interested_starts_the_application(db, said):
+    _guidance(db)
+    say(db, said)
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.AWAIT_PIN
+    assert StubMeta.sent[-1][2] in (bot_messages.MESSAGES["hi"]["ask_pin"], bot_messages.HINGLISH["ask_pin"])
+
+
+def test_tapping_interested_during_guidance_starts_the_application(db):
+    _guidance(db)
+    tap(db, onboarding_bot.START_INTERESTED)
+    assert conv(db).bot_step == onboarding_bot.AWAIT_PIN
+
+
+def test_not_interested_does_not_start_it(db):
+    _guidance(db)
+    say(db, "abhi interested nahi hoon")
+    assert conv(db).bot_step == onboarding_bot.GUIDANCE_QA
+
+
+def test_a_pin_during_guidance_begins_with_that_pin(db):
+    _guidance(db)
+    say(db, SERVED_PIN)
+    assert conv(db).bot_step == onboarding_bot.AWAIT_EDUCATION
+
+
+def test_the_guidance_button_in_a_regional_language_is_recognised(db):
+    _punjabi_campaign(db)
+    tap_campaign(db, text=campaign_buttons.WEBINAR["pa"], lang="pa")
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["pa"]["guidance_open"]
+
+
+def test_the_language_is_remembered_for_the_application(db):
+    _guidance(db)
+    count = len(StubMeta.sent)
+    tap_campaign(db, lang=None)              # Interested on the campaign, after guidance
+    assert len(StubMeta.sent) == count + 1
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["hi"]["ask_pin"]
+
+
+def test_someone_left_at_the_old_availability_question_is_answered_the_new_way(db):
+    _guidance(db, lang="en")
+    c = conv(db)
+    c.bot_step = onboarding_bot.AWAIT_AVAILABILITY
+    db.commit()
+    say(db, "Kitna invest karna hoga?")
+    assert conv(db).bot_step == onboarding_bot.GUIDANCE_QA
+    assert "5 lakh" in StubMeta.sent[-1][2]
+
+
+def test_every_language_has_the_guidance_messages():
+    for lang, msgs in bot_messages.MESSAGES.items():
+        assert msgs["guidance_open"] and msgs["guidance_more"] and msgs["guidance_intro"], lang

@@ -45,6 +45,8 @@ STEP_NEXT = {
     bot.NOT_INVESTING: ("They said they cannot invest. Explain that part of the money stays theirs in their e-wallet "
                         "and ask whether up to ₹5 lakh could work.", "invest_explained"),
     bot.HANDOVER: ("The bot handed them over after three unusable PIN codes. Call them or ask for the PIN again.", "ask_pin"),
+    bot.GUIDANCE_QA: ("Asked for personal guidance: the bot answers their questions. Answer any it left for you, "
+                      "and when they are ready ask them to tap Interested.", None),
     bot.AWAIT_WEBINAR: ("Asked about personal guidance. Ask whether they can join.", None),
     bot.AWAIT_AVAILABILITY: ("Waiting for when they can join personal guidance. Ask for a day and time.", None),
     bot.WEBINAR_CONFIRMED: ("Confirmed for personal guidance. Contact them with the time.", None),
@@ -208,6 +210,7 @@ _WAITING = {
     bot.AWAIT_INVEST: "say whether they can invest up to ₹5 lakh",
     bot.AWAIT_DOCS: "say whether they have the documents",
     bot.AWAIT_UPLOAD: "upload their documents",
+    bot.GUIDANCE_QA: "ask their questions, or tap Interested to start",
     bot.AWAIT_WEBINAR: "say whether they can join personal guidance",
     bot.AWAIT_AVAILABILITY: "say when they can join personal guidance",
 }

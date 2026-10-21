@@ -55,6 +55,7 @@ _FROM_STEP = {
     bot.NOT_ELIGIBLE: "not_eligible",
     bot.NOT_SERVED: "outside_area",
     bot.NOT_INVESTING: "cannot_invest",
+    bot.GUIDANCE_QA: "guidance",
     bot.AWAIT_WEBINAR: "guidance",
     bot.AWAIT_AVAILABILITY: "guidance",
     bot.WEBINAR_CONFIRMED: "guidance",
