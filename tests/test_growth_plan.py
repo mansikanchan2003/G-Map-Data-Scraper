@@ -290,6 +290,7 @@ def test_a_revenue_goal_is_a_total_between_two_dates(db, context):
     assert money["as_of"] == "2026-10-21" and money["earned_inr"] == round(daily * 7)
     assert money["expected_inr"] == round(daily * 78) and money["on_course"]
     assert money["reached_on"] == "2026-11-19"
+    assert money["stale_days"] == 0                                      # figures to yesterday: fresh
     # On course: the goal needs no extra leads, so the growth goal stands.
     assert g["target"] == 5
     assert g["reasoning"][0].startswith("The revenue goal: ₹1 Cr in total from 15 Oct 2026 to 31 Dec 2026.")
@@ -335,3 +336,13 @@ def test_the_plan_says_where_else_to_advertise_for_strong_leads(db):
     assert ad["branch_places"][0]["district"] == "Surendranagar" and ad["branch_places"][0]["branches"] == ["Muli"]
     titles = [c["title"] for c in ad["channels"]]
     assert "At the SBI branches themselves" in titles and any("Insurance agency" in t for t in titles)
+
+
+def test_figures_left_behind_by_a_stopped_refresh_are_flagged():
+    from datetime import date
+    from src.services import business_context as bc
+    summary = {"months": [{"month": "2026-10", "revenue_inr": 3_100_000, "as_of": "2026-10-16",
+                           "accrued_inr": 1_600_000}], "revenue_per_txn": 27}
+    goal = {"inr": 10_000_000, "from": "2026-10-01", "to": "2026-12-31"}
+    assert bc.revenue_plan(summary, goal, date(2026, 10, 21))["stale_days"] == 4
+    assert bc.revenue_plan(summary, goal, date(2026, 10, 17))["stale_days"] == 0

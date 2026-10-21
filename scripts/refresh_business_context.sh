@@ -1,7 +1,12 @@
 #!/bin/sh
 # Refresh the growth agent's business data from Tara and hand it to the
-# backend. Read-only on Tara; the export writes totals only. Runs from cron
-# on the host (kapil cannot write data/, so the file goes in by docker cp).
+# backend. Read-only on Tara (the export reads a private copy of its
+# database); the export writes totals only.
+#
+# Runs daily from root's crontab at 04:30 IST, after Sumit's sheets update at
+# 04:00. It ran from kapil's crontab until the repo became root-only, after
+# which it failed silently from 17 Oct 2026; the Plan tab now warns when
+# Tara's figures fall behind.
 set -e
 cd "$(dirname "$0")/.."
 out=/tmp/autogmap_business_context.json

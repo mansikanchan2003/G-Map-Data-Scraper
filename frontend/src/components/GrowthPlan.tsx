@@ -250,6 +250,12 @@ const RevenueGoal: React.FC<{ plan: Plan; onSaved: () => void }> = ({ plan, onSa
           <div className="text-[11px] text-slate-500">Earned so far</div>
           <div className="text-lg font-semibold text-slate-100 tabular-nums">{money(r.earned_inr)}</div>
           <div className="text-[11px] text-slate-500">{Math.round(r.share * 100)}% · Tara's figures to {r.as_of_label}</div>
+          {(r.stale_days ?? 0) >= 2 && (
+            <div className="text-[11px] text-amber-300 mt-1 flex items-start gap-1">
+              <Icon name="warning" className="text-[14px]" />
+              Tara's figures are {r.stale_days} days behind: the daily refresh from Tara has stopped.
+            </div>
+          )}
         </div>
         <div className="rounded-lg bg-slate-900 border border-slate-800 p-3">
           <div className="text-[11px] text-slate-500">At today's pace by {r.to_label}</div>

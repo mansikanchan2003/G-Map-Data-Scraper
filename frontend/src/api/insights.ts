@@ -199,7 +199,7 @@ export interface GrowthPlan {
     /** The team's revenue goal, a total between two dates, against the network's pace. */
     revenue?: {
       goal_inr: number; from: string; to: string; from_label: string; to_label: string;
-      as_of: string; as_of_label: string; earned_inr: number; share: number; daily_inr: number; days_left: number;
+      as_of: string; as_of_label: string; stale_days?: number; earned_inr: number; share: number; daily_inr: number; days_left: number;
       expected_inr: number; on_course: boolean; reached_on: string | null; reached_on_label: string | null;
       shortfall_inr: number; extra_txns_a_day: number;
     } | null;

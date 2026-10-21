@@ -270,6 +270,9 @@ def revenue_plan(summary: dict, goal: dict, today: date) -> Optional[dict]:
         "goal_inr": goal["inr"], "from": goal["from"], "to": goal["to"],
         "from_label": _label(start), "to_label": _label(end),
         "as_of": as_of.isoformat(), "as_of_label": _label(as_of),
+        # Tara's figures run to yesterday when the daily refresh works; older
+        # means it has stopped (it did, 16-21 Oct 2026, unnoticed).
+        "stale_days": max((today - as_of).days - 1, 0),
         "earned_inr": round(earned), "share": round(earned / goal["inr"], 3),
         "daily_inr": round(daily), "days_left": remaining,
         "expected_inr": round(expected), "on_course": expected >= goal["inr"],

@@ -27,7 +27,9 @@ import json
 import os
 import re
 import sqlite3
+import shutil
 import statistics
+import tempfile
 from datetime import datetime, timezone
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -142,6 +144,23 @@ def pipeline(folder: str, since: str) -> dict:
     return out
 
 
+def snapshot(tara_db: str, into: str) -> sqlite3.Connection:
+    """
+    Tara's database, read from a private copy.
+
+    Opening the live file, even read-only, can make SQLite create its shared
+    memory file (app.db-shm) beside it, owned by whoever runs this; run from
+    root's cron (2026-10-21) that would be a root-owned file in Sumit's folder
+    that his app could not open. So the database and its write-ahead log are
+    copied, only read, into a folder of our own, and the copy is opened.
+    """
+    copy = os.path.join(into, "tara.db")
+    shutil.copyfile(tara_db, copy)
+    if os.path.exists(tara_db + "-wal"):
+        shutil.copyfile(tara_db + "-wal", copy + "-wal")
+    return sqlite3.connect(copy)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--tara-db", default="/home/shumit/ORCH_NEW/repo/data/app.db")
@@ -149,22 +168,30 @@ def main():
     ap.add_argument("--out", default="data/business_context.json")
     args = ap.parse_args()
 
-    db = sqlite3.connect(f"file:{args.tara_db}?mode=ro", uri=True)
-    year = datetime.now().year
-    since = window_start(datetime.now())
-    context = {
-        "exported_at": datetime.now(timezone.utc).isoformat(),
-        "source": "Tara (Sumit's CSP growth platform) and the CSP onboarding pipeline sheets",
-        "since": since,
-        "csp_network": csp_sheet(db, year, since),
-        "revenue_forecasts": forecasts(db, since),
-        "onboarding": pipeline(args.pipeline_dir, since),
-    }
+    with tempfile.TemporaryDirectory(prefix="autogmap_tara_") as work:
+        db = snapshot(args.tara_db, work)
+        try:
+            context = build(db, args.pipeline_dir)
+        finally:
+            db.close()
     tmp = args.out + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(context, f, ensure_ascii=False, indent=1)
     os.replace(tmp, args.out)
     print(f"wrote {args.out}")
+
+
+def build(db: sqlite3.Connection, pipeline_dir: str) -> dict:
+    year = datetime.now().year
+    since = window_start(datetime.now())
+    return {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "source": "Tara (Sumit's CSP growth platform) and the CSP onboarding pipeline sheets",
+        "since": since,
+        "csp_network": csp_sheet(db, year, since),
+        "revenue_forecasts": forecasts(db, since),
+        "onboarding": pipeline(pipeline_dir, since),
+    }
 
 
 if __name__ == "__main__":
