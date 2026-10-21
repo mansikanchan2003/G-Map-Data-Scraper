@@ -385,6 +385,13 @@ def _loop() -> None:
         except Exception:
             db.rollback()
             logger.exception("followups event=TICK_FAILED")
+        try:
+            # Every lead's journey, copied into lead_journeys for SQL, every 15 minutes.
+            from src.services import lead_journey_store
+            lead_journey_store.sync_if_due(db)
+        except Exception:
+            db.rollback()
+            logger.exception("followups event=JOURNEY_SYNC_FAILED")
         finally:
             db.close()
         _stop.wait(CHECK_EVERY_SECONDS)

@@ -219,3 +219,54 @@ class FollowUp(Base):
     sent_at = Column(DateTime(timezone=True), nullable=True)
     done_at = Column(DateTime(timezone=True), nullable=True)
     done_by = Column(String(200), nullable=True)
+
+
+class LeadJourney(Base):
+    """
+    Every campaign lead's journey in short, kept up to date from the chats
+    (lead_journey_store.py) so it can be queried with SQL: when each stage
+    was reached, how it stands, and when it went to Eko Acquisition.
+    """
+    __tablename__ = "lead_journeys"
+
+    phone = Column(String(20), ForeignKey("whatsapp_conversations.phone", ondelete="CASCADE"), primary_key=True)
+    name = Column(String(200), nullable=True)
+    # in_progress, handed_over or closed.
+    outcome = Column(String(20), nullable=False, index=True)
+    furthest_stage = Column(String(30), nullable=True)
+    furthest_index = Column(Integer, nullable=False, default=-1)
+    disposition = Column(String(40), nullable=True)
+    disposition_label = Column(String(120), nullable=True)
+    campaign_at = Column(DateTime(timezone=True), nullable=True)
+    interested_at = Column(DateTime(timezone=True), nullable=True)
+    language_at = Column(DateTime(timezone=True), nullable=True)
+    pin_at = Column(DateTime(timezone=True), nullable=True)
+    education_at = Column(DateTime(timezone=True), nullable=True)
+    investment_at = Column(DateTime(timezone=True), nullable=True)
+    docs_ready_at = Column(DateTime(timezone=True), nullable=True)
+    uploaded_at = Column(DateTime(timezone=True), nullable=True)
+    handed_over_at = Column(DateTime(timezone=True), nullable=True)
+    last_step = Column(String(300), nullable=True)
+    last_activity_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    steps_count = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class LeadJourneyStep(Base):
+    """One step of a lead's journey: what they did, and what we did next, with both times."""
+    __tablename__ = "lead_journey_steps"
+
+    step_id = Column(String(40), primary_key=True)
+    phone = Column(String(20), ForeignKey("whatsapp_conversations.phone", ondelete="CASCADE"),
+                   nullable=False, index=True)
+    seq = Column(Integer, nullable=False)
+    # stage (a step of the journey) or event (something along the way).
+    kind = Column(String(10), nullable=False)
+    key = Column(String(60), nullable=False)
+    at = Column(DateTime(timezone=True), nullable=True, index=True)
+    what = Column(String(500), nullable=True)
+    action = Column(String(500), nullable=True)
+    action_at = Column(DateTime(timezone=True), nullable=True)
+    by = Column(String(200), nullable=True)
+    tone = Column(String(12), nullable=True)
+    detail = Column(String(500), nullable=True)

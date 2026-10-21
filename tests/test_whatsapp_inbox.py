@@ -2103,3 +2103,23 @@ def test_resolving_with_a_persons_disposition_emails_but_opens_no_new_ticket(db,
     assert r.status_code == 200, r.text
     assert not conv(db).needs_attention and tickets.open_ticket(db, PHONE) is None
     assert len(team_mail) == 1 and "Interested later" in team_mail[0][0]
+
+
+def test_the_journeys_are_stored_for_sql(db, client):
+    from src.models.inbox import LeadJourney, LeadJourneyStep
+    from src.services import lead_journey_store
+    _upload(db, client)
+    try:
+        assert lead_journey_store.sync_all(db) == 1
+        row = db.get(LeadJourney, PHONE)
+        assert row.outcome == "handed_over" and row.furthest_stage == "handed_over"
+        assert row.interested_at and row.pin_at and row.uploaded_at and row.handed_over_at
+        steps = db.query(LeadJourneyStep).filter(LeadJourneyStep.phone == PHONE).order_by(LeadJourneyStep.seq).all()
+        assert len(steps) == row.steps_count and steps[-1].key in ("handed_over", "to_acquisition")
+        # Refreshing again replaces the steps rather than adding to them.
+        lead_journey_store.sync_all(db)
+        assert db.query(LeadJourneyStep).filter(LeadJourneyStep.phone == PHONE).count() == row.steps_count
+    finally:
+        db.query(LeadJourneyStep).delete()
+        db.query(LeadJourney).delete()
+        db.commit()
