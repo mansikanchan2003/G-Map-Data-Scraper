@@ -118,9 +118,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </section>
 
-      {/* The shared WhatsApp number: AutoGMap and the other apps on it (admins only). */}
-      <NumberUsagePanel />
-
       {/* Action feedback banner */}
       {actionMsg && (
         <div className="p-3 bg-sky-950/80 border border-sky-800 rounded text-xs font-mono-code text-sky-300 flex items-center justify-between">
@@ -450,6 +447,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </section>
+
+      {/* The shared WhatsApp number: AutoGMap and the other apps on it (admins
+          only). Reference, so at the bottom, below the day-to-day panels. */}
+      <NumberUsagePanel />
 
       <DiscoveryRunner
         isOpen={runnerOpen}
