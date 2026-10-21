@@ -1334,7 +1334,7 @@ export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not
                       <span className="material-symbols-outlined text-[18px] text-slate-500 ml-auto group-open:rotate-180 transition-transform">expand_more</span>
                     </summary>
                     <div className="mt-3">
-                      <JourneyTimeline phone={selected} version={`${detail.messages.length}-${detail.disposition?.key}`} stagesOnly />
+                      <JourneyTimeline phone={selected} version={`${detail.messages.length}-${detail.disposition?.key}`} stagesOnly compact />
                     </div>
                   </details>
                   <div className="my-4 border-t border-slate-800" />

@@ -173,6 +173,18 @@
   --color-purple-200: #46157f;
   --color-purple-100: #360f63;
 
+  /* Violet: a chat a person is handling, and a lead handed to Eko Acquisition.
+     Left out, its dark-mode labels were too faint to read on light cards. */
+  --color-violet-950: #f4f1fe;
+  --color-violet-900: #e7e0fc;
+  --color-violet-800: #c3b4f5;
+  --color-violet-700: #8b74e6;
+  --color-violet-500: #6d4fd8;
+  --color-violet-400: #5b3cc4;
+  --color-violet-300: #4c2fae;
+  --color-violet-200: #3a2288;
+  --color-violet-100: #2c1968;
+
   --eko-gold: #f9ab10;
   --eko-teal: #094053;
   --eko-navy: #0c2531;
@@ -325,5 +337,8 @@ body, aside, header, .bg-slate-900, .bg-slate-950, .bg-slate-800 {
   --color-amber-800: #92400e; --color-amber-900: #78350f; --color-amber-950: #451a03;
   --color-purple-100: #f3e8ff; --color-purple-200: #e9d5ff; --color-purple-300: #d8b4fe; --color-purple-400: #c084fc;
   --color-purple-800: #6b21a8; --color-purple-900: #581c87; --color-purple-950: #3b0764;
+  --color-violet-100: #ede9fe; --color-violet-200: #ddd6fe; --color-violet-300: #c4b5fd; --color-violet-400: #a78bfa;
+  --color-violet-500: #8b5cf6; --color-violet-700: #6d28d9; --color-violet-800: #5b21b6; --color-violet-900: #4c1d95;
+  --color-violet-950: #2e1065;
   border-left-color: #06222c;
 }
