@@ -322,6 +322,22 @@ def _corrections(written: str, final: str) -> List[tuple]:
     return out
 
 
+def language_lessons(language_code: str) -> List[str]:
+    """
+    The reviewers' standing lessons for a language (language_lessons.json):
+    phrasings to write another way so the text reads as a native speaker's,
+    not translated or machine-written. Always given, before the drafts' own.
+    """
+    import json
+    import os
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "language_lessons.json"), encoding="utf-8") as fh:
+            lessons = json.load(fh).get((language_code or "").split("_")[0].lower(), [])
+    except (OSError, ValueError):
+        return []
+    return [f'Write "{x["write"]}", not "{x["instead_of"]}": {x["why"]}' for x in lessons if x.get("write")]
+
+
 def past_mistakes(db: Session, language_code: str, limit: int = 12) -> List[str]:
     """
     What went wrong in the agent's earlier drafts in this language, for it to
@@ -355,7 +371,8 @@ def past_mistakes(db: Session, language_code: str, limit: int = 12) -> List[str]
         for t in rows for p in (t.generation or {}).get("first_problems") or []
     )
     out += [f"{p} (in {n} earlier draft{'s' if n > 1 else ''})" for p, n in counts.most_common(8)]
-    return out[:limit]
+    # The standing lessons first, and never cut: they hold for every draft in the language.
+    return language_lessons(language_code) + out[:limit]
 
 
 def assign_angles(count: int, tried_keys: dict) -> List[str]:

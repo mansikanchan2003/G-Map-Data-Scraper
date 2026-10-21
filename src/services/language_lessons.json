@@ -1,0 +1,11 @@
+{
+  "_about": "Phrasings a reviewer wants written another way, by language: what sounds natural to a native reader rather than translated or machine-written. Read by the template agents before every body and poster (template_studio.past_mistakes). Add a lesson here to teach all future drafts.",
+  "gu": [
+    {"instead_of": "મળતી ખાસ સુવિધાઓ", "write": "મળતા ખાસ લાભો",
+     "why": "For what the operator gains, લાભો (benefits) is the natural word; સુવિધાઓ reads like a list of facilities. The adjective then agrees with the masculine plural: મળતા."},
+    {"instead_of": "પૈસા ટ્રાન્સફર કરવા", "write": "નાણાં ટ્રાન્સફર કરવાની સુવિધા",
+     "why": "In a list of services, name the service as a noun (…ની સુવિધા), not a bare verb; નાણાં is the natural word for money in banking."},
+    {"instead_of": "કમિશન દ્વારા કમાણી", "write": "કમિશનથી કમાણી",
+     "why": "Gujarati attaches the postposition: કમિશનથી. દ્વારા sounds translated from Hindi."}
+  ]
+}

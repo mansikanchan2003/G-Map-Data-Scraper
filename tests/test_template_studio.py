@@ -1007,3 +1007,11 @@ def test_a_script_fix_that_does_not_take_is_tried_once_more_then_shown():
     left = template_studio.fix_scripts(client, variant, "pa", check(variant), check)
     assert len(client.asked) == template_studio.SCRIPT_FIX_TRIES
     assert left and left[0].startswith("poster.callout contains Devanagari")
+
+
+def test_the_standing_language_lessons_reach_every_gujarati_draft():
+    from src.services import template_studio as studio
+    lessons = studio.language_lessons("gu")
+    assert any("મળતા ખાસ લાભો" in l and "મળતી ખાસ સુવિધાઓ" in l for l in lessons)
+    assert any("કમિશનથી કમાણી" in l for l in lessons)
+    assert studio.language_lessons("hi") == []
