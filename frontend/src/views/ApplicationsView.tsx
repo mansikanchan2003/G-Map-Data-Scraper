@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { SubPageButton } from '../components/SubPage';
+import type { NavTab } from '../components/Header';
 import {
   fetchApplications, addApplicationComment, deleteApplicationComment, removeApplication,
   restoreApplication, documentUrl, type Application, type ApplicationStats,
@@ -84,7 +86,7 @@ const Progress: React.FC<{ a: Application }> = ({ a }) => {
   );
 };
 
-export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly }) => {
+export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) => boolean }> = ({ readOnly, can }) => {
   const [items, setItems] = useState<Application[]>([]);
   const [stats, setStats] = useState<ApplicationStats | null>(null);
   const [showRemoved, setShowRemoved] = useState(false);
@@ -203,6 +205,9 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
             className="h-9 px-3.5 rounded-lg bg-violet-500 hover:opacity-90 text-white text-sm font-semibold flex items-center gap-1.5 shadow-sm">
             <Icon name="route" className="text-[18px]" />Lead Journey
           </button>
+          {(!can || can('dispositions')) && (
+            <SubPageButton tab="dispositions" label="Dispositions" icon="fact_check" className="bg-sky-600 text-white" />
+          )}
           <button onClick={() => { setShowRemoved(v => !v); setOpen(null); }}
             className={`h-9 px-3.5 rounded-lg border text-sm font-medium flex items-center gap-1.5 shadow-sm ${showRemoved
               ? 'bg-amber-950 border-amber-800/60 text-amber-300' : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'}`}>

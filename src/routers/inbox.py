@@ -638,6 +638,12 @@ def nudge_template_list(db: Session = Depends(get_db)):
     return nudge_templates.listing(db)
 
 
+@router.post("/dispositions/nudge-templates/submit-all")
+def submit_all_nudge_templates(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Every nudge, in every language, to Meta for review, when a person presses Submit all."""
+    return nudge_templates.submit_all(db, user.email)
+
+
 @router.post("/dispositions/nudge-templates/{purpose}/submit")
 def submit_nudge_templates(purpose: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Send one nudge, in every language, to Meta for review. Only when a person presses Submit."""

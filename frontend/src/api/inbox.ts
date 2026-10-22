@@ -285,6 +285,8 @@ export const completeFollowUpTask = (id: string, note?: string) =>
   call<FollowUpItem>(`/followups/${id}/done`, { method: 'POST', body: JSON.stringify({ note }) });
 export const fetchChatFollowUps = (phone: string) => call<FollowUpItem[]>(`/conversations/${digits(phone)}/followups`);
 export const fetchNudgeTemplates = () => call<NudgeTemplate[]>('/dispositions/nudge-templates');
+export const submitAllNudgeTemplates = () =>
+  call<Record<string, { variant: string; status: string; error?: string }[]>>('/dispositions/nudge-templates/submit-all', { method: 'POST' });
 export const submitNudgeTemplates = (purpose: string) =>
   call<{ variant: string; status: string; error?: string }[]>(`/dispositions/nudge-templates/${purpose}/submit`, { method: 'POST' });
 

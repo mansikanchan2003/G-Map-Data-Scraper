@@ -2123,3 +2123,12 @@ def test_the_journeys_are_stored_for_sql(db, client):
         db.query(LeadJourneyStep).delete()
         db.query(LeadJourney).delete()
         db.commit()
+
+
+def test_submit_all_sends_every_nudge_only_when_pressed(db, client, monkeypatch):
+    from src.services import nudge_templates
+    sent = []
+    monkeypatch.setattr(nudge_templates, "submit", lambda db, purpose, by: sent.append((purpose, by)) or [])
+    r = client.post("/api/v1/inbox/dispositions/nudge-templates/submit-all")
+    assert r.status_code == 200
+    assert [p for p, _ in sent] == list(nudge_messages.PURPOSES) and {b for _, b in sent} == {"admin@eko.co.in"}

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { PARENT_TAB } from './SubPage';
 import { triggerBatchDiscovery } from '../api';
 import type { NavTab } from './Header';
 import { canOpen } from '../utils/permissions';
@@ -86,7 +87,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       : []),
   ];
   // With no role given every tab is listed, as before roles existed.
-  const navItems = role ? allItems.filter(item => canOpen(role, item.id, allowedTabs)) : allItems;
+  const allowedItems = role ? allItems.filter(item => canOpen(role, item.id, allowedTabs)) : allItems;
+  // A page that lives inside another (Dispositions in Applications...) is
+  // listed only for an account that cannot open the page it lives in.
+  const navItems = allowedItems.filter(item => {
+    const parent = PARENT_TAB[item.id];
+    return !parent || !allowedItems.some(i => i.id === parent);
+  });
 
   return (
     <>
@@ -156,7 +163,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Navigation Items */}
         <nav className="flex flex-col gap-1 mt-1">
           {navItems.map((item) => {
-            const isActive = activeTab === item.id;
+            const isActive = activeTab === item.id || PARENT_TAB[activeTab] === item.id;
             return (
               <button
                 key={item.id}

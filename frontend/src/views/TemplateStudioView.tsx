@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { BackToParent } from '../components/SubPage';
+import type { NavTab } from '../components/Header';
 import {
   approveStudioDraft, editStudioDraft, fetchStudioDrafts, fetchStudioPerformance,
   fetchStudioRules, fetchStudioStates, fetchStudioStatus, generateStudioDrafts,
@@ -65,7 +67,7 @@ const pct = (v: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}%
 
 
 
-export const TemplateStudioView: React.FC = () => {
+export const TemplateStudioView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ can }) => {
   const [mode, setModeState] = useState<Mode>(readMode);
   const setMode = (m: Mode) => {
     setModeState(m);
@@ -163,6 +165,7 @@ export const TemplateStudioView: React.FC = () => {
     <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-950 text-slate-100 p-6 overflow-y-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
+          <BackToParent tab="whatsapp-studio" can={can} />
           <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Template Studio</h1>
           <p className="text-xs text-slate-400 mt-0.5">
             {SUBTITLE[mode]}

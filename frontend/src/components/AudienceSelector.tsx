@@ -4,6 +4,8 @@ import {
   fetchAudienceSummary,
   fetchAudiencePreview,
   stashAudience,
+  parkAudience,
+  writeBusinessDrafts,
   type AudienceOptions,
   type AudienceSummary,
   type AudiencePlace,
@@ -13,8 +15,10 @@ import { GeoMultiSelect, type GeoChoice } from './GeoMultiSelect';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  /** Called once the audience is built and stored, to move to the builder. */
-  onReady: () => void;
+  /** The audience is stored for the campaign builder: go there. */
+  onCampaign: () => void;
+  /** A template is being written for the audience, which waits for it: go to the Template Studio. */
+  onTemplateFirst: () => void;
 }
 
 // A pick's key names the levels above it ("Gujarat|Rajkot"), since the same
@@ -34,7 +38,7 @@ const under = (key: string, parent: string) => key.startsWith(parent + SEP);
  * Counts refresh as the selection changes so the decision is made against real
  * numbers rather than after the fact.
  */
-export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) => {
+export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign, onTemplateFirst }) => {
   const [options, setOptions] = useState<AudienceOptions | null>(null);
   const [states, setStates] = useState<string[]>([]);
   const [districts, setDistricts] = useState<string[]>([]);
@@ -46,7 +50,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
 
   const [summary, setSummary] = useState<AudienceSummary | null>(null);
   const [loading, setLoading] = useState(false);
-  const [building, setBuilding] = useState(false);
+  const [building, setBuilding] = useState<false | 'campaign' | 'template'>(false);
 
   const filters = {
     states,
@@ -133,30 +137,28 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
     setTehsils(ts => ts.filter(k => !dropped.some(d => under(k, d))));
   };
 
-  const handleContinue = async () => {
-    setBuilding(true);
+  /**
+   * "Continue to campaign": the selection goes straight to the campaign
+   * builder, already loaded. "Create a template first": a template is written
+   * for these businesses and the selection waits in the Template Studio until
+   * it is approved, then goes on to the builder with it (the user, 2026-10-22).
+   */
+  const handleContinue = async (way: 'campaign' | 'template') => {
+    setBuilding(way);
     try {
       const preview = await fetchAudiencePreview(filters);
       if (preview.contacts.length === 0) {
         alert('No sendable contacts match this selection.');
         return;
       }
-      
-      // Auto-generate business templates for the selected audience
-      try {
-        const { writeBusinessDrafts } = await import('../api/whatsapp');
-        await writeBusinessDrafts({
-          rows: preview.contacts,
-          count: 1,
-        });
-        alert(`Queued one regional-language template for generation.\n\nPlease go to "Template Studio" -> "Business Data Agent" to review, preview the generated images, and approve them before sending.`);
-      } catch (err: any) {
-        console.error("Template generation failed", err);
-        alert(`Audience ready, but template generation failed: ${err.message}`);
+      if (way === 'campaign') {
+        stashAudience({ contacts: preview.contacts, label: scopeLabel });
+        onCampaign();
+        return;
       }
-      
-      stashAudience({ contacts: preview.contacts, label: scopeLabel });
-      onReady();
+      const drafts = await writeBusinessDrafts({ rows: preview.contacts, count: 1, source_name: scopeLabel });
+      parkAudience({ contacts: preview.contacts, label: scopeLabel, template_ids: drafts.map(d => d.template_id) });
+      onTemplateFirst();
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -303,14 +305,25 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onReady }) 
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200 font-semibold">
             Cancel
           </button>
-          <button
-            onClick={handleContinue}
-            disabled={building || !summary || summary.sendable === 0}
-            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded shadow transition-colors flex items-center gap-2"
-          >
-            <span className="material-symbols-outlined text-[18px]">campaign</span>
-            {building ? 'Preparing…' : 'Continue to campaign'}
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              onClick={() => handleContinue('template')}
+              disabled={!!building || !summary || summary.sendable === 0}
+              title="The Template Studio writes a template for these businesses; approve it, then go on to the campaign"
+              className="px-4 py-2.5 border border-violet-600 text-violet-300 hover:bg-violet-950 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-semibold rounded transition-colors flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+              {building === 'template' ? 'Starting the template…' : 'Create a template first'}
+            </button>
+            <button
+              onClick={() => handleContinue('campaign')}
+              disabled={!!building || !summary || summary.sendable === 0}
+              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded shadow transition-colors flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-[18px]">campaign</span>
+              {building === 'campaign' ? 'Preparing…' : 'Continue to campaign'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

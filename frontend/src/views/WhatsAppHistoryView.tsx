@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { SubPageButton } from '../components/SubPage';
+import type { NavTab } from '../components/Header';
 import { fetchCampaigns, fetchSpend, cancelCampaign,
   type WhatsAppCampaign, type Spend } from '../api/whatsapp';
 import { WhatsAppCampaignDetailView } from './WhatsAppCampaignDetailView';
 import { NumberUsagePanel } from '../components/NumberUsagePanel';
 
-export const WhatsAppHistoryView: React.FC = () => {
+export const WhatsAppHistoryView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ can }) => {
   const [campaigns, setCampaigns] = useState<WhatsAppCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   // The shared number's use and spend, AutoGMap's and the other apps', in a pop-up.
@@ -89,6 +91,9 @@ export const WhatsAppHistoryView: React.FC = () => {
           <p className="text-xs text-slate-400 mt-0.5">View and manage past WhatsApp campaigns</p>
         </div>
         <div className="flex items-center gap-2">
+          {(!can || can('whatsapp-insights')) && (
+            <SubPageButton tab="whatsapp-insights" label="Campaign Insights" icon="insights" className="h-8 text-xs bg-sky-600 text-white" />
+          )}
           <button onClick={() => setSpendOpen(true)}
             className="h-8 px-3 rounded text-xs font-semibold flex items-center gap-1.5 shadow-sm text-white hover:opacity-90"
             style={{ background: 'linear-gradient(120deg, #0a3543 0%, #16435a 55%, #1d5a6e 100%)' }}>

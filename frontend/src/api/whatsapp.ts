@@ -521,6 +521,26 @@ export const stashAudience = (payload: HandedAudience) => {
   }
 };
 
+/**
+ * An audience from Business Data waiting for its template: "Create a template
+ * first" parks it here while the Template Studio writes one; approving that
+ * template hands it on to the campaign builder.
+ */
+const PENDING_KEY = 'gmap-campaign-audience-pending';
+export interface PendingAudience extends HandedAudience {
+  /** The drafts written for it. */
+  template_ids: string[];
+}
+export const parkAudience = (payload: PendingAudience) => {
+  try { sessionStorage.setItem(PENDING_KEY, JSON.stringify(payload)); } catch { /* private mode: nothing waits */ }
+};
+export const pendingAudience = (): PendingAudience | null => {
+  try { const raw = sessionStorage.getItem(PENDING_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+};
+export const clearPendingAudience = () => {
+  try { sessionStorage.removeItem(PENDING_KEY); } catch { /* nothing to clear */ }
+};
+
 export const takeAudience = (): HandedAudience | null => {
   try {
     const raw = sessionStorage.getItem(AUDIENCE_KEY);

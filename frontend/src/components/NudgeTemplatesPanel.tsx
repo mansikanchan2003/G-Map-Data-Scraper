@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { fetchNudgeTemplates, submitNudgeTemplates, type NudgeTemplate } from '../api/inbox';
+import { fetchNudgeTemplates, submitAllNudgeTemplates, submitNudgeTemplates, type NudgeTemplate } from '../api/inbox';
 
 /**
  * The nudges that stand in for calls, for the team to read before any goes
@@ -45,6 +45,20 @@ export const NudgeTemplatesPanel: React.FC<{ readOnly?: boolean }> = ({ readOnly
     finally { setBusy(null); }
   };
 
+  const submitAll = async () => {
+    if (!list) return;
+    const n = list.reduce((k, t) => k + t.variants.filter(v => ['NOT_SUBMITTED', 'REJECTED', 'FAILED'].includes(v.status)).length, 0);
+    if (!window.confirm(`Send all ${n} nudge templates not yet with Meta for review?`)) return;
+    setBusy('all'); setError(null);
+    try {
+      const out = await submitAllNudgeTemplates();
+      const failed = Object.values(out).flat().filter(o => o.error);
+      if (failed.length) setError(`${failed.length} not accepted: ${failed[0].error}`);
+      await load();
+    } catch (e: any) { setError(e.message); }
+    finally { setBusy(null); }
+  };
+
   if (!list) return error
     ? <div className="p-4 rounded-xl border border-rose-800/60 bg-rose-950 text-rose-300 text-sm">Could not load the nudges: {error}</div>
     : <div className="h-40 rounded-2xl bg-slate-900 border border-slate-800 animate-pulse" />;
@@ -59,7 +73,15 @@ export const NudgeTemplatesPanel: React.FC<{ readOnly?: boolean }> = ({ readOnly
           <span className="h-8 w-8 rounded-lg bg-emerald-950 text-emerald-300 flex items-center justify-center"><Icon name="forum" className="text-[18px]" /></span>
           Nudge templates
         </h3>
-        <span className="text-[12px] text-slate-400"><b className="text-slate-100 tabular-nums">{approved}</b> of {all} approved by Meta</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-[12px] text-slate-400"><b className="text-slate-100 tabular-nums">{approved}</b> of {all} approved by Meta</span>
+          {!readOnly && list.some(t => t.variants.some(v => ['NOT_SUBMITTED', 'REJECTED', 'FAILED'].includes(v.status))) && (
+            <button onClick={submitAll} disabled={busy === 'all'}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 text-white text-[12.5px] font-semibold hover:bg-emerald-500 cursor-pointer disabled:opacity-50">
+              <Icon name="send" className="text-[15px]" />{busy === 'all' ? 'Submitting all…' : 'Submit all to Meta'}
+            </button>
+          )}
+        </div>
       </div>
       <p className="text-[12.5px] text-slate-400 mt-2">
         One nudge for each use case, in every language. While someone's 24-hour window is open these go as plain messages

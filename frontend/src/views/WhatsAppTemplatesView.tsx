@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { SubPageButton } from '../components/SubPage';
+import type { NavTab } from '../components/Header';
 import {
   fetchTemplates, createTemplate, updateTemplate, deleteTemplate, uploadMedia,
   syncTemplateStatuses, submitTemplate, type WhatsAppTemplate
@@ -212,7 +214,7 @@ const SortHeader: React.FC<{
 };
 
 
-export const WhatsAppTemplatesView: React.FC = () => {
+export const WhatsAppTemplatesView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ can }) => {
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -496,6 +498,9 @@ export const WhatsAppTemplatesView: React.FC = () => {
         </div>
         {!isCreating && (
           <div className="flex items-center gap-2" data-edit>
+          {(!can || can('whatsapp-studio')) && (
+            <SubPageButton tab="whatsapp-studio" label="Template Studio" icon="auto_awesome" className="h-8 text-xs bg-violet-600 text-white" />
+          )}
           <button
             onClick={() => handleSync()}
             disabled={syncing}

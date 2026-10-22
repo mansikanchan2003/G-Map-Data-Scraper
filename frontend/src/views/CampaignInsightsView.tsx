@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { BackToParent } from '../components/SubPage';
+import type { NavTab } from '../components/Header';
 import { GrowthPlan } from '../components/GrowthPlan';
 import {
   exploreInsights, fetchCampaignInsights, fetchCampaignReport, fetchDimensions,
@@ -124,7 +126,7 @@ const mediaUrl = (headerContent: string | null) => {
 
 type Tab = 'plan' | 'deep' | 'campaigns' | 'history';
 
-export const CampaignInsightsView: React.FC = () => {
+export const CampaignInsightsView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ can }) => {
   const [book, setBook] = useState<Playbook | null>(null);
   const [dims, setDims] = useState<DimensionInfo[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
@@ -170,6 +172,7 @@ export const CampaignInsightsView: React.FC = () => {
       <div className="px-6 pt-6 max-w-[1500px] w-full mx-auto">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
+            <BackToParent tab="whatsapp-insights" can={can} />
             <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Campaign Insights</h1>
             <p className="text-sm text-slate-500 mt-1">
               The lead goal, what to do next, and what has worked across every campaign.

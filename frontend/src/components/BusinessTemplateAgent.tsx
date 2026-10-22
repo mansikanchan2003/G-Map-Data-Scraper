@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   approveStudioDraft, editStudioDraft, fetchBusinessDrafts, fetchSheetSettings, fetchStudioStatus,
   rejectStudioDraft, requestNewPhoto, stashAudience, studioMediaUrl, writeBusinessDrafts,
+  pendingAudience, clearPendingAudience, type PendingAudience,
 } from '../api/whatsapp';
 import { ApproveAnyway, CheckerNotes } from './CheckerNotes';
 import { PosterTextEditor, posterChanges } from './PosterTextEditor';
@@ -52,6 +53,8 @@ export const BusinessTemplateAgent: React.FC = () => {
   const [starting, setStarting] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [drafts, setDrafts] = useState<StudioDraft[]>([]);
+  // A selection from Business Data waiting for its template ("Create a template first").
+  const [pending, setPending] = useState<PendingAudience | null>(() => pendingAudience());
 
   const say = (kind: 'ok' | 'error', text: string) => {
     setNotice({ kind, text });
@@ -124,7 +127,21 @@ export const BusinessTemplateAgent: React.FC = () => {
     }
   };
 
+  // The waiting selection's template, once someone has approved it (Meta may still be reviewing).
+  const pendingReady = pending ? drafts.find(d => pending.template_ids.includes(d.template_id)
+    && (META_WAITING(d.status) || d.status === 'APPROVED')) : undefined;
+  const pendingDraft = pending ? drafts.find(d => pending.template_ids.includes(d.template_id)) : undefined;
+
+  const continueWithPending = (d: StudioDraft) => {
+    if (!pending) return;
+    stashAudience({ contacts: pending.contacts, label: pending.label, template_id: d.template_id });
+    clearPendingAudience();
+    setPending(null);
+    window.location.hash = 'whatsapp-campaign';
+  };
+
   const startCampaign = (d: StudioDraft) => {
+    if (pending) { continueWithPending(d); return; }
     if (sheet) {
       const nameCol = sheet.headers.find(h => h.toLowerCase() === 'name') || '';
       const phoneCol = sheet.headers.find(h => /phone|mobile/i.test(h)) || '';
@@ -143,6 +160,24 @@ export const BusinessTemplateAgent: React.FC = () => {
       {ready && !ready.ready && (
         <div className="p-3 rounded border border-amber-600/50 bg-amber-900/20 text-amber-200 text-sm">
           The agent cannot write yet: {ready.error} Drafts already written can still be reviewed.
+        </div>
+      )}
+      {pending && (
+        <div className="p-4 rounded-lg border border-violet-700/60 bg-violet-950 flex flex-wrap items-center gap-3">
+          <span className="material-symbols-outlined text-[24px] text-violet-300">groups</span>
+          <div className="flex-1 min-w-[240px] text-sm text-violet-200">
+            <b className="text-violet-100">{pending.contacts.length.toLocaleString()} businesses from Business Data</b> ({pending.label}) are waiting for this template.{' '}
+            {pendingReady
+              ? 'It is approved: continue to the campaign, where they are already loaded.'
+              : pendingDraft?.status === 'GENERATING' ? 'The agent is writing it below; it takes under a minute. Then review and approve it.'
+              : 'Review and approve its draft below, then continue to the campaign.'}
+          </div>
+          <button onClick={() => pendingReady && continueWithPending(pendingReady)} disabled={!pendingReady}
+            className="h-9 px-4 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold flex items-center gap-2">
+            <span className="material-symbols-outlined text-[16px]">campaign</span>Continue to WhatsApp Campaign
+          </button>
+          <button onClick={() => { clearPendingAudience(); setPending(null); }}
+            className="h-9 px-3 rounded text-xs text-violet-300 hover:text-violet-100">Not now</button>
         </div>
       )}
       {notice && (
@@ -218,7 +253,7 @@ export const BusinessTemplateAgent: React.FC = () => {
         <div className="grid xl:grid-cols-2 gap-5">
           {drafts.map(d => (
             <DraftCard key={d.template_id} draft={d} hasSheet={!!sheet} onChanged={load} say={say}
-              onCampaign={() => startCampaign(d)} />
+              onCampaign={() => startCampaign(d)} waitingFor={!!pending?.template_ids.includes(d.template_id)} />
           ))}
         </div>
       )}
@@ -232,7 +267,9 @@ const DraftCard: React.FC<{
   onChanged: () => void;
   onCampaign: () => void;
   say: (kind: 'ok' | 'error', text: string) => void;
-}> = ({ draft: d, hasSheet, onChanged, onCampaign, say }) => {
+  /** A selection from Business Data is waiting for this template. */
+  waitingFor?: boolean;
+}> = ({ draft: d, hasSheet, onChanged, onCampaign, say, waitingFor }) => {
   const g = d.generation || {};
   const st = statusOf(d.status);
   const [mode, setMode] = useState<'view' | 'edit' | 'approve' | 'reject'>('view');
@@ -429,10 +466,10 @@ const DraftCard: React.FC<{
           </button>
         </div>
       )}
-      {d.status === 'APPROVED' && (
+      {(d.status === 'APPROVED' || (waitingFor && META_WAITING(d.status))) && (
         <button onClick={onCampaign} className={`${btn} bg-sky-600 hover:bg-sky-500 text-white`}>
           <span className="material-symbols-outlined text-[16px]">campaign</span>
-          {hasSheet ? 'Start a campaign with these businesses' : 'Use in a campaign'}
+          {waitingFor ? 'Continue to WhatsApp Campaign' : hasSheet ? 'Start a campaign with these businesses' : 'Use in a campaign'}
         </button>
       )}
     </div>

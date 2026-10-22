@@ -151,6 +151,7 @@ export default function App() {
   // A tab the role may not open — reached by a typed address or a saved
   // link — falls back to the dashboard rather than showing a page of errors.
   const shownTab: NavTab = canOpen(user.role, activeTab, user.allowed_tabs) ? activeTab : homeTab(user.role, user.allowed_tabs);
+  const can = (tab: NavTab) => canOpen(user.role, tab, user.allowed_tabs);
   const readOnly = isReadOnly(user.role);
 
   return (
@@ -229,19 +230,19 @@ export default function App() {
 
           {shownTab === 'whatsapp-campaign' && <WhatsAppCampaignView />}
 
-          {shownTab === 'whatsapp-templates' && <WhatsAppTemplatesView />}
+          {shownTab === 'whatsapp-templates' && <WhatsAppTemplatesView can={can} />}
 
-          {shownTab === 'whatsapp-studio' && <TemplateStudioView />}
+          {shownTab === 'whatsapp-studio' && <TemplateStudioView can={can} />}
 
           {shownTab === 'whatsapp-inbox' && <InboxView readOnly={readOnly} scope={user.inbox_scope} />}
 
-          {shownTab === 'applications' && <ApplicationsView readOnly={readOnly} />}
-          {shownTab === 'dispositions' && <DispositionsView readOnly={readOnly} />}
+          {shownTab === 'applications' && <ApplicationsView readOnly={readOnly} can={can} />}
+          {shownTab === 'dispositions' && <DispositionsView readOnly={readOnly} can={can} />}
           {shownTab === 'partners' && <PartnersView />}
 
-          {shownTab === 'whatsapp-history' && <WhatsAppHistoryView />}
+          {shownTab === 'whatsapp-history' && <WhatsAppHistoryView can={can} />}
 
-          {shownTab === 'whatsapp-insights' && <CampaignInsightsView />}
+          {shownTab === 'whatsapp-insights' && <CampaignInsightsView can={can} />}
           </Suspense>
         </main>
       </div>

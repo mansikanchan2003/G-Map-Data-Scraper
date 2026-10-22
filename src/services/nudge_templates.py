@@ -103,3 +103,8 @@ def refresh(db: Session) -> None:
     rows = [t for t in _rows(db).values() if (t.status or "").upper() not in ("APPROVED", "FAILED", "DRAFT")]
     if rows:
         refresh_statuses(db, rows)
+
+
+def submit_all(db: Session, by: str) -> Dict[str, List[dict]]:
+    """Every nudge, in every language, to Meta for review; those already there are left as they are."""
+    return {purpose: submit(db, purpose, by) for purpose in nudge_messages.PURPOSES}
