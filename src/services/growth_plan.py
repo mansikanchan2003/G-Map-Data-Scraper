@@ -109,7 +109,7 @@ def goal(db: Session, people: Optional[List[WhatsAppConversation]] = None,
     people = _people(db) if people is None else people
     facts = ci.load_facts(db) if facts is None else facts
     if summary is None:
-        ctx = business_context.load(db)
+        ctx = business_context.load()
         summary = business_context.summarise(ctx) if ctx else None
     today = today_ist()
     revenue_goal = business_context.revenue_goal(db)
@@ -541,7 +541,7 @@ def plan(db: Session) -> dict:
     book["_facts"] = facts
     book["_db"] = db
     people = _people(db)
-    ctx = business_context.load(db)
+    ctx = business_context.load()
     summary = business_context.summarise(ctx) if ctx else None
     g = goal(db, people, facts, summary)
     f = funnel(db, people, facts)

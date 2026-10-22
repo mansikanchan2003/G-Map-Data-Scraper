@@ -41,19 +41,3 @@ class InsightSnapshot(Base):
     recipients = Column(Integer, nullable=False, default=0)
     responses = Column(Integer, nullable=False, default=0)
     playbook = Column(JSON, nullable=True)
-
-
-class BusinessContextSnapshot(Base):
-    """
-    Each day's business data from Tara and the onboarding sheets (totals
-    only), as scripts/export_business_context.py exported it. The file is
-    replaced every day; these rows keep every day's copy in the database.
-    """
-    __tablename__ = "business_context_snapshots"
-
-    snapshot_id = Column(String(32), primary_key=True)
-    exported_at = Column(String(40), nullable=False, unique=True, index=True)
-    # The last day Tara has revenue for, in this copy.
-    tara_as_of = Column(String(10), nullable=True)
-    data = Column(JSON, nullable=False)
-    stored_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

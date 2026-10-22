@@ -7,7 +7,7 @@ from .run_log import RunLog
 from .app_setting import AppSetting
 from .user import User
 from .autopilot import DiscoveryRound
-from .insights import BusinessContextSnapshot, CampaignInsight, InsightSnapshot
+from .insights import CampaignInsight, InsightSnapshot
 from .studio import StudioImagePrompt, StudioRealPhoto
 from .inbox import AttentionTicket, ChatActivity, FollowUp, LeadJourney, LeadJourneyStep, WhatsAppConversation, WhatsAppMessage, OnboardingDocument
 from .application import ApplicationComment, ApplicationRemoval, QualifiedLead
@@ -44,7 +44,6 @@ __all__ = [
     "CampaignInsight",
     "DiscoveryRound",
     "InsightSnapshot",
-    "BusinessContextSnapshot",
     "StudioImagePrompt",
     "StudioRealPhoto",
     "User"
