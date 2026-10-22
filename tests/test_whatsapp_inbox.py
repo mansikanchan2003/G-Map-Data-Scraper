@@ -2385,3 +2385,29 @@ def test_a_trust_concern_is_answered_with_the_website_and_goes_to_a_person_to_ca
     assert c.needs_attention and c.attention_reason.startswith("Call this lead: trust concern")
     assert "the last step before their documents" in c.attention_reason
     assert tickets.open_ticket(db, PHONE) is not None and len(emailed) == 1
+
+
+DISTRUST = "Na . મને તમારા પર વિશ્ર્વાસ નથી.  તમે કોઈ  frod hy to"
+
+
+def test_a_trust_concern_at_the_documents_question_ends_with_the_upload_line_and_link(db, emailed):
+    tap_campaign(db, lang="gu")
+    say(db, SERVED_PIN)
+    qualify(db)
+    tap(db, "invest:yes")                                     # now at "are your documents ready?"
+    assert conv(db).bot_step == onboarding_bot.AWAIT_DOCS
+    say(db, DISTRUST)
+    kind, _to, body, extra = StubMeta.sent[-1]
+    assert body.rstrip().endswith(bot_messages.MESSAGES["gu"]["remind_upload"])
+    assert kind == "link" and conv(db).upload_token in extra["url"]
+    assert conv(db).bot_step == onboarding_bot.AWAIT_DOCS        # their Yes or No still counts
+
+
+def test_a_trust_concern_at_an_earlier_step_has_no_upload_line(db, emailed):
+    tap_campaign(db, lang="gu")
+    say(db, SERVED_PIN)                                       # now at the education question
+    say(db, DISTRUST)
+    body = StubMeta.sent[-1][2]
+    assert "Eko Bharat Ventures" in body and "kiosk.eko.in" in body
+    assert bot_messages.MESSAGES["gu"]["remind_upload"] not in body
+    assert conv(db).needs_attention                           # still goes to a person

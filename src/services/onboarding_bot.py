@@ -763,6 +763,16 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
             near_end = " (the last step before their documents)" if conv.bot_step in (AWAIT_UPLOAD, AWAIT_DOCS) else ""
             flag(conv, f"Call this lead: trust concern. They worry Eko may be fake. At: {step}{near_end}. "
                        f"They wrote: “{(said or '')[:200]}”. The bot sent who Eko is and the website.")
+            if conv.bot_step == AWAIT_DOCS:
+                # At the documents question the trust answer ends, as it does once the link is
+                # out, with the upload line and its link (the user, 2026-10-22); they stay at the
+                # question, so their Yes or No still counts.
+                if not conv.upload_token or not inbox.aware(conv.upload_token_expires_at) or \
+                        inbox.aware(conv.upload_token_expires_at) <= inbox.now():
+                    conv.upload_token = secrets.token_urlsafe(24)
+                    conv.upload_token_expires_at = inbox.now() + timedelta(days=UPLOAD_LINK_DAYS)
+                body = _t(db, conv, "remind_upload")
+                kw = {"link": {"text": _t(db, conv, "link_button"), "url": upload_url(conv)}}
         elif voice:
             # A transcript can be wrong: answered, and still left for a person to check.
             flag(conv, f"Voice note: {said} (answered from the FAQ: {', '.join(faq)})")
