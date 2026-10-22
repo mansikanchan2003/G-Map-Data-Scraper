@@ -34,10 +34,13 @@ a shortfall is said in transactions the existing CSPs would have to add,
 since new CSPs earn little in their first months.
 """
 import json
+import logging
 import math
 import os
 from datetime import date, timedelta
 from typing import Dict, List, Optional
+
+logger = logging.getLogger("gmap_scraper.business_context")
 
 CONTEXT_FILE = os.environ.get("BUSINESS_CONTEXT_FILE", os.path.join("data", "business_context.json"))
 # AutoGMap aims to add this share to the CSPs going live each month.
@@ -81,12 +84,60 @@ def set_revenue_goal(db, inr: Optional[int], start: Optional[str] = None, end: O
 MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
-def load() -> Optional[dict]:
+def _read_file() -> Optional[dict]:
     try:
         with open(CONTEXT_FILE, encoding="utf-8") as f:
             return json.load(f)
     except (OSError, ValueError):
         return None
+
+
+def tara_as_of(ctx: dict) -> Optional[str]:
+    """The last day Tara has revenue for in this copy."""
+    days = [v.get("as_of") for v in (ctx.get("revenue_forecasts") or {}).values() if isinstance(v, dict)]
+    return max((d for d in days if d), default=None)
+
+
+def store(db, ctx: dict) -> bool:
+    """Keep this day's copy in business_context_snapshots, once per export. True if it was new."""
+    import uuid
+    from src.models import BusinessContextSnapshot
+
+    exported = ctx.get("exported_at")
+    if not exported or db.query(BusinessContextSnapshot.snapshot_id).filter(
+            BusinessContextSnapshot.exported_at == exported).first():
+        return False
+    db.add(BusinessContextSnapshot(snapshot_id=uuid.uuid4().hex, exported_at=exported,
+                                   tara_as_of=tara_as_of(ctx), data=ctx))
+    db.commit()
+    return True
+
+
+def latest(db) -> Optional[dict]:
+    from src.models import BusinessContextSnapshot
+
+    row = db.query(BusinessContextSnapshot).order_by(BusinessContextSnapshot.exported_at.desc()).first()
+    return row.data if row else None
+
+
+def load(db=None) -> Optional[dict]:
+    """
+    The latest business data. With a database, a new day's file is also
+    kept in it (the user, 2026-10-22: every data in the database), and the
+    database's latest copy is used when the file is missing.
+    """
+    ctx = _read_file()
+    if db is None:
+        return ctx
+    try:
+        if ctx:
+            store(db, ctx)
+        else:
+            ctx = latest(db)
+    except Exception:
+        db.rollback()
+        logger.exception("business_context event=STORE_FAILED")
+    return ctx
 
 
 def _key(label: str) -> str:

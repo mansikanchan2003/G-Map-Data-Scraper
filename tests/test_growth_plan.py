@@ -19,6 +19,7 @@ from src.models import (  # noqa: F401  (registers the tables on Base)
     WhatsAppTemplate,
 )
 from src.models.app_setting import AppSetting
+from src.models.insights import BusinessContextSnapshot
 from src.models.category import Category
 from src.models.inbox import WhatsAppConversation, WhatsAppMessage
 from src.services import campaign_insights as ci
@@ -80,7 +81,8 @@ def db(monkeypatch, tmp_path):
     finally:
         session.rollback()
         for model in (WhatsAppMessage, WhatsAppConversation, WhatsAppLinkClick, WhatsAppButtonClick,
-                      WhatsAppCampaignRecipient, WhatsAppCampaign, WhatsAppTemplate, Business, Category, AppSetting):
+                      WhatsAppCampaignRecipient, WhatsAppCampaign, WhatsAppTemplate, Business, Category, AppSetting,
+                      BusinessContextSnapshot):
             session.query(model).delete()
         session.commit()
         session.close()
@@ -346,3 +348,20 @@ def test_figures_left_behind_by_a_stopped_refresh_are_flagged():
     goal = {"inr": 10_000_000, "from": "2026-10-01", "to": "2026-12-31"}
     assert bc.revenue_plan(summary, goal, date(2026, 10, 21))["stale_days"] == 4
     assert bc.revenue_plan(summary, goal, date(2026, 10, 17))["stale_days"] == 0
+
+
+def test_each_days_business_data_is_kept_in_the_database_once(db, context):
+    from src.services import business_context
+    assert business_context.load(db)["exported_at"] == CONTEXT["exported_at"]
+    business_context.load(db)
+    rows = db.query(BusinessContextSnapshot).all()
+    assert len(rows) == 1 and rows[0].data == CONTEXT
+    assert rows[0].tara_as_of == business_context.tara_as_of(CONTEXT)
+
+
+def test_without_the_file_the_databases_latest_copy_is_used(db, context, monkeypatch, tmp_path):
+    from src.services import business_context
+    business_context.load(db)
+    monkeypatch.setattr(business_context, "CONTEXT_FILE", str(tmp_path / "gone.json"))
+    assert business_context.load(db) == CONTEXT
+    assert business_context.load() is None
