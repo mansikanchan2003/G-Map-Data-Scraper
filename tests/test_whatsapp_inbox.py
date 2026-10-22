@@ -2378,7 +2378,9 @@ def test_a_trust_concern_is_answered_with_the_website_and_goes_to_a_person_to_ca
     say(db, "Na . મને તમારા પર વિશ્ર્વાસ નથી.  તમે કોઈ  frod hy to")
     body = StubMeta.sent[-1][2]
     assert "Eko Bharat Ventures" in body
-    assert "https://kiosk.eko.in/?utm_source=AutoGMap&utm_medium=whatsapp&utm_campaign=Delhi%20CSP" in body
+    assert ("અમારી વિશ્વસનીયતા ચકાસવા માટે તમે અમારી વેબસાઇટની મુલાકાત લઈ શકો છો: "
+            "https://kiosk.eko.in/?utm_source=AutoGMap&utm_medium=whatsapp&utm_campaign=Delhi%20CSP") in body
+    assert "તમે +91 7291988625 પર અમારો સીધો સંપર્ક પણ કરી શકો છો (કૉલ/WhatsApp)." in body
     c = conv(db)
     assert c.needs_attention and c.attention_reason.startswith("Call this lead: trust concern")
     assert "the last step before their documents" in c.attention_reason

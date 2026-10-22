@@ -879,13 +879,22 @@ def website_link(campaign: Optional[str] = None) -> str:
     from urllib.parse import quote
     return (f"{WEBSITE}?utm_source=AutoGMap&utm_medium=whatsapp"
             f"&utm_campaign={quote(campaign or 'AutoGMap', safe='')}")
+# The wording the team chose (Gujarati, 2026-10-22), in each language the answer is written in.
 _SEE_FOR_YOURSELF = {
-    "hinglish": "Aap hamari website par khud dekh sakte hain:",
-    "en": "You can check us yourself on our website:",
-    "hi": "आप हमारी वेबसाइट पर खुद देख सकते हैं:",
-    "gu": "તમે અમારી વેબસાઇટ પર જાતે ચકાસી શકો છો:",
-    "pa": "ਤੁਸੀਂ ਸਾਡੀ ਵੈੱਬਸਾਈਟ ਉੱਤੇ ਖੁਦ ਦੇਖ ਸਕਦੇ ਹੋ:",
-    "mr": "तुम्ही आमच्या वेबसाइटवर स्वतः पाहू शकता:",
+    "hinglish": "Hamari vishwasniyata jaanchne ke liye aap hamari website dekh sakte hain:",
+    "en": "To check our credibility, you can visit our website:",
+    "hi": "हमारी विश्वसनीयता जाँचने के लिए आप हमारी वेबसाइट देख सकते हैं:",
+    "gu": "અમારી વિશ્વસનીયતા ચકાસવા માટે તમે અમારી વેબસાઇટની મુલાકાત લઈ શકો છો:",
+    "pa": "ਸਾਡੀ ਭਰੋਸੇਯੋਗਤਾ ਜਾਂਚਣ ਲਈ ਤੁਸੀਂ ਸਾਡੀ ਵੈੱਬਸਾਈਟ ਦੇਖ ਸਕਦੇ ਹੋ:",
+    "mr": "आमची विश्वासार्हता तपासण्यासाठी तुम्ही आमच्या वेबसाइटला भेट देऊ शकता:",
+}
+_CALL_US = {
+    "hinglish": "Aap {phone} par humse seedhe sampark bhi kar sakte hain (call/WhatsApp).",
+    "en": "You can also contact us directly on {phone} (call/WhatsApp).",
+    "hi": "आप {phone} पर हमसे सीधे संपर्क भी कर सकते हैं (कॉल/WhatsApp)।",
+    "gu": "તમે {phone} પર અમારો સીધો સંપર્ક પણ કરી શકો છો (કૉલ/WhatsApp).",
+    "pa": "ਤੁਸੀਂ {phone} ਉੱਤੇ ਸਾਡੇ ਨਾਲ ਸਿੱਧਾ ਸੰਪਰਕ ਵੀ ਕਰ ਸਕਦੇ ਹੋ (ਕਾਲ/WhatsApp)।",
+    "mr": "तुम्ही {phone} वर आमच्याशी थेट संपर्कही साधू शकता (कॉल/WhatsApp).",
 }
 # Saying they do not trust Eko, in the ways people write it.
 _DISTRUST = ("fraud", "froud", "frod", "fake", "scam", "dhokha", "dhoka", "farzi", "fraudi", "chor", "cheat",
@@ -911,9 +920,11 @@ def reply(faq_ids: List[str], lang: str, said: str = "", campaign: Optional[str]
     """The answers, and for "is Eko real?" the tagged website, `campaign` naming the lead's campaign."""
     out = "\n\n".join(answer(i, lang, said) for i in faq_ids)
     if "real" in faq_ids:
+        from src.services.creative_brief import PHONE
         hinglish = lang == "hi" and said and _LATIN.search(said) and not re.search(r"[ऀ-ॿ]", said)
-        line = _SEE_FOR_YOURSELF["hinglish"] if hinglish else _SEE_FOR_YOURSELF.get(lang, _SEE_FOR_YOURSELF["en"])
-        out += f"\n\n{line} {website_link(campaign)}"
+        variant = "hinglish" if hinglish else (lang if lang in _SEE_FOR_YOURSELF else "en")
+        out += f"\n\n{_SEE_FOR_YOURSELF[variant]} {website_link(campaign)}"
+        out += "\n\n" + _CALL_US[variant].format(phone=PHONE)
     return out
 
 
