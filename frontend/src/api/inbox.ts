@@ -254,10 +254,22 @@ export interface JourneyStep {
   detail: string | null;
 }
 
+/** Something still to be done for a lead. */
+export interface OpenItem {
+  kind: 'nudge' | 'task' | 'ticket' | 'handover';
+  text: string;
+  status: string;
+  owner: string;
+  due: string | null;
+  since: string | null;
+  note: string | null;
+}
+
 export interface Journey {
   phone: string;
   name: string | null;
   steps: JourneyStep[];
+  open: OpenItem[];
   funnel: { key: string; label: string; at: string | null }[];
   furthest: number;
   outcome: 'handed_over' | 'closed' | 'in_progress';
@@ -276,6 +288,16 @@ export type JourneyRow = Omit<Journey, 'steps'> & {
   steps_done: number;
   steps_total: number;
 };
+
+/** Leads whose recorded steps do not add up (the Dashboard's flag). */
+export interface MissingSteps {
+  total: number;
+  leads: number;
+  by_check: { check: string; label: string; severity: 'high' | 'medium' | 'low'; count: number }[];
+  flags: { check: string; label: string; severity: 'high' | 'medium' | 'low'; phone: string; name: string | null;
+           at: string | null; detail: string }[];
+}
+export const fetchMissingSteps = () => call<MissingSteps>('/journeys/missing-steps');
 
 export const fetchJourney = (phone: string) => call<Journey>(`/conversations/${digits(phone)}/journey`);
 export const fetchJourneys = () => call<JourneyRow[]>('/dispositions/journeys');

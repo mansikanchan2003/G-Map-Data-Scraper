@@ -311,12 +311,45 @@ def build(db: Session, conv: WhatsAppConversation, *, messages: Optional[List[Wh
                "in_progress")
     return {
         "phone": phone, "name": conv.profile_name, "steps": steps,
+        "open": open_items(followups, tickets),
         "funnel": [{"key": k, "label": FUNNEL_LABELS[k], "at": reached.get(k)} for k in FUNNEL],
         "furthest": furthest, "outcome": outcome,
         "now": {"label": now["label"], "key": now["key"], "since": now["at"]},
         "last": {"what": last_stage["what"], "at": last_stage["at"]} if last_stage else None,
         "last_activity": steps[-1]["at"] if steps else None,
     }
+
+
+def open_items(followups: List[FollowUp], tickets: List[AttentionTicket]) -> List[dict]:
+    """
+    Everything still to be done for a lead, soonest first: nudges planned or
+    waiting, the team's and the District Coordinator's tasks, a question
+    waiting for the team, and the hand-over to Eko Acquisition if it has not
+    gone yet.
+    """
+    out = []
+    for f in followups:
+        if f.wants == dz.API:
+            if f.status in ("scheduled", "waiting", "failed"):
+                out.append({"kind": "handover", "text": f"Hand-over to {dz.HANDED_TO}",
+                            "status": "failed" if f.status == "failed" else "waiting", "owner": "bot",
+                            "due": _iso(f.due_at), "since": _iso(f.created_at), "note": f.note})
+        elif f.status not in ("scheduled", "waiting"):
+            continue
+        elif f.wants == dz.TASK:
+            owner = {"human": "The team", "dc": "District Coordinator"}.get(f.owner, f.owner)
+            out.append({"kind": "task", "text": f"{owner}: {f.task}", "status": "open", "owner": f.owner,
+                        "due": _iso(f.due_at), "since": _iso(f.created_at), "note": None})
+        else:
+            out.append({"kind": "nudge",
+                        "text": f"WhatsApp message to {dz.PURPOSE_PLAIN.get(f.purpose, f.purpose.replace('_', ' '))}",
+                        "status": f.status, "owner": f.owner, "due": _iso(f.due_at), "since": _iso(f.created_at),
+                        "note": "Waiting for Meta to approve its template" if f.status == "waiting" else None})
+    for t in tickets:
+        if not t.resolved_at:
+            out.append({"kind": "ticket", "text": f"Question for the team: “{(t.latest_question or t.question or '').strip()[:140]}”",
+                        "status": "open", "owner": "human", "due": None, "since": _iso(t.raised_at), "note": None})
+    return sorted(out, key=lambda o: o["due"] or o["since"] or "")
 
 
 def _plainly(conv: WhatsAppConversation, j: dict) -> dict:
@@ -377,7 +410,7 @@ def board(db: Session, limit: int = 200) -> List[dict]:
         # Only those who did something: a campaign that went unanswered is not a lead's journey yet.
         if j["furthest"] < 1 and not any(s["kind"] == "stage" and s["key"] != "campaign" for s in j["steps"]):
             continue
-        row = {k: j[k] for k in ("phone", "name", "furthest", "outcome", "now", "last", "last_activity", "funnel")}
+        row = {k: j[k] for k in ("phone", "name", "furthest", "outcome", "now", "last", "last_activity", "funnel", "open")}
         row.update(_plainly(c, j))
         rows.append(row)
     rows.sort(key=lambda r: r["last_activity"] or "", reverse=True)

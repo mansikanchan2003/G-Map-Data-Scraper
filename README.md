@@ -826,6 +826,10 @@ hashed, never stored, and a tracking failure never blocks the redirect.
 
 ---
 
+## Lead Journey
+
+Every campaign lead's journey (Applications → **Lead Journey**) is read from the records AutoGMap already keeps and copied every 15 minutes into the `lead_journeys` and `lead_journey_steps` tables. Which step is recorded where, and by what, is in [LEAD_JOURNEY.md](LEAD_JOURNEY.md). The Dashboard flags leads whose steps do not add up.
+
 ## Playwright Browser Setup
 
 The discovery engine and email enricher both use Playwright Chromium.

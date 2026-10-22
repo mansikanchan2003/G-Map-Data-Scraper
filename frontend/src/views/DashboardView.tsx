@@ -1,4 +1,5 @@
 import { formatDateTime } from '../utils/datetime';
+import { MissingStepsCard } from '../components/MissingStepsCard';
 import React, { useState } from 'react';
 import { DiscoveryRunner } from '../components/DiscoveryRunner';
 import { AutopilotPanel } from '../components/AutopilotPanel';
@@ -116,6 +117,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </section>
+
+      {/* Leads whose recorded steps do not add up; green and quiet when all do. */}
+      <MissingStepsCard />
 
       {/* Action feedback banner */}
       {actionMsg && (

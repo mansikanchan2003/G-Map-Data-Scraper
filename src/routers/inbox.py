@@ -614,6 +614,13 @@ def chat_journey(digits: str, db: Session = Depends(get_db)):
     return lead_journey.build(db, _get_conversation(db, digits))
 
 
+@router.get("/journeys/missing-steps")
+def missing_steps(db: Session = Depends(get_db)):
+    """Leads whose recorded steps do not add up: a step with no record of the one before it."""
+    from src.services import journey_checks
+    return journey_checks.find(db)
+
+
 @router.get("/dispositions/journeys")
 def journeys(limit: int = Query(200, ge=1, le=1000), db: Session = Depends(get_db)):
     """Every campaign lead's journey in short, most recently active first."""

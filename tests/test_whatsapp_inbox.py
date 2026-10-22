@@ -2182,3 +2182,63 @@ def test_cannot_invest_offers_the_lower_investment_option_and_tells_the_team(db,
     nudge = [f for f in _followups(db) if f.purpose == "lower_investment"]
     assert len(nudge) == 1 and nudge[0].status == "sent" and nudge[0].note == "Said in the bot's reply"
     assert StubMeta.sent[-1][2] == body
+
+
+# --- Open action items on a lead, and the missing-step alert (2026-10-22) -----
+
+def test_a_leads_open_action_items_list_everything_still_to_do(db, client):
+    tap_campaign(db)
+    say(db, "Mere ghar ka pata badalna hai, kya karna hoga?")       # a question for the team
+    _record(client, "lang_barrier")                                # a nudge now and a task for the team
+    _record(client, "hold_later", at=(inbox.now() + __import__("datetime").timedelta(days=5)).isoformat())
+    j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
+    kinds = {o["kind"] for o in j["open"]}
+    assert {"ticket", "task", "nudge"} <= kinds
+    assert any("check back" in o["text"] for o in j["open"] if o["kind"] == "nudge")
+    row = client.get("/api/v1/inbox/dispositions/journeys").json()[0]
+    assert len(row["open"]) == len(j["open"])
+
+
+def _recipient(db):
+    return db.query(WhatsAppCampaignRecipient).filter(WhatsAppCampaignRecipient.phone == PHONE).one()
+
+
+def test_a_reply_to_a_campaign_never_sent_is_flagged(db, client):
+    tap_campaign(db)
+    checks = {f["check"] for f in client.get("/api/v1/inbox/journeys/missing-steps").json()["flags"]}
+    assert "replied_not_sent" in checks
+    r = _recipient(db)
+    r.sent_at = inbox.now()
+    db.commit()
+    checks = {f["check"] for f in client.get("/api/v1/inbox/journeys/missing-steps").json()["flags"]}
+    assert "replied_not_sent" not in checks
+
+
+def test_read_with_no_delivered_update_is_flagged(db, client):
+    r = _recipient(db)
+    r.sent_at, r.read_at = inbox.now(), inbox.now()
+    db.commit()
+    out = client.get("/api/v1/inbox/journeys/missing-steps").json()
+    assert [f["check"] for f in out["flags"]] == ["read_not_delivered"] and out["leads"] == 1
+
+
+def test_documents_without_the_answers_or_the_hand_over_are_flagged(db, client):
+    tap_campaign(db)
+    _recipient(db).sent_at = inbox.now()
+    c = conv(db)
+    c.documents_submitted_at = inbox.now()
+    db.commit()
+    flags = {f["check"]: f for f in client.get("/api/v1/inbox/journeys/missing-steps").json()["flags"]}
+    assert "docs_without_answers" in flags and "PIN code" in flags["docs_without_answers"]["detail"]
+    assert "handover_not_queued" in flags
+
+
+def test_a_journey_that_went_by_the_book_has_no_flags(db, client):
+    _recipient(db).sent_at = inbox.now()
+    db.commit()
+    _upload(db, client)
+    c = conv(db)
+    from src.services import followups
+    followups.hand_over(db, c)
+    db.commit()
+    assert client.get("/api/v1/inbox/journeys/missing-steps").json()["flags"] == []

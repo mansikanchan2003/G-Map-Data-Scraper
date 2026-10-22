@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchJourney, fetchJourneys, type Journey, type JourneyRow } from '../api/inbox';
+import { fetchJourney, fetchJourneys, type Journey, type JourneyRow, type OpenItem } from '../api/inbox';
 import { formatDateTime } from '../utils/datetime';
 
 /**
@@ -38,6 +38,43 @@ const Dashes: React.FC<{ done: number; total: number; outcome: string }> = ({ do
   </div>
 );
 
+const OPEN_ICON: Record<OpenItem['kind'], { icon: string; cls: string; label: string }> = {
+  nudge: { icon: 'chat', cls: 'bg-sky-950 text-sky-300', label: 'WhatsApp message' },
+  task: { icon: 'assignment', cls: 'bg-amber-950 text-amber-300', label: 'Task' },
+  ticket: { icon: 'help', cls: 'bg-rose-950 text-rose-300', label: 'Ticket' },
+  handover: { icon: 'handshake', cls: 'bg-violet-950 text-violet-300', label: 'Hand-over' },
+};
+
+/** Everything still to be done for a lead, soonest first. */
+const OpenItems: React.FC<{ items: OpenItem[] }> = ({ items }) => (
+  <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
+    <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2 flex items-center gap-1.5">
+      <Icon name="pending_actions" className="text-[15px]" />Open action items · {items.length}
+    </div>
+    {items.length ? (
+      <ul className="space-y-2">
+        {items.map((o, i) => {
+          const k = OPEN_ICON[o.kind];
+          return (
+            <li key={i} className="flex items-start gap-2.5 text-[13px]">
+              <span className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${k.cls}`}><Icon name={k.icon} className="text-[16px]" /></span>
+              <div className="min-w-0">
+                <div className="text-slate-200">{o.text}</div>
+                <div className="text-[11.5px] text-slate-500">
+                  {o.due ? `Due ${formatDateTime(o.due)}` : o.since ? `Since ${formatDateTime(o.since)}` : ''}
+                  {o.status === 'waiting' && <span className="text-amber-300"> · waiting</span>}
+                  {o.status === 'failed' && <span className="text-rose-300"> · could not be sent</span>}
+                  {o.note && <> · {o.note}</>}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    ) : <div className="text-[12.5px] text-slate-500">Nothing open: no messages planned, no tasks, no questions waiting.</div>}
+  </div>
+);
+
 /** One lead's steps as a plain table: when, what they did, what we did. */
 const Steps: React.FC<{ phone: string }> = ({ phone }) => {
   const [j, setJ] = useState<Journey | null>(null);
@@ -49,6 +86,7 @@ const Steps: React.FC<{ phone: string }> = ({ phone }) => {
   const steps = all ? j.steps : j.steps.filter(s => s.kind === 'stage');
   return (
     <div className="space-y-3">
+      <OpenItems items={j.open} />
       <div className="flex flex-wrap items-center gap-3">
         {/* The stages as a strip of chips: reached ones filled, with their dates. */}
         {j.funnel.map((f, i) => (
@@ -260,6 +298,11 @@ export const LeadJourneyView: React.FC<{ onBack: () => void }> = ({ onBack }) =>
                           <div className="text-slate-200">{r.our_last?.text || '—'}</div>
                           {r.our_last?.at && <div className="text-[11.5px] text-slate-500 mt-0.5">{formatDateTime(r.our_last.at)}</div>}
                           {r.next && <div className="text-[11.5px] text-sky-300 mt-1 flex items-start gap-1"><Icon name="event_upcoming" className="text-[14px]" />{r.next.text}</div>}
+                          {r.open.length > 0 && (
+                            <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 text-[11px] font-semibold">
+                              <Icon name="pending_actions" className="text-[13px]" />{r.open.length} open
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold whitespace-nowrap ${o.chip}`}>
