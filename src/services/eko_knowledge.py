@@ -869,8 +869,52 @@ def answer(faq_id: str, lang: str, said: str = "") -> str:
     return texts["hi"] if lang == "mr" else texts["en"]
 
 
-def reply(faq_ids: List[str], lang: str, said: str = "") -> str:
-    return "\n\n".join(answer(i, lang, said) for i in faq_ids)
+# Someone who fears Eko is a fraud gets the answer and the site, to see for
+# themselves; the chat also goes to a person to call them (2026-10-22).
+# Tagged, so an application made on the website still counts as AutoGMap's (the user, 2026-10-22).
+WEBSITE = "https://kiosk.eko.in/"
+
+
+def website_link(campaign: Optional[str] = None) -> str:
+    from urllib.parse import quote
+    return (f"{WEBSITE}?utm_source=AutoGMap&utm_medium=whatsapp"
+            f"&utm_campaign={quote(campaign or 'AutoGMap', safe='')}")
+_SEE_FOR_YOURSELF = {
+    "hinglish": "Aap hamari website par khud dekh sakte hain:",
+    "en": "You can check us yourself on our website:",
+    "hi": "आप हमारी वेबसाइट पर खुद देख सकते हैं:",
+    "gu": "તમે અમારી વેબસાઇટ પર જાતે ચકાસી શકો છો:",
+    "pa": "ਤੁਸੀਂ ਸਾਡੀ ਵੈੱਬਸਾਈਟ ਉੱਤੇ ਖੁਦ ਦੇਖ ਸਕਦੇ ਹੋ:",
+    "mr": "तुम्ही आमच्या वेबसाइटवर स्वतः पाहू शकता:",
+}
+# Saying they do not trust Eko, in the ways people write it.
+_DISTRUST = ("fraud", "froud", "frod", "fake", "scam", "dhokha", "dhoka", "farzi", "fraudi", "chor", "cheat",
+             "vishwas nahi", "vishwas nhi", "bharosa nahi", "bharosa nhi", "trust nahi", "trust nhi", "not trust",
+             "dont trust", "don't trust", "no trust", "fake company",
+             "धोखा", "फर्जी", "फ्रॉड", "नकली", "विश्वास नहीं", "भरोसा नहीं", "ठगी",
+             "ફ્રોડ", "છેતરપિંડી", "નકલી", "ધોખો", "ਧੋਖਾ", "ਫਰਾਡ", "ਭਰੋਸਾ ਨਹੀਂ", "ਨਕਲੀ")
+
+
+def distrust(said: Optional[str]) -> bool:
+    """Whether someone says they think Eko may be a fraud or do not trust it."""
+    text = (said or "").lower()
+    if not text:
+        return False
+    if any(w in text for w in _DISTRUST):
+        return True
+    # "મને તમારા પર વિશ્ર્વાસ નથી": trust (however the conjunct is typed) with a no.
+    return any(t in text for t in ("વિશ", "ભરોસ", "विश्व", "भरोस", "ਭਰੋਸ", "ਵਿਸ਼ਵ")) and \
+        any(n in text for n in ("નથી", "नहीं", "नही", "ਨਹੀਂ", "nahi", "nhi"))
+
+
+def reply(faq_ids: List[str], lang: str, said: str = "", campaign: Optional[str] = None) -> str:
+    """The answers, and for "is Eko real?" the tagged website, `campaign` naming the lead's campaign."""
+    out = "\n\n".join(answer(i, lang, said) for i in faq_ids)
+    if "real" in faq_ids:
+        hinglish = lang == "hi" and said and _LATIN.search(said) and not re.search(r"[ऀ-ॿ]", said)
+        line = _SEE_FOR_YOURSELF["hinglish"] if hinglish else _SEE_FOR_YOURSELF.get(lang, _SEE_FOR_YOURSELF["en"])
+        out += f"\n\n{line} {website_link(campaign)}"
+    return out
 
 
 # ---------------------------------------------------------------------------

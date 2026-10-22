@@ -3,34 +3,61 @@ import { fetchMissingSteps, type MissingSteps } from '../api/inbox';
 import { formatDateTime } from '../utils/datetime';
 
 /**
- * The Dashboard's missing-step alert: leads with no disposition where one is
- * due, and dispositions whose action item is missing or not done, each
- * opening its chat. Records that do not add up (a tap with no sent message)
- * are folded away below. Quiet, and green, when nothing is missing.
+ * The Dashboard's flag for leads whose recorded steps do not add up: a tap
+ * with no sent message, documents without the qualifying answers, a read
+ * with no delivered update. Each opens its chat. Quiet, and green, when every
+ * journey adds up.
  */
 
 const Icon: React.FC<{ name: string; className?: string }> = ({ name, className = '' }) =>
   <span className={`material-symbols-outlined ${className}`} aria-hidden="true">{name}</span>;
 
-const SEVERITY: Record<string, { chip: string; dot: string }> = {
-  high: { chip: 'bg-rose-950 border-rose-800/60 text-rose-300', dot: 'bg-rose-500' },
-  medium: { chip: 'bg-amber-950 border-amber-800/60 text-amber-300', dot: 'bg-amber-400' },
-  low: { chip: 'bg-slate-800 border-slate-700 text-slate-300', dot: 'bg-slate-500' },
-};
-const GROUP_ICON: Record<string, { icon: string; tint: string }> = {
-  disposition: { icon: 'label_off', tint: 'bg-rose-950 text-rose-300' },
-  action: { icon: 'pending_actions', tint: 'bg-amber-950 text-amber-300' },
-  record: { icon: 'rule', tint: 'bg-slate-800 text-slate-300' },
+const SEVERITY: Record<string, { label: string; chip: string; dot: string }> = {
+  high: { label: 'Needs a look', chip: 'bg-rose-950 border-rose-800/60 text-rose-300', dot: 'bg-rose-500' },
+  medium: { label: 'Check', chip: 'bg-amber-950 border-amber-800/60 text-amber-300', dot: 'bg-amber-400' },
+  low: { label: 'Minor', chip: 'bg-slate-800 border-slate-700 text-slate-300', dot: 'bg-slate-500' },
 };
 
-type Flag = MissingSteps['flags'][number];
-
-const Rows: React.FC<{ flags: Flag[] }> = ({ flags }) => {
+export const MissingStepsCard: React.FC = () => {
+  const [d, setD] = useState<MissingSteps | null>(null);
+  const [hidden, setHidden] = useState(false);
+  const [check, setCheck] = useState<string | null>(null);
   const [all, setAll] = useState(false);
-  const list = all ? flags : flags.slice(0, 5);
+  useEffect(() => { fetchMissingSteps().then(setD).catch(() => setHidden(true)); }, []);
+  if (hidden || !d) return null;
+
+  if (!d.total) {
+    return (
+      <section className="rounded-xl border border-emerald-800/60 bg-emerald-950 px-4 py-3 flex items-center gap-2 text-[13px] text-emerald-300">
+        <Icon name="verified" className="text-[18px]" />Every lead's journey adds up: no missing steps.
+      </section>
+    );
+  }
+  const shown = d.flags.filter(f => !check || f.check === check);
+  const list = all ? shown : shown.slice(0, 6);
   return (
-    <>
-      <ul className="space-y-1.5">
+    <section className="rounded-xl border border-amber-800/60 bg-slate-900 shadow-sm overflow-hidden select-text">
+      <div className="px-4 py-3 flex flex-wrap items-center gap-3 border-b border-slate-800 bg-amber-950/40">
+        <span className="h-9 w-9 rounded-lg bg-amber-950 text-amber-300 flex items-center justify-center"><Icon name="rule" className="text-[20px]" /></span>
+        <div className="flex-1 min-w-[220px]">
+          <h2 className="text-sm font-semibold text-slate-100">Missing steps in lead journeys</h2>
+          <p className="text-[12px] text-slate-400">
+            <b className="text-slate-200 tabular-nums">{d.leads}</b> {d.leads === 1 ? 'lead has' : 'leads have'} a step with no record of the one before it.
+          </p>
+        </div>
+        <span className="text-2xl font-bold tabular-nums text-amber-300">{d.total}</span>
+      </div>
+      <div className="px-4 pt-3 flex flex-wrap gap-1.5">
+        {d.by_check.map(c => (
+          <button key={c.check} onClick={() => setCheck(check === c.check ? null : c.check)}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11.5px] cursor-pointer ${check === c.check
+              ? 'ring-2 ring-sky-500 ' + SEVERITY[c.severity].chip : SEVERITY[c.severity].chip}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${SEVERITY[c.severity].dot}`} />{c.label}
+            <b className="tabular-nums">{c.count}</b>
+          </button>
+        ))}
+      </div>
+      <ul className="px-4 py-3 space-y-1.5">
         {list.map((f, i) => (
           <li key={`${f.phone}-${f.check}-${i}`} className="grid grid-cols-[10px_1fr_auto] items-start gap-2.5 text-[12.5px]">
             <span className={`h-2 w-2 rounded-full mt-1.5 ${SEVERITY[f.severity].dot}`} />
@@ -43,89 +70,11 @@ const Rows: React.FC<{ flags: Flag[] }> = ({ flags }) => {
           </li>
         ))}
       </ul>
-      {flags.length > 5 && (
-        <button onClick={() => setAll(!all)} className="mt-2 text-[12px] text-sky-300 hover:underline cursor-pointer">
-          {all ? 'Show fewer' : `Show all ${flags.length}`}
-        </button>
-      )}
-    </>
-  );
-};
-
-export const MissingStepsCard: React.FC = () => {
-  const [d, setD] = useState<MissingSteps | null>(null);
-  const [hidden, setHidden] = useState(false);
-  const [check, setCheck] = useState<string | null>(null);
-  const [recordsOpen, setRecordsOpen] = useState(false);
-  useEffect(() => { fetchMissingSteps().then(setD).catch(() => setHidden(true)); }, []);
-  if (hidden || !d) return null;
-
-  const main = d.flags.filter(f => f.group !== 'record');
-  const records = d.flags.filter(f => f.group === 'record');
-  const mainLeads = new Set(main.map(f => f.phone)).size;
-
-  if (!main.length && !records.length) {
-    return (
-      <section className="rounded-xl border border-emerald-800/60 bg-emerald-950 px-4 py-3 flex items-center gap-2 text-[13px] text-emerald-300">
-        <Icon name="verified" className="text-[18px]" />Every lead has its disposition and its action items are on track.
-      </section>
-    );
-  }
-
-  return (
-    <section className={`rounded-xl border bg-slate-900 shadow-sm overflow-hidden select-text ${main.length ? 'border-amber-800/60' : 'border-slate-800'}`}>
-      <div className={`px-4 py-3 flex flex-wrap items-center gap-3 border-b border-slate-800 ${main.length ? 'bg-amber-950/40' : ''}`}>
-        <span className="h-9 w-9 rounded-lg bg-amber-950 text-amber-300 flex items-center justify-center"><Icon name="assignment_late" className="text-[20px]" /></span>
-        <div className="flex-1 min-w-[220px]">
-          <h2 className="text-sm font-semibold text-slate-100">Missing dispositions and action items</h2>
-          <p className="text-[12px] text-slate-400">
-            {main.length
-              ? <><b className="text-slate-200 tabular-nums">{mainLeads}</b> {mainLeads === 1 ? 'lead needs' : 'leads need'} a disposition recorded or an action item done.</>
-              : 'Every lead has its disposition and its action items are on track.'}
-          </p>
-        </div>
-        <span className="text-2xl font-bold tabular-nums text-amber-300">{main.length || ''}</span>
-      </div>
-
-      {main.length > 0 && (
-        <div className="p-4 grid gap-4 xl:grid-cols-2">
-          {d.groups.filter(g => g.group !== 'record').map(g => {
-            const flags = main.filter(f => f.group === g.group && (!check || f.check === check));
-            const checks = d.by_check.filter(c => c.group === g.group);
-            const gi = GROUP_ICON[g.group];
-            return (
-              <div key={g.group} className="rounded-lg border border-slate-800 bg-slate-950/50 p-3.5">
-                <div className="flex items-center gap-2 mb-2.5">
-                  <span className={`h-7 w-7 rounded-md flex items-center justify-center ${gi.tint}`}><Icon name={gi.icon} className="text-[16px]" /></span>
-                  <h3 className="text-[13px] font-semibold text-slate-100 flex-1">{g.label}</h3>
-                  <b className="tabular-nums text-slate-100">{g.count}</b>
-                </div>
-                {checks.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2.5">
-                    {checks.map(c => (
-                      <button key={c.check} onClick={() => setCheck(check === c.check ? null : c.check)}
-                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11px] cursor-pointer ${SEVERITY[c.severity].chip} ${check === c.check ? 'ring-2 ring-sky-500' : ''}`}>
-                        {c.label}<b className="tabular-nums">{c.count}</b>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {flags.length ? <Rows flags={flags} /> : <div className="text-[12.5px] text-slate-500">Nothing missing here.</div>}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {records.length > 0 && (
-        <div className="border-t border-slate-800 px-4 py-2.5">
-          <button onClick={() => setRecordsOpen(!recordsOpen)} className="w-full flex items-center gap-2 text-[12.5px] text-slate-400 hover:text-slate-200 cursor-pointer">
-            <Icon name="rule" className="text-[16px]" />Records that do not add up
-            <b className="tabular-nums text-slate-300">{records.length}</b>
-            <span className="text-[11.5px] text-slate-500">(a tap with no sent message, read with no delivered update…)</span>
-            <Icon name={recordsOpen ? 'expand_less' : 'expand_more'} className="text-[18px] ml-auto" />
+      {shown.length > 6 && (
+        <div className="px-4 pb-3">
+          <button onClick={() => setAll(!all)} className="text-[12px] text-sky-300 hover:underline cursor-pointer">
+            {all ? 'Show fewer' : `Show all ${shown.length}`}
           </button>
-          {recordsOpen && <div className="pt-2.5"><Rows flags={records} /></div>}
         </div>
       )}
     </section>

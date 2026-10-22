@@ -14,8 +14,11 @@ from typing import Optional
 logger = logging.getLogger("gmap_scraper.notifier")
 
 
-# Who else gets the team's lead and inbox emails (interested, documents,
-# personal guidance, attention tickets) besides the admin: comma-separated.
+# Who else gets the emails that hand a chat to a person, besides the admin:
+# the bot escalating (a question it cannot answer, a voice note, a request for
+# a person) and a disposition whose action is a person's. Not the news that
+# someone tapped Interested, asked for personal guidance or uploaded their
+# documents: those go to the admin alone (the user, 2026-10-22). Comma-separated.
 NOTIFY_ALSO = os.environ.get("NOTIFY_ALSO", "kavya.shukla@eko.co.in")
 
 
@@ -145,8 +148,9 @@ def notify_button_click(admin_email: str, lead: dict) -> bool:
     body = "\n".join(d for d in details if d)
 
     phone = (lead.get("phone") or "").lstrip("+")
+    # News, not a hand-over: the admin alone.
     return _send(
-        team(admin_email),
+        admin_email,
         f"AutoGMap: {lead.get('name') or lead.get('phone')} tapped "
         f"\u201c{lead.get('button_text') or 'a button'}\u201d",
         f"{lead.get('name') or 'A recipient'} responded to a WhatsApp campaign.\n\n"
@@ -178,7 +182,8 @@ def notify_documents_submitted(admin_email: str, details: dict) -> bool:
         "Open them in AutoGMap under Inbox, and reach out as promised.",
         f"WhatsApp: https://wa.me/{phone}",
     ]
-    return _send(team(admin_email), f"AutoGMap: {who} submitted onboarding documents", "\n".join(lines) + "\n")
+    # News, not a hand-over: the admin alone.
+    return _send(admin_email, f"AutoGMap: {who} submitted onboarding documents", "\n".join(lines) + "\n")
 
 
 def notify_webinar(admin_email: str, details: dict) -> bool:
@@ -205,7 +210,8 @@ def notify_webinar(admin_email: str, details: dict) -> bool:
         "Contact them soon, as the bot promised: call or WhatsApp.",
         f"WhatsApp: https://wa.me/{phone}",
     ]
-    return _send(team(admin_email), f"AutoGMap: personal guidance — {who}", "\n".join(lines) + "\n")
+    # News, not a hand-over: the admin alone.
+    return _send(admin_email, f"AutoGMap: personal guidance — {who}", "\n".join(lines) + "\n")
 
 
 def notify_team(admin_email: str, subject: str, body: str) -> bool:

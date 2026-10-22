@@ -83,8 +83,16 @@ def _iso(dt) -> Optional[str]:
     return dt.isoformat() if dt else None
 
 
-def find(db: Session) -> Dict:
-    """Every lead with a missing step, worst first, and how many of each."""
+RECORDS = ("record",)
+DISPOSITIONS_AND_ACTIONS = ("disposition", "action")
+
+
+def find(db: Session, groups=RECORDS) -> Dict:
+    """
+    Every lead with a missing step, worst first, and how many of each. Two
+    Dashboard alerts read it: the missing-step alert (records, as first
+    built) and the missing dispositions and action items one.
+    """
     flags: List[dict] = []
 
     def flag(check: str, phone: str, at, detail: str, name: Optional[str] = None):
@@ -92,7 +100,8 @@ def find(db: Session) -> Dict:
         flags.append({"check": check, "label": label, "severity": severity, "group": group, "phone": phone,
                       "name": name, "at": _iso(at), "detail": detail})
 
-    _dispositions_and_actions(db, flag)
+    if any(g in groups for g in DISPOSITIONS_AND_ACTIONS):
+        _dispositions_and_actions(db, flag)
 
     recipients = db.query(WhatsAppCampaignRecipient).all()
     by_id = {r.recipient_id: r for r in recipients}
@@ -147,6 +156,7 @@ def find(db: Session) -> Dict:
         if data.get("education") and not pin:
             flag("education_without_pin", c.phone, c.bot_updated_at, f"Education {data.get('education')}", c.profile_name)
 
+    flags = [f for f in flags if f["group"] in groups]
     rank = {"high": 0, "medium": 1, "low": 2}
     order = list(GROUPS)
     flags.sort(key=lambda f: (order.index(f["group"]), rank[f["severity"]], f["at"] or ""))
@@ -157,7 +167,8 @@ def find(db: Session) -> Dict:
     return {
         "total": len(flags),
         "leads": len(leads),
-        "groups": [{"group": g, "label": label, "count": sum(1 for f in flags if f["group"] == g)} for g, label in GROUPS.items()],
+        "groups": [{"group": g, "label": label, "count": sum(1 for f in flags if f["group"] == g)}
+                   for g, label in GROUPS.items() if g in groups],
         "by_check": [{"check": k, "label": CHECKS[k][0], "severity": CHECKS[k][1], "group": CHECKS[k][2],
                       "count": counts.get(k, 0)} for k in CHECKS if counts.get(k)],
         "flags": flags[:400],

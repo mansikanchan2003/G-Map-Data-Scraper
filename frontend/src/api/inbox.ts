@@ -329,6 +329,8 @@ export interface MissingSteps {
            name: string | null; at: string | null; detail: string }[];
 }
 export const fetchMissingSteps = () => call<MissingSteps>('/journeys/missing-steps');
+/** Leads with no disposition where one is due, and dispositions with a missing or overdue action item. */
+export const fetchMissingActions = () => call<MissingSteps>('/journeys/missing-actions');
 
 export const fetchJourney = (phone: string) => call<Journey>(`/conversations/${digits(phone)}/journey`);
 export const fetchJourneys = () => call<JourneyRow[]>('/dispositions/journeys');

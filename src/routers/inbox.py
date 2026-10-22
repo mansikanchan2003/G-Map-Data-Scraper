@@ -621,6 +621,13 @@ def missing_steps(db: Session = Depends(get_db)):
     return journey_checks.find(db)
 
 
+@router.get("/journeys/missing-actions")
+def missing_actions(db: Session = Depends(get_db)):
+    """Leads with no disposition where one is due, and dispositions whose action item is missing or overdue."""
+    from src.services import journey_checks
+    return journey_checks.find(db, journey_checks.DISPOSITIONS_AND_ACTIONS)
+
+
 @router.get("/dispositions/journeys")
 def journeys(limit: int = Query(200, ge=1, le=1000), db: Session = Depends(get_db)):
     """Every campaign lead's journey in short, most recently active first."""

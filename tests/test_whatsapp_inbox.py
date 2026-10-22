@@ -2245,7 +2245,21 @@ def test_a_journey_that_went_by_the_book_has_no_flags(db, client):
 
 
 def _checks(client):
-    return {f["check"]: f for f in client.get("/api/v1/inbox/journeys/missing-steps").json()["flags"]}
+    return {f["check"]: f for f in client.get("/api/v1/inbox/journeys/missing-actions").json()["flags"]}
+
+
+def test_the_missing_step_alert_keeps_to_its_record_checks(db, client):
+    from datetime import timedelta
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    c = conv(db)
+    c.last_inbound_at = inbox.now() - timedelta(days=4)               # also a missing disposition
+    db.commit()
+    steps = client.get("/api/v1/inbox/journeys/missing-steps").json()
+    assert {f["group"] for f in steps["flags"]} == {"record"} and "replied_not_sent" in {f["check"] for f in steps["flags"]}
+    actions = client.get("/api/v1/inbox/journeys/missing-actions").json()
+    assert {f["group"] for f in actions["flags"]} <= {"disposition", "action"}
+    assert "quiet_no_outcome" in {f["check"] for f in actions["flags"]}
 
 
 def test_a_chat_the_team_handled_without_recording_an_outcome_is_flagged(db, client):
@@ -2333,3 +2347,39 @@ def test_a_lead_nobody_has_recorded_shows_the_bots_reading_without_actions(db, c
     j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
     [only] = j["dispositions"]
     assert only["recorded_by"] == "Read from the bot's step" and only["items"] == []
+
+
+
+def test_kavya_is_emailed_only_when_a_chat_goes_to_a_person(monkeypatch):
+    # Escalations and a person's action go to the admin and Kavya; the news that
+    # someone tapped Interested, asked for guidance or uploaded documents, to the admin alone.
+    from src.services import notifier
+    sent = []
+    monkeypatch.setattr(notifier, "_send", lambda to, subject, body: sent.append((subject, to)) or True)
+    monkeypatch.setattr(notifier, "NOTIFY_ALSO", "kavya.shukla@eko.co.in")
+    notifier.notify_button_click("mansi@eko.co.in", {"name": "Ravi", "phone": "+919000000001", "button_text": "Interested"})
+    notifier.notify_webinar("mansi@eko.co.in", {"name": "Ravi", "phone": "+919000000001", "answer": "yes"})
+    notifier.notify_documents_submitted("mansi@eko.co.in", {"name": "Ravi", "phone": "+919000000001", "documents": []})
+    notifier.notify_attention("mansi@eko.co.in", {"person": {"name": "Ravi", "phone": "+919000000001"},
+                                                  "attention": {"reason": "asked a question"}}, "text", "url")
+    notifier.notify_team("mansi@eko.co.in", "AutoGMap: Investment issue — Ravi", "body")
+    to = [t for _, t in sent]
+    assert to[:3] == ["mansi@eko.co.in"] * 3
+    assert all("kavya.shukla@eko.co.in" in t for t in to[3:]) and len(to) == 5
+
+
+def test_a_trust_concern_is_answered_with_the_website_and_goes_to_a_person_to_call(db, emailed):
+    from src.services import tickets
+    tap_campaign(db, lang="gu")
+    say(db, SERVED_PIN)
+    qualify(db)
+    tap(db, "invest:yes")
+    tap(db, "docs:yes")                                      # at the last step: the upload link
+    say(db, "Na . મને તમારા પર વિશ્ર્વાસ નથી.  તમે કોઈ  frod hy to")
+    body = StubMeta.sent[-1][2]
+    assert "Eko Bharat Ventures" in body
+    assert "https://kiosk.eko.in/?utm_source=AutoGMap&utm_medium=whatsapp&utm_campaign=Delhi%20CSP" in body
+    c = conv(db)
+    assert c.needs_attention and c.attention_reason.startswith("Call this lead: trust concern")
+    assert "the last step before their documents" in c.attention_reason
+    assert tickets.open_ticket(db, PHONE) is not None and len(emailed) == 1

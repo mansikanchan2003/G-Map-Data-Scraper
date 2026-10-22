@@ -306,6 +306,17 @@ def campaign_language(db: Session, phone: str) -> str:
     return language_of_template(row.template if row else None)
 
 
+def latest_campaign_name(db: Session, phone: str) -> Optional[str]:
+    """The name of the newest campaign sent to this number, to tag the website link with."""
+    from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
+
+    row = (db.query(WhatsAppCampaign.name)
+           .join(WhatsAppCampaignRecipient, WhatsAppCampaignRecipient.campaign_id == WhatsAppCampaign.campaign_id)
+           .filter(WhatsAppCampaignRecipient.phone == phone)
+           .order_by(WhatsAppCampaignRecipient.created_at.desc()).first())
+    return row[0] if row else None
+
+
 def _campaign_lang(db, conv) -> str:
     """
     The language of the newest campaign this person was sent.
@@ -732,9 +743,13 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
     # question it was asked at, if any, follows. Anything else, and any voice
     # note (a transcript can be wrong), is left for a person.
     faq = eko_knowledge.match(said) if said else []
+    # Fearing Eko is a fraud: always the answer about who Eko is, with the website.
+    doubts = eko_knowledge.distrust(said)
+    if doubts and "real" not in faq:
+        faq = ["real"] + list(faq)
     asked = looks_like_question(said) or voice or bool(faq)
     if faq:
-        answer = eko_knowledge.reply(faq, _lang(db, conv), said)
+        answer = eko_knowledge.reply(faq, _lang(db, conv), said, campaign=latest_campaign_name(db, conv.phone))
         if kind_intro:
             answer = f"{_t(db, conv, 'guidance_intro')} {answer}"
         if "investment" in faq:
@@ -742,7 +757,13 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
             answer += "\n\n" + _t(db, conv, "invest_explained")
         conv.bot_data = {**(conv.bot_data or {}), "faq_answered": (data.get("faq_answered") or []) + faq}
         data = conv.bot_data
-        if voice:
+        if doubts:
+            # Answered, and a person calls them too: trust is won on a call, not by a bot.
+            step = STEP_LABELS.get(conv.bot_step, conv.bot_step or "not started")
+            near_end = " (the last step before their documents)" if conv.bot_step in (AWAIT_UPLOAD, AWAIT_DOCS) else ""
+            flag(conv, f"Call this lead: trust concern. They worry Eko may be fake. At: {step}{near_end}. "
+                       f"They wrote: “{(said or '')[:200]}”. The bot sent who Eko is and the website.")
+        elif voice:
             # A transcript can be wrong: answered, and still left for a person to check.
             flag(conv, f"Voice note: {said} (answered from the FAQ: {', '.join(faq)})")
         else:
