@@ -79,4 +79,8 @@ def sync_all(db: Session) -> int:
 def sync_if_due(db: Session) -> Optional[int]:
     if _last_sync and inbox.now() - _last_sync < SYNC_EVERY:
         return None
-    return sync_all(db)
+    stored = sync_all(db)
+    # The other calculated views go into their tables on the same beat (report_store.py).
+    from src.services import report_store
+    report_store.refresh(db)
+    return stored

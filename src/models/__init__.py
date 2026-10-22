@@ -8,6 +8,7 @@ from .app_setting import AppSetting
 from .user import User
 from .autopilot import DiscoveryRound
 from .insights import CampaignInsight, InsightSnapshot
+from .reports import ActionItem, DispositionDaily, DispositionMix, GoalDaily, LeadAlert, NumberUsageDaily
 from .studio import StudioImagePrompt, StudioRealPhoto
 from .inbox import AttentionTicket, ChatActivity, FollowUp, LeadJourney, LeadJourneyStep, WhatsAppConversation, WhatsAppMessage, OnboardingDocument
 from .application import ApplicationComment, ApplicationRemoval, QualifiedLead
@@ -44,6 +45,12 @@ __all__ = [
     "CampaignInsight",
     "DiscoveryRound",
     "InsightSnapshot",
+    "ActionItem",
+    "DispositionDaily",
+    "DispositionMix",
+    "GoalDaily",
+    "LeadAlert",
+    "NumberUsageDaily",
     "StudioImagePrompt",
     "StudioRealPhoto",
     "User"
