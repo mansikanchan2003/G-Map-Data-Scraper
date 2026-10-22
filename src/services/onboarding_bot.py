@@ -449,6 +449,44 @@ def _education_answer(msg: WhatsAppMessage) -> Optional[str]:
             labels = {campaign_buttons.key(m[_EDU_KEYS[level]]) for m in MESSAGES.values()}
             if typed in labels or typed in _EDU_TYPED[level]:
                 return level
+        return education_in_words(msg.body)
+    return None
+
+
+# Indic digits as the ASCII ones: "ધોરણ ૧૨", "१२वीं".
+_DIGITS = str.maketrans("०१२३४५६७८९૦૧૨૩૪૫૬૭૮૯੦੧੨੩੪੫੬੭੮੯০১২৩৪৫৬৭৮৯", "0123456789" * 4)
+# Words for each level, as people type them in any of the bot's languages.
+_EDU_WORDS = {
+    "grad": ("graduat", "degree", "bachelor", "postgrad", "master", "bcom", "b com", "bsc", "b sc", "btech", "b tech",
+             "mba", "mca", "bca", "llb", "b ed", "bed ", "m com", "mcom", "msc", "college pass", "स्नातक", "ग्रेजुएट",
+             "ग्रैजुएट", "ડિગ્રી", "સ્નાતક", "ગ્રેજ્યુએટ", "ਗ੍ਰੈਜੂਏਟ", "ਡਿਗਰੀ", "पदवी", "पदवीधर"),
+    # Short words only as whole words: "inter" is in "interested", "iti" in "position".
+    "12": ("12th", "12 th", "12 pass", "12vi", "12 vi", "12वी", "12वीं", "class 12", " inter ", "intermediate", " hsc ",
+           "diploma", " iti ", "polytechnic", " puc ", "college", "कॉलेज", "કોલેજ", "barvi", "barhvi", "barahvi", "बारहवीं", "बारवीं", "डिप्लोमा", "ધોરણ 12", "બારમું",
+           "બાર ", "ડિપ્લોમા", "ਬਾਰ੍ਹਵੀਂ", "ਡਿਪਲੋਮਾ", "बारावी"),
+    "other": ("10th", "10 th", "10 pass", "matric", "sslc", "dasvi", "दसवीं", "દસમું", "ਦਸਵੀਂ", "8th", "9th",
+              "11th", "not studied", "no study", "padhai nahi", "पढ़ाई नहीं", "अनपढ़", "illiterate"),
+}
+
+
+def education_in_words(text: Optional[str]) -> Optional[str]:
+    """
+    An education level typed in the person's own words: "13", "12 pass",
+    "ધોરણ ૧૨", "BCom", "बारहवीं". A number is years of schooling: up to 11 is
+    below 12th; 12 to 14 is 12th and some college; 15 and above a graduate.
+    None when it says no level, so the question is asked again.
+    """
+    if not text:
+        return None
+    said = f" {' '.join(text.lower().translate(_DIGITS).replace('.', ' ').split())} "
+    for level in ("grad", "12", "other"):
+        if any(w in said for w in _EDU_WORDS[level]):
+            return level
+    numbers = [int(n) for n in re.findall(r"(?<!\d)(\d{1,2})(?!\d)", said)]
+    years = [n for n in numbers if 1 <= n <= 20]
+    if len(said.split()) <= 6 and years:
+        n = years[0]
+        return "other" if n <= 11 else "12" if n <= 14 else "grad"
     return None
 
 
@@ -893,7 +931,12 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
         elif answer is False:
             _understood(conv)
             _move(conv, NOT_INVESTING, can_invest=False)
-            _say(db, conv, _t(db, conv, "not_investing"))
+            said = _say(db, conv, _t(db, conv, "not_investing"))
+            # The sheet's "Investment issue": its reply offers the lower-investment
+            # option, and the team hears so a person follows it up.
+            from src.services import followups, handover
+            handover.record(db, conv, "ni_investment", "bot", note="Said they cannot invest ₹5 lakh", run_now=False)
+            followups.mark_sent(db, conv, "lower_investment", said)
         else:
             _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n" + _t(db, conv, "ask_invest"),
                       buttons=YES_NO("invest", lang))

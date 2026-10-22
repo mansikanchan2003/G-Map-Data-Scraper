@@ -177,6 +177,24 @@ def _email_team(subject: str, body: str) -> None:
         logger.exception("followups event=TEAM_EMAIL_FAILED")
 
 
+def mark_sent(db: Session, conv: WhatsAppConversation, purpose: str, msg: WhatsAppMessage) -> Optional[FollowUp]:
+    """
+    A planned nudge that the bot's own reply has already said: recorded as
+    sent with that message, so it is not sent twice and an unanswered one
+    is still followed up (RNR, next-day retry).
+    """
+    f = (db.query(FollowUp).filter(FollowUp.phone == conv.phone, FollowUp.purpose == purpose,
+                                   FollowUp.status.in_(PENDING)).order_by(FollowUp.created_at.desc()).first())
+    if f is None:
+        return None
+    now = inbox.now()
+    f.channel, f.message_id = contact_channels.FALLBACK, msg.message_id
+    f.status = "failed" if msg.status == "FAILED" else "sent"
+    f.sent_at = now
+    f.note = "Said in the bot's reply"
+    return f
+
+
 def hand_over(db: Session, conv: WhatsAppConversation, by: str = "bot") -> Optional[FollowUp]:
     """Queue the lead for Eko Acquisition, once: documents in or Physical visit required."""
     existing = db.query(FollowUp).filter(FollowUp.phone == conv.phone, FollowUp.wants == dz.API,

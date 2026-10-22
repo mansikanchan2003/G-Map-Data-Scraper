@@ -60,9 +60,11 @@ MESSAGES = {
             "PIN code, just send it here."
         ),
         "ask_invest": "Are you someone who can invest ₹5 Lakh for the business startup?",
+        # The sheet's action for an investment issue: the lower-investment (BT)
+        # option, and a person to follow up (22 Oct 2026).
         "not_investing": (
-            "Thank you for letting us know. If anything changes, just reply here and "
-            "our team will be happy to help."
+            "Thank you for letting us know. 🙏 Eko also has a lower-investment option that may suit you better, "
+            "and our team will get in touch to tell you about it. You can also ask any questions here."
         ),
         "ask_docs": (
             "Great! Please let me know if you have these documents needed for your "
@@ -135,7 +137,7 @@ MESSAGES = {
             "तो उसे यहाँ भेज दें।"
         ),
         "ask_invest": "क्या आप बिज़नेस शुरू करने के लिए ₹5 लाख निवेश कर सकते हैं?",
-        "not_investing": "बताने के लिए धन्यवाद। अगर आगे कुछ बदलता है, तो यहाँ जवाब दें, हमारी टीम आपकी मदद करेगी।",
+        "not_investing": "बताने के लिए धन्यवाद। 🙏 Eko के पास कम निवेश वाला एक विकल्प भी है, जो आपके लिए बेहतर हो सकता है। हमारी टीम इसके बारे में बताने के लिए आपसे संपर्क करेगी। आप अपने सवाल यहाँ भी पूछ सकते हैं।",
         "ask_docs": (
             "बहुत बढ़िया! कृपया बताएँ कि क्या आपके पास हमारे साथ ऑनबोर्डिंग के लिए ये दस्तावेज़ हैं?"
             "\n\n{documents}"
@@ -189,7 +191,7 @@ MESSAGES = {
         ),
         "not_served_again": "ਅਜੇ ਅਸੀਂ {pin} ਦੇ ਨੇੜੇ ਉਪਲਬਧ ਨਹੀਂ ਹਾਂ। ਜੇ ਤੁਸੀਂ ਕੋਈ ਹੋਰ ਪਿੰਨ ਕੋਡ ਜਾਂਚਣਾ ਚਾਹੁੰਦੇ ਹੋ, ਤਾਂ ਉਸਨੂੰ ਇੱਥੇ ਭੇਜੋ।",
         "ask_invest": "ਕੀ ਤੁਸੀਂ ਕਾਰੋਬਾਰ ਸ਼ੁਰੂ ਕਰਨ ਲਈ ₹5 ਲੱਖ ਨਿਵੇਸ਼ ਕਰ ਸਕਦੇ ਹੋ?",
-        "not_investing": "ਦੱਸਣ ਲਈ ਧੰਨਵਾਦ। ਜੇ ਅੱਗੇ ਕੁਝ ਬਦਲਦਾ ਹੈ, ਤਾਂ ਇੱਥੇ ਜਵਾਬ ਦਿਓ, ਸਾਡੀ ਟੀਮ ਤੁਹਾਡੀ ਮਦਦ ਕਰੇਗੀ।",
+        "not_investing": "ਦੱਸਣ ਲਈ ਧੰਨਵਾਦ। 🙏 Eko ਕੋਲ ਘੱਟ ਨਿਵੇਸ਼ ਵਾਲਾ ਇੱਕ ਵਿਕਲਪ ਵੀ ਹੈ, ਜੋ ਤੁਹਾਡੇ ਲਈ ਬਿਹਤਰ ਹੋ ਸਕਦਾ ਹੈ। ਸਾਡੀ ਟੀਮ ਇਸ ਬਾਰੇ ਦੱਸਣ ਲਈ ਤੁਹਾਡੇ ਨਾਲ ਸੰਪਰਕ ਕਰੇਗੀ। ਤੁਸੀਂ ਆਪਣੇ ਸਵਾਲ ਇੱਥੇ ਵੀ ਪੁੱਛ ਸਕਦੇ ਹੋ।",
         "ask_docs": "ਬਹੁਤ ਵਧੀਆ! ਕਿਰਪਾ ਕਰਕੇ ਦੱਸੋ ਕਿ ਕੀ ਤੁਹਾਡੇ ਕੋਲ ਸਾਡੇ ਨਾਲ ਆਨਬੋਰਡਿੰਗ ਲਈ ਇਹ ਦਸਤਾਵੇਜ਼ ਹਨ?\n\n{documents}",
         "docs_required": "ਜ਼ਰੂਰੀ:",
         "docs_optional": "ਜੇ ਹੋਣ ਤਾਂ ਇਹ ਵੀ:",
@@ -237,7 +239,7 @@ MESSAGES = {
         ),
         "not_served_again": "હાલમાં અમે {pin} નજીક ઉપલબ્ધ નથી. જો તમે બીજો પિન કોડ તપાસવા માંગતા હો, તો તેને અહીં મોકલો.",
         "ask_invest": "શું તમે બિઝનેસ શરૂ કરવા માટે ₹5 લાખનું રોકાણ કરી શકો છો?",
-        "not_investing": "જણાવવા બદલ આભાર. જો આગળ કંઈ બદલાય, તો અહીં જવાબ આપો, અમારી ટીમ તમને મદદ કરશે.",
+        "not_investing": "જણાવવા બદલ આભાર. 🙏 Eko પાસે ઓછા રોકાણવાળો એક વિકલ્પ પણ છે, જે તમારા માટે વધુ યોગ્ય હોઈ શકે. અમારી ટીમ તેના વિશે જણાવવા તમારો સંપર્ક કરશે. તમે તમારા પ્રશ્નો અહીં પણ પૂછી શકો છો.",
         "ask_docs": "ખૂબ સરસ! કૃપા કરીને જણાવો કે શું તમારી પાસે અમારી સાથે ઓનબોર્ડિંગ માટે આ દસ્તાવેજો છે?\n\n{documents}",
         "docs_required": "જરૂરી:",
         "docs_optional": "જો હોય તો આ પણ:",
@@ -284,7 +286,7 @@ MESSAGES = {
         ),
         "not_served_again": "सध्या आम्ही {pin} जवळ उपलब्ध नाही. दुसरा पिन कोड तपासायचा असल्यास, तो इथे पाठवा.",
         "ask_invest": "तुम्ही व्यवसाय सुरू करण्यासाठी ₹5 लाख गुंतवणूक करू शकता का?",
-        "not_investing": "कळवल्याबद्दल धन्यवाद. पुढे काही बदलल्यास इथे उत्तर द्या, आमची टीम तुम्हाला मदत करेल.",
+        "not_investing": "कळवल्याबद्दल धन्यवाद. 🙏 Eko कडे कमी गुंतवणुकीचा एक पर्यायही आहे, जो तुमच्यासाठी अधिक योग्य ठरू शकतो. त्याबद्दल सांगण्यासाठी आमची टीम तुमच्याशी संपर्क साधेल. तुम्ही तुमचे प्रश्न इथेही विचारू शकता.",
         "ask_docs": "छान! कृपया सांगा, आमच्यासोबत ऑनबोर्डिंगसाठी लागणारी ही कागदपत्रे तुमच्याकडे आहेत का?\n\n{documents}",
         "docs_required": "आवश्यक:",
         "docs_optional": "असल्यास ही सुद्धा:",
@@ -332,7 +334,7 @@ MESSAGES = {
         ),
         "not_served_again": "এখনও আমরা {pin}-এর কাছে উপলব্ধ নই। অন্য কোনো পিন কোড যাচাই করতে চাইলে, এখানে পাঠান।",
         "ask_invest": "আপনি কি ব্যবসা শুরু করার জন্য ₹5 লক্ষ বিনিয়োগ করতে পারবেন?",
-        "not_investing": "জানানোর জন্য ধন্যবাদ। পরে কিছু বদলালে এখানে উত্তর দিন, আমাদের টিম আপনাকে সাহায্য করবে।",
+        "not_investing": "জানানোর জন্য ধন্যবাদ। 🙏 Eko-র কম বিনিয়োগের একটি বিকল্পও আছে, যা আপনার জন্য আরও উপযুক্ত হতে পারে। এ বিষয়ে জানাতে আমাদের টিম আপনার সাথে যোগাযোগ করবে। আপনি আপনার প্রশ্ন এখানেও জিজ্ঞাসা করতে পারেন।",
         "ask_docs": "দারুণ! অনুগ্রহ করে জানান, আমাদের সাথে অনবোর্ডিংয়ের জন্য এই নথিগুলি কি আপনার কাছে আছে?\n\n{documents}",
         "docs_required": "আবশ্যক:",
         "docs_optional": "থাকলে এগুলিও:",
@@ -380,7 +382,7 @@ MESSAGES = {
         ),
         "not_served_again": "தற்போது {pin} அருகில் எங்கள் சேவை இல்லை. வேறு பின் கோடைச் சரிபார்க்க விரும்பினால், அதை இங்கே அனுப்பவும்.",
         "ask_invest": "தொழில் தொடங்க ₹5 லட்சம் முதலீடு செய்ய உங்களால் முடியுமா?",
-        "not_investing": "தெரிவித்ததற்கு நன்றி. பின்னர் ஏதாவது மாறினால் இங்கே பதில் அனுப்புங்கள், எங்கள் குழு உங்களுக்கு உதவும்.",
+        "not_investing": "தெரிவித்ததற்கு நன்றி. 🙏 Eko-விடம் குறைந்த முதலீட்டு வாய்ப்பும் உள்ளது, அது உங்களுக்கு மேலும் பொருத்தமாக இருக்கலாம். அதைப் பற்றி சொல்ல எங்கள் குழு உங்களைத் தொடர்புகொள்ளும். உங்கள் கேள்விகளை இங்கேயும் கேட்கலாம்.",
         "ask_docs": "அருமை! எங்களுடன் இணைவதற்குத் தேவையான இந்த ஆவணங்கள் உங்களிடம் உள்ளனவா என்று தெரிவிக்கவும்?\n\n{documents}",
         "docs_required": "கட்டாயம்:",
         "docs_optional": "இருந்தால் இவையும்:",
@@ -428,7 +430,7 @@ MESSAGES = {
         ),
         "not_served_again": "ప్రస్తుతం {pin} దగ్గర మా సేవ అందుబాటులో లేదు. వేరే పిన్ కోడ్ చూడాలనుకుంటే, దాన్ని ఇక్కడ పంపండి.",
         "ask_invest": "వ్యాపారం ప్రారంభించడానికి మీరు ₹5 లక్షలు పెట్టుబడి పెట్టగలరా?",
-        "not_investing": "తెలియజేసినందుకు ధన్యవాదాలు. తర్వాత ఏదైనా మారితే ఇక్కడ జవాబు ఇవ్వండి, మా బృందం మీకు సహాయం చేస్తుంది.",
+        "not_investing": "తెలియజేసినందుకు ధన్యవాదాలు. 🙏 Eko వద్ద తక్కువ పెట్టుబడితో కూడిన ఒక ఎంపిక కూడా ఉంది, అది మీకు మరింత సరిపోవచ్చు. దాని గురించి చెప్పడానికి మా బృందం మిమ్మల్ని సంప్రదిస్తుంది. మీ ప్రశ్నలను ఇక్కడ కూడా అడగవచ్చు.",
         "ask_docs": "చాలా బాగుంది! మాతో ఆన్‌బోర్డింగ్‌కు అవసరమైన ఈ పత్రాలు మీ దగ్గర ఉన్నాయో తెలియజేయండి?\n\n{documents}",
         "docs_required": "తప్పనిసరి:",
         "docs_optional": "ఉంటే ఇవి కూడా:",
@@ -476,7 +478,7 @@ MESSAGES = {
         ),
         "not_served_again": "ಸದ್ಯಕ್ಕೆ {pin} ಬಳಿ ನಮ್ಮ ಸೇವೆ ಲಭ್ಯವಿಲ್ಲ. ಬೇರೆ ಪಿನ್ ಕೋಡ್ ಪರಿಶೀಲಿಸಬೇಕಿದ್ದರೆ, ಅದನ್ನು ಇಲ್ಲಿ ಕಳುಹಿಸಿ.",
         "ask_invest": "ವ್ಯಾಪಾರ ಪ್ರಾರಂಭಿಸಲು ನೀವು ₹5 ಲಕ್ಷ ಹೂಡಿಕೆ ಮಾಡಬಹುದೇ?",
-        "not_investing": "ತಿಳಿಸಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. ಮುಂದೆ ಏನಾದರೂ ಬದಲಾದರೆ ಇಲ್ಲಿ ಉತ್ತರಿಸಿ, ನಮ್ಮ ತಂಡ ನಿಮಗೆ ಸಹಾಯ ಮಾಡುತ್ತದೆ.",
+        "not_investing": "ತಿಳಿಸಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. 🙏 Eko ಬಳಿ ಕಡಿಮೆ ಹೂಡಿಕೆಯ ಒಂದು ಆಯ್ಕೆಯೂ ಇದೆ, ಅದು ನಿಮಗೆ ಇನ್ನೂ ಸೂಕ್ತವಾಗಬಹುದು. ಅದರ ಬಗ್ಗೆ ತಿಳಿಸಲು ನಮ್ಮ ತಂಡ ನಿಮ್ಮನ್ನು ಸಂಪರ್ಕಿಸುತ್ತದೆ. ನಿಮ್ಮ ಪ್ರಶ್ನೆಗಳನ್ನು ಇಲ್ಲಿಯೂ ಕೇಳಬಹುದು.",
         "ask_docs": "ಅದ್ಭುತ! ನಮ್ಮೊಂದಿಗೆ ಆನ್‌ಬೋರ್ಡಿಂಗ್‌ಗೆ ಬೇಕಾದ ಈ ದಾಖಲೆಗಳು ನಿಮ್ಮ ಬಳಿ ಇವೆಯೇ ಎಂದು ತಿಳಿಸಿ?\n\n{documents}",
         "docs_required": "ಕಡ್ಡಾಯ:",
         "docs_optional": "ಇದ್ದರೆ ಇವೂ ಸಹ:",
@@ -524,7 +526,7 @@ MESSAGES = {
         ),
         "not_served_again": "നിലവിൽ {pin} സമീപം ഞങ്ങളുടെ സേവനം ലഭ്യമല്ല. മറ്റൊരു പിൻ കോഡ് പരിശോധിക്കണമെങ്കിൽ, അത് ഇവിടെ അയയ്ക്കുക.",
         "ask_invest": "ബിസിനസ് ആരംഭിക്കാൻ ₹5 ലക്ഷം നിക്ഷേപിക്കാൻ നിങ്ങൾക്ക് കഴിയുമോ?",
-        "not_investing": "അറിയിച്ചതിന് നന്ദി. പിന്നീട് എന്തെങ്കിലും മാറിയാൽ ഇവിടെ മറുപടി നൽകുക, ഞങ്ങളുടെ ടീം സഹായിക്കും.",
+        "not_investing": "അറിയിച്ചതിന് നന്ദി. 🙏 Eko-യ്ക്ക് കുറഞ്ഞ നിക്ഷേപമുള്ള ഒരു ഓപ്ഷനും ഉണ്ട്, അത് നിങ്ങൾക്ക് കൂടുതൽ അനുയോജ്യമായേക്കാം. അതിനെക്കുറിച്ച് അറിയിക്കാൻ ഞങ്ങളുടെ ടീം നിങ്ങളെ ബന്ധപ്പെടും. നിങ്ങളുടെ ചോദ്യങ്ങൾ ഇവിടെയും ചോദിക്കാം.",
         "ask_docs": "കൊള്ളാം! ഞങ്ങളോടൊപ്പം ഓൺബോർഡിംഗിന് ആവശ്യമായ ഈ രേഖകൾ നിങ്ങളുടെ കൈവശം ഉണ്ടോ എന്ന് അറിയിക്കുക?\n\n{documents}",
         "docs_required": "നിർബന്ധം:",
         "docs_optional": "ഉണ്ടെങ്കിൽ ഇവയും:",
@@ -572,7 +574,7 @@ MESSAGES = {
         ),
         "not_served_again": "ବର୍ତ୍ତମାନ ଆମେ {pin} ନିକଟରେ ଉପଲବ୍ଧ ନାହୁଁ। ଅନ୍ୟ ଏକ ପିନ୍ କୋଡ୍ ଯାଞ୍ଚ କରିବାକୁ ଚାହିଁଲେ, ଏଠାରେ ପଠାନ୍ତୁ।",
         "ask_invest": "ବ୍ୟବସାୟ ଆରମ୍ଭ କରିବା ପାଇଁ ଆପଣ ₹5 ଲକ୍ଷ ନିବେଶ କରିପାରିବେ କି?",
-        "not_investing": "ଜଣାଇଥିବାରୁ ଧନ୍ୟବାଦ। ପରେ କିଛି ବଦଳିଲେ ଏଠାରେ ଉତ୍ତର ଦିଅନ୍ତୁ, ଆମ ଟିମ୍ ଆପଣଙ୍କୁ ସାହାଯ୍ୟ କରିବ।",
+        "not_investing": "ଜଣାଇଥିବାରୁ ଧନ୍ୟବାଦ। 🙏 Eko ପାଖରେ କମ୍ ନିବେଶର ଏକ ବିକଳ୍ପ ମଧ୍ୟ ଅଛି, ଯାହା ଆପଣଙ୍କ ପାଇଁ ଅଧିକ ଉପଯୁକ୍ତ ହୋଇପାରେ। ଏ ବିଷୟରେ ଜଣାଇବାକୁ ଆମ ଟିମ୍ ଆପଣଙ୍କ ସହ ଯୋଗାଯୋଗ କରିବ। ଆପଣ ଆପଣଙ୍କ ପ୍ରଶ୍ନ ଏଠାରେ ମଧ୍ୟ ପଚାରିପାରିବେ।",
         "ask_docs": "ବହୁତ ଭଲ! ଦୟାକରି ଜଣାନ୍ତୁ, ଆମ ସହ ଅନବୋର୍ଡିଂ ପାଇଁ ଆବଶ୍ୟକ ଏହି ଦସ୍ତାବିଜଗୁଡ଼ିକ ଆପଣଙ୍କ ପାଖରେ ଅଛି କି?\n\n{documents}",
         "docs_required": "ଆବଶ୍ୟକ:",
         "docs_optional": "ଥିଲେ ଏଗୁଡ଼ିକ ମଧ୍ୟ:",
@@ -965,7 +967,7 @@ HINGLISH = {
     "ask_franchise": "Kya aapke paas franchise background hai?\n\n(Franchise background ka matlab hai ki aapne kisi doosri company ke brand ke naam se business chalaya hai ya chala rahe hain, jaise bank ya payment kiosk, courier, mobile recharge ya bima ka outlet.)",
     "ask_invest": "Kya aap franchise business shuru karne ke liye 5 lakh rupaye tak nivesh kar sakte hain?\n\n(Franchise business ka matlab hai kisi jaane-maane brand ke naam, uske system aur support ke saath apna outlet chalana. Yahan yeh SBI Customer Service Point hai, jo Eko dwara di jaane wali suvidha hai.)",
     "invest_explained": "💼 *₹5 lakh tak ka istemal kaise hota hai*\n\n• Inmein se lagbhag *₹1.5–2.5 lakh ke devices* (laptop ya tab, biometric device, micro ATM, passbook printer, GPS dongle) Eko deta hai aur chalana bhi sikhata hai.\n• *Thoda paisa aapke paas rehta hai*, aapke apne e-wallet mein. Isi se aap grahakon ka kaam karte hain.\n• Jab grahak paisa jama ya transfer karta hai, wah aapko nakad deta hai aur rakam aapke e-wallet se uske khate mein chali jaati hai. Jab grahak paisa nikalta hai, aap use nakad dete hain aur rakam aapke e-wallet mein wapas aa jaati hai.\n• E-wallet mein paisa kam ho jaye, to jama hui nakdi bank mein jama karke e-wallet phir se bhar lein aur kaam jaari rakhein.\n• Aapko *har transaction par commission* milta hai.\n• Baaki paisa aapki mini branch set-up karne mein lagta hai, taaki aapke paas saari suvidhayein hon, jaise baithne ki jagah, paani ka intezaam, poster aur banner. Taaki aapki dukaan SBI ki mini branch sirf bane hi nahi, balki dekhne mein bhi lage.",
-    "not_investing": "Batane ke liye dhanyavaad. Agar aage kuch badalta hai, to yahan jawab dein, hamari team aapki madad karegi.",
+    "not_investing": "Batane ke liye dhanyavaad. 🙏 Eko ke paas kam investment wala ek option bhi hai, jo aapke liye behtar ho sakta hai. Hamari team iske baare mein batane ke liye aapse sampark karegi. Aap apne sawaal yahan bhi pooch sakte hain.",
     "ask_docs": "Bahut badhiya! Kripya batayein ki kya aapke paas hamare saath onboarding ke liye ye dastavez hain?\n\n{documents}",
     "docs_required": "Zaroori:",
     "docs_optional": "Agar hon to ye bhi:",

@@ -92,7 +92,26 @@ def _prefixes() -> Dict[str, List[str]]:
     return out
 
 
+# The cannot-invest reply before it offered the lower-investment option (22 Oct 2026),
+# so older chats still read as "Cannot invest right now".
+_OLDER = {"not_investing": [
+    "Thank you for letting us know. If anything changes, just reply here and our team will be happy to help.",
+    "बताने के लिए धन्यवाद। अगर आगे कुछ बदलता है, तो यहाँ जवाब दें, हमारी टीम आपकी मदद करेगी।",
+    "ਦੱਸਣ ਲਈ ਧੰਨਵਾਦ। ਜੇ ਅੱਗੇ ਕੁਝ ਬਦਲਦਾ ਹੈ, ਤਾਂ ਇੱਥੇ ਜਵਾਬ ਦਿਓ, ਸਾਡੀ ਟੀਮ ਤੁਹਾਡੀ ਮਦਦ ਕਰੇਗੀ।",
+    "જણાવવા બદલ આભાર. જો આગળ કંઈ બદલાય, તો અહીં જવાબ આપો, અમારી ટીમ તમને મદદ કરશે.",
+    "कळवल्याबद्दल धन्यवाद. पुढे काही बदलल्यास इथे उत्तर द्या, आमची टीम तुम्हाला मदत करेल.",
+    "জানানোর জন্য ধন্যবাদ। পরে কিছু বদলালে এখানে উত্তর দিন, আমাদের টিম আপনাকে সাহায্য করবে।",
+    "தெரிவித்ததற்கு நன்றி. பின்னர் ஏதாவது மாறினால் இங்கே பதில் அனுப்புங்கள், எங்கள் குழு உங்களுக்கு உதவும்.",
+    "తెలియజేసినందుకు ధన్యవాదాలు. తర్వాత ఏదైనా మారితే ఇక్కడ జవాబు ఇవ్వండి, మా బృందం మీకు సహాయం చేస్తుంది.",
+    "ತಿಳಿಸಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. ಮುಂದೆ ಏನಾದರೂ ಬದಲಾದರೆ ಇಲ್ಲಿ ಉತ್ತರಿಸಿ, ನಮ್ಮ ತಂಡ ನಿಮಗೆ ಸಹಾಯ ಮಾಡುತ್ತದೆ.",
+    "അറിയിച്ചതിന് നന്ദി. പിന്നീട് എന്തെങ്കിലും മാറിയാൽ ഇവിടെ മറുപടി നൽകുക, ഞങ്ങളുടെ ടീം സഹായിക്കും.",
+    "ଜଣାଇଥିବାରୁ ଧନ୍ୟବାଦ। ପରେ କିଛି ବଦଳିଲେ ଏଠାରେ ଉତ୍ତର ଦିଅନ୍ତୁ, ଆମ ଟିମ୍ ଆପଣଙ୍କୁ ସାହାଯ୍ୟ କରିବ।",
+    "Batane ke liye dhanyavaad. Agar aage kuch badalta hai, to yahan jawab dein, hamari team aapki madad karegi."
+]}
+
 _PREFIXES = _prefixes()
+for _key, _texts in _OLDER.items():
+    _PREFIXES[_key] += [t.split("\n", 1)[0].strip()[:60] for t in _texts]
 
 
 def classify(body: Optional[str]) -> Optional[str]:

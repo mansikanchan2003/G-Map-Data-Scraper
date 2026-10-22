@@ -1983,7 +1983,8 @@ def test_the_journey_shows_negative_turns_and_team_actions(db, client):
     j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
     whats = [s["what"] for s in j["steps"] if s["what"]]
     assert "Cannot invest right now" in whats
-    rec = next(s for s in j["steps"] if s["key"] == "disposition:ni_investment")
+    # The bot records "Investment issue" itself; the team's own record follows it.
+    rec = [s for s in j["steps"] if s["key"] == "disposition:ni_investment"][-1]
     assert rec["detail"] == "Asked about EMI" and rec["by"] == "admin@eko.co.in"
     assert any(s["key"] == "nudge" and "lower-investment" in s["action"] for s in j["steps"])
     assert j["outcome"] == "closed"
@@ -2151,3 +2152,33 @@ def test_a_nudge_meta_filed_as_marketing_goes_in_as_marketing_in_every_language(
     out = nudge_templates.submit(db, "more_info", "admin@eko.co.in")
     assert all(r["status"] == "PENDING" and not r.get("error") for r in out)
     assert asked[:3] == ["UTILITY", "UTILITY", "MARKETING"]
+
+
+@pytest.mark.parametrize("typed,step", [
+    ("13", "AWAIT_INVEST"), ("12 th", "AWAIT_INVEST"), ("ધોરણ ૧૨", "AWAIT_INVEST"), ("BCom", "AWAIT_INVEST"),
+    ("बारहवीं पास", "AWAIT_INVEST"), ("10th pass", "NOT_ELIGIBLE"), ("I am interested", "AWAIT_EDUCATION"),
+])
+def test_an_education_typed_in_their_own_words_moves_on(db, typed, step):
+    tap_campaign(db, lang="gu")
+    say(db, SERVED_PIN)
+    say(db, typed)
+    assert conv(db).bot_step == step
+
+
+def test_cannot_invest_offers_the_lower_investment_option_and_tells_the_team(db, client, team_mail):
+    from src.services import tickets
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)
+    tap(db, "invest:no")
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.NOT_INVESTING
+    body = StubMeta.sent[-1][2]
+    assert body == bot_messages.MESSAGES["en"]["not_investing"] and "lower-investment" in body
+    # Recorded as the sheet's "Investment issue": a ticket and the team's email, and the
+    # reply counts as the nudge, so nothing more is sent now.
+    assert c.disposition == "ni_investment" and tickets.open_ticket(db, PHONE) is not None
+    assert len(team_mail) == 1 and "Investment issue" in team_mail[0][0]
+    nudge = [f for f in _followups(db) if f.purpose == "lower_investment"]
+    assert len(nudge) == 1 and nudge[0].status == "sent" and nudge[0].note == "Said in the bot's reply"
+    assert StubMeta.sent[-1][2] == body
