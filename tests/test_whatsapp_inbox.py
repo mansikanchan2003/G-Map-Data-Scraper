@@ -2132,3 +2132,22 @@ def test_submit_all_sends_every_nudge_only_when_pressed(db, client, monkeypatch)
     r = client.post("/api/v1/inbox/dispositions/nudge-templates/submit-all")
     assert r.status_code == 200
     assert [p for p, _ in sent] == list(nudge_messages.PURPOSES) and {b for _, b in sent} == {"admin@eko.co.in"}
+
+
+def test_a_nudge_meta_filed_as_marketing_goes_in_as_marketing_in_every_language(db, monkeypatch):
+    from src.services import nudge_templates, whatsapp_service
+    asked = []
+
+    def fake_submit(self, template, category="MARKETING"):
+        asked.append(category)
+        if category == "UTILITY" and len(asked) > 1:
+            return {"status": "failed", "error": "Template category doesn't match: The category UTILITY doesn't match "
+                                                 "the one that's already associated with this template, MARKETING."}
+        template.status = "PENDING"
+        template.category = category
+        return {"status": "success"}
+
+    monkeypatch.setattr(whatsapp_service.WhatsAppTemplateSubmissionService, "submit", fake_submit)
+    out = nudge_templates.submit(db, "more_info", "admin@eko.co.in")
+    assert all(r["status"] == "PENDING" and not r.get("error") for r in out)
+    assert asked[:3] == ["UTILITY", "UTILITY", "MARKETING"]

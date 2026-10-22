@@ -88,6 +88,12 @@ def submit(db: Session, purpose: str, by: str) -> List[dict]:
         else:
             row.body = nudge_messages.text(purpose, v)
         result = service.submit(row, CATEGORY)
+        theirs = _category_meta_has(result)
+        if theirs and theirs != CATEGORY:
+            # Meta filed this template's first language under another category
+            # (Marketing, 22 Oct 2026), and every language of one template must
+            # share it: the rest go in under the same.
+            result = service.submit(row, theirs)
         if result.get("status") != "success":
             row.status = "FAILED"
             row.review_note = (result.get("error") or "")[:1000]
@@ -103,6 +109,15 @@ def refresh(db: Session) -> None:
     rows = [t for t in _rows(db).values() if (t.status or "").upper() not in ("APPROVED", "FAILED", "DRAFT")]
     if rows:
         refresh_statuses(db, rows)
+
+
+def _category_meta_has(result: dict) -> Optional[str]:
+    """The category Meta already has for a template, from its "category doesn't match" refusal."""
+    import re
+    if result.get("status") == "success":
+        return None
+    m = re.search(r"already associated with this template, ([A-Z_]+)", result.get("error") or "")
+    return m.group(1) if m else None
 
 
 def submit_all(db: Session, by: str) -> Dict[str, List[dict]]:
