@@ -113,7 +113,8 @@ CATEGORIES: List[Category] = [
         Sub("rej_eligibility", "Eligibility criteria not met", "rejected", "Connect for BT/other proposal", "Bot - Human",
             (Step("lower_investment", NOW, BOT, CALL, expects_reply=True),)),
         # Not in the sheet: the bot's own outcome for a PIN code Eko does not serve.
-        Sub("rej_outside_area", "Outside our service area", "rejected", "", "Bot", closes=True),
+        Sub("rej_outside_area", "Outside our service area", "rejected", "Connect for other proposal", "Bot - Human",
+            (Step("other_options", NOW, BOT, CALL, expects_reply=True),)),
     ]),
     Category("busy", "Busy / Callback", "follow_up", "schedule", [
         Sub("busy_busy", "Busy", "busy", "Notification & calls", "Bot",
@@ -251,6 +252,7 @@ PURPOSE_PLAIN = {
     "decision_maker": "ask for the applicant's number",
     "checking_in": "check back with them",
     "choose_language": "ask which language they prefer",
+    "other_options": "tell them about Eko's other proposals apart from SBI",
 }
 WHEN_PLAIN = {NOW: "now", EOD: "this evening", NEXT_DAY: "tomorrow morning", AT_TIME: "at the time you set",
               ON_DATE: "on the date you set", IN_2_DAYS: "2 days later"}

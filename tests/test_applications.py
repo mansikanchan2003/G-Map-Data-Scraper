@@ -179,6 +179,10 @@ def test_the_bot_now_records_whether_a_pin_was_served(monkeypatch):
                         lambda db, pin: {"status": "not_served", "pincode": pin, "distance_km": 80.0})
     monkeypatch.setattr(bot, "_say", lambda *a, **k: None)
     monkeypatch.setattr(bot, "_t", lambda *a, **k: "")
+    # Recording "Outside our service area" needs a database; this checks only the coverage note.
+    from src.services import followups, handover
+    monkeypatch.setattr(handover, "record", lambda *a, **k: None)
+    monkeypatch.setattr(followups, "mark_sent", lambda *a, **k: None)
     conv = WhatsAppConversation(phone="+919000000099", bot_step=bot.AWAIT_PIN, bot_data={})
     msg = WhatsAppMessage(message_id="m", phone=conv.phone, direction="IN", kind="text", body="110001")
     bot._on_pin(None, conv, msg)

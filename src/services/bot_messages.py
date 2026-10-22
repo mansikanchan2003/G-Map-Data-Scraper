@@ -1033,3 +1033,34 @@ _GUIDANCE_INTRO = {"en": "Good question! 😊", "hi": "अच्छा सवा
 for _lang in MESSAGES:
     MESSAGES[_lang]["guidance_intro"] = _GUIDANCE_INTRO.get(_lang, _GUIDANCE_INTRO["en"])
 HINGLISH["guidance_intro"] = "Achha sawaal! 😊"
+
+
+
+# --- Outside our area: other proposals apart from SBI (2026-10-22) ------------
+# The sheet's action for a PIN code we do not serve is another proposal (owner
+# Bot - Human): the reply offers it, between "not near you yet" and "check
+# another PIN code", and the team follows it up.
+_OTHER_PROPOSALS = {
+    "en": "Eko also has other proposals apart from SBI that may suit you. If you are interested, just reply here and our team will tell you about them.",
+    "hi": "Eko के पास SBI के अलावा दूसरे प्रस्ताव भी हैं, जो आपके लिए उपयुक्त हो सकते हैं। अगर आप रुचि रखते हैं, तो यहीं जवाब दें, हमारी टीम आपको इनके बारे में बताएगी।",
+    "gu": "Eko પાસે SBI સિવાય બીજા પ્રસ્તાવો પણ છે, જે તમારા માટે યોગ્ય હોઈ શકે. જો તમને રસ હોય, તો અહીં જ જવાબ આપો, અમારી ટીમ તમને તેના વિશે જણાવશે.",
+    "pa": "Eko ਕੋਲ SBI ਤੋਂ ਇਲਾਵਾ ਹੋਰ ਪ੍ਰਸਤਾਵ ਵੀ ਹਨ, ਜੋ ਤੁਹਾਡੇ ਲਈ ਢੁਕਵੇਂ ਹੋ ਸਕਦੇ ਹਨ। ਜੇ ਤੁਹਾਡੀ ਦਿਲਚਸਪੀ ਹੈ, ਤਾਂ ਇੱਥੇ ਹੀ ਜਵਾਬ ਦਿਓ, ਸਾਡੀ ਟੀਮ ਤੁਹਾਨੂੰ ਇਹਨਾਂ ਬਾਰੇ ਦੱਸੇਗੀ।",
+    "mr": "Eko कडे SBI व्यतिरिक्त इतर प्रस्तावही आहेत, जे तुमच्यासाठी योग्य ठरू शकतात. तुम्हाला रस असल्यास इथेच उत्तर द्या, आमची टीम तुम्हाला त्याबद्दल सांगेल.",
+    "bn": "Eko-র কাছে SBI ছাড়াও অন্যান্য প্রস্তাব আছে, যা আপনার জন্য উপযুক্ত হতে পারে। আগ্রহী হলে এখানেই উত্তর দিন, আমাদের টিম আপনাকে সেগুলি সম্পর্কে জানাবে।",
+    "ta": "SBI தவிர Eko-விடம் வேறு வாய்ப்புகளும் உள்ளன, அவை உங்களுக்குப் பொருத்தமாக இருக்கலாம். ஆர்வம் இருந்தால் இங்கேயே பதில் அனுப்புங்கள், எங்கள் குழு அவற்றைப் பற்றிச் சொல்லும்.",
+    "te": "SBI కాకుండా Eko వద్ద ఇతర ప్రతిపాదనలు కూడా ఉన్నాయి, అవి మీకు సరిపోవచ్చు. ఆసక్తి ఉంటే ఇక్కడే జవాబు ఇవ్వండి, మా బృందం వాటి గురించి చెబుతుంది.",
+    "kn": "SBI ಹೊರತಾಗಿ Eko ಬಳಿ ಇತರ ಪ್ರಸ್ತಾವಗಳೂ ಇವೆ, ಅವು ನಿಮಗೆ ಸೂಕ್ತವಾಗಬಹುದು. ಆಸಕ್ತಿ ಇದ್ದರೆ ಇಲ್ಲೇ ಉತ್ತರಿಸಿ, ನಮ್ಮ ತಂಡ ಅವುಗಳ ಬಗ್ಗೆ ತಿಳಿಸುತ್ತದೆ.",
+    "ml": "SBI കൂടാതെ Eko-യ്ക്ക് മറ്റ് നിർദ്ദേശങ്ങളും ഉണ്ട്, അവ നിങ്ങൾക്ക് അനുയോജ്യമായേക്കാം. താൽപ്പര്യമുണ്ടെങ്കിൽ ഇവിടെത്തന്നെ മറുപടി നൽകുക, ഞങ്ങളുടെ ടീം അവയെക്കുറിച്ച് പറയും.",
+    "or": "SBI ବ୍ୟତୀତ Eko ପାଖରେ ଅନ୍ୟ ପ୍ରସ୍ତାବ ମଧ୍ୟ ଅଛି, ଯାହା ଆପଣଙ୍କ ପାଇଁ ଉପଯୁକ୍ତ ହୋଇପାରେ। ଆଗ୍ରହ ଥିଲେ ଏଠାରେ ହିଁ ଉତ୍ତର ଦିଅନ୍ତୁ, ଆମ ଟିମ୍ ସେ ବିଷୟରେ ଜଣାଇବ।"
+}
+
+
+def _with_offer(text: str, offer: str) -> str:
+    first, _, rest = text.partition("\n\n")
+    return f"{first}\n\n{offer}\n\n{rest}" if rest else f"{first}\n\n{offer}"
+
+
+for _lang in MESSAGES:
+    MESSAGES[_lang]["not_served"] = _with_offer(MESSAGES[_lang]["not_served"],
+                                                _OTHER_PROPOSALS.get(_lang, _OTHER_PROPOSALS["en"]))
+HINGLISH["not_served"] = _with_offer(HINGLISH["not_served"], "Eko ke paas SBI ke alawa doosre proposals bhi hain, jo aapke liye sahi ho sakte hain. Agar aap interested hain, to yahin reply karein, hamari team aapko inke baare mein batayegi.")

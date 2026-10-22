@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchJourney, fetchJourneys, type ActionItem, type DispositionBlock, type Journey, type JourneyRow } from '../api/inbox';
+import { fetchJourney, fetchJourneys, type ActionItem, type DispositionBlock, type Journey, type JourneyRow, type NextItem } from '../api/inbox';
 import { formatDateTime } from '../utils/datetime';
 
 /**
@@ -62,7 +62,9 @@ const DispositionCard: React.FC<{ b: DispositionBlock }> = ({ b }) => {
           <div className="text-[11px] uppercase tracking-wider text-slate-500">{b.current ? 'Disposition now' : 'Earlier disposition'}{b.category ? ` · ${b.category}` : ''}</div>
           <div className="text-[15px] font-semibold text-slate-100">{b.label}</div>
           <div className="text-[11.5px] text-slate-500">{b.recorded_by}{b.recorded_at ? ` · ${formatDateTime(b.recorded_at)}` : ''}</div>
-          {b.note && <div className="mt-1 text-[12px] text-slate-300 italic">“{b.note}”</div>}
+          {b.note && (b.derived
+            ? <div className="mt-1 text-[12px] text-slate-400">When they: {b.note.charAt(0).toLowerCase() + b.note.slice(1)}</div>
+            : <div className="mt-1 text-[12px] text-slate-300 italic">“{b.note}”</div>)}
         </div>
         {b.sheet_action && (
           <div className="min-w-[200px] flex-1">
@@ -106,6 +108,36 @@ const DispositionCard: React.FC<{ b: DispositionBlock }> = ({ b }) => {
   );
 };
 
+const NEXT: Record<NextItem['kind'], { icon: string; cls: string }> = {
+  action: { icon: 'event_upcoming', cls: 'bg-sky-950 text-sky-300' },
+  waiting: { icon: 'hourglass_top', cls: 'bg-slate-800 text-slate-300' },
+  disposition: { icon: 'arrow_forward', cls: 'bg-emerald-950 text-emerald-300' },
+  none: { icon: 'warning', cls: 'bg-amber-950 text-amber-300' },
+};
+
+/** What comes next: planned action items, what the bot waits for, and the disposition expected next. */
+const WhatsNext: React.FC<{ items: NextItem[] }> = ({ items }) => (
+  <div className="rounded-lg border border-sky-800/60 bg-slate-900 p-3.5">
+    <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2.5 flex items-center gap-1.5">
+      <Icon name="next_plan" className="text-[15px]" />What's next
+    </div>
+    <ul className="space-y-2.5">
+      {items.map((n, i) => (
+        <li key={i} className="grid grid-cols-[28px_1fr_auto] gap-2.5 items-start text-[13px]">
+          <span className={`h-7 w-7 rounded-lg flex items-center justify-center ${NEXT[n.kind].cls}`}><Icon name={NEXT[n.kind].icon} className="text-[16px]" /></span>
+          <div className="min-w-0">
+            <div className={n.kind === 'none' ? 'text-amber-300 font-semibold' : 'text-slate-200'}>{n.text}</div>
+            {(n.when || n.note) && (
+              <div className="text-[11.5px] text-slate-500">{n.when ? formatDateTime(n.when) : ''}{n.when && n.note ? ' · ' : ''}{n.note}</div>
+            )}
+          </div>
+          <span className="px-2 py-0.5 rounded-full text-[10.5px] font-semibold whitespace-nowrap bg-slate-800 text-slate-300">{n.owner_label}</span>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
+
 /** The lead's disposition now with its action items, and earlier ones folded below. */
 const Dispositions: React.FC<{ blocks: DispositionBlock[] }> = ({ blocks }) => {
   const [earlier, setEarlier] = useState(false);
@@ -140,6 +172,7 @@ const Steps: React.FC<{ phone: string }> = ({ phone }) => {
   const steps = all ? j.steps : j.steps.filter(s => s.kind === 'stage');
   return (
     <div className="space-y-3">
+      <WhatsNext items={j.whats_next} />
       <Dispositions blocks={j.dispositions} />
       <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold flex items-center gap-1.5 pt-1">
         <Icon name="route" className="text-[15px]" />Journey

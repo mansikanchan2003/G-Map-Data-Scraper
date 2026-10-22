@@ -626,9 +626,16 @@ def _send_upload_link(db, conv):
     if not conv.upload_token or not expires or expires <= inbox.now():
         conv.upload_token = secrets.token_urlsafe(24)
         conv.upload_token_expires_at = inbox.now() + timedelta(days=UPLOAD_LINK_DAYS)
+    first = conv.bot_step != AWAIT_UPLOAD
     _move(conv, AWAIT_UPLOAD)
-    _say(db, conv, _t(db, conv, "send_link"),
-         link={"text": _t(db, conv, "link_button"), "url": upload_url(conv)})
+    sent = _say(db, conv, _t(db, conv, "send_link"),
+                link={"text": _t(db, conv, "link_button"), "url": upload_url(conv)})
+    if first and not conv.documents_submitted_at:
+        # The sheet's "Documents pending" (owner DCs/Bot): follow up until they upload.
+        # This message is its notification; a reminder follows in 2 days (2026-10-22).
+        from src.services import followups, handover
+        handover.record(db, conv, "int_docs_pending", "bot", note="Upload link sent", run_now=False)
+        followups.mark_sent(db, conv, "docs_reminder", sent)
 
 
 def _pin_failed(db, conv, reply: str):
@@ -662,7 +669,12 @@ def _on_pin(db, conv, msg):
         _say(db, conv, _t(db, conv, "ask_education"), buttons=education_buttons(_lang(db, conv)))
     else:
         _move(conv, NOT_SERVED, coverage=coverage)
-        _say(db, conv, _t(db, conv, "not_served", pin=pin))
+        said = _say(db, conv, _t(db, conv, "not_served", pin=pin))
+        # The sheet: a PIN we do not serve gets another proposal (Bot - Human). The reply
+        # offers it; the team hears and follows it up (2026-10-22).
+        from src.services import followups, handover
+        handover.record(db, conv, "rej_outside_area", "bot", note=f"PIN {pin} is outside our area", run_now=False)
+        followups.mark_sent(db, conv, "other_options", said)
 
 
 def _only_a_pin(msg: WhatsAppMessage) -> Optional[str]:

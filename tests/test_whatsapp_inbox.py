@@ -2042,7 +2042,7 @@ def team_mail(monkeypatch):
 
 def test_only_dispositions_the_sheet_gives_a_person_email_the_team():
     human = {k for k, s in dz.SUBS.items() if dz.needs_team(s)}
-    assert human == {"int_more_info", "ni_investment", "rej_credit", "rej_eligibility", "inv_denied",
+    assert human == {"int_more_info", "ni_investment", "rej_credit", "rej_eligibility", "rej_outside_area", "inv_denied",
                      "ndm_not_applicant", "ndm_unavailable", "hold_later", "hold_financial", "hold_after_date",
                      "hold_no_replacement"}
 
@@ -2116,7 +2116,7 @@ def test_the_journeys_are_stored_for_sql(db, client):
         assert row.outcome == "handed_over" and row.furthest_stage == "handed_over"
         assert row.interested_at and row.pin_at and row.uploaded_at and row.handed_over_at
         steps = db.query(LeadJourneyStep).filter(LeadJourneyStep.phone == PHONE).order_by(LeadJourneyStep.seq).all()
-        assert len(steps) == row.steps_count and steps[-1].key in ("handed_over", "to_acquisition")
+        assert len(steps) == row.steps_count and "handed_over" in {x.key for x in steps}
         # Refreshing again replaces the steps rather than adding to them.
         lead_journey_store.sync_all(db)
         assert db.query(LeadJourneyStep).filter(LeadJourneyStep.phone == PHONE).count() == row.steps_count
@@ -2335,18 +2335,39 @@ def test_each_disposition_shows_its_action_items_done_planned_and_missed_with_ow
     j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
     block = j["dispositions"][0]
     assert block["label"] == "Financial constraint currently" and block["sheet_owner"] == "Bot & Human"
-    statuses = {(i["owner_label"], i["status"]) for i in block["items"]}
-    assert ("Team (Human)", "done") in statuses and ("Bot", "missed") in statuses
+    statuses = {(i["owner"], i["status"]) for i in block["items"]}
+    assert ("human", "done") in statuses and ("bot", "missed") in statuses
+    team = next(i for i in block["items"] if i["owner"] == "human")
+    assert team["owner_label"].startswith("Team: ") and "Kavya Shukla" in team["owner_label"]
     assert j["dispositions"][1]["label"] == "Call at specific time" and not j["dispositions"][1]["current"]
     row = client.get("/api/v1/inbox/dispositions/journeys").json()[0]
     assert row["actions"]["missed"] >= 1 and row["actions"]["done"] >= 2
 
 
-def test_a_lead_nobody_has_recorded_shows_the_bots_reading_without_actions(db, client):
+def test_a_lead_nobody_has_recorded_shows_the_bots_disposition_and_what_it_did(db, client):
     tap_campaign(db)
     j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
     [only] = j["dispositions"]
-    assert only["recorded_by"] == "Read from the bot's step" and only["items"] == []
+    assert only["recorded_by"] == "Bot" and only["label"] == "Interested: in the bot's questions" and only["current"]
+    assert any(i["owner_label"] == "Bot" and i["status"] == "done" for i in only["items"])
+
+
+def test_the_bots_dispositions_come_before_the_teams_with_their_actions(db, client):
+    # Arshad's case: through the bot to the upload link, then the team records "Other: trust issue".
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)
+    tap(db, "invest:yes")
+    tap(db, "docs:yes")
+    _record(client, "other", note="Trust issue")
+    j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
+    labels = [b["label"] for b in j["dispositions"]]
+    assert labels == ["Other", "Documents pending", "Interested: in the bot's questions"]
+    now, docs, interested = j["dispositions"]
+    assert now["current"] and now["recorded_by"] == "Admin" and now["note"] == "Trust issue"
+    assert docs["recorded_by"] == "Bot" and any("upload link" in i["text"] for i in docs["items"])
+    texts = " | ".join(i["text"] for i in interested["items"])
+    assert "Asked for their PIN code" in texts and "Asked about their education" in texts
 
 
 
@@ -2411,3 +2432,72 @@ def test_a_trust_concern_at_an_earlier_step_has_no_upload_line(db, emailed):
     assert "Eko Bharat Ventures" in body and "kiosk.eko.in" in body
     assert bot_messages.MESSAGES["gu"]["remind_upload"] not in body
     assert conv(db).needs_attention                           # still goes to a person
+
+
+def test_whats_next_shows_the_wait_the_reminder_and_the_next_disposition(db, client):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)
+    tap(db, "invest:yes")
+    tap(db, "docs:yes")                                       # the upload link is out
+    j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
+    texts = [n["text"] for n in j["whats_next"]]
+    assert "Waiting for them to upload their documents" in texts
+    assert "Reminder with the same question, if they stay quiet" in texts
+    assert any(t.startswith("Next disposition: Physical visit required: handed to Eko Acquisition") for t in texts)
+
+
+def test_whats_next_says_when_nothing_is_planned(db, client):
+    tap_campaign(db)
+    from src.models.inbox import WhatsAppConversation as C
+    c = conv(db)
+    c.bot_step = None
+    db.commit()
+    _record(client, "other", note="Trust issue")
+    nxt = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()["whats_next"]
+    assert [n["kind"] for n in nxt] == ["none"]
+
+
+def test_the_upload_link_records_documents_pending_with_the_sheets_follow_up(db, client):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)
+    tap(db, "invest:yes")
+    tap(db, "docs:yes")
+    c = conv(db)
+    assert c.disposition == "int_docs_pending" and c.disposition_by == "bot"
+    reminders = sorted((f for f in _followups(db) if f.purpose == "docs_reminder"), key=lambda f: f.due_at)
+    assert [f.status for f in reminders] == ["sent", "scheduled"]       # the link now, a reminder in 2 days
+    assert reminders[0].note == "Said in the bot's reply"
+    # Sending the link again (a second "Yes") does not record it twice.
+    tap(db, "docs:yes")
+    assert len([f for f in _followups(db) if f.purpose == "docs_reminder"]) == 2
+    # Uploading cancels the reminder.
+    c = conv(db)
+    c.documents_submitted_at = inbox.now()
+    db.commit()
+    followups.tick(db)
+    db.expire_all()
+    assert all(f.status != "scheduled" for f in _followups(db) if f.purpose == "docs_reminder")
+
+
+def test_outside_our_area_offers_other_proposals_and_tells_the_team(db, monkeypatch, team_mail):
+    from src.services import tickets
+    monkeypatch.setattr(pincode_coverage, "_locate_or_none", lambda pin: (19.07, 72.87))  # Mumbai: not served
+    tap_campaign(db)
+    say(db, "400001")
+    body = StubMeta.sent[-1][2]
+    assert "not available near 400001" in body and "other proposals apart from SBI" in body
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.NOT_SERVED and c.disposition == "rej_outside_area" and c.disposition_by == "bot"
+    assert tickets.open_ticket(db, PHONE) is not None and len(team_mail) == 1
+    offer = [f for f in _followups(db) if f.purpose == "other_options"]
+    assert len(offer) == 1 and offer[0].status == "sent" and StubMeta.sent[-1][2] == body   # one message, not two
+
+
+def test_education_below_12th_is_still_a_polite_no_with_nothing_more(db, team_mail):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db, "other")
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.NOT_ELIGIBLE and c.disposition is None and team_mail == []

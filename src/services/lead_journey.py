@@ -198,9 +198,14 @@ def build(db: Session, conv: WhatsAppConversation, *, messages: Optional[List[Wh
 
     last_in: Optional[WhatsAppMessage] = None
     answered_since_in = False
+    # Nudges a follow-up sent are shown as that follow-up, not again as a bot reply; a bot
+    # reply that itself served as one (the upload link, the cannot-invest answer) stays a step.
+    nudge_ids = {f.message_id for f in followups if f.message_id and f.note != "Said in the bot's reply"}
     for m in sorted(messages, key=lambda x: inbox.aware(x.created_at)):
         if m.direction == "IN":
             last_in, answered_since_in = m, False
+            continue
+        if m.message_id in nudge_ids:
             continue
         if m.sent_by != "bot":
             if m.sent_by and m.sent_by not in ("campaign",):
@@ -312,7 +317,8 @@ def build(db: Session, conv: WhatsAppConversation, *, messages: Optional[List[Wh
     return {
         "phone": phone, "name": conv.profile_name, "steps": steps,
         "open": open_items(followups, tickets),
-        "dispositions": disposition_actions(conv, activities, followups, tickets),
+        "dispositions": disposition_actions(conv, activities, followups, tickets, steps),
+        "whats_next": whats_next(conv, followups, messages),
         "funnel": [{"key": k, "label": FUNNEL_LABELS[k], "at": reached.get(k)} for k in FUNNEL],
         "furthest": furthest, "outcome": outcome,
         "now": {"label": now["label"], "key": now["key"], "since": now["at"]},
@@ -322,6 +328,21 @@ def build(db: Session, conv: WhatsAppConversation, *, messages: Optional[List[Wh
 
 
 OWNER_LABEL = {"bot": "Bot", "human": "Team (Human)", "dc": "District Coordinator", dz.API: dz.HANDED_TO}
+
+
+def team_names() -> str:
+    """Who "the team" is, by name: the people a hand-over to a person is emailed to (the user, 2026-10-22)."""
+    from src.services import auth_service, notifier
+    return ", ".join(_who(e) for e in notifier.team(auth_service.BOOTSTRAP_ADMIN).split(", ") if e)
+
+
+def owner_label(owner: str, done_by: Optional[str] = None) -> str:
+    """An action item's owner by name: whoever did it, or for the team, who it falls to."""
+    if done_by and done_by != "bot":
+        return _who(done_by)
+    if owner == "human":
+        return f"Team: {team_names()}"
+    return OWNER_LABEL.get(owner, owner)
 # A planned item this late is counted as missed.
 LATE = timedelta(hours=1)
 WAITING_LATE = timedelta(days=1)
@@ -337,7 +358,7 @@ def _item(f: FollowUp, now: datetime) -> dict:
     else:
         text, owner = f"WhatsApp message to {dz.PURPOSE_PLAIN.get(f.purpose, f.purpose.replace('_', ' '))}", "bot"
         if f.owner == dz.HUMAN:
-            text += " (the sheet's call by the team; a nudge until calling is on)"
+            text += f" (the sheet's call by {team_names()}; a nudge until calling is on)"
     when, result = _iso(f.done_at or f.sent_at or f.due_at), None
     if f.status in ("sent", "replied", "no_answer", "done"):
         status = "done"
@@ -364,17 +385,75 @@ def _item(f: FollowUp, now: datetime) -> dict:
         status = "missed" if late else "planned"
         result = "Overdue: not sent yet" if late else ("Due now" if due and due <= now else "Planned")
         when = _iso(f.due_at)
-    return {"text": text, "owner": owner, "owner_label": OWNER_LABEL.get(owner, owner), "status": status,
-            "when": when, "result": result, "attempt": f.attempt}
+    return {"text": text, "owner": owner, "owner_label": owner_label(owner, f.done_by if f.status == "done" else None),
+            "status": status, "when": when, "result": result, "attempt": f.attempt}
+
+
+# The disposition each stage of the bot's questions stands for. The bot does
+# not record these as it goes; they are read from the chat's steps, so every
+# lead, older ones too, shows the bot's dispositions and what it did in each
+# (the user, 2026-10-22).
+STAGE_DISPOSITION = {
+    "interested": "int_in_bot_flow", "wrote_in": "int_in_bot_flow", "language": "int_in_bot_flow",
+    "pin": "int_in_bot_flow", "education": "int_in_bot_flow", "investment": "int_in_bot_flow",
+    "guidance": "int_more_info", "docs_ready": "int_docs_pending", "docs_later": "int_docs_pending",
+    "uploaded": "int_visit", "handed_over": "int_visit",
+    "not_served": "rej_outside_area", "not_eligible": "rej_eligibility", "not_investing": "ni_investment",
+}
+
+
+def _bot_blocks(steps: List[dict], recorded: List[ChatActivity]) -> List[dict]:
+    """
+    The bot's dispositions, read from the chat's steps: one per change, with
+    the bot's own actions in it as done action items.
+    """
+    blocks: List[dict] = []
+    for st in steps:
+        if st["kind"] == "stage" and st["key"] in STAGE_DISPOSITION:
+            key = STAGE_DISPOSITION[st["key"]]
+            if blocks and blocks[-1]["key"] == key:
+                continue
+            # The bot records some itself now (cannot invest): not shown twice.
+            if any(dz.normalise(a.value) == key and a.by == "bot" and st["at"]
+                   and abs((inbox.aware(a.at) - datetime.fromisoformat(st["at"])).total_seconds()) < 600 for a in recorded):
+                continue
+            s = dz.sub(key)
+            cat = dz.category_of(key)
+            blocks.append({"key": key, "label": dz.label(key), "category": cat.label if cat else None,
+                           "group": dz.group(key), "recorded_at": st["at"], "recorded_by": "Bot",
+                           "note": st["what"], "sheet_action": s.action if s else None,
+                           "sheet_owner": s.owner if s else None, "current": False, "items": [], "derived": True})
+    return blocks
+
+
+def _attach_bot_actions(blocks: List[dict], steps: List[dict]) -> None:
+    """The bot's own actions, done, under whichever disposition was current when it did them."""
+    for st in steps:
+        if not st["action"] or st["tone"] == "planned" or (st["by"] and st["by"] not in ("bot", dz.HANDED_TO)):
+            continue
+        if st["key"].startswith("disposition:") or st["key"] in ("to_person", "to_bot", "team_reply", "task", "nudge",
+                                                                  "ticket_solved"):
+            continue
+        at = st["action_at"] or st["at"]
+        home = None
+        for b in blocks:
+            start = b.get("_start") or b["recorded_at"]
+            if start and at and start <= at:
+                home = b
+        if home is None:
+            continue
+        home["items"].append({"text": st["action"], "owner": dz.API if st["by"] == dz.HANDED_TO else "bot",
+                              "owner_label": dz.HANDED_TO if st["by"] == dz.HANDED_TO else OWNER_LABEL["bot"],
+                              "status": "done", "when": at, "result": st["what"], "attempt": 1})
 
 
 def disposition_actions(conv: WhatsAppConversation, activities: List[ChatActivity], followups: List[FollowUp],
-                        tickets: List[AttentionTicket]) -> List[dict]:
+                        tickets: List[AttentionTicket], steps: Optional[List[dict]] = None) -> List[dict]:
     """
     Each disposition this lead has had, newest first, with the sheet's action
     and owner, and every action item it called for: done, planned or missed,
-    and whose. Where nobody has recorded one, the bot's reading of the chat,
-    which sets nothing in motion.
+    and whose. The bot's own dispositions (its stages) come from the chat's
+    steps, with what it did in each.
     """
     now = inbox.now()
     records = sorted((a for a in activities if a.kind == "disposition"), key=lambda a: inbox.aware(a.at))
@@ -389,10 +468,11 @@ def disposition_actions(conv: WhatsAppConversation, activities: List[ChatActivit
         items = [_item(f, now) for f in sorted(mine, key=lambda f: inbox.aware(f.due_at))]
         if s and dz.needs_team(s):
             ticket = next((t for t in tickets if inbox.aware(t.raised_at) >= start), None)
-            items.insert(0, {"text": "Tell Kavya and Mansi: ticket and email", "owner": "human",
-                             "owner_label": OWNER_LABEL["human"],
+            items.insert(0, {"text": f"Tell the team: ticket and email to {team_names()}", "owner": "human",
+                             "owner_label": owner_label("human", ticket.resolved_by if ticket and ticket.resolved_at else None),
                              "status": "done", "when": _iso(ticket.raised_at if ticket else a.at),
-                             "result": ("Ticket raised" + (" · solved" if ticket and ticket.resolved_at else "")) if ticket
+                             "result": ("Ticket raised" + (f" · solved by {'the bot' if ticket.resolved_by == 'bot' else _who(ticket.resolved_by)}"
+                                                           if ticket and ticket.resolved_at else "")) if ticket
                              else "Email sent (recorded while solving a ticket, so no new one)", "attempt": 1})
         if s and s.steps and not mine and not s.closes:
             items.append({"text": s.action or "Its follow-up", "owner": "bot", "owner_label": OWNER_LABEL["bot"],
@@ -410,15 +490,85 @@ def disposition_actions(conv: WhatsAppConversation, activities: List[ChatActivit
             "sheet_action": s.action if s else None, "sheet_owner": s.owner if s else None,
             "current": i == len(records) - 1, "items": items,
         })
-    if not records:
+    for b in out:
+        b["derived"] = False
+    out += _bot_blocks(steps or [], records)
+    out.sort(key=lambda b: b["recorded_at"] or "")
+    # A disposition the bot records itself starts with the message that brought it on
+    # (the upload link, the cannot-invest reply), sent a moment before it was recorded.
+    for b in out:
+        if b["recorded_by"] == "Bot" and not b.get("derived") and b["recorded_at"]:
+            rec = datetime.fromisoformat(b["recorded_at"])
+            for st in steps or []:
+                if (st["kind"] == "stage" and STAGE_DISPOSITION.get(st["key"]) == b["key"] and st["action_at"]
+                        and timedelta(0) <= rec - datetime.fromisoformat(st["action_at"]) <= timedelta(minutes=1)):
+                    b["_start"] = st["action_at"]
+    _attach_bot_actions(out, steps or [])
+    for b in out:
+        b.pop("_start", None)
+    for b in out:
+        b["items"].sort(key=lambda i: i["when"] or "")
+    if not out:
         from src.services.handover import current
         now_d = current(conv)
         cat = dz.category_of(now_d["key"])
         out.append({"key": now_d["key"], "label": now_d["label"], "category": cat.label if cat else None,
                     "group": dz.group(now_d["key"]), "recorded_at": now_d["at"], "recorded_by": "Read from the bot's step",
-                    "note": None, "sheet_action": None, "sheet_owner": None, "current": True, "items": []})
+                    "note": None, "sheet_action": None, "sheet_owner": None, "current": True, "items": [], "derived": True})
+    out.sort(key=lambda b: b["recorded_at"] or "")
+    for i, b in enumerate(out):
+        b["current"] = i == len(out) - 1
     out.reverse()
     return out
+
+
+def whats_next(conv: WhatsAppConversation, followups: List[FollowUp], messages: List[WhatsAppMessage]) -> List[dict]:
+    """
+    What comes next for a lead, soonest first: action items already planned,
+    what the bot is waiting for them to do and its reminder if one is due,
+    and the disposition expected next. Says so when nothing is planned.
+    """
+    from src.services import nudges, onboarding_bot as bot
+    from src.services.chat_summary import _WAITING
+
+    now = inbox.now()
+    out = []
+    for f in followups:
+        if f.status in ("scheduled", "waiting"):
+            item = _item(f, now)
+            out.append({"kind": "action", "text": item["text"], "owner_label": item["owner_label"],
+                        "when": _iso(f.due_at), "note": item["result"] if item["status"] == "planned" else "Overdue"})
+    step = conv.bot_step
+    if conv.documents_submitted_at:
+        out.append({"kind": "disposition", "text": f"With {dz.HANDED_TO}: AutoGMap's part is done",
+                    "owner_label": dz.HANDED_TO, "when": None, "note": dz.SUBS["int_visit"].action})
+    elif conv.bot_paused:
+        out.append({"kind": "waiting", "text": "A person is handling the chat; the bot waits until it is handed back",
+                    "owner_label": owner_label("human", conv.handled_by), "when": None, "note": None})
+    elif step in _WAITING:
+        out.append({"kind": "waiting", "text": f"Waiting for them to {_WAITING[step]}", "owner_label": "Lead",
+                    "when": None, "note": None})
+        last = max(messages, key=lambda m: inbox.aware(m.created_at), default=None)
+        if (step in bot.NUDGE_STEPS and last is not None and last.direction == "OUT" and last.sent_by == "bot"
+                and last.message_id != (conv.bot_data or {}).get("nudge_message_id")):
+            due = inbox.aware(last.created_at) + nudges.AFTER
+            shut = inbox.window_expires_at(conv)
+            if shut and due < shut - nudges.WINDOW_MARGIN:
+                out.append({"kind": "action", "text": "Reminder with the same question, if they stay quiet",
+                            "owner_label": OWNER_LABEL["bot"], "when": _iso(due), "note": None})
+        nxt = ("int_visit" if step in (bot.AWAIT_DOCS, bot.AWAIT_UPLOAD)
+               else "int_in_bot_flow" if step == bot.GUIDANCE_QA else "int_docs_pending")
+        when = {"int_visit": "once they upload their documents",
+                "int_docs_pending": "once they say their documents are ready (the upload link goes out)",
+                "int_in_bot_flow": "once they tap Interested"}[nxt]
+        label = (f"{dz.label(nxt)}: handed to {dz.HANDED_TO}" if nxt == "int_visit" else dz.label(nxt))
+        out.append({"kind": "disposition", "text": f"Next disposition: {label}", "owner_label": OWNER_LABEL["bot"],
+                    "when": None, "note": when})
+    if not any(o["kind"] == "action" for o in out) and not conv.documents_submitted_at:
+        out.append({"kind": "none", "text": "No action item planned", "owner_label": owner_label("human"), "when": None,
+                    "note": "Record a disposition that sets a follow-up (a callback, a check-in date...) so nothing is forgotten"})
+    rank = {"action": 0, "waiting": 1, "disposition": 2, "none": 3}
+    return sorted(out, key=lambda o: (rank[o["kind"]], o["when"] or ""))
 
 
 def action_counts(blocks: List[dict]) -> dict:

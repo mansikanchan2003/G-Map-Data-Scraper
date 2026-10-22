@@ -289,6 +289,17 @@ export interface DispositionBlock {
   sheet_owner: string | null;
   current: boolean;
   items: ActionItem[];
+  /** Read from the bot's steps rather than recorded. */
+  derived?: boolean;
+}
+
+/** What comes next for a lead. */
+export interface NextItem {
+  kind: 'action' | 'waiting' | 'disposition' | 'none';
+  text: string;
+  owner_label: string;
+  when: string | null;
+  note: string | null;
 }
 
 export interface Journey {
@@ -298,6 +309,7 @@ export interface Journey {
   open: OpenItem[];
   /** Newest first; the first is the disposition now. */
   dispositions: DispositionBlock[];
+  whats_next: NextItem[];
   funnel: { key: string; label: string; at: string | null }[];
   furthest: number;
   outcome: 'handed_over' | 'closed' | 'in_progress';
@@ -306,7 +318,7 @@ export interface Journey {
   last_activity: string | null;
 }
 /** A lead in the Lead Journey list: where they are now, the last thing on each side, in plain words. */
-export type JourneyRow = Omit<Journey, 'steps' | 'dispositions'> & {
+export type JourneyRow = Omit<Journey, 'steps' | 'dispositions' | 'whats_next'> & {
   actions: { done: number; planned: number; missed: number };
   where: string;
   started_at: string | null;
