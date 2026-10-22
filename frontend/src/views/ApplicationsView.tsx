@@ -5,6 +5,7 @@ import {
 } from '../api/applications';
 import { formatDateTime } from '../utils/datetime';
 import { QualifiedLeadsView } from './QualifiedLeadsView';
+import { LeadJourneyView } from './LeadJourneyView';
 
 /**
  * Everyone who started onboarding through the WhatsApp bot: how far they got,
@@ -95,8 +96,13 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
   const [error, setError] = useState<string | null>(null);
   // The Qualified leads page, at #applications/qualified so a refresh or a link lands there.
   const [qualifiedOpen, setQualifiedOpen] = useState(() => window.location.hash.startsWith('#applications/qualified'));
+  // The Lead Journey page, at #applications/journey.
+  const [journeyOpen, setJourneyOpen] = useState(() => window.location.hash.startsWith('#applications/journey'));
   useEffect(() => {
-    const onHash = () => setQualifiedOpen(window.location.hash.startsWith('#applications/qualified'));
+    const onHash = () => {
+      setQualifiedOpen(window.location.hash.startsWith('#applications/qualified'));
+      setJourneyOpen(window.location.hash.startsWith('#applications/journey'));
+    };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
@@ -174,6 +180,9 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
     { label: 'Submitted', value: stats?.submitted || 0, icon: 'task_alt' },
   ];
 
+  if (journeyOpen) {
+    return <LeadJourneyView onBack={() => { window.location.hash = 'applications'; }} />;
+  }
   if (qualifiedOpen) {
     return <QualifiedLeadsView readOnly={readOnly} onBack={() => { window.location.hash = 'applications'; }} />;
   }
@@ -189,6 +198,10 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
           <button onClick={() => { window.location.hash = 'applications/qualified'; }}
             className="h-9 px-3.5 rounded-lg bg-emerald-500 hover:opacity-90 text-white text-sm font-semibold flex items-center gap-1.5 shadow-sm">
             <Icon name="workspace_premium" className="text-[18px]" />Qualified leads
+          </button>
+          <button onClick={() => { window.location.hash = 'applications/journey'; }}
+            className="h-9 px-3.5 rounded-lg bg-violet-500 hover:opacity-90 text-white text-sm font-semibold flex items-center gap-1.5 shadow-sm">
+            <Icon name="route" className="text-[18px]" />Lead Journey
           </button>
           <button onClick={() => { setShowRemoved(v => !v); setOpen(null); }}
             className={`h-9 px-3.5 rounded-lg border text-sm font-medium flex items-center gap-1.5 shadow-sm ${showRemoved

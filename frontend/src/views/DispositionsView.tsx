@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { DispositionsPanel } from '../components/DispositionsPanel';
 import { FollowUpsPanel } from '../components/FollowUpsPanel';
-import { LeadJourneysPanel } from '../components/LeadJourney';
 import { NudgeTemplatesPanel } from '../components/NudgeTemplatesPanel';
 
 /**
@@ -32,7 +31,6 @@ export const DispositionsView: React.FC<{ readOnly?: boolean }> = ({ readOnly })
       <div className="px-4 sm:px-6 py-4 max-w-[1300px] mx-auto">
         <DispositionsPanel days={days} />
         <div className="mt-5 space-y-5">
-          <LeadJourneysPanel />
           <FollowUpsPanel days={days} />
           <NudgeTemplatesPanel readOnly={readOnly} />
         </div>

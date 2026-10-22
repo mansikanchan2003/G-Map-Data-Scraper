@@ -1,7 +1,6 @@
 import { formatDateTime } from '../utils/datetime';
 import React, { useState } from 'react';
 import { DiscoveryRunner } from '../components/DiscoveryRunner';
-import { NumberUsagePanel } from '../components/NumberUsagePanel';
 import { AutopilotPanel } from '../components/AutopilotPanel';
 import { CollapsiblePanel } from '../components/CollapsiblePanel';
 import { LeadsPanel } from '../components/LeadsPanel';
@@ -447,10 +446,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </section>
-
-      {/* The shared WhatsApp number: AutoGMap and the other apps on it (admins
-          only). Reference, so at the bottom, below the day-to-day panels. */}
-      <NumberUsagePanel />
 
       <DiscoveryRunner
         isOpen={runnerOpen}

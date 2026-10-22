@@ -240,23 +240,41 @@ def _who(owner: str) -> str:
     return {BOT: "Bot", HUMAN: "Team", DC: "District Coordinator"}[owner]
 
 
-def plan_text(s: Sub) -> List[str]:
-    """What happens after this disposition, in words, for the person choosing it."""
+# What each nudge does, in plain words: "a WhatsApp message now to <this>".
+PURPOSE_PLAIN = {
+    "more_info": "invite their questions",
+    "callback_confirm": "confirm we will get back to them at their time",
+    "callback_due": "get back to them, as promised",
+    "docs_reminder": "remind them to upload their documents",
+    "lower_investment": "offer the lower-investment option",
+    "missed_you": "try them again",
+    "decision_maker": "ask for the applicant's number",
+    "checking_in": "check back with them",
+    "choose_language": "ask which language they prefer",
+}
+WHEN_PLAIN = {NOW: "now", EOD: "this evening", NEXT_DAY: "tomorrow morning", AT_TIME: "at the time you set",
+              ON_DATE: "on the date you set", IN_2_DAYS: "2 days later"}
+
+
+def plan_text(s: Sub, calls: bool = True) -> List[str]:
+    """
+    What happens after this disposition, in plain words. `calls` notes where
+    a WhatsApp call will take over once calling is on (for the team choosing
+    it; left out of a lead's journey).
+    """
     out = []
     for st in s.steps:
-        when = {NOW: "now", EOD: "this evening", NEXT_DAY: "tomorrow", AT_TIME: "at the time you set",
-                ON_DATE: "on the date you set", IN_2_DAYS: "in 2 days"}[st.when]
         if st.wants == TASK:
-            out.append(f"{_who(st.owner)}: {st.task}")
+            out.append(f"{_who(st.owner)} to do: {st.task}")
         elif st.wants == API:
-            out.append(f"Sent to {HANDED_TO} through their API")
+            out.append(f"Sent to {HANDED_TO}")
         else:
-            out.append(f"WhatsApp nudge {when}: {st.purpose.replace('_', ' ')}"
-                       + (" (a WhatsApp call once calling is on)" if st.wants == CALL else ""))
+            out.append(f"A WhatsApp message {WHEN_PLAIN[st.when]} to {PURPOSE_PLAIN.get(st.purpose, st.purpose.replace('_', ' '))}"
+                       + (" (a WhatsApp call once calling is on)" if calls and st.wants == CALL else ""))
     if s.stage:
-        out.append(f"Handed over to {s.stage}: AutoGMap's part ends and nothing more is sent from here")
+        out.append(f"Handed over to {s.stage}: AutoGMap's part ends")
     elif s.closes:
-        out.append("Closes the lead: nothing more is sent")
+        out.append("Lead closed: nothing more is sent")
     return out
 
 

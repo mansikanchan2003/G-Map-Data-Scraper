@@ -265,7 +265,17 @@ export interface Journey {
   last: { what: string; at: string | null } | null;
   last_activity: string | null;
 }
-export type JourneyRow = Omit<Journey, 'steps'>;
+/** A lead in the Lead Journey list: where they are now, the last thing on each side, in plain words. */
+export type JourneyRow = Omit<Journey, 'steps'> & {
+  where: string;
+  started_at: string | null;
+  place: string | null;
+  pincode: string | null;
+  our_last: { text: string; at: string | null } | null;
+  next: { text: string; at: string | null } | null;
+  steps_done: number;
+  steps_total: number;
+};
 
 export const fetchJourney = (phone: string) => call<Journey>(`/conversations/${digits(phone)}/journey`);
 export const fetchJourneys = () => call<JourneyRow[]>('/dispositions/journeys');

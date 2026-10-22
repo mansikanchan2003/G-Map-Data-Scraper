@@ -19,14 +19,15 @@ const CATEGORY: Record<string, string> = { marketing: 'Marketing', utility: 'Uti
  * sent, seen through Meta's delivery updates, with their cost before GST.
  * Hidden for anyone the API refuses.
  */
-export const NumberUsagePanel: React.FC = () => {
+export const NumberUsagePanel: React.FC<{ whenHidden?: React.ReactNode }> = ({ whenHidden = null }) => {
   const [u, setU] = useState<NumberUsage | null>(null);
   const [hidden, setHidden] = useState(false);
   const [days, setDays] = useState(7);
   useEffect(() => {
     fetchNumberUsage(days).then(setU).catch(() => setHidden(true));
   }, [days]);
-  if (hidden || !u) return null;
+  if (hidden) return <>{whenHidden}</>;
+  if (!u) return <div className="h-64 rounded-2xl bg-slate-900 border border-slate-800 animate-pulse" />;
 
   const shown = u.days.slice(-days);
   const total = u.autogmap_total + u.others_total;

@@ -2,10 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { fetchCampaigns, fetchSpend, cancelCampaign,
   type WhatsAppCampaign, type Spend } from '../api/whatsapp';
 import { WhatsAppCampaignDetailView } from './WhatsAppCampaignDetailView';
+import { NumberUsagePanel } from '../components/NumberUsagePanel';
 
 export const WhatsAppHistoryView: React.FC = () => {
   const [campaigns, setCampaigns] = useState<WhatsAppCampaign[]>([]);
   const [loading, setLoading] = useState(true);
+  // The shared number's use and spend, AutoGMap's and the other apps', in a pop-up.
+  const [spendOpen, setSpendOpen] = useState(false);
+  useEffect(() => {
+    if (!spendOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSpendOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [spendOpen]);
   const [selectedCampaign, setSelectedCampaign] = useState<WhatsAppCampaign | null>(null);
   const [spend, setSpend] = useState<Spend | null>(null);
 
@@ -79,16 +88,43 @@ export const WhatsAppHistoryView: React.FC = () => {
           <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Campaign History</h1>
           <p className="text-xs text-slate-400 mt-0.5">View and manage past WhatsApp campaigns</p>
         </div>
-        <button
-          onClick={loadData}
-          className="h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-mono-code rounded flex items-center gap-1.5 transition-all shadow-sm"
-        >
-          <span className={`material-symbols-outlined text-[16px] text-slate-400 ${loading ? 'animate-spin' : ''}`}>
-            refresh
-          </span>
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setSpendOpen(true)}
+            className="h-8 px-3 rounded text-xs font-semibold flex items-center gap-1.5 shadow-sm text-white hover:opacity-90"
+            style={{ background: 'linear-gradient(120deg, #0a3543 0%, #16435a 55%, #1d5a6e 100%)' }}>
+            <span className="material-symbols-outlined text-[16px]" style={{ color: '#f9ab10' }}>monitoring</span>
+            Check spent graph
+          </button>
+          <button
+            onClick={loadData}
+            className="h-8 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-mono-code rounded flex items-center gap-1.5 transition-all shadow-sm"
+          >
+            <span className={`material-symbols-outlined text-[16px] text-slate-400 ${loading ? 'animate-spin' : ''}`}>
+              refresh
+            </span>
+            Refresh
+          </button>
+        </div>
       </div>
+
+      {spendOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 sm:p-8 overflow-y-auto"
+          onClick={() => setSpendOpen(false)} role="dialog" aria-modal="true" aria-label="WhatsApp number usage and spend">
+          <div className="relative w-full max-w-6xl rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl p-4 sm:p-6"
+            onClick={e => e.stopPropagation()}>
+            <button onClick={() => setSpendOpen(false)} aria-label="Close"
+              className="absolute -top-3 -right-3 h-9 w-9 rounded-full bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 flex items-center justify-center shadow-lg cursor-pointer z-10">
+              <span className="material-symbols-outlined text-[20px]">close</span>
+            </button>
+            <NumberUsagePanel whenHidden={
+              <div className="py-12 text-center text-sm text-slate-400">
+                <span className="material-symbols-outlined text-[28px] text-slate-500 block mb-2">lock</span>
+                Only the admin can see the number's spend.
+              </div>
+            } />
+          </div>
+        </div>
+      )}
 
       {spend && spend.billable_messages > 0 && (
         <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 mb-4 shrink-0">

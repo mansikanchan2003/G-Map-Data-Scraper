@@ -207,9 +207,18 @@ def build(db: Session, conv: WhatsAppConversation, *, messages: Optional[List[Wh
             what, action = EVENT_OF[key]
             add("event", key, lead_at if what else m.created_at, what, action, m.created_at,
                 tone="warning" if key in ("question_ack", "handover") else "neutral")
-        elif last_in is not None and not answered_since_in:
-            add("event", "answered", last_in.created_at, f"Asked: “{_said(last_in)[:120]}”",
-                "The bot answered from what Eko has told it", m.created_at)
+        else:
+            # A reply that is none of the bot's set messages: an answer from Eko's FAQ, or an
+            # older wording. Said as it was, rather than guessed at.
+            from src.services.onboarding_bot import looks_like_question
+            reply = " ".join((m.body or "").split())
+            reply = f"The bot replied: “{reply[:110]}{'…' if len(reply) > 110 else ''}”"
+            if last_in is not None and not answered_since_in:
+                said = _said(last_in)
+                what = f"Asked: “{said[:120]}”" if looks_like_question(said) else f"Wrote: “{said[:120]}”"
+                add("event", "answered", last_in.created_at, what, reply, m.created_at)
+            else:
+                add("event", "bot_said", m.created_at, None, reply, m.created_at)
         answered_since_in = True
 
     for a in activities:
@@ -217,7 +226,7 @@ def build(db: Session, conv: WhatsAppConversation, *, messages: Optional[List[Wh
             s = dz.sub(a.value)
             tone = {"positive": "positive", "negative": "negative"}.get(dz.group(a.value), "neutral")
             add("stage", f"disposition:{dz.normalise(a.value)}", a.at, f"Outcome recorded: {dz.label(a.value) or a.value}",
-                "; ".join(dz.plan_text(s)) if s and dz.plan_text(s) else "Recorded", a.at,
+                "; ".join(dz.plan_text(s, calls=False)) if s and dz.plan_text(s) else "Noted; nothing more to send", a.at,
                 by=a.by, tone=tone, detail=a.note)
         elif a.kind == "to_person":
             add("event", "to_person", a.at, None, f"{_who(a.by)} took the chat over from the bot", a.at, by=a.by)
@@ -244,8 +253,8 @@ def build(db: Session, conv: WhatsAppConversation, *, messages: Optional[List[Wh
             continue
         if f.status in ("scheduled", "waiting"):
             add("event", "planned", f.due_at, None,
-                f"Planned: WhatsApp nudge to say we {_PURPOSE_WORDS.get(f.purpose, f.purpose)}"
-                + (" (waiting for Meta to approve its template)" if f.status == "waiting" else ""), f.due_at, tone="planned")
+                f"Next: a WhatsApp message to {dz.PURPOSE_PLAIN.get(f.purpose, f.purpose.replace('_', ' '))}"
+                + (" (waiting for Meta to approve it)" if f.status == "waiting" else ""), f.due_at, tone="planned")
             continue
         if f.status == "cancelled":
             continue
@@ -291,6 +300,32 @@ def build(db: Session, conv: WhatsAppConversation, *, messages: Optional[List[Wh
     }
 
 
+def _plainly(conv: WhatsAppConversation, j: dict) -> dict:
+    """The few things a list of leads needs to say at a glance."""
+    cov = (conv.bot_data or {}).get("coverage") or {}
+    stages = [s for s in j["steps"] if s["kind"] == "stage"]
+    ended = next((s for s in reversed(stages) if s["key"] in ("not_served", "not_eligible", "not_investing")), None)
+    if j["outcome"] == "handed_over":
+        where = FUNNEL_LABELS["handed_over"]
+    elif j["outcome"] == "closed":
+        where = ended["what"] if ended else j["now"]["label"]
+    else:
+        where = FUNNEL_LABELS[FUNNEL[j["furthest"]]] if j["furthest"] >= 0 else "Not started"
+    ours = next((s for s in reversed(j["steps"]) if s["action"] and s["tone"] != "planned"), None)
+    planned = next((s for s in j["steps"] if s["tone"] == "planned"), None)
+    started = next((f["at"] for f in j["funnel"] if f["key"] == "interested" and f["at"]), None)
+    return {
+        "where": where,
+        "started_at": started,
+        "place": ", ".join(x for x in (cov.get("district"), cov.get("state")) if x) or None,
+        "pincode": cov.get("pincode"),
+        "our_last": {"text": ours["action"], "at": ours["action_at"]} if ours else None,
+        "next": {"text": planned["action"], "at": planned["at"]} if planned else None,
+        "steps_done": max(j["furthest"], 0),
+        "steps_total": len(FUNNEL) - 1,
+    }
+
+
 def board(db: Session, limit: int = 200) -> List[dict]:
     """Every campaign lead's journey in short, most recently active first."""
     from src.models.whatsapp import WhatsAppCampaignRecipient
@@ -323,6 +358,8 @@ def board(db: Session, limit: int = 200) -> List[dict]:
         # Only those who did something: a campaign that went unanswered is not a lead's journey yet.
         if j["furthest"] < 1 and not any(s["kind"] == "stage" and s["key"] != "campaign" for s in j["steps"]):
             continue
-        rows.append({k: j[k] for k in ("phone", "name", "furthest", "outcome", "now", "last", "last_activity", "funnel")})
+        row = {k: j[k] for k in ("phone", "name", "furthest", "outcome", "now", "last", "last_activity", "funnel")}
+        row.update(_plainly(c, j))
+        rows.append(row)
     rows.sort(key=lambda r: r["last_activity"] or "", reverse=True)
     return rows[:limit]
