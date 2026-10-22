@@ -20,8 +20,8 @@ A step is {kind, key, at, what, action, action_at, by, tone}: "what" is what
 the lead did or what happened, "action" what we did about it.
 """
 import re
-from collections import defaultdict
-from datetime import datetime
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -312,12 +312,119 @@ def build(db: Session, conv: WhatsAppConversation, *, messages: Optional[List[Wh
     return {
         "phone": phone, "name": conv.profile_name, "steps": steps,
         "open": open_items(followups, tickets),
+        "dispositions": disposition_actions(conv, activities, followups, tickets),
         "funnel": [{"key": k, "label": FUNNEL_LABELS[k], "at": reached.get(k)} for k in FUNNEL],
         "furthest": furthest, "outcome": outcome,
         "now": {"label": now["label"], "key": now["key"], "since": now["at"]},
         "last": {"what": last_stage["what"], "at": last_stage["at"]} if last_stage else None,
         "last_activity": steps[-1]["at"] if steps else None,
     }
+
+
+OWNER_LABEL = {"bot": "Bot", "human": "Team (Human)", "dc": "District Coordinator", dz.API: dz.HANDED_TO}
+# A planned item this late is counted as missed.
+LATE = timedelta(hours=1)
+WAITING_LATE = timedelta(days=1)
+
+
+def _item(f: FollowUp, now: datetime) -> dict:
+    """One action item as the lead's disposition panel shows it: what, whose, and done, planned or missed."""
+    due = inbox.aware(f.due_at)
+    if f.wants == dz.API:
+        text, owner = f"Hand the lead over to {dz.HANDED_TO}", dz.API
+    elif f.wants == dz.TASK:
+        text, owner = f.task or "Task", f.owner
+    else:
+        text, owner = f"WhatsApp message to {dz.PURPOSE_PLAIN.get(f.purpose, f.purpose.replace('_', ' '))}", "bot"
+        if f.owner == dz.HUMAN:
+            text += " (the sheet's call by the team; a nudge until calling is on)"
+    when, result = _iso(f.done_at or f.sent_at or f.due_at), None
+    if f.status in ("sent", "replied", "no_answer", "done"):
+        status = "done"
+        result = {"sent": "Sent", "replied": "Sent · they replied",
+                  "no_answer": "Sent · no reply in a day (RNR)", "done": f"Done by {_who(f.done_by)}" if f.done_by else "Done"}[f.status]
+        if f.wants == dz.API and f.status == "sent":
+            result = f"Sent to {dz.HANDED_TO}"
+    elif f.status == "failed":
+        status, result = "missed", f.note or "Could not be sent"
+    elif f.status == "cancelled":
+        status, result = "cancelled", f.note or "Not needed"
+    elif f.status == "waiting":
+        late = due and now - due >= WAITING_LATE
+        status = "missed" if late else "planned"
+        if f.wants == dz.API:
+            result = f.note or "Waiting"
+        else:
+            # Plain words: the channel notes ("WhatsApp calling is not switched on...") are for the logs.
+            result = ("Their 24-hour window is shut: waiting for Meta to approve its template"
+                      + (" (over a day)" if late else ""))
+        when = _iso(f.due_at)
+    else:  # scheduled
+        late = due and now - due >= LATE
+        status = "missed" if late else "planned"
+        result = "Overdue: not sent yet" if late else ("Due now" if due and due <= now else "Planned")
+        when = _iso(f.due_at)
+    return {"text": text, "owner": owner, "owner_label": OWNER_LABEL.get(owner, owner), "status": status,
+            "when": when, "result": result, "attempt": f.attempt}
+
+
+def disposition_actions(conv: WhatsAppConversation, activities: List[ChatActivity], followups: List[FollowUp],
+                        tickets: List[AttentionTicket]) -> List[dict]:
+    """
+    Each disposition this lead has had, newest first, with the sheet's action
+    and owner, and every action item it called for: done, planned or missed,
+    and whose. Where nobody has recorded one, the bot's reading of the chat,
+    which sets nothing in motion.
+    """
+    now = inbox.now()
+    records = sorted((a for a in activities if a.kind == "disposition"), key=lambda a: inbox.aware(a.at))
+    out = []
+    for i, a in enumerate(records):
+        key = dz.normalise(a.value)
+        s = dz.sub(key)
+        start = inbox.aware(a.at) - timedelta(minutes=1)
+        end = inbox.aware(records[i + 1].at) - timedelta(minutes=1) if i + 1 < len(records) else None
+        mine = [f for f in followups if dz.normalise(f.disposition) == key
+                and inbox.aware(f.created_at) >= start and (end is None or inbox.aware(f.created_at) < end)]
+        items = [_item(f, now) for f in sorted(mine, key=lambda f: inbox.aware(f.due_at))]
+        if s and dz.needs_team(s):
+            ticket = next((t for t in tickets if inbox.aware(t.raised_at) >= start), None)
+            items.insert(0, {"text": "Tell Kavya and Mansi: ticket and email", "owner": "human",
+                             "owner_label": OWNER_LABEL["human"],
+                             "status": "done", "when": _iso(ticket.raised_at if ticket else a.at),
+                             "result": ("Ticket raised" + (" · solved" if ticket and ticket.resolved_at else "")) if ticket
+                             else "Email sent (recorded while solving a ticket, so no new one)", "attempt": 1})
+        if s and s.steps and not mine and not s.closes:
+            items.append({"text": s.action or "Its follow-up", "owner": "bot", "owner_label": OWNER_LABEL["bot"],
+                          "status": "missed", "when": _iso(a.at),
+                          "result": "Never set up (recorded before action items were automatic, or it failed)",
+                          "attempt": 1})
+        if s and s.closes and not s.stage:
+            items.append({"text": "Close the lead: send nothing more", "owner": "bot", "owner_label": OWNER_LABEL["bot"],
+                          "status": "done", "when": _iso(a.at), "result": "Closed", "attempt": 1})
+        cat = dz.category_of(key)
+        out.append({
+            "key": key, "label": dz.label(key) or a.value, "category": cat.label if cat else None,
+            "group": dz.group(key), "recorded_at": _iso(a.at),
+            "recorded_by": "Bot" if a.by == "bot" else _who(a.by), "note": a.note,
+            "sheet_action": s.action if s else None, "sheet_owner": s.owner if s else None,
+            "current": i == len(records) - 1, "items": items,
+        })
+    if not records:
+        from src.services.handover import current
+        now_d = current(conv)
+        cat = dz.category_of(now_d["key"])
+        out.append({"key": now_d["key"], "label": now_d["label"], "category": cat.label if cat else None,
+                    "group": dz.group(now_d["key"]), "recorded_at": now_d["at"], "recorded_by": "Read from the bot's step",
+                    "note": None, "sheet_action": None, "sheet_owner": None, "current": True, "items": []})
+    out.reverse()
+    return out
+
+
+def action_counts(blocks: List[dict]) -> dict:
+    """How many of a lead's action items are done, planned and missed, across its dispositions."""
+    c = Counter(i["status"] for b in blocks for i in b["items"])
+    return {k: c.get(k, 0) for k in ("done", "planned", "missed")}
 
 
 def open_items(followups: List[FollowUp], tickets: List[AttentionTicket]) -> List[dict]:
@@ -411,6 +518,7 @@ def board(db: Session, limit: int = 200) -> List[dict]:
         if j["furthest"] < 1 and not any(s["kind"] == "stage" and s["key"] != "campaign" for s in j["steps"]):
             continue
         row = {k: j[k] for k in ("phone", "name", "furthest", "outcome", "now", "last", "last_activity", "funnel", "open")}
+        row["actions"] = action_counts(j["dispositions"])
         row.update(_plainly(c, j))
         rows.append(row)
     rows.sort(key=lambda r: r["last_activity"] or "", reverse=True)

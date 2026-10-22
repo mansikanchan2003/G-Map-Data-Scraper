@@ -2242,3 +2242,94 @@ def test_a_journey_that_went_by_the_book_has_no_flags(db, client):
     followups.hand_over(db, c)
     db.commit()
     assert client.get("/api/v1/inbox/journeys/missing-steps").json()["flags"] == []
+
+
+def _checks(client):
+    return {f["check"]: f for f in client.get("/api/v1/inbox/journeys/missing-steps").json()["flags"]}
+
+
+def test_a_chat_the_team_handled_without_recording_an_outcome_is_flagged(db, client):
+    from datetime import timedelta
+    tap_campaign(db)
+    _recipient(db).sent_at = inbox.now()
+    db.add(WhatsAppMessage(message_id=uuid.uuid4().hex, phone=PHONE, direction="OUT", kind="text", body="Hello",
+                           status="SENT", sent_by="kavya.shukla@eko.co.in", created_at=inbox.now() - timedelta(hours=3)))
+    db.commit()
+    flagged = _checks(client)["no_outcome_after_team"]
+    assert flagged["group"] == "disposition"
+    _record(client, "int_more_info")
+    assert "no_outcome_after_team" not in _checks(client)
+
+
+def test_a_lead_gone_quiet_in_the_bots_questions_without_an_outcome_is_flagged(db, client):
+    from datetime import timedelta
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    c = conv(db)
+    c.last_inbound_at = inbox.now() - timedelta(days=4)
+    db.commit()
+    assert "quiet_no_outcome" in _checks(client)
+    _record(client, "rnr_no_answer")
+    assert "quiet_no_outcome" not in _checks(client)
+
+
+def test_overdue_and_missing_action_items_are_flagged(db, client):
+    from datetime import timedelta
+    from src.models.inbox import FollowUp
+    tap_campaign(db)
+    _record(client, "lang_barrier")                       # a task for the team, and a nudge
+    for f in _followups(db):
+        f.created_at = inbox.now() - timedelta(days=3)
+        if f.wants != dz.TASK:
+            f.status, f.due_at = "scheduled", inbox.now() - timedelta(hours=2)
+    db.commit()
+    checks = _checks(client)
+    assert {"task_overdue", "nudge_overdue"} <= set(checks) and checks["task_overdue"]["group"] == "action"
+    # A disposition whose action item was never set up (e.g. recorded before follow-ups existed).
+    db.query(FollowUp).delete()
+    db.commit()
+    assert "action_not_set_up" in _checks(client)
+
+
+def test_a_question_left_for_more_than_a_day_is_flagged(db, client):
+    from datetime import timedelta
+    tap_campaign(db)
+    say(db, "Mere ghar ka pata badalna hai, kya karna hoga?")
+    t = db.query(AttentionTicket).filter(AttentionTicket.phone == PHONE).one()
+    t.raised_at = inbox.now() - timedelta(days=2)
+    db.commit()
+    assert "ticket_overdue" in _checks(client)
+
+
+def test_each_disposition_shows_its_action_items_done_planned_and_missed_with_owners(db, client, team_mail):
+    from datetime import timedelta
+    tap_campaign(db)
+    say(db, "Abhi paisa nahi hai mere paas")
+    _record(client, "busy_at_time", at=(inbox.now() + timedelta(hours=3)).isoformat())   # confirm now, call back later
+    j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
+    now_block = j["dispositions"][0]
+    assert now_block["current"] and now_block["label"] == "Call at specific time" and now_block["sheet_owner"] == "Bot"
+    by_status = {i["status"]: i for i in now_block["items"]}
+    assert by_status["done"]["owner_label"] == "Bot" and "confirm" in by_status["done"]["text"]
+    assert by_status["planned"]["text"].startswith("WhatsApp message to get back")
+    # A human-owned disposition: the team is told; an overdue nudge counts as missed.
+    _record(client, "hold_financial", at=(inbox.now() - timedelta(days=2)).isoformat())
+    for f in _followups(db):
+        if f.purpose == "checking_in":
+            f.status = "scheduled"
+    db.commit()
+    j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
+    block = j["dispositions"][0]
+    assert block["label"] == "Financial constraint currently" and block["sheet_owner"] == "Bot & Human"
+    statuses = {(i["owner_label"], i["status"]) for i in block["items"]}
+    assert ("Team (Human)", "done") in statuses and ("Bot", "missed") in statuses
+    assert j["dispositions"][1]["label"] == "Call at specific time" and not j["dispositions"][1]["current"]
+    row = client.get("/api/v1/inbox/dispositions/journeys").json()[0]
+    assert row["actions"]["missed"] >= 1 and row["actions"]["done"] >= 2
+
+
+def test_a_lead_nobody_has_recorded_shows_the_bots_reading_without_actions(db, client):
+    tap_campaign(db)
+    j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
+    [only] = j["dispositions"]
+    assert only["recorded_by"] == "Read from the bot's step" and only["items"] == []

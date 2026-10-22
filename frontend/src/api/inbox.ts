@@ -265,11 +265,39 @@ export interface OpenItem {
   note: string | null;
 }
 
+/** One action item a disposition called for: what, whose, and whether it is done, planned or missed. */
+export interface ActionItem {
+  text: string;
+  owner: string;
+  owner_label: string;
+  status: 'done' | 'planned' | 'missed' | 'cancelled';
+  when: string | null;
+  result: string | null;
+  attempt: number;
+}
+
+/** A disposition the lead has had, with the sheet's action and owner and its action items. */
+export interface DispositionBlock {
+  key: string;
+  label: string;
+  category: string | null;
+  group: 'positive' | 'follow_up' | 'negative' | 'other';
+  recorded_at: string | null;
+  recorded_by: string;
+  note: string | null;
+  sheet_action: string | null;
+  sheet_owner: string | null;
+  current: boolean;
+  items: ActionItem[];
+}
+
 export interface Journey {
   phone: string;
   name: string | null;
   steps: JourneyStep[];
   open: OpenItem[];
+  /** Newest first; the first is the disposition now. */
+  dispositions: DispositionBlock[];
   funnel: { key: string; label: string; at: string | null }[];
   furthest: number;
   outcome: 'handed_over' | 'closed' | 'in_progress';
@@ -278,7 +306,8 @@ export interface Journey {
   last_activity: string | null;
 }
 /** A lead in the Lead Journey list: where they are now, the last thing on each side, in plain words. */
-export type JourneyRow = Omit<Journey, 'steps'> & {
+export type JourneyRow = Omit<Journey, 'steps' | 'dispositions'> & {
+  actions: { done: number; planned: number; missed: number };
   where: string;
   started_at: string | null;
   place: string | null;
@@ -293,9 +322,11 @@ export type JourneyRow = Omit<Journey, 'steps'> & {
 export interface MissingSteps {
   total: number;
   leads: number;
-  by_check: { check: string; label: string; severity: 'high' | 'medium' | 'low'; count: number }[];
-  flags: { check: string; label: string; severity: 'high' | 'medium' | 'low'; phone: string; name: string | null;
-           at: string | null; detail: string }[];
+  /** disposition: missing dispositions; action: missing or overdue action items; record: records that do not add up. */
+  groups: { group: 'disposition' | 'action' | 'record'; label: string; count: number }[];
+  by_check: { check: string; label: string; severity: 'high' | 'medium' | 'low'; group: string; count: number }[];
+  flags: { check: string; label: string; severity: 'high' | 'medium' | 'low'; group: string; phone: string;
+           name: string | null; at: string | null; detail: string }[];
 }
 export const fetchMissingSteps = () => call<MissingSteps>('/journeys/missing-steps');
 

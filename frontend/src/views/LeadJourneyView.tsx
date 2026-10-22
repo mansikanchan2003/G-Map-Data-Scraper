@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchJourney, fetchJourneys, type Journey, type JourneyRow, type OpenItem } from '../api/inbox';
+import { fetchJourney, fetchJourneys, type ActionItem, type DispositionBlock, type Journey, type JourneyRow } from '../api/inbox';
 import { formatDateTime } from '../utils/datetime';
 
 /**
@@ -38,42 +38,96 @@ const Dashes: React.FC<{ done: number; total: number; outcome: string }> = ({ do
   </div>
 );
 
-const OPEN_ICON: Record<OpenItem['kind'], { icon: string; cls: string; label: string }> = {
-  nudge: { icon: 'chat', cls: 'bg-sky-950 text-sky-300', label: 'WhatsApp message' },
-  task: { icon: 'assignment', cls: 'bg-amber-950 text-amber-300', label: 'Task' },
-  ticket: { icon: 'help', cls: 'bg-rose-950 text-rose-300', label: 'Ticket' },
-  handover: { icon: 'handshake', cls: 'bg-violet-950 text-violet-300', label: 'Hand-over' },
+const STATUS: Record<ActionItem['status'], { label: string; icon: string; cls: string; dot: string }> = {
+  done: { label: 'Done', icon: 'check_circle', cls: 'bg-emerald-950 border-emerald-800/60 text-emerald-300', dot: 'text-emerald-400' },
+  planned: { label: 'Planned', icon: 'schedule', cls: 'bg-sky-950 border-sky-800/60 text-sky-300', dot: 'text-sky-400' },
+  missed: { label: 'Missed', icon: 'error', cls: 'bg-rose-950 border-rose-800/60 text-rose-300', dot: 'text-rose-400' },
+  cancelled: { label: 'Not needed', icon: 'do_not_disturb_on', cls: 'bg-slate-800 border-slate-700 text-slate-400', dot: 'text-slate-500' },
+};
+const OWNER_CLS: Record<string, string> = {
+  bot: 'bg-sky-950 text-sky-300', human: 'bg-violet-950 text-violet-300', dc: 'bg-amber-950 text-amber-300',
+  eko_acquisition_api: 'bg-violet-950 text-violet-300',
+};
+const GROUP_RING: Record<string, string> = {
+  positive: 'border-emerald-800/60', follow_up: 'border-amber-800/60', negative: 'border-rose-800/60', other: 'border-slate-700',
 };
 
-/** Everything still to be done for a lead, soonest first. */
-const OpenItems: React.FC<{ items: OpenItem[] }> = ({ items }) => (
-  <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
-    <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold mb-2 flex items-center gap-1.5">
-      <Icon name="pending_actions" className="text-[15px]" />Open action items · {items.length}
-    </div>
-    {items.length ? (
-      <ul className="space-y-2">
-        {items.map((o, i) => {
-          const k = OPEN_ICON[o.kind];
-          return (
-            <li key={i} className="flex items-start gap-2.5 text-[13px]">
-              <span className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${k.cls}`}><Icon name={k.icon} className="text-[16px]" /></span>
+/** A disposition and its action items: done, planned, missed, each with its owner. */
+const DispositionCard: React.FC<{ b: DispositionBlock }> = ({ b }) => {
+  const counts = b.items.reduce<Record<string, number>>((a, i) => ({ ...a, [i.status]: (a[i.status] || 0) + 1 }), {});
+  return (
+    <div className={`rounded-lg border bg-slate-900 ${GROUP_RING[b.group] || GROUP_RING.other}`}>
+      <div className="px-3.5 py-3 flex flex-wrap items-start gap-x-4 gap-y-2 border-b border-slate-800">
+        <div className="min-w-[200px] flex-1">
+          <div className="text-[11px] uppercase tracking-wider text-slate-500">{b.current ? 'Disposition now' : 'Earlier disposition'}{b.category ? ` · ${b.category}` : ''}</div>
+          <div className="text-[15px] font-semibold text-slate-100">{b.label}</div>
+          <div className="text-[11.5px] text-slate-500">{b.recorded_by}{b.recorded_at ? ` · ${formatDateTime(b.recorded_at)}` : ''}</div>
+          {b.note && <div className="mt-1 text-[12px] text-slate-300 italic">“{b.note}”</div>}
+        </div>
+        {b.sheet_action && (
+          <div className="min-w-[200px] flex-1">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500">Action item (sheet)</div>
+            <div className="text-[13px] text-slate-200">{b.sheet_action}</div>
+            {b.sheet_owner && <div className="text-[11.5px] text-slate-500">Owner: {b.sheet_owner}</div>}
+          </div>
+        )}
+        <div className="flex gap-1.5">
+          {(['done', 'planned', 'missed'] as const).map(k => counts[k] ? (
+            <span key={k} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold ${STATUS[k].cls}`}>
+              <Icon name={STATUS[k].icon} className="text-[13px]" />{counts[k]} {STATUS[k].label.toLowerCase()}
+            </span>
+          ) : null)}
+        </div>
+      </div>
+      {b.items.length ? (
+        <ul className="divide-y divide-slate-800">
+          {b.items.map((it, i) => (
+            <li key={i} className={`px-3.5 py-2.5 grid grid-cols-[22px_1fr_auto] gap-2.5 items-start text-[13px] ${it.status === 'cancelled' ? 'opacity-60' : ''}`}>
+              <Icon name={STATUS[it.status].icon} className={`text-[18px] ${STATUS[it.status].dot}`} />
               <div className="min-w-0">
-                <div className="text-slate-200">{o.text}</div>
+                <div className="text-slate-200">{it.text}</div>
                 <div className="text-[11.5px] text-slate-500">
-                  {o.due ? `Due ${formatDateTime(o.due)}` : o.since ? `Since ${formatDateTime(o.since)}` : ''}
-                  {o.status === 'waiting' && <span className="text-amber-300"> · waiting</span>}
-                  {o.status === 'failed' && <span className="text-rose-300"> · could not be sent</span>}
-                  {o.note && <> · {o.note}</>}
+                  <span className={STATUS[it.status].dot}>{STATUS[it.status].label}</span>
+                  {it.result && <> · {it.result}</>}
+                  {it.when && <> · {formatDateTime(it.when)}</>}
+                  {it.attempt > 1 && <> · try {it.attempt}</>}
                 </div>
               </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10.5px] font-semibold whitespace-nowrap ${OWNER_CLS[it.owner] || 'bg-slate-800 text-slate-300'}`}>{it.owner_label}</span>
             </li>
-          );
-        })}
-      </ul>
-    ) : <div className="text-[12.5px] text-slate-500">Nothing open: no messages planned, no tasks, no questions waiting.</div>}
-  </div>
-);
+          ))}
+        </ul>
+      ) : (
+        <div className="px-3.5 py-2.5 text-[12.5px] text-slate-500">
+          {b.recorded_by === "Read from the bot's step" ? 'Nobody has recorded a disposition yet; this is read from where the bot is with them.' : 'This disposition has no action items.'}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** The lead's disposition now with its action items, and earlier ones folded below. */
+const Dispositions: React.FC<{ blocks: DispositionBlock[] }> = ({ blocks }) => {
+  const [earlier, setEarlier] = useState(false);
+  if (!blocks.length) return null;
+  const [now, ...rest] = blocks;
+  return (
+    <div className="space-y-2">
+      <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold flex items-center gap-1.5">
+        <Icon name="fact_check" className="text-[15px]" />Disposition and action items
+      </div>
+      <DispositionCard b={now} />
+      {rest.length > 0 && (
+        <>
+          <button onClick={() => setEarlier(!earlier)} className="text-[12.5px] text-sky-300 hover:underline cursor-pointer">
+            {earlier ? 'Hide earlier dispositions' : `Show ${rest.length} earlier disposition${rest.length > 1 ? 's' : ''}`}
+          </button>
+          {earlier && <div className="space-y-2">{rest.map((b, i) => <DispositionCard key={i} b={b} />)}</div>}
+        </>
+      )}
+    </div>
+  );
+};
 
 /** One lead's steps as a plain table: when, what they did, what we did. */
 const Steps: React.FC<{ phone: string }> = ({ phone }) => {
@@ -86,7 +140,10 @@ const Steps: React.FC<{ phone: string }> = ({ phone }) => {
   const steps = all ? j.steps : j.steps.filter(s => s.kind === 'stage');
   return (
     <div className="space-y-3">
-      <OpenItems items={j.open} />
+      <Dispositions blocks={j.dispositions} />
+      <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold flex items-center gap-1.5 pt-1">
+        <Icon name="route" className="text-[15px]" />Journey
+      </div>
       <div className="flex flex-wrap items-center gap-3">
         {/* The stages as a strip of chips: reached ones filled, with their dates. */}
         {j.funnel.map((f, i) => (
@@ -298,10 +355,14 @@ export const LeadJourneyView: React.FC<{ onBack: () => void }> = ({ onBack }) =>
                           <div className="text-slate-200">{r.our_last?.text || '—'}</div>
                           {r.our_last?.at && <div className="text-[11.5px] text-slate-500 mt-0.5">{formatDateTime(r.our_last.at)}</div>}
                           {r.next && <div className="text-[11.5px] text-sky-300 mt-1 flex items-start gap-1"><Icon name="event_upcoming" className="text-[14px]" />{r.next.text}</div>}
-                          {r.open.length > 0 && (
-                            <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 text-[11px] font-semibold">
-                              <Icon name="pending_actions" className="text-[13px]" />{r.open.length} open
-                            </span>
+                          {(r.actions.done + r.actions.planned + r.actions.missed) > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {(['done', 'planned', 'missed'] as const).map(k => r.actions[k] ? (
+                                <span key={k} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10.5px] font-semibold ${STATUS[k].cls}`}>
+                                  <Icon name={STATUS[k].icon} className="text-[12px]" />{r.actions[k]} {STATUS[k].label.toLowerCase()}
+                                </span>
+                              ) : null)}
+                            </div>
                           )}
                         </td>
                         <td className="px-4 py-3">
