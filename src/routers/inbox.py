@@ -178,6 +178,7 @@ class DispositionRequest(BaseModel):
 
 
 class TaskDoneRequest(BaseModel):
+    outcome: str = Field(..., min_length=1, max_length=60)
     note: Optional[str] = Field(None, max_length=500)
 
 
@@ -596,11 +597,20 @@ def followup_board(days: int = Query(7, ge=1, le=90), db: Session = Depends(get_
     return followups.board(db, days)
 
 
+@router.get("/followups/queue")
+def action_queue(owner: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    """Every open action item: overdue, due today and upcoming, for one owner type or all."""
+    return followups.queue(db, owner)
+
+
 @router.post("/followups/{followup_id}/done")
 def finish_task(followup_id: str, payload: TaskDoneRequest, db: Session = Depends(get_db),
                 user: User = Depends(current_user)):
     """A task (a visit, a reassignment) is done."""
-    f = followups.complete_task(db, followup_id, user.email, payload.note)
+    try:
+        f = followups.complete_task(db, followup_id, user.email, payload.outcome, payload.note)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     if f is None:
         raise HTTPException(status_code=404, detail="Follow-up not found")
     db.commit()

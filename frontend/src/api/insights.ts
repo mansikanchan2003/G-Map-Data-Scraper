@@ -137,6 +137,7 @@ const call = async <T>(path: string, init?: RequestInit): Promise<T> => {
 export const fetchDimensions = () =>
   call<{ groups: string[]; dimensions: DimensionInfo[]; min_sent: number }>('/dimensions');
 export const fetchPlaybook = () => call<Playbook>('/playbook');
+export const fetchDispositionMix = () => call<DispositionMix>('/dispositions');
 export const fetchCampaignInsights = () => call<CampaignRow[]>('/campaigns');
 export const fetchCampaignReport = (id: string) => call<CampaignReport>(`/campaigns/${id}`);
 export const fetchInsightHistory = () => call<Snapshot[]>('/history');
@@ -270,4 +271,21 @@ export interface BusinessSummary {
   onboarding: { applicants: number | null; went_live: number | null; rejected: number | null; in_progress: number | null;
     go_live_rate: number | null; top_rejections: [string, number][] };
   this_month_by_state: { state: string; target: number; leads: number; cat1: number; cat2: number; go_live: number; rejected: number }[];
+}
+
+/** Where the people a campaign, template or state reached stand now. */
+export type MixGroup = 'positive' | 'follow_up' | 'negative' | 'other' | 'no_reply';
+
+export interface MixRow {
+  value: string;
+  sent: number;
+  replied: number;
+  groups: Record<MixGroup, number>;
+  dispositions: { label: string; group: MixGroup; count: number }[];
+}
+
+export interface DispositionMix {
+  campaign: MixRow[];
+  template: MixRow[];
+  state: MixRow[];
 }

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackToParent } from '../components/SubPage';
 import type { NavTab } from '../components/Header';
 import { GrowthPlan } from '../components/GrowthPlan';
+import { DispositionMix } from '../components/DispositionMix';
 import {
   exploreInsights, fetchCampaignInsights, fetchCampaignReport, fetchDimensions,
   fetchInsightHistory, fetchPlaybook, takeSnapshot,
@@ -124,7 +125,7 @@ const mediaUrl = (headerContent: string | null) => {
 
 // ---------------------------------------------------------------------------
 
-type Tab = 'plan' | 'deep' | 'campaigns' | 'history';
+type Tab = 'plan' | 'deep' | 'campaigns' | 'dispositions' | 'history';
 
 export const CampaignInsightsView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ can }) => {
   const [book, setBook] = useState<Playbook | null>(null);
@@ -164,6 +165,7 @@ export const CampaignInsightsView: React.FC<{ can?: (t: NavTab) => boolean }> = 
     { key: 'plan', label: 'Plan', icon: 'flag' },
     { key: 'deep', label: 'Deep dive', icon: 'query_stats' },
     { key: 'campaigns', label: 'Campaigns', icon: 'campaign' },
+    { key: 'dispositions', label: 'Dispositions', icon: 'fact_check' },
     { key: 'history', label: 'History', icon: 'history' },
   ];
 
@@ -224,6 +226,7 @@ export const CampaignInsightsView: React.FC<{ can?: (t: NavTab) => boolean }> = 
           </>
         )}
         {tab === 'campaigns' && <CampaignList rows={campaigns} open={openCampaign} onOpen={setOpenCampaign} labels={labels} />}
+        {tab === 'dispositions' && <DispositionMix />}
         {tab === 'history' && <History rows={history} labels={labels} onSnapshot={snapshot} />}
       </div>
     </div>

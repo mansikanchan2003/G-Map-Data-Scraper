@@ -336,14 +336,21 @@ def tick(db: Session, now: Optional[datetime] = None) -> int:
     return tried
 
 
-def complete_task(db: Session, followup_id: str, by: str, note: Optional[str] = None) -> Optional[FollowUp]:
-    """A person or the DC has done their task."""
+# How a task ended: marking one done needs one of these (the checklist, 2026-10-22).
+TASK_OUTCOMES = ("Done as asked", "Spoke to them", "Could not reach them", "Not needed any more")
+
+
+def complete_task(db: Session, followup_id: str, by: str, outcome: str,
+                  note: Optional[str] = None) -> Optional[FollowUp]:
+    """A person or the DC has done their task; `outcome` says how it ended, the note anything more."""
+    if outcome not in TASK_OUTCOMES:
+        raise ValueError(f"Outcome must be one of: {', '.join(TASK_OUTCOMES)}")
     f = db.query(FollowUp).filter(FollowUp.followup_id == followup_id).first()
     if f is None:
         return None
     f.status, f.done_at, f.done_by = "done", inbox.now(), by
-    if note:
-        f.note = note.strip()[:500]
+    note = (note or "").strip()
+    f.note = (f"{outcome}: {note}" if note else outcome)[:500]
     return f
 
 
@@ -380,6 +387,7 @@ def board(db: Session, days: int = 7) -> dict:
     outcomes = Counter(f.status for f, _ in recent)
     return {
         "channels": contact_channels.status(),
+        "outcomes": list(TASK_OUTCOMES),
         "counts": {"scheduled": sum(f.status == "scheduled" for f, _ in coming),
                    "waiting": sum(f.status == "waiting" for f, _ in coming),
                    "tasks": len(tasks), **{k: outcomes.get(k, 0) for k in ("sent", "replied", "no_answer", "failed", "cancelled")}},
@@ -387,6 +395,67 @@ def board(db: Session, days: int = 7) -> dict:
         "tasks": [as_dict(f, c) for f, c in tasks[:40]],
         "recent": [as_dict(f, c) for f, c in recent[:40]],
     }
+
+
+QUEUE_OWNERS = {"bot": "Bot", "human": "Team", "dc": "District Coordinator", dz.API: dz.HANDED_TO}
+BUCKETS = ("overdue", "today", "upcoming")
+
+
+def queue(db: Session, owner: Optional[str] = None) -> dict:
+    """
+    Every open action item across the leads, for the action items queue:
+    nudges (the bot's), tasks (the team's or the District Coordinator's),
+    the hand-over to Eko Acquisition, and questions waiting for the team.
+    Each is overdue (by the Dashboard alert's rules), due today (IST) or
+    upcoming; `owner` keeps one owner type.
+    """
+    from src.models.inbox import AttentionTicket
+    from src.services import journey_checks, lead_journey, tickets
+
+    now = inbox.now()
+    tomorrow = _at(now.astimezone(IST).date() + timedelta(days=1), time(0, 0))
+    tests = tickets._test_phones(db)
+
+    def bucket(due: datetime, overdue: bool) -> str:
+        return "overdue" if overdue else "today" if due < tomorrow else "upcoming"
+
+    items = []
+    rows = (db.query(FollowUp, WhatsAppConversation)
+            .join(WhatsAppConversation, WhatsAppConversation.phone == FollowUp.phone)
+            .filter(FollowUp.status.in_(PENDING)).all())
+    for f, c in rows:
+        if f.phone in tests:
+            continue
+        it = lead_journey._item(f, now)
+        due = inbox.aware(f.due_at)
+        items.append({"id": f.followup_id, "source": "followup", "phone": f.phone, "name": c.profile_name,
+                      "owner": it["owner"], "owner_type": QUEUE_OWNERS.get(it["owner"], it["owner"]),
+                      "owner_label": it["owner_label"], "text": it["text"], "result": it["result"],
+                      "disposition_label": dz.label(f.disposition), "due_at": due.isoformat(),
+                      "bucket": bucket(due, bool(journey_checks.late(f, now))),
+                      "can_mark_done": f.wants == dz.TASK})
+    for t, c in (db.query(AttentionTicket, WhatsAppConversation)
+                 .join(WhatsAppConversation, WhatsAppConversation.phone == AttentionTicket.phone)
+                 .filter(AttentionTicket.resolved_at.is_(None)).all()):
+        if t.phone in tests:
+            continue
+        raised = inbox.aware(t.raised_at)
+        items.append({"id": f"ticket-{t.id}", "source": "ticket", "phone": t.phone, "name": c.profile_name,
+                      "owner": "human", "owner_type": QUEUE_OWNERS["human"],
+                      "owner_label": lead_journey.owner_label("human"),
+                      "text": f"Answer their question: {(t.latest_question or t.question or '').strip()[:200]}",
+                      "result": "Answer it in the chat and record what happened",
+                      "disposition_label": dz.label(c.disposition), "due_at": raised.isoformat(),
+                      "bucket": bucket(raised, journey_checks.ticket_late(t, now)), "can_mark_done": False})
+
+    counts = {o: sum(i["owner"] == o for i in items) for o in QUEUE_OWNERS}
+    if owner:
+        items = [i for i in items if i["owner"] == owner]
+    items.sort(key=lambda i: i["due_at"])
+    return {"owners": [{"key": k, "label": v, "count": counts[k]} for k, v in QUEUE_OWNERS.items()],
+            "outcomes": list(TASK_OUTCOMES),
+            "counts": {b: sum(i["bucket"] == b for i in items) for b in BUCKETS},
+            **{b: [i for i in items if i["bucket"] == b] for b in BUCKETS}}
 
 
 _thread: Optional[threading.Thread] = None

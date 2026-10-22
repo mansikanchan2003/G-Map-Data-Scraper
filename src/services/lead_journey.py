@@ -673,3 +673,68 @@ def board(db: Session, limit: int = 200) -> List[dict]:
         rows.append(row)
     rows.sort(key=lambda r: r["last_activity"] or "", reverse=True)
     return rows[:limit]
+
+
+# The groups a disposition mix is told in, and those a campaign reached who
+# have not answered yet.
+MIX_GROUPS = ("positive", "follow_up", "negative", "other", "no_reply")
+NO_REPLY = "No reply yet"
+
+
+def disposition_mix(db: Session) -> dict:
+    """
+    Where the people each campaign, template and state reached stand now:
+    each person's current disposition (as in the Inbox), counted under the
+    latest campaign sent to them, its template, and their business's state.
+    Test campaigns are left out. Someone who never wrote back and has no
+    recorded disposition is "No reply yet".
+    """
+    from src.models import Business
+    from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppTemplate
+    from src.services import campaign_insights as ci
+    from src.services.handover import current
+
+    tests = ci.test_campaign_ids(db)
+    latest = {}
+    for r in (db.query(WhatsAppCampaignRecipient).filter(WhatsAppCampaignRecipient.sent_at.isnot(None)).all()):
+        if r.campaign_id in tests:
+            continue
+        phone = inbox.normalize_phone(r.phone)
+        if phone not in latest or inbox.aware(r.sent_at) > inbox.aware(latest[phone].sent_at):
+            latest[phone] = r
+    campaigns = {c.campaign_id: c for c in db.query(WhatsAppCampaign).all()}
+    templates = {t.template_id: t.name for t in db.query(WhatsAppTemplate).all()}
+    convs = {c.phone: c for c in db.query(WhatsAppConversation).filter(WhatsAppConversation.phone.in_(list(latest))).all()} \
+        if latest else {}
+    by_id = {b.business_id: b for b in db.query(Business).filter(
+        Business.business_id.in_([r.business_id for r in latest.values() if r.business_id])).all()}
+    by_phone = {}
+    for b in db.query(Business).filter(Business.phone.in_([r.phone for r in latest.values() if not r.business_id])).all():
+        by_phone.setdefault(b.phone, b)
+
+    rows = {"campaign": {}, "template": {}, "state": {}}
+    for phone, r in latest.items():
+        c = campaigns.get(r.campaign_id)
+        b = by_id.get(r.business_id) if r.business_id else by_phone.get(r.phone)
+        conv = convs.get(phone)
+        if conv and (conv.last_inbound_at or conv.disposition):
+            now = current(conv)
+            group, label = dz.group(now["key"]), now["label"] or now["key"]
+        else:
+            group, label = "no_reply", NO_REPLY
+        for dim, value in (("campaign", c.name if c else "(deleted campaign)"),
+                           ("template", templates.get(c.template_id) if c and c.template_id else "(no template)"),
+                           ("state", (b.state if b else None) or "Unknown")):
+            row = rows[dim].setdefault(value or "Unknown", {"value": value or "Unknown", "sent": 0, "replied": 0,
+                                                            "groups": {g: 0 for g in MIX_GROUPS},
+                                                            "dispositions": Counter()})
+            row["sent"] += 1
+            row["replied"] += group != "no_reply"
+            row["groups"][group] += 1
+            row["dispositions"][(label, group)] += 1
+
+    def out(row: dict) -> dict:
+        return {**row, "dispositions": [{"label": l, "group": g, "count": n}
+                                        for (l, g), n in row["dispositions"].most_common()]}
+
+    return {dim: sorted((out(r) for r in v.values()), key=lambda r: -r["sent"]) for dim, v in rows.items()}

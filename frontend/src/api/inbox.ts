@@ -110,8 +110,38 @@ export interface FollowUpItem {
   done_by: string | null;
 }
 
+/** One open action item in the queue: a nudge, a task, the hand-over, or a question for the team. */
+export interface QueueItem {
+  id: string;
+  source: 'followup' | 'ticket';
+  phone: string;
+  name: string | null;
+  owner: 'bot' | 'human' | 'dc' | 'eko_acquisition_api';
+  owner_type: string;
+  owner_label: string;
+  text: string;
+  result: string | null;
+  disposition_label: string | null;
+  due_at: string;
+  bucket: 'overdue' | 'today' | 'upcoming';
+  can_mark_done: boolean;
+}
+
+export type QueueBucket = 'overdue' | 'today' | 'upcoming';
+
+export interface ActionQueue {
+  owners: { key: QueueItem['owner']; label: string; count: number }[];
+  /** How a task can end: marking one done needs one of these. */
+  outcomes: string[];
+  counts: Record<QueueBucket, number>;
+  overdue: QueueItem[];
+  today: QueueItem[];
+  upcoming: QueueItem[];
+}
+
 export interface FollowUpBoard {
   channels: { name: string; label: string; on: boolean; note: string }[];
+  outcomes: string[];
   counts: Record<'scheduled' | 'waiting' | 'tasks' | 'sent' | 'replied' | 'no_answer' | 'failed' | 'cancelled', number>;
   coming: FollowUpItem[];
   tasks: FollowUpItem[];
@@ -348,8 +378,10 @@ export const fetchJourney = (phone: string) => call<Journey>(`/conversations/${d
 export const fetchJourneys = () => call<JourneyRow[]>('/dispositions/journeys');
 
 export const fetchFollowUpBoard = (days = 7) => call<FollowUpBoard>(`/dispositions/followups?days=${days}`);
-export const completeFollowUpTask = (id: string, note?: string) =>
-  call<FollowUpItem>(`/followups/${id}/done`, { method: 'POST', body: JSON.stringify({ note }) });
+export const completeFollowUpTask = (id: string, outcome: string, note?: string) =>
+  call<FollowUpItem>(`/followups/${id}/done`, { method: 'POST', body: JSON.stringify({ outcome, note }) });
+export const fetchActionQueue = (owner?: string) =>
+  call<ActionQueue>(`/followups/queue${owner ? `?owner=${encodeURIComponent(owner)}` : ''}`);
 export const fetchChatFollowUps = (phone: string) => call<FollowUpItem[]>(`/conversations/${digits(phone)}/followups`);
 export const fetchNudgeTemplates = () => call<NudgeTemplate[]>('/dispositions/nudge-templates');
 export const submitAllNudgeTemplates = () =>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BackToParent } from '../components/SubPage';
 import type { NavTab } from '../components/Header';
 import { DispositionsPanel } from '../components/DispositionsPanel';
+import { ActionQueue } from '../components/ActionQueue';
 import { FollowUpsPanel } from '../components/FollowUpsPanel';
 import { NudgeTemplatesPanel } from '../components/NudgeTemplatesPanel';
 
@@ -34,6 +35,7 @@ export const DispositionsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
       <div className="px-4 sm:px-6 py-4 max-w-[1300px] mx-auto">
         <DispositionsPanel days={days} />
         <div className="mt-5 space-y-5">
+          <ActionQueue />
           <FollowUpsPanel days={days} />
           <NudgeTemplatesPanel readOnly={readOnly} />
         </div>

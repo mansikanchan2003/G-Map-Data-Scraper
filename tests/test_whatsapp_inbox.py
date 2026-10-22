@@ -2501,3 +2501,90 @@ def test_education_below_12th_is_still_a_polite_no_with_nothing_more(db, team_ma
     qualify(db, "other")
     c = conv(db)
     assert c.bot_step == onboarding_bot.NOT_ELIGIBLE and c.disposition is None and team_mail == []
+
+
+# --- Action items queue, outcomes, disposition mix (2026-10-22) ---------------
+
+def test_marking_a_task_done_needs_an_outcome(db, client):
+    tap_campaign(db)
+    _record(client, "lang_barrier")                       # a task for the team
+    task = next(f for f in _followups(db) if f.wants == dz.TASK)
+    url = f"/api/v1/inbox/followups/{task.followup_id}/done"
+    assert client.post(url, json={}).status_code == 422
+    assert client.post(url, json={"outcome": "Sorted it"}).status_code == 422
+    db.refresh(task)
+    assert task.status in followups.PENDING
+    r = client.post(url, json={"outcome": "Spoke to them", "note": "Moved to the Gujarati caller"})
+    assert r.status_code == 200, r.text
+    db.refresh(task)
+    assert task.status == "done" and task.done_by == "admin@eko.co.in"
+    assert task.note == "Spoke to them: Moved to the Gujarati caller"
+
+
+def test_the_action_queue_sorts_open_items_by_when_and_owner(db, client):
+    tap_campaign(db)
+    _record(client, "lang_barrier")                       # a task for the team, and a nudge
+    fs = _followups(db)
+    task = next(f for f in fs if f.wants == dz.TASK)
+    task.created_at = inbox.now() - timedelta(days=3)     # open 3 days: overdue, as the Dashboard alert says
+    nudge = next(f for f in fs if f.wants != dz.TASK)
+    nudge.status, nudge.due_at = "scheduled", inbox.now() + timedelta(days=3)
+    db.add(AttentionTicket(phone=PHONE, question="Is this real?", raised_at=inbox.now()))
+    db.commit()
+
+    q = client.get("/api/v1/inbox/followups/queue").json()
+    ids = {b: {i["id"] for i in q[b]} for b in ("overdue", "today", "upcoming")}
+    assert task.followup_id in ids["overdue"] and nudge.followup_id in ids["upcoming"]
+    ticket = next(i for i in q["today"] if i["source"] == "ticket")
+    assert ticket["owner"] == "human" and ticket["owner_label"].startswith("Team: ") and not ticket["can_mark_done"]
+    overdue_task = next(i for i in q["overdue"] if i["id"] == task.followup_id)
+    assert overdue_task["can_mark_done"] and overdue_task["owner_type"] == "Team"
+    assert "Spoke to them" in q["outcomes"]
+
+    bot = client.get("/api/v1/inbox/followups/queue?owner=bot").json()
+    mine = [i for b in ("overdue", "today", "upcoming") for i in bot[b]]
+    assert mine and all(i["owner"] == "bot" for i in mine) and nudge.followup_id in {i["id"] for i in mine}
+    assert {o["key"]: o["count"] for o in bot["owners"]}["human"] >= 2   # counts stay for every owner
+
+
+def test_the_teams_test_numbers_stay_out_of_the_action_queue(db, client):
+    tap_campaign(db)
+    _record(client, "lang_barrier")
+    cid = uuid.uuid4().hex
+    db.add(WhatsAppCampaign(campaign_id=cid, name="Test send", data_source_type="upload", status="COMPLETED",
+                            total_contacts=2))
+    db.add(WhatsAppCampaignRecipient(recipient_id=uuid.uuid4().hex, campaign_id=cid, phone=PHONE, status="READ"))
+    db.commit()
+    q = client.get("/api/v1/inbox/followups/queue").json()
+    assert not (q["overdue"] or q["today"] or q["upcoming"])
+
+
+def test_the_disposition_mix_by_campaign_template_and_state(db, client):
+    from src.models import Business
+    tap_campaign(db)
+    _record(client, "lang_barrier")
+    base = _recipient(db)
+    base.sent_at = inbox.now() - timedelta(days=1)
+    db.add(WhatsAppTemplate(template_id="t1", name="csp_gujarati", body="Hello {{name}}", status="APPROVED"))
+    db.query(WhatsAppCampaign).filter(WhatsAppCampaign.campaign_id == base.campaign_id).one().template_id = "t1"
+    db.add(Business(business_id="B1", job_id="J1", name="Patel Xerox", phone=PHONE, category="Copy shop",
+                    state="Gujarat", source_query="q", dedup_key="k1"))
+    db.add(WhatsAppCampaignRecipient(recipient_id=uuid.uuid4().hex, campaign_id=base.campaign_id,
+                                     phone="+919000000002", status="DELIVERED", sent_at=inbox.now()))
+    test_id = uuid.uuid4().hex                             # a test send: left out
+    db.add(WhatsAppCampaign(campaign_id=test_id, name="Test send", data_source_type="upload", status="COMPLETED",
+                            total_contacts=2))
+    db.add(WhatsAppCampaignRecipient(recipient_id=uuid.uuid4().hex, campaign_id=test_id,
+                                     phone="+919000000003", status="READ", sent_at=inbox.now()))
+    db.commit()
+
+    mix = client.get("/api/v1/whatsapp/insights/dispositions").json()
+    assert [r["value"] for r in mix["campaign"]] == ["Delhi CSP"]
+    row = mix["campaign"][0]
+    assert row["sent"] == 2 and row["replied"] == 1
+    assert row["groups"]["follow_up"] == 1 and row["groups"]["no_reply"] == 1
+    labels = {d["label"]: d["count"] for d in row["dispositions"]}
+    assert labels == {dz.label("lang_barrier"): 1, "No reply yet": 1}
+    assert [r["value"] for r in mix["template"]] == ["csp_gujarati"]
+    states = {r["value"]: r for r in mix["state"]}
+    assert states["Gujarat"]["groups"]["follow_up"] == 1 and states["Unknown"]["groups"]["no_reply"] == 1

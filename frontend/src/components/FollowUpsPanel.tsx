@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { completeFollowUpTask, fetchFollowUpBoard, type FollowUpBoard, type FollowUpItem } from '../api/inbox';
+import { fetchFollowUpBoard, type FollowUpBoard, type FollowUpItem } from '../api/inbox';
+import { MarkDone } from './ActionQueue';
 import { formatDateTime } from '../utils/datetime';
 
 /**
@@ -65,16 +66,8 @@ const Row: React.FC<{ f: FollowUpItem; when: string; children?: React.ReactNode 
 export const FollowUpsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => {
   const [b, setB] = useState<FollowUpBoard | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
   const load = useCallback(() => fetchFollowUpBoard(days).then(setB).catch(e => setError(e.message)), [days]);
   useEffect(() => { load(); }, [load]);
-
-  const done = async (id: string) => {
-    setBusy(id);
-    try { await completeFollowUpTask(id); await load(); }
-    catch (e: any) { setError(e.message); }
-    finally { setBusy(null); }
-  };
 
   if (error) return <div className="p-4 rounded-xl border border-rose-800/60 bg-rose-950 text-rose-300 text-sm">Could not load the follow-ups: {error}</div>;
   if (!b) return <div className="h-40 rounded-2xl bg-slate-900 border border-slate-800 animate-pulse" />;
@@ -128,10 +121,7 @@ export const FollowUpsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => {
             <ul className="space-y-2">
               {b.tasks.map(f => (
                 <Row key={f.id} f={f} when={`Since ${formatDateTime(f.due_at)}`}>
-                  <button onClick={() => done(f.id)} disabled={busy === f.id}
-                    className="mt-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-emerald-700 bg-emerald-950 text-emerald-300 text-[12px] font-semibold hover:bg-emerald-900 cursor-pointer disabled:opacity-50">
-                    <Icon name="task_alt" className="text-[15px]" />{busy === f.id ? 'Saving…' : 'Mark done'}
-                  </button>
+                  <MarkDone id={f.id} outcomes={b.outcomes} onDone={load} />
                 </Row>
               ))}
             </ul>

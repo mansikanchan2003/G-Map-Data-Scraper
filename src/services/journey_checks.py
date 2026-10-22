@@ -54,6 +54,29 @@ TICKET_LATE = timedelta(days=1)
 # Older dispositions came before their action items were set up automatically (21 Oct 2026).
 ACTION_LOOKBACK = timedelta(days=14)
 
+
+def late(f: FollowUp, now: datetime) -> Optional[str]:
+    """
+    Whether an open action item is overdue, and how: the alert's kind, or
+    None. The Dashboard alert and the action items queue both go by this.
+    """
+    due = inbox.aware(f.due_at)
+    if f.wants == dz.API:
+        if f.status == "failed" or (f.status == "waiting" and now - inbox.aware(f.created_at) >= WAITING_TOO_LONG):
+            return "handover_stuck"
+    elif f.wants == dz.TASK:
+        if f.status in ("scheduled", "waiting") and now - inbox.aware(f.created_at) >= TASK_LATE:
+            return "task_overdue"
+    elif f.status == "scheduled" and due and now - due >= NUDGE_LATE:
+        return "nudge_overdue"
+    elif f.status == "waiting" and due and now - due >= WAITING_TOO_LONG:
+        return "nudge_stuck"
+    return None
+
+
+def ticket_late(t: AttentionTicket, now: datetime) -> bool:
+    return not t.resolved_at and now - inbox.aware(t.raised_at) >= TICKET_LATE
+
 # check: (label, severity, group). Groups, in the order the Dashboard shows them.
 GROUPS = {"disposition": "Missing disposition", "action": "Missing or overdue action item",
           "record": "Records that do not add up"}
@@ -85,9 +108,10 @@ def _iso(dt) -> Optional[str]:
 
 RECORDS = ("record",)
 DISPOSITIONS_AND_ACTIONS = ("disposition", "action")
+ALL_GROUPS = RECORDS + DISPOSITIONS_AND_ACTIONS
 
 
-def find(db: Session, groups=RECORDS) -> Dict:
+def find(db: Session, groups=RECORDS, limit: Optional[int] = 400) -> Dict:
     """
     Every lead with a missing step, worst first, and how many of each. Two
     Dashboard alerts read it: the missing-step alert (records, as first
@@ -171,7 +195,7 @@ def find(db: Session, groups=RECORDS) -> Dict:
                    for g, label in GROUPS.items() if g in groups],
         "by_check": [{"check": k, "label": CHECKS[k][0], "severity": CHECKS[k][1], "group": CHECKS[k][2],
                       "count": counts.get(k, 0)} for k in CHECKS if counts.get(k)],
-        "flags": flags[:400],
+        "flags": flags[:limit] if limit else flags,
     }
 
 
@@ -228,18 +252,14 @@ def _dispositions_and_actions(db: Session, flag) -> None:
                          f"{s.label}: {s.action or 'its follow-up'}", name)
 
         for f in fups[phone]:
-            due = inbox.aware(f.due_at)
-            if f.wants == dz.API:
-                if f.status in ("failed",) or (f.status == "waiting" and now - inbox.aware(f.created_at) >= WAITING_TOO_LONG):
-                    flag("handover_stuck", phone, f.created_at, f.note or f.status, name)
-            elif f.wants == dz.TASK:
-                if f.status in ("scheduled", "waiting") and now - inbox.aware(f.created_at) >= TASK_LATE:
-                    flag("task_overdue", phone, f.created_at, f.task or "", name)
-            elif f.status == "scheduled" and due and now - due >= NUDGE_LATE:
-                flag("nudge_overdue", phone, due, dz.PURPOSE_PLAIN.get(f.purpose, f.purpose), name)
-            elif f.status == "waiting" and due and now - due >= WAITING_TOO_LONG:
-                flag("nudge_stuck", phone, due, dz.PURPOSE_PLAIN.get(f.purpose, f.purpose), name)
+            kind = late(f, now)
+            if kind == "handover_stuck":
+                flag(kind, phone, f.created_at, f.note or f.status, name)
+            elif kind == "task_overdue":
+                flag(kind, phone, f.created_at, f.task or "", name)
+            elif kind:
+                flag(kind, phone, inbox.aware(f.due_at), dz.PURPOSE_PLAIN.get(f.purpose, f.purpose), name)
 
         for t in tix[phone]:
-            if not t.resolved_at and now - inbox.aware(t.raised_at) >= TICKET_LATE:
+            if ticket_late(t, now):
                 flag("ticket_overdue", phone, t.raised_at, (t.latest_question or t.question or "")[:140], name)

@@ -180,3 +180,10 @@ def put_revenue_goal(req: RevenueGoal, db: Session = Depends(get_db)):
         return business_context.set_revenue_goal(db, req.inr, req.start, req.end)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/dispositions")
+def disposition_mix(db: Session = Depends(get_db)):
+    """Where the people each campaign, template and state reached stand now, by disposition."""
+    from src.services import lead_journey
+    return lead_journey.disposition_mix(db)
