@@ -401,7 +401,7 @@ STAGE_DISPOSITION = {
     "pin": "int_in_bot_flow", "education": "int_in_bot_flow", "investment": "int_in_bot_flow",
     "guidance": "int_more_info", "docs_ready": "int_docs_pending", "docs_later": "int_docs_pending",
     "uploaded": "int_visit", "handed_over": "int_visit",
-    "not_served": "rej_outside_area", "not_eligible": "rej_eligibility", "not_investing": "ni_investment",
+    "not_served": "int_not_sbi", "not_eligible": "rej_eligibility", "not_investing": "ni_investment",
 }
 
 
@@ -414,6 +414,8 @@ def _bot_blocks(steps: List[dict], recorded: List[ChatActivity]) -> List[dict]:
     for st in steps:
         if st["kind"] == "stage" and st["key"] in STAGE_DISPOSITION:
             key = STAGE_DISPOSITION[st["key"]]
+            if st["key"] == "pin" and "not qualified for SBI" in (st["what"] or ""):
+                key = "int_not_sbi"
             if blocks and blocks[-1]["key"] == key:
                 continue
             # The bot records some itself now (cannot invest): not shown twice.

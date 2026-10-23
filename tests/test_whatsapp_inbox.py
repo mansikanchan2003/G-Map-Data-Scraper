@@ -2045,7 +2045,7 @@ def team_mail(monkeypatch):
 
 def test_only_dispositions_the_sheet_gives_a_person_email_the_team():
     human = {k for k, s in dz.SUBS.items() if dz.needs_team(s)}
-    assert human == {"int_more_info", "ni_investment", "rej_credit", "rej_eligibility", "rej_outside_area", "inv_denied",
+    assert human == {"int_more_info", "ni_investment", "rej_credit", "rej_eligibility", "inv_denied",
                      "ndm_not_applicant", "ndm_unavailable", "hold_later", "hold_financial", "hold_after_date",
                      "hold_no_replacement"}
 
@@ -2499,6 +2499,13 @@ def test_outside_our_area_carries_on_to_the_end_with_nothing_closed(db, monkeypa
     assert not [f for f in _followups(db) if f.purpose == "other_options"]
     pin = next(s for s in lead_journey.build(db, c)["steps"] if s["key"] == "pin")
     assert "not qualified for SBI branch code" in pin["what"] and pin["tone"] == "neutral"
+    # Not a rejection: an Interested disposition of its own, before the documents.
+    from src.services import dispositions as dz, handover
+    blocks = lead_journey.build(db, c)["dispositions"]
+    assert "int_not_sbi" in [b["key"] for b in blocks]
+    assert dz.category_of("int_not_sbi").key == "interested" and dz.normalise("rej_outside_area") == "int_not_sbi"
+    c.bot_step, c.disposition = onboarding_bot.AWAIT_EDUCATION, None
+    assert handover.bot_disposition(c) == "int_not_sbi"
 
 
 def test_education_below_12th_is_still_a_polite_no_with_nothing_more(db, team_mail):

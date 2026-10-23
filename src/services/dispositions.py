@@ -94,6 +94,11 @@ CATEGORIES: List[Category] = [
         # Not in the sheet, and only ever read from the bot's step: someone who
         # tapped Interested and is still in its questions. Sets nothing in motion.
         Sub("int_in_bot_flow", "Interested: in the bot's questions", "interested", "", "Bot"),
+        # Not in the sheet (23 Oct 2026): a real PIN outside our SBI branch area. The
+        # journey carries on as for anyone interested; nothing extra is sent, and the
+        # lead is kept with the qualified leads for another proposal (BT, HDFC...).
+        Sub("int_not_sbi", "Not qualified for SBI branch code", "interested",
+            "Journey continues; kept for another proposal (BT, HDFC...)", "Bot"),
         # The end of AutoGMap's journey: documents are in, and Eko Acquisition
         # takes over. The bot's own outcome once documents are uploaded.
         Sub("int_visit", "Physical visit required", "interested",
@@ -112,9 +117,6 @@ CATEGORIES: List[Category] = [
             (Step("lower_investment", NOW, BOT, CALL, expects_reply=True),)),
         Sub("rej_eligibility", "Eligibility criteria not met", "rejected", "Connect for BT/other proposal", "Bot - Human",
             (Step("lower_investment", NOW, BOT, CALL, expects_reply=True),)),
-        # Not in the sheet: the bot's own outcome for a PIN code Eko does not serve.
-        Sub("rej_outside_area", "Outside our service area", "rejected", "Connect for other proposal", "Bot - Human",
-            (Step("other_options", NOW, BOT, CALL, expects_reply=True),)),
     ]),
     Category("busy", "Busy / Callback", "follow_up", "schedule", [
         Sub("busy_busy", "Busy", "busy", "Notification & calls", "Bot",
@@ -208,7 +210,10 @@ LEGACY = {
     "not_interested": "ni_currently",
     "cannot_invest": "ni_investment",
     "not_eligible": "rej_eligibility",
-    "outside_area": "rej_outside_area",
+    # A PIN outside our SBI branch area was a rejection until 23 Oct 2026; the
+    # journey carries on now, so those records read as today's disposition.
+    "outside_area": "int_not_sbi",
+    "rej_outside_area": "int_not_sbi",
     "wrong_number": "inv_wrong_number",
 }
 
@@ -252,7 +257,6 @@ PURPOSE_PLAIN = {
     "decision_maker": "ask for the applicant's number",
     "checking_in": "check back with them",
     "choose_language": "ask which language they prefer",
-    "other_options": "tell them about Eko's other proposals apart from SBI",
 }
 WHEN_PLAIN = {NOW: "now", EOD: "this evening", NEXT_DAY: "tomorrow morning", AT_TIME: "at the time you set",
               ON_DATE: "on the date you set", IN_2_DAYS: "2 days later"}

@@ -41,7 +41,7 @@ _FROM_STEP = {
     bot.AWAIT_UPLOAD: "int_docs_pending",
     bot.AWAIT_DOCS: "int_docs_pending",
     bot.NOT_ELIGIBLE: "rej_eligibility",
-    bot.NOT_SERVED: "rej_outside_area",
+    bot.NOT_SERVED: "int_not_sbi",
     bot.NOT_INVESTING: "ni_investment",
     bot.GUIDANCE_QA: "int_more_info",
     bot.AWAIT_WEBINAR: "int_more_info",
@@ -67,6 +67,8 @@ def bot_disposition(conv: WhatsAppConversation) -> str:
         return "int_visit"
     if conv.bot_step in _FROM_STEP:
         return _FROM_STEP[conv.bot_step]
+    if conv.bot_step and ((conv.bot_data or {}).get("coverage") or {}).get("served") is False:
+        return "int_not_sbi"
     if conv.bot_step:
         return "int_in_bot_flow"
     return "enquiry"
