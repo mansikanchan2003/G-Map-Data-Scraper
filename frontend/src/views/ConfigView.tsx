@@ -214,7 +214,8 @@ export const ConfigView: React.FC = () => {
       <BranchPinsPanel />
 
       {/* SPLIT TWO-PANEL LAYOUT (DARK THEME) */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 lg:p-6 min-h-0">
+      {/* shrink-0: in this scrolling column the panels keep their height and the page scrolls (2026-10-23). */}
+      <div className="shrink-0 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 lg:p-6">
         {/* PANEL A: GEOGRAPHIC LOCATIONS (7 COLS) */}
         <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded flex flex-col shadow-sm overflow-hidden">
           <div className="p-3 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">

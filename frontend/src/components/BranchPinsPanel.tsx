@@ -22,7 +22,7 @@ export const BranchPinsPanel: React.FC<{ refreshKey?: number }> = ({ refreshKey 
   const branchCount = (pins || []).reduce((n, p) => n + p.branches.length, 0);
 
   return (
-    <div className="mx-4 lg:mx-6 mt-4 bg-slate-900 border border-amber-800/70 rounded shadow-sm overflow-hidden">
+    <div className="shrink-0 mx-4 lg:mx-6 mt-4 bg-slate-900 border border-amber-800/70 rounded shadow-sm overflow-hidden">
       <div className="p-3 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="material-symbols-outlined text-amber-400 text-[18px]">account_balance</span>
