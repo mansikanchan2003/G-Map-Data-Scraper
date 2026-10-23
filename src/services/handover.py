@@ -100,10 +100,13 @@ def _log(db: Session, conv: WhatsAppConversation, kind: str, by: str, value: str
 
 
 def record(db: Session, conv: WhatsAppConversation, key: str, by: str, note: Optional[str] = None,
-           at: Optional[datetime] = None, attempt: int = 1, run_now: bool = True, ticket: bool = True) -> dict:
+           at: Optional[datetime] = None, attempt: int = 1, run_now: bool = True, ticket: bool = True,
+           tell: bool = True) -> dict:
     """
     Record the chat's disposition and plan what it calls for. `at` is the
     time to call back or the date to follow up on, for those that ask.
+    `tell=False` when the team has already been told (the bot's own
+    escalation email), so they are not emailed twice.
     """
     from src.services import followups
 
@@ -113,7 +116,7 @@ def record(db: Session, conv: WhatsAppConversation, key: str, by: str, note: Opt
     conv.disposition, conv.disposition_by, conv.disposition_at = key, by, inbox.now()
     conv.disposition_note = (note or "").strip()[:500] or None
     _log(db, conv, "disposition", by, key, note)
-    followups.plan(db, conv, key, by, at=at, attempt=attempt, run_now=run_now, note=note, ticket=ticket)
+    followups.plan(db, conv, key, by, at=at, attempt=attempt, run_now=run_now, note=note, ticket=ticket, tell=tell)
     return current(conv)
 
 

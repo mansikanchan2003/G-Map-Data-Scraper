@@ -79,7 +79,8 @@ def _cancel(db: Session, phone: str, why: str, tasks_too: bool) -> int:
 
 
 def plan(db: Session, conv: WhatsAppConversation, key: str, by: str, at: Optional[datetime] = None,
-         attempt: int = 1, run_now: bool = True, note: Optional[str] = None, ticket: bool = True) -> List[FollowUp]:
+         attempt: int = 1, run_now: bool = True, note: Optional[str] = None, ticket: bool = True,
+         tell: bool = True) -> List[FollowUp]:
     """
     Schedule what a disposition calls for, replacing the bot's pending
     contacts, and tell the team when a person has to act on it.
@@ -87,7 +88,7 @@ def plan(db: Session, conv: WhatsAppConversation, key: str, by: str, at: Optiona
     s = dz.sub(key)
     if s is None:
         return []
-    if dz.needs_team(s):
+    if dz.needs_team(s) and tell:
         _tell_team(db, conv, s, by, note, ticket)
     now = inbox.now()
     _cancel(db, conv.phone, f"Replaced by a new disposition: {s.label}", tasks_too=s.closes)

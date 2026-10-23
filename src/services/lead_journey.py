@@ -431,6 +431,48 @@ def _bot_blocks(steps: List[dict], recorded: List[ChatActivity]) -> List[dict]:
     return blocks
 
 
+def _trust_answer(at) -> dict:
+    return {"text": "Answered who Eko is, with the website link and our number to call", "owner": "bot",
+            "owner_label": OWNER_LABEL["bot"], "status": "done", "when": _iso(at), "result": "Sent", "attempt": 1}
+
+
+TRUST_TICKET = "Call this lead: trust concern"
+
+
+def _trust_blocks(tickets: List[AttentionTicket], recorded: List[ChatActivity], now: datetime) -> List[dict]:
+    """
+    "Trust concern" for chats from before the bot recorded it (23 Oct 2026),
+    read from the ticket its trust answer raised: the answer, the team told,
+    and the team's call (done when the ticket was solved).
+    """
+    s = dz.SUBS["int_trust"]
+    out = []
+    for t in tickets:
+        asked = next((q for q in (t.latest_question, t.question) if q and q.startswith(TRUST_TICKET)), None)
+        if not asked:
+            continue
+        at = inbox.aware(t.raised_at)
+        if any(dz.normalise(a.value) == "int_trust" and abs((inbox.aware(a.at) - at).total_seconds()) < 600
+               for a in recorded):
+            continue
+        solved = bool(t.resolved_at)
+        call = {"text": "Call them about their trust concern", "owner": "human",
+                "owner_label": owner_label("human", t.resolved_by if solved else None),
+                "status": "done" if solved else ("missed" if now - at >= WAITING_LATE else "planned"),
+                "when": _iso(t.resolved_at or t.raised_at),
+                "result": (f"Ticket solved by {_who(t.resolved_by)}" if solved
+                           else "Not done yet: the ticket is open"), "attempt": 1}
+        told = {"text": f"Tell the team: ticket and email to {team_names()}", "owner": "human",
+                "owner_label": owner_label("human"), "status": "done", "when": _iso(t.raised_at),
+                "result": "Ticket raised and emailed", "attempt": 1}
+        out.append({"key": "int_trust", "label": s.label, "category": dz.category_of("int_trust").label,
+                    "group": dz.group("int_trust"), "recorded_at": _iso(t.raised_at), "recorded_by": "Bot",
+                    "note": asked[len(TRUST_TICKET):].lstrip(". ") or None, "sheet_action": s.action,
+                    "sheet_owner": s.owner, "current": False, "items": [_trust_answer(t.raised_at), told, call],
+                    "derived": True})
+    return out
+
+
 def _attach_bot_actions(blocks: List[dict], steps: List[dict]) -> None:
     """The bot's own actions, done, under whichever disposition was current when it did them."""
     for st in steps:
@@ -479,6 +521,8 @@ def disposition_actions(conv: WhatsAppConversation, activities: List[ChatActivit
                              "result": ("Ticket raised" + (f" · solved by {'the bot' if ticket.resolved_by == 'bot' else _who(ticket.resolved_by)}"
                                                            if ticket and ticket.resolved_at else "")) if ticket
                              else "Email sent (recorded while solving a ticket, so no new one)", "attempt": 1})
+        if key == "int_trust" and a.by == "bot":
+            items.insert(0, _trust_answer(a.at))
         if s and s.steps and not mine and not s.closes:
             items.append({"text": s.action or "Its follow-up", "owner": "bot", "owner_label": OWNER_LABEL["bot"],
                           "status": "missed", "when": _iso(a.at),
@@ -498,6 +542,7 @@ def disposition_actions(conv: WhatsAppConversation, activities: List[ChatActivit
     for b in out:
         b["derived"] = False
     out += _bot_blocks(steps or [], records)
+    out += _trust_blocks(tickets, records, now)
     out.sort(key=lambda b: b["recorded_at"] or "")
     # A disposition the bot records itself starts with the message that brought it on
     # (the upload link, the cannot-invest reply), sent a moment before it was recorded.

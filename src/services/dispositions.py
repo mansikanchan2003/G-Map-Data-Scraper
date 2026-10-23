@@ -89,6 +89,12 @@ CATEGORIES: List[Category] = [
     Category("interested", "Interested", "positive", "thumb_up", [
         Sub("int_more_info", "More information required", "interested", "Bot will answer their questions", "Bot",
             (Step("more_info", NOW, BOT, CALL, expects_reply=True),), email=True),
+        # Not in the team's sheet (23 Oct 2026): they doubt Eko is genuine. The bot answers who
+        # Eko is, with the website and our number to call, and the team calls them.
+        Sub("int_trust", "Trust concern", "interested",
+            "Bot answers who Eko is, with the website and our number; the team calls them", "Bot - Human",
+            (Step("trust_call", NOW, HUMAN, TASK, cancel_on_reply=False,
+                  task="Call them about their trust concern"),), email=True),
         Sub("int_callback", "Callback requested", "interested",
             "Call & WhatsApp notification for call back confirmation", "Bot",
             (Step("callback_confirm", NOW, BOT, NUDGE),

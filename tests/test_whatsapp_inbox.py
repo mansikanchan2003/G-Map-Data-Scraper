@@ -1755,8 +1755,8 @@ def test_every_nudge_is_written_in_every_language_without_blanks():
             text = nudge_messages.TEXT[purpose].get(v)
             assert text, (purpose, v)
             assert "{{" not in text and "Eko" in text
-    # Every step of every disposition has its nudge.
-    assert {st.purpose for s in dz.SUBS.values() for st in s.steps if st.wants != dz.API} <= set(nudge_messages.PURPOSES)
+    # Every message step of every disposition has its nudge (a task is for a person).
+    assert {st.purpose for s in dz.SUBS.values() for st in s.steps if st.wants not in (dz.API, dz.TASK)} <= set(nudge_messages.PURPOSES)
 
 
 @pytest.mark.parametrize("text,chat,expected", [
@@ -2051,7 +2051,7 @@ def team_mail(monkeypatch):
 def test_only_dispositions_the_sheet_gives_a_person_email_the_team():
     human = {k for k, s in dz.SUBS.items() if dz.needs_team(s)}
     # The sheet's "Ticket + email" column (the user's sheet, 2026-10-23).
-    assert human == {"int_more_info", "rej_credit", "rej_eligibility", "inv_denied",
+    assert human == {"int_more_info", "int_trust", "rej_credit", "rej_eligibility", "inv_denied",
                      "ndm_not_applicant", "ndm_unavailable", "hold_later", "hold_financial", "hold_after_date"}
 
 
@@ -2413,6 +2413,36 @@ def test_a_trust_concern_is_answered_with_the_website_and_goes_to_a_person_to_ca
     assert c.needs_attention and c.attention_reason.startswith("Call this lead: trust concern")
     assert "the last step before their documents" in c.attention_reason
     assert tickets.open_ticket(db, PHONE) is not None and len(emailed) == 1
+    # Recorded as "Trust concern" (Interested), with the team's call to make; still one email.
+    assert c.disposition == "int_trust" and c.disposition_by == "bot"
+    from src.services import dispositions as dz, lead_journey
+    assert dz.category_of("int_trust").key == "interested"
+    call = [f for f in _followups(db) if f.wants == dz.TASK]
+    assert len(call) == 1 and call[0].task == "Call them about their trust concern" and call[0].owner == "human"
+    block = lead_journey.build(db, c)["dispositions"][0]
+    assert block["label"] == "Trust concern" and block["current"]
+    texts = [i["text"] for i in block["items"]]
+    assert texts[0].startswith("Answered who Eko is") and "Call them about their trust concern" in texts
+
+
+def test_an_older_trust_concern_shows_from_its_ticket_under_a_later_disposition(db, client):
+    # Before the bot recorded it (Arshad, 22 Oct): read from the ticket its trust answer raised,
+    # and kept as an earlier disposition when the team recorded "Other" afterwards.
+    from src.models.inbox import AttentionTicket
+    from src.services import lead_journey
+    tap_campaign(db)
+    c = conv(db)
+    db.add(AttentionTicket(phone=PHONE, question="Call this lead: trust concern. They worry Eko may be fake. "
+                                                 "At: Upload link sent. They wrote: “fraud hai kya”.",
+                           raised_at=inbox.now() - __import__("datetime").timedelta(hours=3)))
+    db.commit()
+    _record(client, "other", note="Trust issue")
+    blocks = lead_journey.build(db, conv(db))["dispositions"]
+    assert blocks[0]["label"] == "Other" and blocks[0]["current"]
+    trust = next(b for b in blocks if b["key"] == "int_trust")
+    assert trust["recorded_by"] == "Bot" and trust["note"].startswith("They worry Eko may be fake")
+    statuses = {i["text"].split(":")[0]: i["status"] for i in trust["items"]}
+    assert statuses["Call them about their trust concern"] == "planned"
 
 
 DISTRUST = "Na . મને તમારા પર વિશ્ર્વાસ નથી.  તમે કોઈ  frod hy to"
