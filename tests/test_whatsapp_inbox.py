@@ -2767,3 +2767,23 @@ def test_the_rules_read_the_common_replies():
     key, at = detect("kal 11 am call karna", now)
     assert key == "busy_at_time" and at == datetime(2026, 10, 24, 5, 30, tzinfo=timezone.utc)
 
+
+
+def test_every_ticket_and_email_to_the_team_shows_under_the_disposition_of_the_time(db, client, emailed):
+    # Arshad's case: the bot handed a question to the team after the upload link; the team
+    # recorded "Other" later. The email shows under "Documents pending", where it happened.
+    from src.services import lead_journey
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)
+    tap(db, "invest:yes")
+    tap(db, "docs:yes")
+    say(db, "Mere ghar ka pata badalna hai, kya karna hoga?")
+    assert len(emailed) == 1
+    _record(client, "other", note="Trust issue")
+    blocks = lead_journey.build(db, conv(db))["dispositions"]
+    assert blocks[0]["label"] == "Other"
+    docs = next(b for b in blocks if b["label"] == "Documents pending")
+    told = [i for i in docs["items"] if i["text"].startswith("Handed to the team: ticket and email to")]
+    assert len(told) == 1 and "Kavya Shukla" in told[0]["text"] and told[0]["status"] == "done"
+    assert "Mere ghar ka pata badalna hai" in told[0]["result"] and told[0]["result"].endswith("· open")

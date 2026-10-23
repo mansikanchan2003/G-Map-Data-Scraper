@@ -443,7 +443,8 @@ def _trust_answer(at) -> dict:
 TRUST_TICKET = "Call this lead: trust concern"
 
 
-def _trust_blocks(tickets: List[AttentionTicket], recorded: List[ChatActivity], now: datetime) -> List[dict]:
+def _trust_blocks(tickets: List[AttentionTicket], recorded: List[ChatActivity], now: datetime,
+                  used: set) -> List[dict]:
     """
     "Trust concern" for chats from before the bot recorded it (23 Oct 2026),
     read from the ticket its trust answer raised: the answer, the team told,
@@ -460,6 +461,7 @@ def _trust_blocks(tickets: List[AttentionTicket], recorded: List[ChatActivity], 
         if any(dz.normalise(a.value) == "int_trust" and timedelta(minutes=-10) <= at - inbox.aware(a.at) <= timedelta(hours=3)
                for a in recorded):
             continue
+        used.add(t.id)
         solved = bool(t.resolved_at)
         call = {"text": "Call them about their trust concern", "owner": "human",
                 "owner_label": owner_label("human", t.resolved_by if solved else None),
@@ -484,7 +486,7 @@ def _attach_bot_actions(blocks: List[dict], steps: List[dict]) -> None:
         if not st["action"] or st["tone"] == "planned" or (st["by"] and st["by"] not in ("bot", dz.HANDED_TO)):
             continue
         if st["key"].startswith("disposition:") or st["key"] in ("to_person", "to_bot", "team_reply", "task", "nudge",
-                                                                  "ticket_solved"):
+                                                                  "ticket_solved", "question_ack"):
             continue
         at = st["action_at"] or st["at"]
         home = None
@@ -499,6 +501,36 @@ def _attach_bot_actions(blocks: List[dict], steps: List[dict]) -> None:
                               "status": "done", "when": at, "result": st["what"], "attempt": 1})
 
 
+def _attach_tickets(blocks: List[dict], tickets: List[AttentionTicket], followups: List[FollowUp],
+                    used: set) -> None:
+    """
+    Every time the bot handed the chat to the team (a question it could not
+    answer, a voice note, a trust concern...): the ticket and the email to
+    Mansi and Kavya, as a done action item under the disposition current then.
+    Those already shown with their own disposition are not repeated.
+    """
+    escalated = [inbox.aware(f.sent_at) for f in followups if f.wants == dz.ESCALATE and f.sent_at]
+    for t in tickets:
+        at = inbox.aware(t.raised_at)
+        if t.id in used or not at or any(abs((at - e).total_seconds()) < 120 for e in escalated):
+            continue
+        reason = (t.question or t.latest_question or "").strip()
+        when = _iso(at)
+        home = None
+        for b in blocks:
+            start = b.get("_start") or b["recorded_at"]
+            if start and start <= when:
+                home = b
+        if home is None:
+            continue
+        solved = (f" · solved by {'the bot' if t.resolved_by == 'bot' else _who(t.resolved_by)}"
+                  if t.resolved_at else " · open")
+        home["items"].append({
+            "text": f"Handed to the team: ticket and email to {team_names()}", "owner": "bot",
+            "owner_label": OWNER_LABEL["bot"], "status": "done", "when": when,
+            "result": (f"“{reason[:160]}”" if reason else "Ticket raised") + solved, "attempt": 1})
+
+
 def disposition_actions(conv: WhatsAppConversation, activities: List[ChatActivity], followups: List[FollowUp],
                         tickets: List[AttentionTicket], steps: Optional[List[dict]] = None) -> List[dict]:
     """
@@ -510,6 +542,7 @@ def disposition_actions(conv: WhatsAppConversation, activities: List[ChatActivit
     now = inbox.now()
     records = sorted((a for a in activities if a.kind == "disposition"), key=lambda a: inbox.aware(a.at))
     out = []
+    used = set()
     for i, a in enumerate(records):
         key = dz.normalise(a.value)
         s = dz.sub(key)
@@ -520,6 +553,8 @@ def disposition_actions(conv: WhatsAppConversation, activities: List[ChatActivit
         items = [_item(f, now) for f in sorted(mine, key=lambda f: inbox.aware(f.due_at))]
         if s and dz.needs_team(s):
             ticket = next((t for t in tickets if inbox.aware(t.raised_at) >= start), None)
+            if ticket:
+                used.add(ticket.id)
             items.insert(0, {"text": f"Tell the team: ticket and email to {team_names()}", "owner": "human",
                              "owner_label": owner_label("human", ticket.resolved_by if ticket and ticket.resolved_at else None),
                              "status": "done", "when": _iso(ticket.raised_at if ticket else a.at),
@@ -547,7 +582,7 @@ def disposition_actions(conv: WhatsAppConversation, activities: List[ChatActivit
     for b in out:
         b["derived"] = False
     out += _bot_blocks(steps or [], records)
-    out += _trust_blocks(tickets, records, now)
+    out += _trust_blocks(tickets, records, now, used)
     out.sort(key=lambda b: b["recorded_at"] or "")
     # A disposition the bot records itself starts with the message that brought it on
     # (the upload link, the cannot-invest reply), sent a moment before it was recorded.
@@ -559,6 +594,7 @@ def disposition_actions(conv: WhatsAppConversation, activities: List[ChatActivit
                         and timedelta(0) <= rec - datetime.fromisoformat(st["action_at"]) <= timedelta(minutes=1)):
                     b["_start"] = st["action_at"]
     _attach_bot_actions(out, steps or [])
+    _attach_tickets(out, tickets, followups, used)
     for b in out:
         b.pop("_start", None)
     for b in out:
