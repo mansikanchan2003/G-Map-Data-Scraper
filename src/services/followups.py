@@ -57,6 +57,8 @@ def due_time(when: str, now: datetime, at: Optional[datetime] = None) -> datetim
         return _at(today + timedelta(days=1), MORNING)
     if when == dz.IN_2_DAYS:
         return _at(today + timedelta(days=2), MORNING)
+    if when == dz.IN_2_HOURS:
+        return now + timedelta(hours=2)
     if when == dz.AT_TIME:
         return inbox.aware(at) if at else due_time(dz.EOD, now)
     if when == dz.ON_DATE:
@@ -233,9 +235,33 @@ def _send_to_acquisition(db: Session, conv: WhatsAppConversation, f: FollowUp, n
         f.status, f.done_at, f.note = "failed", now, why
 
 
+def _escalate(db: Session, conv: WhatsAppConversation, f: FollowUp, now: datetime) -> None:
+    """
+    Hand the lead to the team: a ticket and the attention email to Mansi and
+    Kavya, with the chat's summary. For a trust concern, two hours after the
+    bot's answer, an hour after its reminder (the user, 2026-10-23).
+    """
+    from src.services import onboarding_bot as bot, tickets
+
+    bot.flag(conv, "Call this lead: trust concern. " + (conv.disposition_note or ""))
+    tickets.raise_or_update(db, conv, via="bot")
+    db.flush()
+    emailed = bot.email_attention(db, conv)
+    f.status, f.sent_at, f.done_at = "sent", now, now
+    f.note = "Ticket raised; emailed " + team_names_plain() if emailed else "Ticket raised; the email could not be sent"
+
+
+def team_names_plain() -> str:
+    from src.services import lead_journey
+    return lead_journey.team_names()
+
+
 def _send(db: Session, conv: WhatsAppConversation, f: FollowUp, now: datetime) -> None:
     if f.wants == dz.API:
         _send_to_acquisition(db, conv, f, now)
+        return
+    if f.wants == dz.ESCALATE:
+        _escalate(db, conv, f, now)
         return
     channel, skipped = contact_channels.pick(db, conv, f.wants)
     out = channel.reach(db, conv, f)
@@ -308,7 +334,7 @@ def tick(db: Session, now: Optional[datetime] = None) -> int:
     # Steps planned before the visit and CAT 1 became Eko Acquisition's (21 Oct): not ours to carry out.
     from src.services import nudge_messages
     for f in db.query(FollowUp).filter(FollowUp.status.in_(PENDING)).all():
-        if (f.wants not in (dz.TASK, dz.API) and f.purpose not in nudge_messages.PURPOSES) or \
+        if (f.wants not in (dz.TASK, dz.API, dz.ESCALATE) and f.purpose not in nudge_messages.PURPOSES) or \
                 (f.wants == dz.TASK and dz.normalise(f.disposition) == "int_visit"):
             f.status, f.note, f.done_at = "cancelled", f"{dz.HANDED_TO}'s step, not AutoGMap's", now
     db.commit()

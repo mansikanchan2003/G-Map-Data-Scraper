@@ -31,10 +31,14 @@ from typing import Dict, List, Optional, Tuple
 
 # When a step is due.
 NOW, EOD, NEXT_DAY, AT_TIME, ON_DATE, IN_2_DAYS = "now", "eod", "next_day", "at_time", "on_date", "in_2_days"
+# Two hours on: an hour after the bot's hourly reminder.
+IN_2_HOURS = "in_2_hours"
 # Who owns a step.
 BOT, HUMAN, DC = "bot", "human", "dc"
 # What the sheet asks for, as a channel; contact_channels decides what is used.
 CALL, NUDGE, TASK = "whatsapp_call", "whatsapp_nudge", "task"
+# The bot hands the lead to the team: a ticket, and an email to Mansi and Kavya.
+ESCALATE = "team_escalation"
 # Who takes a lead over when AutoGMap's part is done, and how it reaches them.
 HANDED_TO = "Eko Acquisition"
 API = "eko_acquisition_api"
@@ -91,10 +95,13 @@ CATEGORIES: List[Category] = [
             (Step("more_info", NOW, BOT, CALL, expects_reply=True),), email=True),
         # Not in the team's sheet (23 Oct 2026): they doubt Eko is genuine. The bot answers who
         # Eko is, with the website and our number to call, and the team calls them.
+        # The ticket and email go an hour after the bot's reminder, not at once (the user,
+        # 2026-10-23); documents uploaded before then make them unnecessary.
         Sub("int_trust", "Trust concern", "interested",
             "Bot answers who Eko is, with the website and our number; the team calls them", "Bot - Human",
-            (Step("trust_call", NOW, HUMAN, TASK, cancel_on_reply=False,
-                  task="Call them about their trust concern"),), email=True),
+            (Step("trust_escalate", IN_2_HOURS, BOT, ESCALATE, cancel_on_reply=False),
+             Step("trust_call", IN_2_HOURS, HUMAN, TASK, cancel_on_reply=False,
+                  task="Call them about their trust concern")), email=False),
         Sub("int_callback", "Callback requested", "interested",
             "Call & WhatsApp notification for call back confirmation", "Bot",
             (Step("callback_confirm", NOW, BOT, NUDGE),
@@ -289,7 +296,8 @@ PURPOSE_PLAIN = {
     "already_with_us": "say they are already working with us",
 }
 WHEN_PLAIN = {NOW: "now", EOD: "this evening", NEXT_DAY: "tomorrow morning", AT_TIME: "at the time you set",
-              ON_DATE: "on the date you set", IN_2_DAYS: "2 days later"}
+              ON_DATE: "on the date you set", IN_2_DAYS: "2 days later",
+              IN_2_HOURS: "2 hours later (an hour after the bot's reminder)"}
 
 
 def plan_text(s: Sub, calls: bool = True) -> List[str]:
@@ -302,6 +310,8 @@ def plan_text(s: Sub, calls: bool = True) -> List[str]:
     for st in s.steps:
         if st.wants == TASK:
             out.append(f"{_who(st.owner)} to do: {st.task}")
+        elif st.wants == ESCALATE:
+            out.append(f"Ticket and email to Kavya and Mansi {WHEN_PLAIN[st.when]}")
         elif st.wants == API:
             out.append(f"Sent to {HANDED_TO}")
         else:

@@ -1756,7 +1756,8 @@ def test_every_nudge_is_written_in_every_language_without_blanks():
             assert text, (purpose, v)
             assert "{{" not in text and "Eko" in text
     # Every message step of every disposition has its nudge (a task is for a person).
-    assert {st.purpose for s in dz.SUBS.values() for st in s.steps if st.wants not in (dz.API, dz.TASK)} <= set(nudge_messages.PURPOSES)
+    assert {st.purpose for s in dz.SUBS.values() for st in s.steps
+            if st.wants not in (dz.API, dz.TASK, dz.ESCALATE)} <= set(nudge_messages.PURPOSES)
 
 
 @pytest.mark.parametrize("text,chat,expected", [
@@ -2051,7 +2052,7 @@ def team_mail(monkeypatch):
 def test_only_dispositions_the_sheet_gives_a_person_email_the_team():
     human = {k for k, s in dz.SUBS.items() if dz.needs_team(s)}
     # The sheet's "Ticket + email" column (the user's sheet, 2026-10-23).
-    assert human == {"int_more_info", "int_trust", "rej_credit", "rej_eligibility", "inv_denied",
+    assert human == {"int_more_info", "rej_credit", "rej_eligibility", "inv_denied",
                      "ndm_not_applicant", "ndm_unavailable", "hold_later", "hold_financial", "hold_after_date"}
 
 
@@ -2410,19 +2411,28 @@ def test_a_trust_concern_is_answered_with_the_website_and_goes_to_a_person_to_ca
             "https://kiosk.eko.in/?utm_source=AutoGMap&utm_medium=whatsapp&utm_campaign=Delhi%20CSP") in body
     assert "તમે +91 7291988625 પર અમારો સીધો સંપર્ક પણ કરી શકો છો (કૉલ/WhatsApp)." in body
     c = conv(db)
+    # Recorded as "Trust concern" (Interested). The team is not told yet: the ticket and the
+    # email go two hours on, an hour after the bot's reminder (the user, 2026-10-23).
+    from datetime import timedelta
+    from src.services import dispositions as dz, followups, lead_journey
+    assert c.disposition == "int_trust" and c.disposition_by == "bot" and dz.category_of("int_trust").key == "interested"
+    assert not c.needs_attention and tickets.open_ticket(db, PHONE) is None and emailed == []
+    esc = [f for f in _followups(db) if f.wants == dz.ESCALATE][0]
+    assert abs((inbox.aware(esc.due_at) - inbox.now()) - timedelta(hours=2)) < timedelta(minutes=1)
+    followups.tick(db, inbox.now() + timedelta(hours=1))
+    assert emailed == []
+    followups.tick(db, inbox.now() + timedelta(hours=2, minutes=5))
+    c = conv(db)
     assert c.needs_attention and c.attention_reason.startswith("Call this lead: trust concern")
     assert "the last step before their documents" in c.attention_reason
     assert tickets.open_ticket(db, PHONE) is not None and len(emailed) == 1
-    # Recorded as "Trust concern" (Interested), with the team's call to make; still one email.
-    assert c.disposition == "int_trust" and c.disposition_by == "bot"
-    from src.services import dispositions as dz, lead_journey
-    assert dz.category_of("int_trust").key == "interested"
-    call = [f for f in _followups(db) if f.wants == dz.TASK]
-    assert len(call) == 1 and call[0].task == "Call them about their trust concern" and call[0].owner == "human"
     block = lead_journey.build(db, c)["dispositions"][0]
     assert block["label"] == "Trust concern" and block["current"]
-    texts = [i["text"] for i in block["items"]]
-    assert texts[0].startswith("Answered who Eko is") and "Call them about their trust concern" in texts
+    items = {i["text"].split(":")[0]: i for i in block["items"]}
+    assert items["Answered who Eko is, with the website link and our number to call"]["status"] == "done"
+    told = items["Tell the team to call them"]
+    assert told["status"] == "done" and told["result"].startswith("Ticket raised; emailed")
+    assert "Call them about their trust concern" in items
 
 
 def test_an_older_trust_concern_shows_from_its_ticket_under_a_later_disposition(db, client):
@@ -2468,7 +2478,9 @@ def test_a_trust_concern_at_an_earlier_step_has_no_upload_line(db, emailed):
     body = StubMeta.sent[-1][2]
     assert "Eko Bharat Ventures" in body and "kiosk.eko.in" in body
     assert bot_messages.MESSAGES["gu"]["remind_upload"] not in body
-    assert conv(db).needs_attention                           # still goes to a person
+    # Still goes to a person: two hours on, an hour after the bot's reminder.
+    from src.services import dispositions as dz
+    assert conv(db).disposition == "int_trust" and [f for f in _followups(db) if f.wants == dz.ESCALATE]
 
 
 def test_whats_next_shows_the_wait_the_reminder_and_the_next_disposition(db, client):

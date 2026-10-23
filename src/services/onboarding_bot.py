@@ -768,15 +768,15 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
             # Answered, and a person calls them too: trust is won on a call, not by a bot.
             step = STEP_LABELS.get(conv.bot_step, conv.bot_step or "not started")
             near_end = " (the last step before their documents)" if conv.bot_step in (AWAIT_UPLOAD, AWAIT_DOCS) else ""
-            flag(conv, f"Call this lead: trust concern. They worry Eko may be fake. At: {step}{near_end}. "
-                       f"They wrote: “{(said or '')[:200]}”. The bot sent who Eko is and the website.")
-            # The disposition, with the team's call as its action item; the escalation
-            # email above is the team's, so it is not sent twice (2026-10-23).
+            # Recorded as "Trust concern": the team gets a ticket and an email two hours on,
+            # an hour after the bot's reminder, unless the documents come in first
+            # (the user, 2026-10-23).
             from src.services import dispositions as dz, handover
             if dz.normalise(conv.disposition) != "int_trust":
-                handover.record(db, conv, "int_trust", "bot", run_now=False, tell=False,
-                                note=f"They wrote: “{(said or '')[:200]}”. The bot sent who Eko is, the website "
-                                     f"and our number to call.")
+                handover.record(db, conv, "int_trust", "bot", run_now=False,
+                                note=f"They worry Eko may be fake. At: {step}{near_end}. They wrote: "
+                                     f"“{(said or '')[:200]}”. The bot sent who Eko is, the website and our "
+                                     f"number to call.")
             if conv.bot_step == AWAIT_DOCS:
                 # At the documents question the trust answer ends, as it does once the link is
                 # out, with the upload line and its link (the user, 2026-10-22); they stay at the

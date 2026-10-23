@@ -48,7 +48,9 @@ const Row: React.FC<{ f: FollowUpItem; when: string; children?: React.ReactNode 
         <span className={`inline-flex items-center gap-1 text-[11.5px] ${st.cls}`}><Icon name={st.icon} className="text-[14px]" />{st.label}</span>
       </div>
       <div className="mt-1 text-[12.5px] text-slate-300">
-        {f.task || (f.wants === 'eko_acquisition_api'
+        {f.task || (f.wants === 'team_escalation'
+          ? <>Ticket and email to the team, to call them</>
+          : f.wants === 'eko_acquisition_api'
           ? <>Hand-over to Eko Acquisition <span className="text-slate-500">(their API)</span></>
           : <>{nice(f.purpose)} nudge{f.wants === 'whatsapp_call' && <span className="text-slate-500"> (for a call)</span>}</>)}
       </div>

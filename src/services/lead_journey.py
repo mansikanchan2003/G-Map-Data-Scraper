@@ -356,6 +356,8 @@ def _item(f: FollowUp, now: datetime) -> dict:
     due = inbox.aware(f.due_at)
     if f.wants == dz.API:
         text, owner = f"Hand the lead over to {dz.HANDED_TO}", dz.API
+    elif f.wants == dz.ESCALATE:
+        text, owner = f"Tell the team to call them: ticket and email to {team_names()}", "bot"
     elif f.wants == dz.TASK:
         text, owner = f.task or "Task", f.owner
     else:
@@ -363,7 +365,9 @@ def _item(f: FollowUp, now: datetime) -> dict:
         if f.owner == dz.HUMAN:
             text += f" (the sheet's call by {team_names()}; a nudge until calling is on)"
     when, result = _iso(f.done_at or f.sent_at or f.due_at), None
-    if f.status in ("sent", "replied", "no_answer", "done"):
+    if f.status in ("sent", "replied", "no_answer", "done") and f.wants == dz.ESCALATE:
+        status, result = "done", f.note or "Ticket raised and emailed"
+    elif f.status in ("sent", "replied", "no_answer", "done"):
         status = "done"
         result = {"sent": "Sent", "replied": "Sent · they replied",
                   "no_answer": "Sent · no reply in a day (RNR)", "done": f"Done by {_who(f.done_by)}" if f.done_by else "Done"}[f.status]
@@ -452,7 +456,8 @@ def _trust_blocks(tickets: List[AttentionTicket], recorded: List[ChatActivity], 
         if not asked:
             continue
         at = inbox.aware(t.raised_at)
-        if any(dz.normalise(a.value) == "int_trust" and abs((inbox.aware(a.at) - at).total_seconds()) < 600
+        # Recorded by the bot since 23 Oct: its own block, the ticket two hours later.
+        if any(dz.normalise(a.value) == "int_trust" and timedelta(minutes=-10) <= at - inbox.aware(a.at) <= timedelta(hours=3)
                for a in recorded):
             continue
         solved = bool(t.resolved_at)
