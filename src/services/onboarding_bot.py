@@ -871,6 +871,56 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
         email_attention(db, conv)
 
 
+def _answers_the_step(conv, msg) -> bool:
+    """Whether the message answers the question the bot is waiting on (a No to "can you invest?" is one)."""
+    step = conv.bot_step
+    if _only_a_pin(msg):
+        return True
+    if step == CHOOSE_LANG:
+        return _language_answer(msg) is not None
+    if step == AWAIT_PIN:
+        return msg.kind == "text" and pincode_coverage.extract_pincode(msg.body) is not None
+    if step in (AWAIT_EDUCATION, NOT_ELIGIBLE):
+        return _education_answer(msg) is not None
+    prefix = {AWAIT_FRANCHISE: "franchise", AWAIT_INVEST: "invest", AWAIT_DOCS: "docs", AWAIT_UPLOAD: "docs"}.get(step)
+    return bool(prefix) and _answer(msg, prefix) is not None
+
+
+def _reply_disposition(db, conv, msg) -> bool:
+    """
+    A reply that says where they stand ("abhi busy hoon, 5 baje call karna",
+    "galti se apply ho gaya", "wrong number") is recorded as its disposition by
+    the bot, by fixed rules (reply_dispositions.py; the user's sheet,
+    2026-10-23), and the disposition's message is the reply. Not for an answer
+    to the bot's question, a question of their own (the FAQ and the team take
+    those), or a voice note, whose transcript can be wrong. True if recorded.
+    """
+    if msg.kind != "text" or getattr(msg, "voice", False) or _answers_the_step(conv, msg):
+        return False
+    said = (msg.body or "").strip()
+    if not said or "?" in said or eko_knowledge.match(said) or eko_knowledge.distrust(said):
+        return False
+    from src.services import reply_dispositions
+    hit = reply_dispositions.detect(said)
+    if not hit:
+        return False
+    key, when = hit
+    from src.services import dispositions as dz, handover, nudge_messages, reply_language
+    _understood(conv)
+    logger.info(f"onboarding_bot event=REPLY_DISPOSITION phone=...{conv.phone[-4:]} key={key}")
+    before = db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone,
+                                              WhatsAppMessage.direction == "OUT").count()
+    handover.record(db, conv, key, "bot", note=f"They wrote: “{said[:200]}”", at=when)
+    db.flush()
+    sent = db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone,
+                                            WhatsAppMessage.direction == "OUT").count() > before
+    if not sent and not dz.sub(key).closes:
+        # Nothing goes out now (a check-back on a date): they still hear that it is noted.
+        lang, latin = reply_language.last_reply(db, conv)
+        _say(db, conv, nudge_messages.text("callback_confirm", nudge_messages.variant_for(lang, latin)))
+    return True
+
+
 def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
     # A reaction is not a message to answer.
     if msg.kind == "reaction":
@@ -884,6 +934,9 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
     if (msg.kind == "button" and campaign_buttons.is_webinar(msg.body)) or tapped == START_WEBINAR:
         _understood(conv)
         _start(db, conv, msg, WEBINAR)
+        return
+
+    if _reply_disposition(db, conv, msg):
         return
 
     step = conv.bot_step

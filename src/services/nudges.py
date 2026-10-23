@@ -47,6 +47,12 @@ def due(db: Session, conv: WhatsAppConversation, now: datetime) -> bool:
     last_in = inbox.aware(conv.last_inbound_at)
     if not last_in or now >= last_in + inbox.REPLY_WINDOW - WINDOW_MARGIN:
         return False
+    # Their last reply said where they stand ("busy, call at 5", "not interested"): that
+    # disposition's own follow-ups take it from here, not the bot's question again.
+    from src.services import dispositions as dz
+    told = inbox.aware(conv.disposition_at)
+    if conv.disposition and told and told >= last_in and dz.group(conv.disposition) != "positive":
+        return False
     last = _last_message(db, conv.phone)
     # The bot spoke last and nobody has answered for an hour.
     if not last or last.direction != "OUT" or last.sent_by != "bot":

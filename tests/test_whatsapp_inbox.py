@@ -1734,13 +1734,17 @@ def test_the_sheet_has_its_eleven_categories_and_every_sub_category():
                    "Documents pending", "Investment issue", "Applied by mistake", "No requirement",
                    "Not interested currently", "Low credit score", "Eligibility criteria not met",
                    "Busy", "Asked to call later", "Call at specific time", "No answer", "Ringing but not picked",
-                   "Switched off", "Out of coverage", "Number not reachable", "Wrong number", "Invalid number",
+                   "Switched off", "Out of coverage", "Number not reachable",
                    "Person denied applying", "Incorrect customer details", "Duplicate lead", "Already in process",
                    "Existing customer / existing CSP", "Person contacted is not applicant",
                    "Decision maker not available", "Interested later", "Financial constraint currently",
-                   "Wants to proceed after certain date", "Replacement not available in current AO",
-                   "Cannot communicate due to language mismatch"):
+                   "Wants to proceed after certain date", "Cannot communicate due to language mismatch"):
         assert wanted in labels, wanted
+    # Off the list in the user's sheet of 23 Oct 2026; the hand-over is the bot's alone.
+    assert not {"Wrong number", "Invalid number", "Replacement not available in current AO"} & labels
+    picks = {o["key"] for o in dz.options()}
+    assert "int_visit" not in picks and "int_not_sbi" in picks
+    assert dz.normalise("inv_wrong_number") == "inv_incorrect" and dz.normalise("hold_no_replacement") == "hold_financial"
     # Every older key still means something.
     assert all(dz.normalise(k) in dz.SUBS for k in dz.LEGACY)
 
@@ -1770,8 +1774,9 @@ def test_the_language_of_a_reply_is_read_from_its_letters(text, chat, expected):
 
 def test_a_nudge_goes_in_the_language_of_their_last_message(db, client):
     tap_campaign(db, lang="en")
+    # "Call me later, I am busy now": the bot records it itself, and answers in Gujarati.
     say(db, "મને પછી ફોન કરજો, અત્યારે હું વ્યસ્ત છું")
-    _record(client, "busy_busy")
+    assert conv(db).disposition == "busy_later" and conv(db).disposition_by == "bot"
     assert StubMeta.sent[-1][2] == nudge_messages.text("callback_confirm", "gu")
     callback = [f for f in _followups(db) if f.purpose == "callback_due"][0]
     assert callback.status == "scheduled" and callback.wants == dz.CALL
@@ -2045,20 +2050,20 @@ def team_mail(monkeypatch):
 
 def test_only_dispositions_the_sheet_gives_a_person_email_the_team():
     human = {k for k, s in dz.SUBS.items() if dz.needs_team(s)}
-    assert human == {"int_more_info", "ni_investment", "rej_credit", "rej_eligibility", "inv_denied",
-                     "ndm_not_applicant", "ndm_unavailable", "hold_later", "hold_financial", "hold_after_date",
-                     "hold_no_replacement"}
+    # The sheet's "Ticket + email" column (the user's sheet, 2026-10-23).
+    assert human == {"int_more_info", "rej_credit", "rej_eligibility", "inv_denied",
+                     "ndm_not_applicant", "ndm_unavailable", "hold_later", "hold_financial", "hold_after_date"}
 
 
 def test_a_disposition_for_a_person_raises_a_ticket_and_emails_the_team(db, client, team_mail):
     from src.services import tickets
     tap_campaign(db)
     say(db, SERVED_PIN)
-    _record(client, "ni_investment", note="Can manage 2 lakh")
+    _record(client, "rej_credit", note="CIBIL 580")
     assert conv(db).needs_attention and tickets.open_ticket(db, PHONE) is not None
     [(subject, body)] = team_mail
-    assert "Investment issue" in subject
-    assert "Connect for BT proposal" in body and "Can manage 2 lakh" in body and "Journey so far:" in body
+    assert "Low credit score" in subject
+    assert "Connect for BT/other proposal" in body and "CIBIL 580" in body and "Journey so far:" in body
 
 
 def test_a_disposition_for_the_bot_emails_nobody(db, client, team_mail):
@@ -2178,10 +2183,9 @@ def test_cannot_invest_offers_the_lower_investment_option_and_tells_the_team(db,
     assert c.bot_step == onboarding_bot.NOT_INVESTING
     body = StubMeta.sent[-1][2]
     assert body == bot_messages.MESSAGES["en"]["not_investing"] and "lower-investment" in body
-    # Recorded as the sheet's "Investment issue": a ticket and the team's email, and the
-    # reply counts as the nudge, so nothing more is sent now.
-    assert c.disposition == "ni_investment" and tickets.open_ticket(db, PHONE) is not None
-    assert len(team_mail) == 1 and "Investment issue" in team_mail[0][0]
+    # Recorded as the sheet's "Investment issue": the bot first (no ticket or email since the
+    # user's sheet of 23 Oct), and the reply counts as the nudge, so nothing more is sent now.
+    assert c.disposition == "ni_investment" and tickets.open_ticket(db, PHONE) is None and team_mail == []
     nudge = [f for f in _followups(db) if f.purpose == "lower_investment"]
     assert len(nudge) == 1 and nudge[0].status == "sent" and nudge[0].note == "Said in the bot's reply"
     assert StubMeta.sent[-1][2] == body
@@ -2337,7 +2341,7 @@ def test_each_disposition_shows_its_action_items_done_planned_and_missed_with_ow
     db.commit()
     j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
     block = j["dispositions"][0]
-    assert block["label"] == "Financial constraint currently" and block["sheet_owner"] == "Bot & Human"
+    assert block["label"] == "Financial constraint currently" and block["sheet_owner"] == "Bot"
     statuses = {(i["owner"], i["status"]) for i in block["items"]}
     assert ("human", "done") in statuses and ("bot", "missed") in statuses
     team = next(i for i in block["items"] if i["owner"] == "human")
@@ -2620,4 +2624,104 @@ def test_contact_cards_forms_and_newer_types_show_what_they_hold():
     assert inbox.describe_inbound({"type": "request_welcome"})[1] == "[Opened a chat with us for the first time]"
     kind, body, payload = inbox.describe_inbound({"type": "something_brand_new_from_meta", "x": 1})
     assert len(kind) <= 20 and "cannot show yet" in body and payload["raw"]["x"] == 1
+
+
+# --- The bot reads the disposition from a reply (the user's sheet, 2026-10-23) ---
+
+def test_a_reply_with_a_time_is_a_call_at_that_time(db, team_mail):
+    from src.services import reply_dispositions
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)                                     # at the investment question
+    say(db, "Abhi busy hoon, shaam 5 baje call karna")
+    c = conv(db)
+    assert c.disposition == "busy_at_time" and c.disposition_by == "bot" and c.bot_step == onboarding_bot.AWAIT_INVEST
+    due = [f for f in _followups(db) if f.purpose == "callback_due"][0]
+    assert inbox.aware(due.due_at).astimezone(reply_dispositions.IST).hour == 17
+    assert StubMeta.sent[-1][2] == nudge_messages.text("callback_confirm", nudge_messages.HINGLISH)
+    assert team_mail == []
+
+
+def test_an_answer_to_the_bots_question_is_not_read_as_a_disposition(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)
+    say(db, "nahi")                                 # a No to "can you invest?"
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.NOT_INVESTING and c.disposition == "ni_investment"
+
+
+def test_a_question_is_left_for_the_faq_not_read_as_a_disposition(db):
+    tap_campaign(db)
+    say(db, "Kya main baad mein apply kar sakta hoon?")
+    assert conv(db).disposition is None
+
+
+def test_not_interested_closes_with_the_sheets_message(db, client):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "Galti se apply ho gaya tha, mujhe iski zaroorat nahi hai")
+    c = conv(db)
+    assert c.disposition == "ni_mistake"
+    assert StubMeta.sent[-1][2] == nudge_messages.text("closing_polite", nudge_messages.HINGLISH)
+    assert not [f for f in _followups(db) if f.status in ("scheduled", "waiting")]
+    say(db, "Abhi interested nahi hoon")
+    assert conv(db).disposition == "ni_currently"
+    assert StubMeta.sent[-1][2] == nudge_messages.text("closing_later", nudge_messages.HINGLISH)
+
+
+def test_wrong_number_and_existing_csp_get_their_closing_messages(db):
+    tap_campaign(db)
+    say(db, "wrong number")
+    assert conv(db).disposition == "inv_incorrect"
+    assert StubMeta.sent[-1][2] == nudge_messages.text("closing_sorry", "en")
+    say(db, "I am already a CSP with Eko, already running a CSP")
+    assert conv(db).disposition == "dup_existing"
+    assert StubMeta.sent[-1][2] == nudge_messages.text("already_with_us", "en")
+
+
+def test_a_later_date_is_noted_and_the_team_is_told(db, team_mail):
+    tap_campaign(db)
+    say(db, "Diwali ke baad dekhenge, next month karunga")
+    c = conv(db)
+    assert c.disposition == "hold_later" and len(team_mail) == 1
+    check = [f for f in _followups(db) if f.purpose == "checking_in"][0]
+    assert (inbox.aware(check.due_at) - inbox.now()).days >= 28
+    # Nothing goes out until that date, so they hear it is noted now.
+    assert StubMeta.sent[-1][2] == nudge_messages.text("callback_confirm", nudge_messages.HINGLISH)
+
+
+def test_no_hourly_reminder_after_they_said_where_they_stand(db):
+    from datetime import timedelta
+    from src.services import nudges
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "busy hoon abhi, baad mein call karna")
+    c = conv(db)
+    assert c.disposition == "busy_later"
+    assert not nudges.due(db, c, inbox.now() + timedelta(hours=2))
+
+
+def test_the_rules_read_the_common_replies():
+    from datetime import datetime, timezone
+    from src.services.reply_dispositions import detect
+    now = datetime(2026, 10, 23, 6, 0, tzinfo=timezone.utc)      # 11:30 IST
+    cases = {
+        "mere papa ka number hai": "ndm_not_applicant",
+        "meri cibil kharab hai": "rej_credit",
+        "paise nahi hai abhi": "hold_financial",
+        "nahi chahiye": "ni_no_requirement",
+        "maine apply nahi kiya": "inv_denied",
+        "pehle hi apply kar diya hai": "dup_in_process",
+        "samajh nahi aaya": "lang_barrier",
+        "call me": "int_callback",
+        "15 nov ke baad baad mein dekhenge": "hold_after_date",
+        "मैं अभी व्यस्त हूँ": "busy_busy",
+        "hello": None, "ok thanks": None, "haan": None,
+    }
+    for text, want in cases.items():
+        got = detect(text, now)
+        assert (got[0] if got else None) == want, text
+    key, at = detect("kal 11 am call karna", now)
+    assert key == "busy_at_time" and at == datetime(2026, 10, 24, 5, 30, tzinfo=timezone.utc)
 
