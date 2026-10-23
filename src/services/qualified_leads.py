@@ -24,7 +24,10 @@ from src.services import applications, inbox
 from src.services import onboarding_bot as bot
 
 QUALIFIED, STRONG = "Qualified", "Strongly qualified"
-RANK = {QUALIFIED: 1, STRONG: 2}
+# A real PIN outside our SBI branch area: kept here too, to reach for another
+# proposal such as BT or HDFC (the user, 2026-10-23).
+OTHER = applications.NOT_SBI
+RANK = {OTHER: 0, QUALIFIED: 1, STRONG: 2}
 
 
 def level_of(q: dict) -> Optional[str]:
@@ -32,6 +35,8 @@ def level_of(q: dict) -> Optional[str]:
         return STRONG
     if q["pin_qualified"] and not q["not_qualified"]:
         return QUALIFIED
+    if q.get("other_proposal"):
+        return OTHER
     return None
 
 
@@ -40,10 +45,14 @@ def why(conv: WhatsAppConversation, q: dict) -> List[str]:
     data = conv.bot_data or {}
     coverage = data.get("coverage") or {}
     out = []
+    near, km = coverage.get("place"), coverage.get("distance_km")
     if q["pin_qualified"]:
-        near, km = coverage.get("place"), coverage.get("distance_km")
         out.append(f"PIN {coverage.get('pincode')} is in our area"
                    + (f" ({km:g} km from our {near})" if near and km else (f" ({near})" if near else "")))
+    elif q.get("other_proposal"):
+        out.append(f"PIN {coverage.get('pincode')} is outside our SBI branch area"
+                   + (f" ({km:g} km from our nearest, {near})" if near and km else "")
+                   + ": for another proposal (BT, HDFC...)")
     edu = data.get("education")
     if edu in ("12", "grad"):
         out.append({"12": "Studied to 12th or a diploma", "grad": "Graduate or post-graduate"}[edu])
@@ -86,7 +95,7 @@ def sync(db: Session) -> None:
             row = QualifiedLead(phone=conv.phone, level=level, qualified_at=at)
             db.add(row)
             kept[conv.phone] = row
-        if level and RANK[level] >= RANK.get(row.level, 0):
+        if level and RANK[level] >= RANK.get(row.level, -1):
             if level == STRONG and not row.strongly_qualified_at:
                 row.strongly_qualified_at = at
             row.level, row.why = level, why(conv, q)
@@ -157,6 +166,7 @@ def list_leads(db: Session) -> Dict:
     return {
         "stats": {"total": len(items), "strongly_qualified": sum(a["level"] == STRONG for a in items),
                   "qualified": sum(a["level"] == QUALIFIED for a in items),
+                  "other_proposal": sum(a["level"] == OTHER for a in items),
                   "submitted": sum(a["submitted"] for a in items),
                   "dropped": sum(not a["still_qualified"] for a in items)},
         "items": items,

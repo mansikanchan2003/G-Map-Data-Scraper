@@ -220,6 +220,9 @@ def build(db: Session, conv: WhatsAppConversation, *, messages: Optional[List[Wh
             stage, what, action, tone = STEP_OF[key]
             if key == "ask_pin" and "interested" not in reached:
                 stage, what = "interested", "Became interested"
+            if key == "ask_education" and ((conv.bot_data or {}).get("coverage") or {}).get("served") is False:
+                what, tone = ("Shared a PIN code outside our SBI branch area: not qualified for SBI branch code, "
+                              "kept for another proposal"), "neutral"
             if stage == "uploaded" and conv.documents_submitted_at:
                 lead_at = conv.documents_submitted_at
             if stage in reached and stage in FUNNEL:

@@ -10,7 +10,7 @@ import { formatDateTime } from '../utils/datetime';
  * stand now, and the team's comments. Opened from the Applications tab.
  */
 
-type Level = 'all' | 'Strongly qualified' | 'Qualified' | 'submitted' | 'dropped';
+type Level = 'all' | 'Strongly qualified' | 'Qualified' | 'Not qualified for SBI branch code' | 'submitted' | 'dropped';
 
 const Icon: React.FC<{ name: string; className?: string }> = ({ name, className = '' }) =>
   <span className={`material-symbols-outlined ${className}`}>{name}</span>;
@@ -23,6 +23,7 @@ const branchText = (a: QualifiedLead) => a.branch
 const LEVEL_STYLE: Record<string, string> = {
   'Strongly qualified': 'bg-emerald-950 text-emerald-300 border-emerald-800/60',
   Qualified: 'bg-sky-950 text-sky-300 border-sky-800/60',
+  'Not qualified for SBI branch code': 'bg-violet-950 text-violet-300 border-violet-800/60',
 };
 
 const Info: React.FC<{ icon: string; label: string; children: React.ReactNode }> = ({ icon, label, children }) => (
@@ -175,6 +176,7 @@ export const QualifiedLeadsView: React.FC<{ readOnly?: boolean; onBack: () => vo
     { key: 'all', label: 'All qualified', value: stats?.total, icon: 'groups', tint: 'bg-slate-800 text-slate-300' },
     { key: 'Strongly qualified', label: 'Strongly qualified', value: stats?.strongly_qualified, icon: 'workspace_premium', tint: 'bg-emerald-950 text-emerald-300' },
     { key: 'Qualified', label: 'Qualified', value: stats?.qualified, icon: 'verified', tint: 'bg-sky-950 text-sky-300' },
+    { key: 'Not qualified for SBI branch code', label: 'Not qualified for SBI branch code', value: stats?.other_proposal, icon: 'swap_horiz', tint: 'bg-violet-950 text-violet-300' },
     { key: 'submitted', label: 'Documents submitted', value: stats?.submitted, icon: 'task_alt', tint: 'bg-emerald-950 text-emerald-300' },
     { key: 'dropped', label: 'Not qualified now', value: stats?.dropped, icon: 'trending_down', tint: 'bg-amber-950 text-amber-300' },
   ];
@@ -187,7 +189,7 @@ export const QualifiedLeadsView: React.FC<{ readOnly?: boolean; onBack: () => vo
             <Icon name="arrow_back" className="text-[16px]" />Applications
           </button>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-100">Qualified leads</h1>
-          <p className="text-sm text-slate-500 mt-1">Everyone who reached Qualified or Strongly qualified, kept even if they later answer otherwise.</p>
+          <p className="text-sm text-slate-500 mt-1">Everyone who reached Qualified or Strongly qualified, kept even if they later answer otherwise; and those outside our SBI branch area, for another proposal (BT, HDFC…).</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={exportCsv} disabled={!shown.length}
@@ -202,7 +204,7 @@ export const QualifiedLeadsView: React.FC<{ readOnly?: boolean; onBack: () => vo
 
       <div className="px-4 sm:px-6 py-4 max-w-[1500px] mx-auto space-y-4">
         {error && <div className="p-3 rounded-lg border border-rose-800/60 bg-rose-950 text-rose-300 text-sm">{error}</div>}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
           {tiles.map(t => (
             <button key={t.key} onClick={() => setLevel(t.key)}
               className={`text-left p-3.5 rounded-xl border bg-slate-900 shadow-sm ${level === t.key ? 'border-transparent ring-2 ring-sky-500' : 'border-slate-800 hover:border-slate-700'}`}>

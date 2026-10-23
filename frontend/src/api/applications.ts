@@ -115,7 +115,7 @@ export interface QualifiedLead {
   phone: string;
   name: string | null;
   /** The highest level reached. */
-  level: 'Qualified' | 'Strongly qualified';
+  level: 'Qualified' | 'Strongly qualified' | 'Not qualified for SBI branch code';
   /** Why, in plain lines (and for Qualified, what is not answered yet). */
   why: string[];
   /** Where they stand today: their level, or what ruled them out since. */
@@ -140,6 +140,6 @@ export interface QualifiedLead {
   comments: ApplicationComment[];
 }
 
-export interface QualifiedStats { total: number; strongly_qualified: number; qualified: number; submitted: number; dropped: number }
+export interface QualifiedStats { total: number; strongly_qualified: number; qualified: number; other_proposal: number; submitted: number; dropped: number }
 
 export const fetchQualifiedLeads = () => call<{ stats: QualifiedStats; items: QualifiedLead[] }>('/qualified');

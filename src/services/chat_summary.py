@@ -404,8 +404,12 @@ def in_short(conv: WhatsAppConversation, waiting_questions: int, direct: dict = 
     q = applications.qualify(conv)
     if conv.documents_submitted_at:
         first = f"{name} ne documents submit kar diye hain. Yeh lead hai: aage ke steps ke liye team inhe call kare."
-    elif q["not_qualified"]:
+    elif q["not_qualified"] and not (q["other_proposal"] and conv.bot_step in _WAITING):
         first = f"{name} abhi eligible nahi hain: {', '.join(q['not_qualified_reasons']).lower()}."
+    elif q["other_proposal"]:
+        first = (f"{name} interested hain, par PIN hamare SBI branch area se bahar hai: SBI branch code ke liye "
+                 f"qualified nahi, doosre proposal (BT, HDFC...) ke liye rakhe gaye hain. Bot unke "
+                 f"{_WAITING[conv.bot_step]} ka wait kar raha hai.")
     elif conv.bot_step in (bot.WEBINAR_CONFIRMED, bot.WEBINAR_AVAILABILITY):
         first = f"{name} ko personal guidance chahiye" + (" aur join karna confirm kiya hai." if conv.bot_step == bot.WEBINAR_CONFIRMED
                                                          else " aur bataya hai kab free hain.") + " Koi inse contact kare."

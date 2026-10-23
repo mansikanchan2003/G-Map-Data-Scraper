@@ -292,12 +292,17 @@ def test_a_pin_within_twenty_km_is_served(db, monkeypatch):
     assert conv(db).bot_data["coverage"]["nearest_pincode"] == SERVED_PIN
 
 
-def test_a_pin_further_away_is_told_we_are_not_there_yet(db, monkeypatch):
+def test_a_real_pin_further_away_carries_on_to_education(db, monkeypatch):
+    # 2026-10-23: no longer the end of the journey; not qualified for SBI branch code instead.
+    from src.services import applications
     monkeypatch.setattr(pincode_coverage, "_locate_or_none", lambda pin: (19.07, 72.87))  # Mumbai
     tap_campaign(db)
     say(db, "400001")
-    assert "not available near 400001" in StubMeta.sent[-1][2]
-    assert conv(db).bot_step == onboarding_bot.NOT_SERVED
+    assert StubMeta.sent[-1][2] == onboarding_bot.ASK_EDUCATION
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.AWAIT_EDUCATION and c.bot_data["coverage"]["served"] is False
+    q = applications.qualify(c)
+    assert q["verdict"] == "Not qualified for SBI branch code" and q["other_proposal"]
 
 
 def test_no_pin_three_times_hands_over_to_a_person(db):
@@ -354,15 +359,12 @@ def test_someone_writing_first_is_greeted_and_can_start(db):
     assert StubMeta.sent[-1][2] == onboarding_bot.ASK_PIN
 
 
-def test_after_not_served_a_new_pin_is_checked_again(db, monkeypatch):
-    places = {"400001": (19.07, 72.87), "110017": (28.55, 77.25)}
-    monkeypatch.setattr(pincode_coverage, "_locate_or_none", lambda pin: places.get(pin))
+def test_someone_told_earlier_we_were_not_there_carries_on_when_they_write(db):
     tap_campaign(db)
-    say(db, "400001")
-    assert conv(db).bot_step == onboarding_bot.NOT_SERVED
+    c = conv(db)
+    c.bot_step, c.bot_data = onboarding_bot.NOT_SERVED, {**(c.bot_data or {}), "coverage": {"pincode": "400001", "served": False}}
+    db.commit()
     say(db, "ok")
-    assert StubMeta.sent[-1][2] == onboarding_bot.NOT_SERVED_AGAIN.format(pin="400001")
-    say(db, "try 110017")
     assert StubMeta.sent[-1][2] == onboarding_bot.ASK_EDUCATION
     assert conv(db).bot_step == onboarding_bot.AWAIT_EDUCATION
 
@@ -2482,18 +2484,21 @@ def test_the_upload_link_records_documents_pending_with_the_sheets_follow_up(db,
     assert all(f.status != "scheduled" for f in _followups(db) if f.purpose == "docs_reminder")
 
 
-def test_outside_our_area_offers_other_proposals_and_tells_the_team(db, monkeypatch, team_mail):
-    from src.services import tickets
+def test_outside_our_area_carries_on_to_the_end_with_nothing_closed(db, monkeypatch, team_mail):
+    # They go through the whole journey; nothing is recorded as rejected and nobody is emailed.
+    from src.services import lead_journey, tickets
     monkeypatch.setattr(pincode_coverage, "_locate_or_none", lambda pin: (19.07, 72.87))  # Mumbai: not served
     tap_campaign(db)
     say(db, "400001")
-    body = StubMeta.sent[-1][2]
-    assert "not available near 400001" in body and "other proposals apart from SBI" in body
+    qualify(db)
+    tap(db, "invest:yes")
+    tap(db, "docs:yes")
     c = conv(db)
-    assert c.bot_step == onboarding_bot.NOT_SERVED and c.disposition == "rej_outside_area" and c.disposition_by == "bot"
-    assert tickets.open_ticket(db, PHONE) is not None and len(team_mail) == 1
-    offer = [f for f in _followups(db) if f.purpose == "other_options"]
-    assert len(offer) == 1 and offer[0].status == "sent" and StubMeta.sent[-1][2] == body   # one message, not two
+    assert c.bot_step == onboarding_bot.AWAIT_UPLOAD and c.upload_token
+    assert c.disposition == "int_docs_pending" and tickets.open_ticket(db, PHONE) is None and team_mail == []
+    assert not [f for f in _followups(db) if f.purpose == "other_options"]
+    pin = next(s for s in lead_journey.build(db, c)["steps"] if s["key"] == "pin")
+    assert "not qualified for SBI branch code" in pin["what"] and pin["tone"] == "neutral"
 
 
 def test_education_below_12th_is_still_a_polite_no_with_nothing_more(db, team_mail):

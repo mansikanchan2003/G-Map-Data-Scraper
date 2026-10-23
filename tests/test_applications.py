@@ -124,7 +124,8 @@ def test_the_totals_follow_the_teams_definitions(client):
     assert apps["+919000000001"]["verdict"] == "Strongly qualified"
     assert apps["+919000000002"]["strongly_qualified"] is True
     assert apps["+919000000003"]["not_qualified_reasons"] == ["Below 12th"]
-    assert apps["+919000000004"]["not_qualified_reasons"] == ["PIN outside our area"]
+    assert apps["+919000000004"]["not_qualified_reasons"] == ["Not qualified for SBI branch code"]
+    assert apps["+919000000004"]["verdict"] == "Not qualified for SBI branch code"
     assert apps["+919000000005"]["not_qualified_reasons"] == ["Cannot invest ₹5 lakh"]
     assert apps["+919000000006"]["verdict"] == "In progress"
 
@@ -179,14 +180,12 @@ def test_the_bot_now_records_whether_a_pin_was_served(monkeypatch):
                         lambda db, pin: {"status": "not_served", "pincode": pin, "distance_km": 80.0})
     monkeypatch.setattr(bot, "_say", lambda *a, **k: None)
     monkeypatch.setattr(bot, "_t", lambda *a, **k: "")
-    # Recording "Outside our service area" needs a database; this checks only the coverage note.
-    from src.services import followups, handover
-    monkeypatch.setattr(handover, "record", lambda *a, **k: None)
-    monkeypatch.setattr(followups, "mark_sent", lambda *a, **k: None)
+    monkeypatch.setattr(bot, "_lang", lambda *a, **k: "en")
     conv = WhatsAppConversation(phone="+919000000099", bot_step=bot.AWAIT_PIN, bot_data={})
     msg = WhatsAppMessage(message_id="m", phone=conv.phone, direction="IN", kind="text", body="110001")
     bot._on_pin(None, conv, msg)
-    assert conv.bot_data["coverage"]["served"] is False
+    # Outside our area, they carry on (2026-10-23); the note says the PIN was not served.
+    assert conv.bot_data["coverage"]["served"] is False and conv.bot_step == bot.AWAIT_EDUCATION
 
 
 def test_each_application_shows_its_own_state_district_and_tehsil(client):
@@ -342,8 +341,13 @@ def test_qualified_and_strongly_qualified_leads_are_kept_with_the_nearest_branch
 
     out = client.get("/api/v1/applications/qualified").json()
     leads = {a["phone"]: a for a in out["items"]}
-    assert set(leads) == {"+919000000001", "+919000000002", "+919000000010"}
+    assert set(leads) == {"+919000000001", "+919000000002", "+919000000004", "+919000000010"}
     assert out["stats"]["strongly_qualified"] == 2 and out["stats"]["qualified"] == 1
+    # A real PIN outside our SBI branch area is kept too, for another proposal (2026-10-23).
+    assert out["stats"]["other_proposal"] == 1
+    other = leads["+919000000004"]
+    assert other["level"] == "Not qualified for SBI branch code" and other["still_qualified"]
+    assert other["why"][0].startswith("PIN 110001 is outside our SBI branch area")
     strong = leads["+919000000001"]
     assert strong["level"] == "Strongly qualified" and strong["submitted"]
     assert strong["why"] == ["PIN 363520 is in our area (Chotila)", "Graduate or post-graduate", "Can invest up to ₹5 lakh"]
@@ -361,5 +365,5 @@ def test_qualified_and_strongly_qualified_leads_are_kept_with_the_nearest_branch
     assert again["+919000000002"]["level"] == "Strongly qualified"
     assert again["+919000000002"]["still_qualified"] is False
     assert again["+919000000002"]["now"].startswith("Not qualified now: cannot invest")
-    assert db.query(QualifiedLead).count() == 3
+    assert db.query(QualifiedLead).count() == 4
     db.close()

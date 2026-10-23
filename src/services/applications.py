@@ -69,6 +69,9 @@ def _served(conv: WhatsAppConversation) -> Optional[bool]:
     return conv.bot_step != bot.NOT_SERVED
 
 
+NOT_SBI = "Not qualified for SBI branch code"
+
+
 def qualify(conv: WhatsAppConversation) -> Dict:
     data = conv.bot_data or {}
     served = _served(conv)
@@ -76,7 +79,7 @@ def qualify(conv: WhatsAppConversation) -> Dict:
     can_invest = data.get("can_invest")
     reasons = []
     if served is False:
-        reasons.append("PIN outside our area")
+        reasons.append(NOT_SBI)
     if education == "other":
         reasons.append("Below 12th")
     if can_invest is False:
@@ -87,7 +90,9 @@ def qualify(conv: WhatsAppConversation) -> Dict:
         "strongly_qualified": strong,
         "not_qualified": bool(reasons),
         "not_qualified_reasons": reasons,
-        "verdict": "Strongly qualified" if strong else ("Not qualified" if reasons
+        # Outside the branch area alone: still going, for another proposal.
+        "other_proposal": served is False and education != "other",
+        "verdict": "Strongly qualified" if strong else (NOT_SBI if reasons == [NOT_SBI] else "Not qualified" if reasons
                    else ("PIN qualified" if served else "In progress")),
     }
 

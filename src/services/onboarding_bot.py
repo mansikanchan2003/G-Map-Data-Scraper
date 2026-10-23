@@ -664,17 +664,12 @@ def _on_pin(db, conv, msg):
 
     coverage = {k: result.get(k) for k in ("pincode", "nearest_pincode", "distance_km", "place")}
     coverage["served"] = result["status"] == "served"
-    if result["status"] == "served":
-        _move(conv, AWAIT_EDUCATION, coverage=coverage)
-        _say(db, conv, _t(db, conv, "ask_education"), buttons=education_buttons(_lang(db, conv)))
-    else:
-        _move(conv, NOT_SERVED, coverage=coverage)
-        said = _say(db, conv, _t(db, conv, "not_served", pin=pin))
-        # The sheet: a PIN we do not serve gets another proposal (Bot - Human). The reply
-        # offers it; the team hears and follows it up (2026-10-22).
-        from src.services import followups, handover
-        handover.record(db, conv, "rej_outside_area", "bot", note=f"PIN {pin} is outside our area", run_now=False)
-        followups.mark_sent(db, conv, "other_options", said)
+    # A real PIN outside our SBI branch area no longer ends the journey (the
+    # user, 2026-10-23): they carry on, and are kept with the qualified leads as
+    # "Not qualified for SBI branch code", for another proposal (BT, HDFC...).
+    # A PIN that cannot be found anywhere is still asked for again, above.
+    _move(conv, AWAIT_EDUCATION, coverage=coverage)
+    _say(db, conv, _t(db, conv, "ask_education"), buttons=education_buttons(_lang(db, conv)))
 
 
 def _only_a_pin(msg: WhatsAppMessage) -> Optional[str]:
@@ -1005,8 +1000,10 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
         _fallback(db, conv, _t(db, conv, "already_submitted"))
 
     elif step == NOT_SERVED:
-        pin = ((conv.bot_data or {}).get("coverage") or {}).get("pincode") or "—"
-        _fallback(db, conv, _t(db, conv, "not_served_again", pin=pin))
+        # Told earlier that we are not near them: writing again, they now carry on
+        # with the education question like anyone else (2026-10-23).
+        _move(conv, AWAIT_EDUCATION)
+        _say(db, conv, _t(db, conv, "ask_education"), buttons=education_buttons(_lang(db, conv)))
 
     elif step == NOT_ELIGIBLE:
         # Someone who tapped "Other" by mistake, or wrote "10" and then

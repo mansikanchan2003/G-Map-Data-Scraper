@@ -41,7 +41,7 @@ class QualifiedLead(Base):
     phone = Column(String(20), primary_key=True)
     name = Column(String(200), nullable=True)
     # The highest level reached: "Qualified" or "Strongly qualified".
-    level = Column(String(30), nullable=False)
+    level = Column(String(60), nullable=False)
     # Why, in plain lines, as of the highest level reached.
     why = Column(JSON, nullable=True)
     qualified_at = Column(DateTime(timezone=True), nullable=True)
