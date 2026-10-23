@@ -81,7 +81,9 @@ _TOPICS = [
 ]
 _MEDIA_WORDS = {"image": ("photo", "photos"), "document": ("document", "documents"), "video": ("video", "videos"),
                 "sticker": ("sticker", "stickers"), "location": ("location", "locations"),
-                "contacts": ("contact card", "contact cards"), "audio": ("voice note", "voice notes")}
+                "contacts": ("contact card", "contact cards"), "audio": ("voice note", "voice notes"),
+                "unsupported": ("message WhatsApp did not pass on (a poll, view-once or edited message)",
+                                "messages WhatsApp did not pass on (polls, view-once or edited messages)")}
 DIRECT_REPLY = {
     "action_none": "Read what they sent and reply. They are not in the onboarding flow; if they already run a CSP "
                    "and have a problem, pass it to the support team.",

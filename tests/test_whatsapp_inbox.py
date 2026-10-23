@@ -2588,3 +2588,23 @@ def test_the_disposition_mix_by_campaign_template_and_state(db, client):
     assert [r["value"] for r in mix["template"]] == ["csp_gujarati"]
     states = {r["value"]: r for r in mix["state"]}
     assert states["Gujarat"]["groups"]["follow_up"] == 1 and states["Unknown"]["groups"]["no_reply"] == 1
+
+
+def test_messages_whatsapp_does_not_pass_on_say_what_they_can_be():
+    kind, body, payload = inbox.describe_inbound({"type": "unsupported", "errors": [
+        {"code": 131051, "title": "Message type unknown", "error_data": {"details": "Message type is currently not supported."}}]})
+    assert kind == "unsupported" and body == inbox.UNSUPPORTED_TEXT
+    assert payload == {"code": 131051, "reason": "Message type is currently not supported."}
+
+
+def test_contact_cards_forms_and_newer_types_show_what_they_hold():
+    _, body, _ = inbox.describe_inbound({"type": "contacts", "contacts": [
+        {"name": {"formatted_name": "Ravi Patel"}, "phones": [{"phone": "+91 98765 43210"}]}]})
+    assert body == "[Contact card] Ravi Patel, +91 98765 43210"
+    _, body, payload = inbox.describe_inbound({"type": "interactive", "interactive": {
+        "type": "nfm_reply", "nfm_reply": {"response_json": '{"flow_token": "x", "pin": "110001"}'}}})
+    assert body == "[Form reply] pin: 110001" and payload == {"form": {"pin": "110001"}}
+    assert inbox.describe_inbound({"type": "request_welcome"})[1] == "[Opened a chat with us for the first time]"
+    kind, body, payload = inbox.describe_inbound({"type": "something_brand_new_from_meta", "x": 1})
+    assert len(kind) <= 20 and "cannot show yet" in body and payload["raw"]["x"] == 1
+

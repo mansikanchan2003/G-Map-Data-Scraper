@@ -9,6 +9,7 @@ onboarding bot sent them, so the thread shows both and says which was which.
 Campaign template sends are not copied in. They already live in
 whatsapp_campaign_recipients, and the thread reads them from there.
 """
+import json
 import logging
 import os
 import re
@@ -104,7 +105,7 @@ def conversation(db: Session, phone: str, profile_name: Optional[str] = None) ->
 
 def describe_inbound(message: dict):
     """(kind, body, payload) for one inbound message as Meta sends it."""
-    kind = (message.get("type") or "unknown").lower()
+    kind = (message.get("type") or "unknown").lower()[:20]
 
     if kind == "text":
         return "text", (message.get("text") or {}).get("body") or "", None
@@ -121,6 +122,14 @@ def describe_inbound(message: dict):
         reply = inter.get("button_reply") or inter.get("list_reply")
         if reply:
             return "interactive", reply.get("title") or "", {"id": reply.get("id")}
+        form = (inter.get("nfm_reply") or {}).get("response_json")
+        if form:
+            try:
+                answers = {k: v for k, v in json.loads(form).items() if k != "flow_token"}
+            except (ValueError, AttributeError):
+                answers = {}
+            shown = "; ".join(f"{k}: {v}" for k, v in answers.items())
+            return "interactive", f"[Form reply] {shown}".strip(), {"form": answers}
         return "interactive", "[Form reply]", None
 
     if kind in _MEDIA_LABELS:
@@ -149,9 +158,36 @@ def describe_inbound(message: dict):
         return "reaction", f"Reacted {emoji}".strip(), None
 
     if kind == "contacts":
-        return "contacts", "[Contact card]", None
+        cards = message.get("contacts") or []
+        people = [", ".join(filter(None, [(c.get("name") or {}).get("formatted_name"),
+                                          *[p.get("phone") for p in c.get("phones") or []]])) for c in cards]
+        return "contacts", f"[Contact card] {' | '.join(p for p in people if p)}".strip(), {"contacts": cards}
 
-    return kind, "[A message type this inbox cannot show]", None
+    if kind == "unsupported":
+        # WhatsApp sends the API no content for these (Meta error 131051): a
+        # poll, a view-once photo or video, an edited or deleted message, an
+        # event, or something only newer WhatsApp apps can send.
+        err = (message.get("errors") or [{}])[0]
+        reason = ((err.get("error_data") or {}).get("details") or err.get("title") or "")[:300]
+        return "unsupported", UNSUPPORTED_TEXT, {"code": err.get("code"), "reason": reason}
+
+    if kind == "request_welcome":
+        return kind, "[Opened a chat with us for the first time]", None
+
+    if kind == "system":
+        return kind, f"[WhatsApp notice] {(message.get('system') or {}).get('body') or ''}".strip(), message.get("system")
+
+    if kind == "order":
+        items = (message.get("order") or {}).get("product_items") or []
+        return kind, f"[Order: {len(items)} item{'s' if len(items) != 1 else ''}]", message.get("order")
+
+    # Anything newer: kept whole, so what it was can still be read later.
+    return kind, f"[A {kind} message this inbox cannot show yet]", {"raw": message}
+
+
+# What the inbox shows for a message WhatsApp does not pass on to the API.
+UNSUPPORTED_TEXT = ("[WhatsApp did not pass this message on: it can be a poll, a view-once photo or video, an edited "
+                    "or deleted message, or something newer. Ask them to send it again as a normal message]")
 
 
 def record_inbound(db: Session, message: dict, profile_name: Optional[str] = None) -> Optional[WhatsAppMessage]:
