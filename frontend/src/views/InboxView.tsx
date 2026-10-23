@@ -563,7 +563,7 @@ const SummaryCard: React.FC<{
   }, [phone, version]);
 
   if (error) return <div className="text-xs text-rose-400">Summary: {error}</div>;
-  if (!s) return <div className="text-xs text-slate-500">Summarising the chat…</div>;
+  if (!s) return <div className="text-xs text-slate-500">Chat ka summary ban raha hai…</div>;
   const p = s.person;
   const place = [p.pincode && `PIN ${p.pincode}`, p.tehsil, p.district, p.state].filter(Boolean).join(', ');
   // The latest steps first in view; the rest one tap away.
@@ -585,17 +585,17 @@ const SummaryCard: React.FC<{
     <div className="flex flex-col gap-4 text-[13px] select-text">
       <div className="rounded-lg border border-sky-800/60 bg-sky-950 p-3">
         <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-semibold text-sky-300">
-          <span className="material-symbols-outlined text-[16px]">summarize</span>In short
+          <span className="material-symbols-outlined text-[16px]">summarize</span>Short mein
         </div>
         <p className="text-slate-100 mt-1.5 leading-relaxed">{s.in_short}</p>
         {place && <p className="text-[11.5px] text-slate-400 mt-1.5">{place}{p.category ? ` · ${p.category}` : ''}</p>}
       </div>
 
       <div>
-        <Heading>The conversation so far</Heading>
+        <Heading>Ab tak ki baatcheet</Heading>
         {hidden > 0 && !compact && (
           <button onClick={() => setShowAll(true)} className="text-[11.5px] text-sky-300 hover:underline mb-2 cursor-pointer">
-            Show {hidden} earlier step{hidden === 1 ? '' : 's'}
+            {hidden} pehle ke steps dikhaiye
           </button>
         )}
         <ol className="relative border-l border-slate-800 ml-2.5 space-y-2.5">
@@ -608,7 +608,7 @@ const SummaryCard: React.FC<{
               <div className={t.kind === 'waiting' ? 'text-rose-200 font-medium' : 'text-slate-200'}>{t.text}</div>
             </li>
           ))}
-          {steps.length === 0 && <li className="pl-4 text-slate-500">Nothing yet.</li>}
+          {steps.length === 0 && <li className="pl-4 text-slate-500">Abhi kuch nahi.</li>}
         </ol>
       </div>
 
@@ -616,7 +616,7 @@ const SummaryCard: React.FC<{
         <div className="rounded-lg border border-rose-800/60 bg-rose-950 p-3">
           <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-semibold text-rose-300 mb-1.5">
             <span className="material-symbols-outlined text-[16px]">priority_high</span>
-            Waiting for your reply
+            Aapke reply ka wait
           </div>
           <ul className="space-y-2">
             {s.waiting_questions.map((q, i) => {
@@ -626,10 +626,10 @@ const SummaryCard: React.FC<{
                   <div className="text-slate-100">“{q.text}”</div>
                   {answer ? (
                     <div className="text-[12px] text-slate-300 mt-0.5">
-                      Ready answer: {answer}
-                      {onUseReply && <button onClick={() => onUseReply(answer)} className="ml-1 text-sky-300 font-semibold hover:underline cursor-pointer">Use</button>}
+                      Ready jawab: {answer}
+                      {onUseReply && <button onClick={() => onUseReply(answer)} className="ml-1 text-sky-300 font-semibold hover:underline cursor-pointer">Use karein</button>}
                     </div>
-                  ) : <div className="text-[12px] text-amber-300 mt-0.5">No ready answer: please reply yourself, or teach the bot if one of Eko's answers covers it.</div>}
+                  ) : <div className="text-[12px] text-amber-300 mt-0.5">Koi ready jawab nahi: khud reply kijiye, ya agar Eko ka koi jawab fit hota hai to bot ko sikhaiye.</div>}
                   {!answer && onUseReply && <TeachTheBot phone={phone} question={q.text} onUseReply={onUseReply} />}
                 </li>
               );
@@ -640,18 +640,18 @@ const SummaryCard: React.FC<{
 
       <div className="rounded-lg border border-emerald-800/60 bg-emerald-950 p-3">
         <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-semibold text-emerald-300 mb-1.5">
-          <span className="material-symbols-outlined text-[16px]">lightbulb</span>What to do next
+          <span className="material-symbols-outlined text-[16px]">lightbulb</span>Aage kya karein
         </div>
         <p className="text-slate-200 leading-relaxed">{s.next.action}</p>
         {s.next.reply && (
           <div className="mt-2">
             <div className="rounded-md bg-slate-900 border border-slate-800 p-2 text-[12.5px] text-slate-200 whitespace-pre-wrap max-h-40 overflow-y-auto">{s.next.reply}</div>
             <div className="flex items-center justify-between mt-1.5">
-              <span className="text-[10.5px] text-slate-500">In {s.next.reply_language}</span>
+              <span className="text-[10.5px] text-slate-500">{s.next.reply_language} mein</span>
               {onUseReply && (
                 <button onClick={() => onUseReply(s.next.reply!)}
                   className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 py-1 rounded bg-emerald-500 text-white hover:opacity-90 cursor-pointer">
-                  <span className="material-symbols-outlined text-[15px]">edit_note</span>Use this reply
+                  <span className="material-symbols-outlined text-[15px]">edit_note</span>Yeh reply use karein
                 </button>
               )}
             </div>

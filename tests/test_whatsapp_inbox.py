@@ -1245,9 +1245,10 @@ def test_a_question_left_for_a_person_is_emailed_with_the_summary(db, emailed):
     assert len(emailed) == 1
     text = emailed[0]["text"]
     assert f"Phone:     {PHONE}" in text and "PIN code:" in text and "District:" in text and "Tehsil:" in text
-    assert "IN SHORT" in text and "THE CONVERSATION SO FAR" in text
-    assert "Asked: “Mere ghar ka pata badalna hai, kya karna hoga?”. Needs your reply." in text
-    assert "QUESTIONS WAITING FOR YOUR REPLY" in text and "WHAT TO DO NEXT" in text
+    # The team reads it in Hinglish (the user, 2026-10-23).
+    assert "SHORT MEIN" in text and "AB TAK KI BAATCHEET" in text
+    assert "Poocha: “Mere ghar ka pata badalna hai, kya karna hoga?”. Aapke reply ka wait hai." in text
+    assert "SAWAAL JO AAPKE REPLY KA WAIT KAR RAHE HAIN" in text and "AAGE KYA KAREIN" in text
     # A second question straight after is one email, not two.
     say(db, "Aur kya documents lagenge?")
     assert len(emailed) == 1 or emailed[-1]["summary"]["attention"]["reason"] != emailed[0]["summary"]["attention"]["reason"]
@@ -1269,12 +1270,12 @@ def test_the_summary_shows_questions_answers_and_what_to_send_next(db, client):
     assert r.status_code == 200, r.text
     s = r.json()
     assert s["person"]["phone"] == PHONE
-    assert any("Gave PIN" in line for line in s["story"])
+    assert any(line.startswith("PIN 110001 diya") for line in s["story"])
     q = s["questions"][-1]
     assert q["text"] == "Kitna invest karna hoga?" and q["answered_by_bot"]
     assert q["answers"][0]["answer"].startswith("Up to ₹5 lakh")
     assert [o["text"] for o in s["other_messages"]] == ["Mera naam Ravi hai"]
-    assert "investment" in s["next"]["action"] and s["next"]["reply"] == bot_messages.MESSAGES["en"]["ask_invest"]
+    assert "Investment" in s["next"]["action"] and s["next"]["reply"] == bot_messages.MESSAGES["en"]["ask_invest"]
 
 
 def test_attention_alerts_list_waiting_conversations_until_resolved(db, client):
@@ -1328,18 +1329,18 @@ def test_a_chat_that_did_not_come_from_a_campaign_is_summarised_for_what_it_is(d
     c = conv(db)
     assert c.bot_step is None
     s = chat_summary.summarise(db, c)
-    assert s["direct"] and s["headline"] == "Wrote to us directly"
-    assert "wrote to us directly" in s["in_short"] and "sent 2 photos" in s["in_short"]
-    assert "installing or setting up a device" in s["in_short"] and "Nobody has replied yet" in s["in_short"]
-    assert "Sent 2 photos" in [t["text"] for t in s["timeline"]]
+    assert s["direct"] and s["headline"] == "Seedha humein likha"
+    assert "seedha humein likha" in s["in_short"] and "2 photo bheja" in s["in_short"]
+    assert "device install ya setup karna" in s["in_short"] and "Abhi tak kisi ne reply nahi kiya" in s["in_short"]
+    assert "2 photo bheje" in [t["text"] for t in s["timeline"]]
     assert "Interested" not in s["next"]["action"] and "support team" in s["next"]["action"]
     assert s["next"]["reply"].startswith("Namaste") and s["next"]["reply_language"] == "Hinglish"
     # The team's own reply shows in the conversation and in short.
     inbox.send(db, PHONE, "Ji, hum aapko call karte hain", sent_by="kavya.shukla@eko.co.in")
     db.commit()
     s = chat_summary.summarise(db, conv(db))
-    assert any(t["kind"] == "team" and t["text"].startswith("Kavya Shukla replied") for t in s["timeline"])
-    assert "The team replied" in s["in_short"]
+    assert any(t["kind"] == "team" and t["text"].startswith("Kavya Shukla ne reply kiya") for t in s["timeline"])
+    assert "Team ne" in s["in_short"] and "reply kiya" in s["in_short"]
 
 
 
@@ -1374,8 +1375,8 @@ def test_a_reply_by_hand_takes_the_chat_over_and_handing_back_asks_again(db, cli
     kinds = [a["kind"] for a in client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/activity").json()]
     assert kinds == ["to_person", "disposition", "to_bot"]
     lines = [t["text"] for t in chat_summary.summarise(db, conv(db))["timeline"]]
-    assert "Admin took the chat over from the bot" in lines
-    assert "Admin handed the chat back to the bot (Interested: in the bot's questions)" in lines
+    assert "Admin ne bot se chat le li" in lines
+    assert "Admin ne chat wapas bot ko di (Interested: in the bot's questions)" in lines
 
     # The bot moving the chat on later makes its own outcome the current one.
     qualify(db)

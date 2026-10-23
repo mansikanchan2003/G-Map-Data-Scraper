@@ -529,7 +529,20 @@ def whats_next(conv: WhatsAppConversation, followups: List[FollowUp], messages: 
     and the disposition expected next. Says so when nothing is planned.
     """
     from src.services import nudges, onboarding_bot as bot
-    from src.services.chat_summary import _WAITING
+
+    # What the bot waits for at each step (the Inbox summary says the same in Hinglish).
+    _WAITING = {
+        bot.CHOOSE_LANG: "choose a language",
+        bot.AWAIT_PIN: "send their PIN code",
+        bot.AWAIT_EDUCATION: "say how far they have studied",
+        bot.AWAIT_FRANCHISE: "say whether they can invest up to ₹5 lakh",
+        bot.AWAIT_INVEST: "say whether they can invest up to ₹5 lakh",
+        bot.AWAIT_DOCS: "say whether they have the documents",
+        bot.AWAIT_UPLOAD: "upload their documents",
+        bot.GUIDANCE_QA: "ask their questions, or tap Interested to start",
+        bot.AWAIT_WEBINAR: "say whether they can join personal guidance",
+        bot.AWAIT_AVAILABILITY: "say when they can join personal guidance",
+    }
 
     now = inbox.now()
     out = []

@@ -4,6 +4,9 @@ email sent when it needs attention: who the person is and where, how far
 they got, what they asked (with the answers Eko's FAQ has for it), what else
 they wrote, and what to send them next, ready to copy in their language.
 
+Written in Hinglish for the team (the user, 2026-10-23); the ready reply to
+the person stays in their own language.
+
 Built from the conversation itself, not by a language model, so nobody's
 messages leave our server and the summary says only what happened.
 """
@@ -29,70 +32,91 @@ _ANSWER_WORDS = {"yes", "no", "haan", "han", "ha", "nahi", "nahin", "ok", "okay"
 _PIN = re.compile(r"(?<!\d)[1-9]\d{5}(?!\d)")
 
 STEP_NEXT = {
-    None: ("They have not started. Greet them and invite them to tap Interested.", "greeting"),
-    bot.CHOOSE_LANG: ("Waiting for them to choose a language. Ask them to pick one.", "language_prompt"),
-    bot.AWAIT_PIN: ("Waiting for their PIN code. Ask for their 6-digit PIN.", "ask_pin"),
-    bot.AWAIT_EDUCATION: ("Waiting for their education. Ask how far they have studied.", "ask_education"),
-    bot.AWAIT_FRANCHISE: ("Waiting for the investment answer. Explain what up to ₹5 lakh is for, then ask.", "ask_invest"),
-    bot.AWAIT_INVEST: ("Waiting for the investment answer. Explain what up to ₹5 lakh is for (devices, e-wallet, "
-                       "setup) and ask whether they can invest it.", "ask_invest"),
-    bot.AWAIT_DOCS: ("Waiting to hear whether they have the documents. Go through the list with them.", "ask_docs"),
-    bot.AWAIT_UPLOAD: ("They have the upload link but have not submitted. Remind them, and offer help with "
-                       "scanning or uploading.", None),
-    bot.SUBMITTED: ("Documents submitted: a lead. Thank them and arrange the team's call for the next steps.", None),
-    bot.NOT_SERVED: ("Their PIN is outside our area. Tell them, and note the PIN in case we expand there.", None),
-    bot.NOT_ELIGIBLE: ("Below 12th, so not eligible for the Banking Outlet. Thank them politely.", None),
-    bot.NOT_INVESTING: ("They said they cannot invest. Explain that part of the money stays theirs in their e-wallet "
-                        "and ask whether up to ₹5 lakh could work.", "invest_explained"),
-    bot.HANDOVER: ("The bot handed them over after three unusable PIN codes. Call them or ask for the PIN again.", "ask_pin"),
-    bot.GUIDANCE_QA: ("Asked for personal guidance: the bot answers their questions. Answer any it left for you, "
-                      "and when they are ready ask them to tap Interested.", None),
-    bot.AWAIT_WEBINAR: ("Asked about personal guidance. Ask whether they can join.", None),
-    bot.AWAIT_AVAILABILITY: ("Waiting for when they can join personal guidance. Ask for a day and time.", None),
-    bot.WEBINAR_CONFIRMED: ("Confirmed for personal guidance. Contact them with the time.", None),
-    bot.WEBINAR_AVAILABILITY: ("Shared when they can join personal guidance. Contact them then.", None),
+    None: ("Inhone abhi shuru nahi kiya hai. Greet kijiye aur Interested tap karne ko kahiye.", "greeting"),
+    bot.CHOOSE_LANG: ("Language choose karne ka wait hai. Unse ek language chunne ko kahiye.", "language_prompt"),
+    bot.AWAIT_PIN: ("PIN code ka wait hai. Unka 6-digit PIN code maangiye.", "ask_pin"),
+    bot.AWAIT_EDUCATION: ("Education ka wait hai. Poochiye kitna padhe hain.", "ask_education"),
+    bot.AWAIT_FRANCHISE: ("Investment ke jawab ka wait hai. ₹5 lakh tak kis cheez ke liye hai samjhaiye, phir poochiye.", "ask_invest"),
+    bot.AWAIT_INVEST: ("Investment ke jawab ka wait hai. ₹5 lakh tak kis cheez ke liye hai (devices, e-wallet, "
+                       "setup) samjhaiye aur poochiye ki kya woh invest kar sakte hain.", "ask_invest"),
+    bot.AWAIT_DOCS: ("Documents hain ya nahi, iska wait hai. Unke saath documents ki list dekhiye.", "ask_docs"),
+    bot.AWAIT_UPLOAD: ("Upload link mil gaya hai par submit nahi kiya. Yaad dilaiye, aur scan ya upload karne mein "
+                       "madad offer kijiye.", None),
+    bot.SUBMITTED: ("Documents submit ho gaye: yeh lead hai. Thank you boliye aur aage ke steps ke liye team ki call "
+                    "arrange kijiye.", None),
+    bot.NOT_SERVED: ("Inka PIN hamare area se bahar hai. Unhe bataiye, aur PIN note kar lijiye agar hum wahan "
+                     "expand karein.", None),
+    bot.NOT_ELIGIBLE: ("12th se kam padhe hain, isliye Banking Outlet ke liye eligible nahi. Politely thank you "
+                       "boliye.", None),
+    bot.NOT_INVESTING: ("Inhone kaha invest nahi kar sakte. Samjhaiye ki paise ka ek hissa unke e-wallet mein unka hi "
+                        "rehta hai, aur poochiye kya ₹5 lakh tak ho sakta hai.", "invest_explained"),
+    bot.HANDOVER: ("Teen baar galat PIN code ke baad bot ne inhe team ko diya. Call kijiye ya PIN dobara maangiye.", "ask_pin"),
+    bot.GUIDANCE_QA: ("Personal guidance maangi hai: bot inke sawaalon ke jawab de raha hai. Jo sawaal aapke liye "
+                      "chhode hain unka jawab dijiye, aur jab ready hon to Interested tap karne ko kahiye.", None),
+    bot.AWAIT_WEBINAR: ("Personal guidance ke baare mein poocha. Poochiye kya woh join kar sakte hain.", None),
+    bot.AWAIT_AVAILABILITY: ("Personal guidance kab join kar sakte hain, iska wait hai. Din aur time poochiye.", None),
+    bot.WEBINAR_CONFIRMED: ("Personal guidance confirm hai. Time ke saath unse contact kijiye.", None),
+    bot.WEBINAR_AVAILABILITY: ("Personal guidance ke liye apna time bata diya hai. Usi time contact kijiye.", None),
+}
+# The bot's steps as the summary names them, in Hinglish.
+STEP_HINGLISH = {
+    bot.CHOOSE_LANG: "Language chun rahe hain",
+    bot.AWAIT_PIN: "PIN code ka wait",
+    bot.AWAIT_EDUCATION: "Education poochi gayi",
+    bot.AWAIT_FRANCHISE: "Franchise ke baare mein poocha",
+    bot.NOT_ELIGIBLE: "12th se kam — eligible nahi",
+    bot.AWAIT_INVEST: "Investment ke baare mein poocha",
+    bot.AWAIT_DOCS: "Documents ke baare mein poocha",
+    bot.AWAIT_UPLOAD: "Upload link bheja gaya",
+    bot.SUBMITTED: "Documents submit ho gaye",
+    bot.NOT_SERVED: "Hamare area se bahar",
+    bot.NOT_INVESTING: "Invest nahi kar sakte",
+    bot.HANDOVER: "Team ki zaroorat hai",
+    bot.AWAIT_WEBINAR: "Personal guidance ke baare mein poocha",
+    bot.AWAIT_AVAILABILITY: "Guidance ka time poocha",
+    bot.WEBINAR_CONFIRMED: "Personal guidance confirm",
+    bot.WEBINAR_AVAILABILITY: "Guidance ka time bata diya",
+    bot.GUIDANCE_QA: "Personal guidance: sawaal pooch rahe hain",
 }
 
 
 # What someone writing to us directly (not from a campaign) is most likely
 # about, from the words they use: (topic, what the team should do).
 _TOPICS = [
-    ("installing or setting up a device", ("install", "istall", "instal", "device", "machine", "biometric",
+    ("device install ya setup karna", ("install", "istall", "instal", "device", "machine", "biometric",
                                            "fingerprint", "finger", "scanner", "printer", "setup", "set up", "मशीन",
                                            "डिवाइस", "इंस्टॉल"),
-     "If they already run a CSP, pass it to the support team for the device or installation."),
-    ("an ATM or a card", ("atm", "card", "debit", "kard", "एटीएम", "कार्ड"),
-     "Ask for their CSP ID and pass it to the support team."),
-    ("money, a payment or a transaction", ("commission", "payment", "paisa", "paise", "settlement", "wallet",
+     "Agar woh pehle se CSP chalate hain, to device ya installation ke liye support team ko bhejiye."),
+    ("ATM ya card", ("atm", "card", "debit", "kard", "एटीएम", "कार्ड"),
+     "Unki CSP ID maangiye aur support team ko bhejiye."),
+    ("paisa, payment ya transaction or a transaction", ("commission", "payment", "paisa", "paise", "settlement", "wallet",
                                             "balance", "refund", "transaction", "txn", "credit", "debited", "amount",
                                             "पैसा", "पैसे", "कमीशन", "भुगतान"),
-     "Ask for their CSP ID and the transaction details, and pass it to the support or accounts team."),
-    ("logging in or their ID", ("login", "log in", "password", "otp", "user id", "userid", "blocked", "block",
+     "Unki CSP ID aur transaction details maangiye, aur support ya accounts team ko bhejiye."),
+    ("login ya unki ID", ("login", "log in", "password", "otp", "user id", "userid", "blocked", "block",
                                 "लॉगिन", "पासवर्ड"),
-     "Ask for their CSP ID and pass it to the support team."),
-    ("their CSP agreement, certificate or papers", ("agreement", "certificate", "renew", "valid", "expire", "iibf",
+     "Unki CSP ID maangiye aur support team ko bhejiye."),
+    ("CSP agreement, certificate ya papers", ("agreement", "certificate", "renew", "valid", "expire", "iibf",
                                                    "एग्रीमेंट", "सर्टिफिकेट"),
-     "Check what they need about their papers and pass it to the support team."),
+     "Dekhiye unhe papers ke baare mein kya chahiye, aur support team ko bhejiye."),
     # "CSP" alone is mostly someone who already runs one, so it is not a sign here.
-    ("becoming a CSP (opening a banking outlet)", ("kiosk kholna", "kiosk chahiye", "csp chahiye", "csp banna",
+    ("CSP banna (banking outlet kholna)", ("kiosk kholna", "kiosk chahiye", "csp chahiye", "csp banna",
                                                   "franchise", "apply", "join", "mini bank", "mini branch",
                                                   "banking point", "कियोस्क खोलना", "फ्रेंचाइज़ी", "जुड़ना", "ખોલવું"),
-     "They may want to open a banking outlet: send them the greeting so the bot can take them through it."),
+     "Shayad banking outlet kholna chahte hain: greeting bhejiye taaki bot unhe aage le jaaye."),
 ]
-_MEDIA_WORDS = {"image": ("photo", "photos"), "document": ("document", "documents"), "video": ("video", "videos"),
-                "sticker": ("sticker", "stickers"), "location": ("location", "locations"),
-                "contacts": ("contact card", "contact cards"), "audio": ("voice note", "voice notes"),
-                "unsupported": ("message WhatsApp did not pass on (a poll, view-once or edited message)",
-                                "messages WhatsApp did not pass on (polls, view-once or edited messages)")}
+# Hinglish counts the same word for one and many: "1 photo", "2 photo".
+_MEDIA_WORDS = {"image": "photo", "document": "document", "video": "video", "sticker": "sticker",
+                "location": "location", "contacts": "contact card", "audio": "voice note",
+                "unsupported": "message jo WhatsApp ne aage nahi bheja (poll, view-once ya edit kiya hua)"}
 DIRECT_REPLY = {
-    "action_none": "Read what they sent and reply. They are not in the onboarding flow; if they already run a CSP "
-                   "and have a problem, pass it to the support team.",
+    "action_none": "Unhone jo bheja hai padhiye aur reply kijiye. Woh onboarding flow mein nahi hain; agar pehle se "
+                   "CSP chalate hain aur koi problem hai, to support team ko bhejiye.",
 }
 
 
 def _media(kind: str, n: int = 1) -> str:
-    one, many = _MEDIA_WORDS.get(kind, ("message the inbox cannot show", "messages the inbox cannot show"))
-    return f"{'a' if n == 1 else n} {one if n == 1 else many}"
+    return f"{n} {_MEDIA_WORDS.get(kind, 'message jo inbox dikha nahi sakta')}"
 
 
 def _caption(m) -> str:
@@ -153,68 +177,68 @@ def _story(db: Session, conv: WhatsAppConversation) -> List[str]:
                .order_by(WhatsAppCampaignRecipient.sent_at).all())
     if reached:
         r, c = reached[-1]
-        out.append(f"Reached by the campaign “{c.name}” on {_when(r.sent_at)}"
-                   + (f" ({len(reached)} campaigns in all)" if len(reached) > 1 else "") + ".")
+        out.append(f"Campaign “{c.name}” {_when(r.sent_at)} ko pahuncha"
+                   + (f" (kul {len(reached)} campaigns)" if len(reached) > 1 else "") + ".")
     if data.get("trigger"):
-        out.append(f"Tapped “{data['trigger']}”.")
+        out.append(f"“{data['trigger']}” tap kiya.")
     if data.get("lang"):
-        out.append(f"Chose {LANGUAGE_NAMES.get(data['lang'], data['lang'])}.")
+        out.append(f"{LANGUAGE_NAMES.get(data['lang'], data['lang'])} chuni.")
     coverage = data.get("coverage") or {}
     if coverage.get("pincode"):
         served = applications._served(conv)
-        out.append(f"Gave PIN {coverage['pincode']}: " + ("in our area" if served else "outside our area")
-                   + (f" (nearest of ours {coverage['nearest_pincode']}, {coverage.get('distance_km')} km)"
+        out.append(f"PIN {coverage['pincode']} diya: " + ("hamare area mein" if served else "hamare area se bahar")
+                   + (f" (hamara sabse paas {coverage['nearest_pincode']}, {coverage.get('distance_km')} km)"
                       if coverage.get("nearest_pincode") and coverage.get("nearest_pincode") != coverage["pincode"]
                       else "") + ".")
     edu = data.get("education")
     if edu:
-        out.append({"12": "Studied to 12th/Diploma.", "grad": "Graduate or post-graduate.",
-                    "other": "Below 12th: not eligible."}.get(edu, f"Education: {edu}."))
+        out.append({"12": "12th/Diploma tak padhe hain.", "grad": "Graduate ya post-graduate hain.",
+                    "other": "12th se kam: eligible nahi."}.get(edu, f"Education: {edu}."))
     if data.get("can_invest") is not None:
-        out.append("Can invest up to ₹5 lakh." if data["can_invest"] else "Said they cannot invest up to ₹5 lakh.")
+        out.append("₹5 lakh tak invest kar sakte hain." if data["can_invest"] else "Kaha ₹5 lakh tak invest nahi kar sakte.")
     docs = db.query(OnboardingDocument).filter(OnboardingDocument.phone == conv.phone).count()
     if conv.documents_submitted_at:
-        out.append(f"Submitted {docs} documents on {_when(conv.documents_submitted_at)}: a lead.")
+        out.append(f"{_when(conv.documents_submitted_at)} ko {docs} documents submit kiye: yeh lead hai.")
     elif conv.upload_token:
-        out.append("Was sent the upload link" + (f"; {docs} documents uploaded so far" if docs else "; nothing uploaded yet") + ".")
+        out.append("Upload link bheja gaya" + (f"; ab tak {docs} documents upload hue" if docs else "; abhi kuch upload nahi hua") + ".")
     guidance = data.get("webinar") or {}
     if guidance.get("answer") == "yes":
-        out.append("Confirmed for personal guidance.")
+        out.append("Personal guidance confirm kiya.")
     elif guidance.get("availability"):
-        out.append(f"For personal guidance, available: {guidance['availability']}.")
+        out.append(f"Personal guidance ke liye free hain: {guidance['availability']}.")
     if data.get("faq_answered"):
-        out.append("The bot answered from the FAQ: " + ", ".join(sorted(set(data["faq_answered"]))) + ".")
+        out.append("Bot ne FAQ se jawab diye: " + ", ".join(sorted(set(data["faq_answered"]))) + ".")
     return out
 
 
 # What tapping each of the bot's buttons means, in plain words.
 _TAPS = {
-    "start:interested": "Tapped “Interested”",
-    "start:webinar": "Asked for personal guidance",
-    "edu:12": "Said they studied up to 12th or a diploma",
-    "edu:grad": "Said they are a graduate or post-graduate",
-    "edu:other": "Said they studied below 12th (not eligible)",
-    "invest:yes": "Said YES, they can invest up to ₹5 lakh",
-    "invest:no": "Said NO, they cannot invest up to ₹5 lakh",
-    "franchise:yes": "Said yes to the franchise question",
-    "franchise:no": "Said no to the franchise question",
-    "docs:yes": "Said they have the documents",
-    "docs:no": "Said they do not have the documents yet",
-    "webinar:yes": "Said YES to personal guidance",
-    "webinar:no": "Said they cannot make personal guidance then",
+    "start:interested": "“Interested” tap kiya",
+    "start:webinar": "Personal guidance maangi",
+    "edu:12": "Bataya 12th ya diploma tak padhe hain",
+    "edu:grad": "Bataya graduate ya post-graduate hain",
+    "edu:other": "Bataya 12th se kam padhe hain (eligible nahi)",
+    "invest:yes": "HAAN kaha, ₹5 lakh tak invest kar sakte hain",
+    "invest:no": "NAHI kaha, ₹5 lakh tak invest nahi kar sakte",
+    "franchise:yes": "Franchise wale sawaal par haan kaha",
+    "franchise:no": "Franchise wale sawaal par nahi kaha",
+    "docs:yes": "Bataya documents hain",
+    "docs:no": "Bataya abhi documents nahi hain",
+    "webinar:yes": "Personal guidance ke liye HAAN kaha",
+    "webinar:no": "Kaha us time personal guidance join nahi kar sakte",
 }
-# What the bot is waiting for at each step, said simply.
+# What the bot is waiting for at each step, said simply: "bot ... ka wait kar raha hai".
 _WAITING = {
-    bot.CHOOSE_LANG: "choose a language",
-    bot.AWAIT_PIN: "send their PIN code",
-    bot.AWAIT_EDUCATION: "say how far they have studied",
-    bot.AWAIT_FRANCHISE: "say whether they can invest up to ₹5 lakh",
-    bot.AWAIT_INVEST: "say whether they can invest up to ₹5 lakh",
-    bot.AWAIT_DOCS: "say whether they have the documents",
-    bot.AWAIT_UPLOAD: "upload their documents",
-    bot.GUIDANCE_QA: "ask their questions, or tap Interested to start",
-    bot.AWAIT_WEBINAR: "say whether they can join personal guidance",
-    bot.AWAIT_AVAILABILITY: "say when they can join personal guidance",
+    bot.CHOOSE_LANG: "language chunne",
+    bot.AWAIT_PIN: "PIN code bhejne",
+    bot.AWAIT_EDUCATION: "education batane",
+    bot.AWAIT_FRANCHISE: "₹5 lakh tak invest kar sakte hain ya nahi, yeh batane",
+    bot.AWAIT_INVEST: "₹5 lakh tak invest kar sakte hain ya nahi, yeh batane",
+    bot.AWAIT_DOCS: "documents hain ya nahi, yeh batane",
+    bot.AWAIT_UPLOAD: "documents upload karne",
+    bot.GUIDANCE_QA: "sawaal poochne, ya shuru karne ke liye Interested tap karne",
+    bot.AWAIT_WEBINAR: "personal guidance join kar sakte hain ya nahi, yeh batane",
+    bot.AWAIT_AVAILABILITY: "personal guidance kab join kar sakte hain, yeh batane",
 }
 TIMELINE_LIMIT = 30
 
@@ -240,7 +264,7 @@ def timeline(db: Session, conv: WhatsAppConversation) -> List[dict]:
                .order_by(WhatsAppCampaignRecipient.sent_at).all())
     for r, c in reached:
         lines.append({"at": inbox.aware(r.sent_at), "kind": "event",
-                      "text": f"Our campaign “{c.name}” reached them on WhatsApp"})
+                      "text": f"Hamara campaign “{c.name}” WhatsApp par pahuncha"})
 
     for m in (db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone)
               .order_by(WhatsAppMessage.created_at).all()):
@@ -251,27 +275,27 @@ def timeline(db: Session, conv: WhatsAppConversation) -> List[dict]:
             # the flow above, and a campaign is already a line of its own.
             if m.sent_by and "@" in m.sent_by:
                 who = m.sent_by.split("@")[0].replace(".", " ").title()
-                what = bot.message_text(m) or (f"sent {_media(m.kind)}" if m.kind in _MEDIA_WORDS else "")
+                what = bot.message_text(m) or (f"ne {_media(m.kind)} bheja" if m.kind in _MEDIA_WORDS else "")
                 lines.append({"at": at, "kind": "team",
-                              "text": f"{who} replied: {_quote(what)}" if m.kind == "text" else f"{who} {what}"})
+                              "text": f"{who} ne reply kiya: {_quote(what)}" if m.kind == "text" else f"{who} {what}"})
             continue
         if m.kind == "interactive":
             tapped = payload.get("id") or ""
             if tapped.startswith("lang:"):
                 code = tapped.split(":", 1)[1]
-                lines.append({"at": at, "kind": "said", "text": f"Chose {LANGUAGE_NAMES.get(code, code)}"})
+                lines.append({"at": at, "kind": "said", "text": f"{LANGUAGE_NAMES.get(code, code)} chuni"})
             else:
-                lines.append({"at": at, "kind": "said", "text": _TAPS.get(tapped, f"Tapped “{m.body or tapped}”")})
+                lines.append({"at": at, "kind": "said", "text": _TAPS.get(tapped, f"“{m.body or tapped}” tap kiya")})
             continue
         if m.kind == "button":
-            lines.append({"at": at, "kind": "said", "text": f"Tapped “{m.body}” on our message"})
+            lines.append({"at": at, "kind": "said", "text": f"Hamare message par “{m.body}” tap kiya"})
             continue
         if m.kind == "reaction":
             continue
         said = bot.message_text(m)
         if m.kind == "audio":
             if not said:
-                lines.append({"at": at, "kind": "said", "text": "Sent a voice note (listen to it in the chat)"})
+                lines.append({"at": at, "kind": "said", "text": "Voice note bheja (chat mein sun lijiye)"})
                 continue
         elif m.kind != "text":
             words = _caption(m)
@@ -279,57 +303,57 @@ def timeline(db: Session, conv: WhatsAppConversation) -> List[dict]:
             # A run of photos (or documents) sent one after another is one line.
             if last and last.get("media") == m.kind and not words and not last.get("words"):
                 last["count"] += 1
-                last["text"] = f"Sent {_media(m.kind, last['count'])}"
+                last["text"] = f"{_media(m.kind, last['count'])} bheje"
             else:
-                text = f"Sent {_media(m.kind)}"
+                text = f"{_media(m.kind)} bheja"
                 if words:
-                    text += f" ({words[:60]})" if m.kind in ("document", "location") else f" with the words {_quote(words, 100)}"
+                    text += f" ({words[:60]})" if m.kind in ("document", "location") else f", saath mein likha {_quote(words, 100)}"
                 lines.append({"at": at, "kind": "said", "text": text, "media": m.kind, "count": 1, "words": bool(words)})
             continue
         if not said:
             continue
-        voice = " in a voice note" if m.kind == "audio" else ""
+        voice = " (voice note mein)" if m.kind == "audio" else ""
         pin = _PIN.search(said)
         faq = eko_knowledge.match(said)
         words = re.findall(r"\w+", said.lower())
         if faq or bot.looks_like_question(said):
             if faq and set(faq) <= answered_ids:
-                lines.append({"at": at, "kind": "answered", "text": f"Asked{voice}: {_quote(said)}. The bot answered it."})
+                lines.append({"at": at, "kind": "answered", "text": f"Poocha{voice}: {_quote(said)}. Bot ne jawab de diya."})
             elif faq:
                 lines.append({"at": at, "kind": "waiting",
-                              "text": f"Asked{voice}: {_quote(said)}. Needs your reply (a ready answer is below)."})
+                              "text": f"Poocha{voice}: {_quote(said)}. Aapke reply ka wait hai (ready jawab neeche hai)."})
             else:
-                lines.append({"at": at, "kind": "waiting", "text": f"Asked{voice}: {_quote(said)}. Needs your reply."})
+                lines.append({"at": at, "kind": "waiting", "text": f"Poocha{voice}: {_quote(said)}. Aapke reply ka wait hai."})
         elif pin and len(words) <= 4:
             where = ""
             if coverage.get("pincode") == pin.group(0):
-                where = " (we serve this area)" if applications._served(conv) else " (outside our area)"
-            lines.append({"at": at, "kind": "said", "text": f"Sent their PIN code {pin.group(0)}{where}"})
+                where = " (hamara area hai)" if applications._served(conv) else " (hamare area se bahar)"
+            lines.append({"at": at, "kind": "said", "text": f"PIN code {pin.group(0)} bheja{where}"})
         elif words and all(w in _ANSWER_WORDS for w in words):
-            lines.append({"at": at, "kind": "said", "text": f"Replied {_quote(said, 40)}"})
+            lines.append({"at": at, "kind": "said", "text": f"Reply kiya {_quote(said, 40)}"})
         else:
-            lines.append({"at": at, "kind": "said", "text": f"Wrote{voice}: {_quote(said)}"})
+            lines.append({"at": at, "kind": "said", "text": f"Likha{voice}: {_quote(said)}"})
 
     # Handovers between the bot and the team, and the dispositions recorded.
     from src.services import handover
     for a in db.query(ChatActivity).filter(ChatActivity.phone == conv.phone).all():
         name = handover.who(a.by)
-        text = {"to_person": f"{name} took the chat over from the bot",
-                "to_bot": f"{name} handed the chat back to the bot"
+        text = {"to_person": f"{name} ne bot se chat le li",
+                "to_bot": f"{name} ne chat wapas bot ko di"
                           + (f" ({handover.label(a.value)})" if a.value else ""),
-                "disposition": f"{name} recorded the outcome: {handover.label(a.value) or a.value}",
-                "stage": f"The lead moved to {a.value}"}.get(a.kind, a.kind)
+                "disposition": f"{name} ne outcome record kiya: {handover.label(a.value) or a.value}",
+                "stage": f"Lead {a.value} par pahunchi"}.get(a.kind, a.kind)
         if a.note and a.kind != "to_bot":
             text += f" — {_quote(a.note, 100)}"
         lines.append({"at": inbox.aware(a.at), "kind": "team", "text": text})
 
     if conv.upload_token and not conv.documents_submitted_at:
         docs = db.query(OnboardingDocument).filter(OnboardingDocument.phone == conv.phone).count()
-        lines.append({"at": None, "kind": "event", "text": "Got the link to upload documents"
-                      + (f"; {docs} uploaded so far" if docs else "; nothing uploaded yet")})
+        lines.append({"at": None, "kind": "event", "text": "Documents upload karne ka link mila"
+                      + (f"; ab tak {docs} upload hue" if docs else "; abhi kuch upload nahi hua")})
     if conv.documents_submitted_at:
         lines.append({"at": inbox.aware(conv.documents_submitted_at), "kind": "event",
-                      "text": "Submitted their documents 🎉"})
+                      "text": "Documents submit kar diye 🎉"})
     lines.sort(key=lambda x: (x["at"] is None, x["at"] or inbox.now()))
     for x in lines:
         x["when"] = _when(x["at"]) if x["at"] else ""
@@ -357,44 +381,43 @@ def _direct_story(db: Session, conv: WhatsAppConversation) -> dict:
 def in_short(conv: WhatsAppConversation, waiting_questions: int, direct: dict = None) -> str:
     """One or two plain sentences: where this person stands."""
     data = conv.bot_data or {}
-    name = conv.profile_name or "This person"
+    name = conv.profile_name or "Inhone"
     if direct is not None:
         parts = []
         sent = [_media(k, n) for k, n in direct["media"].items()]
         if sent:
-            parts.append("sent " + (", ".join(sent[:-1]) + " and " + sent[-1] if len(sent) > 1 else sent[0]))
+            parts.append((", ".join(sent[:-1]) + " aur " + sent[-1] if len(sent) > 1 else sent[0]) + " bheja")
         if direct["texts"]:
-            parts.append(f"wrote {_quote(direct['texts'][-1], 120)}"
-                         + (f" (and {len(direct['texts']) - 1} more message{'s' if len(direct['texts']) > 2 else ''})"
-                            if len(direct["texts"]) > 1 else ""))
-        out = f"{name} wrote to us directly, not from an AutoGMap campaign"
-        out += (": they " + " and ".join(parts) + ".") if parts else "."
+            parts.append(f"likha {_quote(direct['texts'][-1], 120)}"
+                         + (f" (aur {len(direct['texts']) - 1} message)" if len(direct["texts"]) > 1 else ""))
+        out = f"{name} ne seedha humein likha, AutoGMap campaign se nahi"
+        out += (": " + " aur ".join(parts) + ".") if parts else "."
         if direct["topics"]:
-            out += f" It seems to be about {direct['topics'][0][0]}."
+            out += f" Lagta hai baat {direct['topics'][0][0]} ke baare mein hai."
         elif direct["media"] and not direct["texts"]:
-            out += " They did not say what they need."
+            out += " Unhone nahi bataya ki kya chahiye."
         if direct["replied"]:
-            out += f" The team replied on {_when(direct['team'][-1].created_at)}."
+            out += f" Team ne {_when(direct['team'][-1].created_at)} ko reply kiya."
         else:
-            out += " Nobody has replied yet." if not direct["team"] else " They wrote again after the team's last reply."
+            out += " Abhi tak kisi ne reply nahi kiya." if not direct["team"] else " Team ke last reply ke baad unhone phir likha."
         return out
     q = applications.qualify(conv)
     if conv.documents_submitted_at:
-        first = f"{name} has submitted their documents. This is a lead: the team should call them for the next steps."
+        first = f"{name} ne documents submit kar diye hain. Yeh lead hai: aage ke steps ke liye team inhe call kare."
     elif q["not_qualified"]:
-        first = f"{name} is not eligible right now: {', '.join(q['not_qualified_reasons']).lower()}."
+        first = f"{name} abhi eligible nahi hain: {', '.join(q['not_qualified_reasons']).lower()}."
     elif conv.bot_step in (bot.WEBINAR_CONFIRMED, bot.WEBINAR_AVAILABILITY):
-        first = f"{name} wants personal guidance" + (" and confirmed they can join." if conv.bot_step == bot.WEBINAR_CONFIRMED
-                                                    else " and told us when they are free.") + " Someone should contact them."
+        first = f"{name} ko personal guidance chahiye" + (" aur join karna confirm kiya hai." if conv.bot_step == bot.WEBINAR_CONFIRMED
+                                                         else " aur bataya hai kab free hain.") + " Koi inse contact kare."
     elif conv.bot_step in _WAITING:
-        good = " and fits so far (area, education)" if q["pin_qualified"] and data.get("education") in ("12", "grad") else ""
-        first = f"{name} is interested{good}. The bot is waiting for them to {_WAITING[conv.bot_step]}."
+        good = " aur ab tak fit hain (area, education)" if q["pin_qualified"] and data.get("education") in ("12", "grad") else ""
+        first = f"{name} interested hain{good}. Bot unke {_WAITING[conv.bot_step]} ka wait kar raha hai."
     elif not conv.bot_step:
-        first = f"{name} wrote to us but has not started applying."
+        first = f"{name} ne humein likha par abhi apply karna shuru nahi kiya."
     else:
-        first = f"{name}: {bot.STEP_LABELS.get(conv.bot_step, conv.bot_step).lower()}."
+        first = f"{name}: {STEP_HINGLISH.get(conv.bot_step, conv.bot_step)}."
     if waiting_questions:
-        first += f" {waiting_questions} question{'s are' if waiting_questions > 1 else ' is'} waiting for your reply."
+        first += f" {waiting_questions} sawaal aapke reply ka wait kar rahe hain."
     return first
 
 
@@ -411,7 +434,7 @@ def summarise(db: Session, conv: WhatsAppConversation) -> dict:
         said = bot.message_text(m)
         voice = m.kind == "audio"
         if voice and not said:
-            other.append({"text": "(voice note, not transcribed: listen in the chat)", "at": _when(m.created_at), "voice": True})
+            other.append({"text": "(voice note, text nahi bana: chat mein sun lijiye)", "at": _when(m.created_at), "voice": True})
             continue
         if not said:
             continue
@@ -435,14 +458,14 @@ def summarise(db: Session, conv: WhatsAppConversation) -> dict:
     if direct is not None:
         key = None
         if direct["topics"]:
-            step_text = f"Reply to them about {direct['topics'][0][0]}. {direct['topics'][0][1]}"
+            step_text = f"Inhe {direct['topics'][0][0]} ke baare mein reply kijiye. {direct['topics'][0][1]}"
         elif direct["media"] and not direct["texts"]:
-            step_text = ("Open the chat to see what they sent, and ask them what they need. If they already run "
-                         "a CSP and have a problem, pass it to the support team.")
+            step_text = ("Chat kholkar dekhiye kya bheja hai, aur poochiye kya chahiye. Agar pehle se CSP chalate hain "
+                         "aur koi problem hai, to support team ko bhejiye.")
         else:
             step_text = DIRECT_REPLY["action_none"]
         if direct["replied"]:
-            step_text = "The team has replied; wait for them to write back. " + step_text
+            step_text = "Team ne reply kar diya hai; unke jawab ka wait kijiye. " + step_text
     open_window = bool(conv.last_inbound_at and inbox.now() - inbox.aware(conv.last_inbound_at) < inbox.REPLY_WINDOW)
     reply = None
     unanswered = [q for q in questions if q["answers"] and not q["answered_by_bot"]]
@@ -467,18 +490,18 @@ def summarise(db: Session, conv: WhatsAppConversation) -> dict:
     needing = [q for q in questions if not q["answered_by_bot"]]
     events = timeline(db, conv)
     earlier = max(len(events) - TIMELINE_LIMIT, 0)
-    headline = conv.bot_step and bot.STEP_LABELS.get(conv.bot_step, conv.bot_step) or (
-        "Wrote to us directly" if direct is not None else "Has not started")
+    headline = conv.bot_step and STEP_HINGLISH.get(conv.bot_step, conv.bot_step) or (
+        "Seedha humein likha" if direct is not None else "Abhi shuru nahi kiya")
     if conv.needs_attention:
-        headline += " · needs attention"
+        headline += " · dhyan dena hai"
     from src.services import handover, tickets
     ticket = tickets.open_ticket(db, conv.phone) if conv.needs_attention else None
     short = in_short(conv, len(needing), direct)
     if conv.bot_paused and conv.handled_by:
-        short += (f" {handover.who(conv.handled_by)} is handling this chat since {_when(conv.handled_since)}; "
-                  "the bot stays quiet until it is handed back.")
-        step_text = ("When you are done, record the outcome and hand the chat back to the bot, which asks again "
-                     "where it left off. " + step_text)
+        short += (f" {_when(conv.handled_since)} se {handover.who(conv.handled_by)} yeh chat dekh rahe hain; "
+                  "jab tak chat wapas nahi milti, bot chup rahega.")
+        step_text = ("Kaam ho jaaye to outcome record kijiye aur chat wapas bot ko dijiye; bot wahin se dobara "
+                     "poochega jahan ruka tha. " + step_text)
     disposition = handover.current(conv)
     return {
         "generated_at": inbox.now().isoformat(),
@@ -498,7 +521,7 @@ def summarise(db: Session, conv: WhatsAppConversation) -> dict:
         "other_messages": other[-6:],
         "attention": {"reason": conv.attention_reason, "at": _when(conv.attention_at)} if conv.needs_attention else None,
         "next": {
-            "action": step_text if open_window else step_text + " The 24-hour window is closed: only a campaign template can reach them now.",
+            "action": step_text if open_window else step_text + " 24 ghante ki window band hai: ab sirf campaign template se hi pahunch sakte hain.",
             "reply": reply if open_window else None,
             "reply_language": LANGUAGE_NAMES.get(lang, lang),
             "window_open": open_window,
@@ -510,7 +533,7 @@ def as_text(s: dict) -> str:
     """The summary as plain text, for the attention email."""
     p = s["person"]
     place = ", ".join(x for x in (p["tehsil"], p["district"], p["state"]) if x)
-    lines = ([f"Ticket:    {s['ticket_id']} (raised)", ""] if s.get("ticket_id") else []) + [
+    lines = ([f"Ticket:    {s['ticket_id']} (raise hua)", ""] if s.get("ticket_id") else []) + [
         f"Name:      {p['name'] or '—'}",
         f"Phone:     {p['phone']}",
         f"PIN code:  {p['pincode'] or '—'}",
@@ -524,22 +547,22 @@ def as_text(s: dict) -> str:
         lines.append(f"Campaign:  {p['campaign']}")
     if p.get("language"):
         lines.append(f"Language:  {p['language']}")
-    lines += ["", "IN SHORT", s["in_short"]]
+    lines += ["", "SHORT MEIN", s["in_short"]]
     if s.get("attention"):
-        lines.append(f"Why it needs attention: {s['attention']['reason'] or 'marked for the team'} ({s['attention']['at']})")
-    lines += ["", "THE CONVERSATION SO FAR"]
+        lines.append(f"Dhyan kyun dena hai: {s['attention']['reason'] or 'team ke liye mark kiya gaya'} ({s['attention']['at']})")
+    lines += ["", "AB TAK KI BAATCHEET"]
     if s.get("timeline_earlier"):
-        lines.append(f"  (… {s['timeline_earlier']} earlier steps)")
+        lines.append(f"  (… {s['timeline_earlier']} pehle ke steps)")
     marks = {"waiting": "❗ ", "answered": "✓ "}
     lines += [f"- {t['when'] + ' · ' if t['when'] else ''}{marks.get(t['kind'], '')}{t['text']}" for t in s["timeline"]]
     if s["waiting_questions"]:
-        lines += ["", "QUESTIONS WAITING FOR YOUR REPLY"]
+        lines += ["", "SAWAAL JO AAPKE REPLY KA WAIT KAR RAHE HAIN"]
         lines += [f"- “{q['text']}”" for q in s["waiting_questions"]]
     answers = [(q, a) for q in s["questions"] if not q["answered_by_bot"] for a in q["answers"]]
     if answers:
-        lines += ["", "ANSWERS YOU CAN SEND (from Eko's FAQ)"]
-        lines += [f"- To “{q['text']}”: {a['answer']}" for q, a in answers]
-    lines += ["", "WHAT TO DO NEXT", f"- {s['next']['action']}"]
+        lines += ["", "JAWAB JO AAP BHEJ SAKTE HAIN (Eko ke FAQ se)"]
+        lines += [f"- “{q['text']}” ke liye: {a['answer']}" for q, a in answers]
+    lines += ["", "AAGE KYA KAREIN", f"- {s['next']['action']}"]
     if s["next"]["reply"]:
-        lines += [f"- A reply you could send ({s['next']['reply_language']}):", "", s["next"]["reply"]]
+        lines += [f"- Yeh reply bhej sakte hain ({s['next']['reply_language']}):", "", s["next"]["reply"]]
     return "\n".join(lines)
