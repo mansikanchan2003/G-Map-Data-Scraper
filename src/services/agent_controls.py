@@ -42,6 +42,7 @@ CONTEXT: Dict[str, dict] = {
     "rejected_draft": {"label": "Rejected drafts", "about": "Drafts a reviewer rejected, and why"},
     "past_mistake": {"label": "Past mistakes", "about": "Wording reviewers corrected before"},
     "growth_goal": {"label": "Growth goal", "about": "This month's lead goal and the funnel's weak step"},
+    "accepted_lesson": {"label": "Accepted lessons", "about": "Patches the admin accepted from reviewers' corrections"},
 }
 
 

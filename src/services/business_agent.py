@@ -477,6 +477,8 @@ def run_generation(template_ids: List[str]) -> None:
             _, perf, learned["history"] = studio.trimmed_context(db, [], learned.get("templates") or [],
                                                                  learned.get("history") or {})
             learned["templates"] = perf
+            # Accepted lessons lead the mistakes to avoid (learning_loop).
+            learned["mistakes"] = list(learned["history"].get("accepted_lessons") or []) + list(learned.get("mistakes") or [])
             from src.services import agent_controls
             if not agent_controls.context_on(db, "growth_goal"):
                 learned["growth"] = None

@@ -924,8 +924,15 @@ def _reply_disposition(db, conv, msg) -> bool:
     if (not said or "?" in said or eko_knowledge.distrust(said)
             or (eko_knowledge.asks(said) and eko_knowledge.match(said))):
         return False
-    from src.services import reply_dispositions
-    hit = reply_dispositions.detect(said)
+    from src.services import learning_loop, reply_dispositions
+    # A rule the admin accepted from the team's corrections comes first (learning_loop).
+    learned = learning_loop.learned_reading(db, said)
+    if learned:
+        when = (reply_dispositions.call_time(said, inbox.now()) if learned in ("busy_at_time", "int_callback")
+                else reply_dispositions.follow_up_date(said, inbox.now()) if learned.startswith("hold_") else None)
+        hit = (learned, when)
+    else:
+        hit = reply_dispositions.detect(said)
     if not hit:
         return False
     key, when = hit
@@ -938,7 +945,7 @@ def _reply_disposition(db, conv, msg) -> bool:
     ]
     # Read two ways ("busy hoon, not interested"): the bot does not guess. A person
     # clarifies, with a ticket; they hear their message reached the team (2026-10-26).
-    readings = reply_dispositions.ambiguous(said)
+    readings = [] if learned else reply_dispositions.ambiguous(said)
     if readings:
         labels = " or ".join(dz.label(k) for k in readings)
         flag(conv, f"Clarify: “{said[:200]}” could mean {labels}. Record the right disposition.")
@@ -950,12 +957,12 @@ def _reply_disposition(db, conv, msg) -> bool:
                         "ambiguous": readings})
         logger.info(f"onboarding_bot event=REPLY_AMBIGUOUS phone=...{conv.phone[-4:]} readings={readings}")
         return True
-    sure = reply_dispositions.confidence(said, key)
+    sure = 0.95 if learned else reply_dispositions.confidence(said, key)
     logger.info(f"onboarding_bot event=REPLY_DISPOSITION phone=...{conv.phone[-4:]} key={key}")
     before = db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone,
                                               WhatsAppMessage.direction == "OUT").count()
     handover.record(db, conv, key, "bot", note=f"They wrote: “{said[:200]}”", at=when)
-    phrase = reply_dispositions.matched_phrase(said, key) or ""
+    phrase = (said.strip().lower() if learned else reply_dispositions.matched_phrase(said, key)) or ""
     agent_telemetry.log(db, "bot_reply_disposition", "chat", conv.phone, key, prompt=said, context=[
         agent_telemetry.chunk("rule", phrase, key, score=sure),
         *([agent_telemetry.chunk("when", when.isoformat())] if when else [])], evaluation={

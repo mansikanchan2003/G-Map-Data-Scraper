@@ -358,10 +358,26 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Run AutoGMap's golden evaluation set.")
     ap.add_argument("--suite", choices=sorted(CHECKERS))
     ap.add_argument("--save", action="store_true", help="keep the report for the Agent quality page")
+    ap.add_argument("--suites", help="several suites, comma-separated")
+    ap.add_argument("--rules", help="learning-loop rules to try, as JSON [[disposition, phrase], ...]")
+    ap.add_argument("--json", action="store_true", help="print the report as JSON on the last line")
     args = ap.parse_args(argv)
     import logging
     logging.disable(logging.CRITICAL)
-    report = run(args.suite)
+    from src.services import learning_loop
+    rules = [tuple(r) for r in json.loads(args.rules)] if args.rules else None
+    with (learning_loop.trying(rules) if rules is not None else contextlib.nullcontext()):
+        if args.suites:
+            parts = [run(s) for s in args.suites.split(",")]
+            report = {"ran_at": parts[0]["ran_at"], "seconds": sum(p["seconds"] for p in parts),
+                      "total": sum(p["total"] for p in parts), "passed": sum(p["passed"] for p in parts),
+                      "suites": {k: v for p in parts for k, v in p["suites"].items()},
+                      "failures": [f for p in parts for f in p["failures"]]}
+        else:
+            report = run(args.suite)
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False))
+        return 0 if report["passed"] == report["total"] else 1
     for name, s in sorted(report["suites"].items()):
         print(f"  {name:<18} {s['passed']:>3}/{s['total']:<3}")
     for f in report["failures"]:

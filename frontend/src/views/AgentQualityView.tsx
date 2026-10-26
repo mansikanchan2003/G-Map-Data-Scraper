@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackToParent } from '../components/SubPage';
 import type { NavTab } from '../components/Header';
 import {
-  fetchAgentQuality, fetchAgentRun, fetchAgentRuns, fetchControls, fetchGolden, fetchSources, setSwitch,
-  type AgentQuality, type AgentRun, type ContextChunk, type Controls, type GoldenHistory, type SourceRow,
+  acceptPatch, dismissPatch, fetchAgentQuality, fetchAgentRun, fetchAgentRuns, fetchControls, fetchCopyTrial, fetchGolden,
+  fetchLearning, fetchSources, setSwitch, startCopyTrial, tryReply, undoPatch,
+  type AgentQuality, type AgentRun, type ContextChunk, type Controls, type CopyTrial, type Draft, type GateReport,
+  type GoldenHistory, type Learning, type Patch, type Reading, type SourceRow,
 } from '../api/agents';
 import { formatDateTime } from '../utils/datetime';
 
@@ -628,6 +630,276 @@ const ControlsCard: React.FC<{ isAdmin: boolean; tokens: Record<string, number> 
   );
 };
 
+
+/** Git-style: the line as it is, and the line the patch puts in its place. */
+const PatchDiff: React.FC<{ before: string; after: string; file: string }> = ({ before, after, file }) => (
+  <div className="rounded-lg border border-slate-800 overflow-hidden font-mono-code text-[12px]">
+    <div className="px-3 py-1.5 bg-slate-950 border-b border-slate-800 text-slate-500 flex items-center gap-1.5">
+      <Icon name="description" className="text-[14px]" />{file}
+    </div>
+    <div className="px-3 py-1.5 bg-rose-950/50 text-rose-200 whitespace-pre-wrap"><span className="select-none text-rose-400 mr-2">−</span>{before}</div>
+    <div className="px-3 py-1.5 bg-emerald-950/50 text-emerald-200 whitespace-pre-wrap"><span className="select-none text-emerald-400 mr-2">+</span>{after}</div>
+  </div>
+);
+
+const PATCH_KIND: Record<Patch['kind'], { label: string; icon: string; file: string; tint: string }> = {
+  copy_lesson: { label: 'Copywriter lesson', icon: 'edit_note', file: 'template agents · lessons the team accepted', tint: 'bg-sky-950 text-sky-300' },
+  rule_phrase: { label: 'Bot rule', icon: 'rule', file: 'bot · dispositions read from replies', tint: 'bg-amber-950 text-amber-300' },
+  faq_review: { label: 'FAQ to review', icon: 'quiz', file: "bot · Eko's FAQ (never changed automatically)", tint: 'bg-violet-950 text-violet-300' },
+};
+
+/** Drift & repair: corrections become proposed patches; the admin accepts them after the golden gate. */
+const LearningCard: React.FC<{ isAdmin: boolean; onChanged: () => void }> = ({ isAdmin, onChanged }) => {
+  const [l, setL] = useState<Learning | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [gate, setGate] = useState<{ id: string; message: string; report?: GateReport } | null>(null);
+  const load = useCallback(() => { fetchLearning().then(setL).catch(() => setL({ proposals: [], accepted: [], log: [] })); }, []);
+  useEffect(() => { load(); }, [load]);
+  const accept = async (p: Patch) => {
+    setBusy(p.id); setGate(null);
+    try {
+      const r = await acceptPatch(p.id);
+      if (!r.ok) setGate({ id: p.id, message: r.message, report: r.gate });
+    } catch (e: any) {
+      setGate({ id: p.id, message: `The patch was not accepted: ${e?.message || 'the server did not answer'}.` });
+    } finally { setBusy(null); load(); onChanged(); }
+  };
+  const act = async (fn: () => Promise<Learning>, id: string) => { setBusy(id); try { setL(await fn()); } finally { setBusy(null); } };
+  if (!l) return null;
+  return (
+    <Card title="Learning loop" icon="model_training"
+      sub="What people corrected, proposed as patches to the agents. A bot rule is tried against the golden set before it goes in."
+      right={(
+        <div className="flex gap-2 text-[11.5px]">
+          <span className="px-2.5 py-1 rounded-full bg-amber-950 text-amber-300 font-semibold">{l.proposals.length} proposed</span>
+          <span className="px-2.5 py-1 rounded-full bg-emerald-950 text-emerald-300 font-semibold">{l.accepted.length} in force</span>
+        </div>
+      )}>
+      <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
+        <div className="space-y-3">
+          {l.proposals.length === 0 && (
+            <div className="rounded-xl border border-dashed border-slate-800 p-8 flex flex-col items-center gap-2 text-center">
+              <Icon name="auto_fix_high" className="text-[30px] text-slate-600" />
+              <span className="text-[13px] text-slate-500 max-w-sm">Nothing to learn yet. When a reviewer rewrites a draft or the team records a different disposition than the bot, a patch appears here.</span>
+            </div>
+          )}
+          {l.proposals.map(p => {
+            const k = PATCH_KIND[p.kind];
+            const failed = gate?.id === p.id ? gate : null;
+            return (
+              <div key={p.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${k.tint}`}><Icon name={k.icon} className="text-[14px]" />{k.label}</span>
+                  <span className="text-[12.5px] font-semibold text-slate-100">{p.title}</span>
+                  <span className="flex-1" />
+                  <span className="text-[11px] text-slate-500">{p.evidence.by && p.evidence.by !== 'implicit' ? `by ${p.evidence.by}` : ''}{p.evidence.at ? ` · ${ago(p.evidence.at)}` : ''}</span>
+                </div>
+                <div className="mt-2.5"><PatchDiff before={p.before} after={p.after} file={k.file} /></div>
+                <div className="text-[12px] text-slate-400 mt-2 flex items-start gap-1.5"><Icon name="lightbulb" className="text-[15px] text-amber-300 mt-[1px]" />{p.lesson}</div>
+                {failed && (
+                  <div className="mt-2.5 rounded-lg border border-rose-800/60 bg-rose-950/60 p-2.5 text-[12px]">
+                    <div className="text-rose-200 font-semibold flex items-center gap-1.5"><Icon name="gpp_bad" className="text-[16px]" />{failed.message}</div>
+                    {failed.report && <div className="text-rose-300/80 mt-1">{failed.report.passed}/{failed.report.total} golden cases pass with it.</div>}
+                    {failed.report?.failures.slice(0, 4).map(f => <div key={f.id} className="text-rose-200/80 mt-0.5">· {f.id}: {f.title}</div>)}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {p.kind !== 'faq_review' ? (
+                    <button disabled={!isAdmin || busy === p.id} onClick={() => accept(p)}
+                      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-semibold disabled:opacity-50 cursor-pointer">
+                      <Icon name={busy === p.id ? 'progress_activity' : 'merge'} className={`text-[16px] ${busy === p.id ? 'animate-spin' : ''}`} />
+                      {busy === p.id ? (p.kind === 'rule_phrase' ? 'Running the golden set…' : 'Accepting…') : 'Accept prompt patch'}
+                    </button>
+                  ) : (
+                    <button disabled={!isAdmin || busy === p.id} onClick={() => accept(p)}
+                      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-[12px] font-semibold disabled:opacity-50 cursor-pointer">
+                      <Icon name="task_alt" className="text-[16px]" />Mark reviewed
+                    </button>
+                  )}
+                  <button disabled={!isAdmin || busy === p.id} onClick={() => act(() => dismissPatch(p.id), p.id)}
+                    className="h-8 px-3 rounded-lg border border-slate-700 text-slate-300 text-[12px] font-semibold hover:bg-slate-800 disabled:opacity-50 cursor-pointer">Dismiss</button>
+                  {!isAdmin && <span className="text-[11px] text-slate-500 self-center">Only the admin can accept patches</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 mb-2 flex items-center gap-1.5"><Icon name="verified" className="text-[15px] text-emerald-300" />In force</div>
+          {l.accepted.length === 0 ? <div className="text-[12.5px] text-slate-500">No patch accepted yet.</div> : (
+            <ul className="space-y-2">
+              {l.accepted.map(p => (
+                <li key={p.id} className="rounded-xl border border-emerald-900/50 bg-emerald-950/20 p-3">
+                  <div className="flex items-start gap-2">
+                    <Icon name={PATCH_KIND[p.kind].icon} className="text-[17px] text-emerald-300 mt-[1px]" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[12.5px] text-slate-200">{p.lesson}</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">by {p.accepted_by} · {ago(p.accepted_at || null)}
+                        {p.gate ? ` · golden ${p.gate.passed}/${p.gate.total}` : ''}</div>
+                    </div>
+                    {p.kind !== 'faq_review' && (
+                      <button disabled={!isAdmin || busy === p.id} onClick={() => act(() => undoPatch(p.id), p.id)}
+                        className="text-[11.5px] text-slate-400 hover:text-rose-300 disabled:opacity-50 cursor-pointer flex items-center gap-1">
+                        <Icon name="undo" className="text-[15px]" />Undo
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {l.log.length > 0 && (
+            <div className="mt-4">
+              <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 mb-1.5">What was done</div>
+              <ul className="space-y-1 text-[11.5px] text-slate-400 max-h-36 overflow-y-auto">
+                {l.log.slice(0, 10).map((x, i) => (
+                  <li key={i}>
+                    <span className={x.what === 'accepted' ? 'text-emerald-300' : x.what === 'undone' ? 'text-rose-300' : 'text-slate-300'}>{x.what}</span>
+                    {x.lesson ? `: ${x.lesson.slice(0, 70)}${x.lesson.length > 70 ? '…' : ''}` : ''} · {x.by} · {ago(x.at)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+const SOURCES_OFF = [
+  { key: 'approved_example', label: 'Approved examples' }, { key: 'performance', label: 'Past performance' },
+  { key: 'rejected_draft', label: 'Rejected drafts' }, { key: 'past_mistake', label: 'Past mistakes' },
+  { key: 'growth_goal', label: 'Growth goal' },
+];
+
+/** Side by side: today's behaviour against a change, before it goes anywhere near a lead. */
+const PlaygroundCard: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
+  const [tab, setTab] = useState<'reply' | 'copy'>('reply');
+  const [text, setText] = useState('abhi busy hoon, shaam 5 baje call karna');
+  const [reading, setReading] = useState<Awaited<ReturnType<typeof tryReply>> | null>(null);
+  const [state, setState] = useState('Gujarat');
+  const [instruction, setInstruction] = useState('');
+  const [without, setWithout] = useState<string[]>([]);
+  const [trial, setTrial] = useState<CopyTrial | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const read = async () => { setErr(null); try { setReading(await tryReply(text)); } catch (e: any) { setErr(e.message); } };
+  const write = async () => {
+    setErr(null); setTrial({ status: 'running', state, instruction, without });
+    try {
+      const { id } = await startCopyTrial(state, instruction, without);
+      for (let i = 0; i < 90; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const t = await fetchCopyTrial(id);
+        setTrial(t);
+        if (t.status !== 'running') break;
+      }
+    } catch (e: any) { setErr(e.message); setTrial(null); }
+  };
+  const Pane: React.FC<{ title: string; icon: string; accent: string; children: React.ReactNode }> = ({ title, icon, accent, children }) => (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 min-w-0">
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider font-semibold mb-2.5" style={{ color: accent }}>
+        <Icon name={icon} className="text-[15px]" />{title}
+      </div>
+      {children}
+    </div>
+  );
+  const ReadingView: React.FC<{ r: Reading }> = ({ r }) => (
+    <div>
+      <div className="text-[18px] font-semibold text-slate-100">{r.label}</div>
+      <div className="text-[12px] text-slate-500 mt-0.5">Read from {r.by}</div>
+      {r.confidence != null && (
+        <div className="mt-2.5">
+          <div className="flex justify-between text-[11px] text-slate-500"><span>Confidence</span><span>{Math.round(r.confidence * 100)}%</span></div>
+          <div className="h-1.5 rounded-full bg-slate-800 mt-1 overflow-hidden">
+            <div className="h-full rounded-full" style={{ width: `${r.confidence * 100}%`, background: r.confidence >= 0.75 ? 'var(--st-good)' : 'var(--st-warn)' }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+  const DraftView: React.FC<{ d?: Draft }> = ({ d }) => !d ? <div className="h-28 rounded-lg bg-slate-900 animate-pulse" /> : (
+    <div>
+      <div className="whitespace-pre-wrap text-[13px] text-slate-200 leading-relaxed max-h-64 overflow-y-auto">{d.body}</div>
+      <div className="mt-2.5 flex flex-wrap gap-2 text-[11px]">
+        <span className={`px-2 py-0.5 rounded-full font-semibold ${d.problems.length ? 'bg-rose-950 text-rose-300' : 'bg-emerald-950 text-emerald-300'}`}>
+          {d.problems.length ? `${d.problems.length} checker problem${d.problems.length > 1 ? 's' : ''}` : 'Checker: clean'}
+        </span>
+        <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">≈ {num(d.prompt_tokens)} prompt tokens</span>
+      </div>
+      {d.problems.slice(0, 3).map((p, i) => <div key={i} className="text-[11.5px] text-rose-300/80 mt-1">· {p}</div>)}
+    </div>
+  );
+  return (
+    <Card title="Playground" icon="science" sub="Try a change side by side with today's behaviour; nothing here reaches a lead or Meta"
+      right={(
+        <div className="flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 p-1">
+          {([['reply', 'Bot rules', 'rule'], ['copy', 'Copywriter', 'edit_note']] as const).map(([k, label, icon]) => (
+            <button key={k} onClick={() => setTab(k)}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer ${tab === k ? 'bg-slate-800 text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}>
+              <Icon name={icon} className="text-[15px]" />{label}
+            </button>
+          ))}
+        </div>
+      )}>
+      {err && <div className="mb-3 p-2.5 rounded-lg border border-rose-800/60 bg-rose-950 text-rose-300 text-[12.5px]">{err}</div>}
+      {tab === 'reply' ? (
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') read(); }}
+              placeholder="Type a reply a lead might send…"
+              className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-sky-500" />
+            <button onClick={read} className="h-10 px-4 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-[12.5px] font-semibold cursor-pointer flex items-center gap-1.5">
+              <Icon name="play_arrow" className="text-[17px]" />Read it
+            </button>
+          </div>
+          {reading && (
+            <div className="grid gap-3 md:grid-cols-2">
+              <Pane title="Today, in production" icon="public" accent="var(--ag-1)"><ReadingView r={reading.today} /></Pane>
+              <Pane title={`With the ${reading.pending_rules} pending rule${reading.pending_rules === 1 ? '' : 's'}`} icon="science" accent="var(--ag-4)"><ReadingView r={reading.with_patches} /></Pane>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid gap-2 md:grid-cols-[180px_1fr_auto]">
+            <input value={state} onChange={e => setState(e.target.value)} placeholder="State"
+              className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-sky-500" />
+            <input value={instruction} onChange={e => setInstruction(e.target.value)} placeholder="The change to try, e.g. Open with the free training"
+              className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-sky-500" />
+            <button onClick={write} disabled={!isAdmin || trial?.status === 'running'}
+              className="h-10 px-4 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-[12.5px] font-semibold cursor-pointer flex items-center gap-1.5 disabled:opacity-50">
+              <Icon name={trial?.status === 'running' ? 'progress_activity' : 'play_arrow'} className={`text-[17px] ${trial?.status === 'running' ? 'animate-spin' : ''}`} />
+              {trial?.status === 'running' ? 'Writing both…' : 'Write both'}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5 items-center text-[11.5px]">
+            <span className="text-slate-500 mr-1">Leave out:</span>
+            {SOURCES_OFF.map(s => {
+              const on = without.includes(s.key);
+              return (
+                <button key={s.key} onClick={() => setWithout(on ? without.filter(x => x !== s.key) : [...without, s.key])}
+                  className={`px-2.5 py-1 rounded-full border cursor-pointer ${on ? 'border-amber-600 bg-amber-950 text-amber-200 line-through' : 'border-slate-700 text-slate-400 hover:border-slate-600'}`}>
+                  {s.label}
+                </button>
+              );
+            })}
+            {!isAdmin && <span className="text-slate-500 ml-2">Only the admin can run copy trials (they use the model)</span>}
+          </div>
+          {trial && (
+            trial.status === 'failed' ? <div className="text-[12.5px] text-rose-300">The trial failed: {trial.error}</div> : (
+              <div className="grid gap-3 md:grid-cols-2">
+                <Pane title="Today's prompt" icon="public" accent="var(--ag-1)"><DraftView d={trial.today} /></Pane>
+                <Pane title="With your change" icon="science" accent="var(--ag-4)"><DraftView d={trial.changed} /></Pane>
+              </div>
+            )
+          )}
+        </div>
+      )}
+    </Card>
+  );
+};
+
 /** Why a template draft reads the way it does: its run, in the inspector (opened from Template Studio). */
 export const WhyThisDraft: React.FC<{ templateId: string }> = ({ templateId }) => {
   const [r, setR] = useState<AgentRun | null | undefined>(undefined);
@@ -821,8 +1093,12 @@ export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean; isAdmin?
 
         {golden && <GoldenCard g={golden} />}
 
+        <LearningCard isAdmin={isAdmin} onChanged={load} />
+
+        <PlaygroundCard isAdmin={isAdmin} />
+
         {q && q.biggest_corrections.length > 0 && (
-          <Card title="Drift & repair" icon="build_circle" sub="Where people changed the most: what the agents should learn first">
+          <Card title="Biggest corrections" icon="build_circle" sub="Where people changed the most; the learning loop below turns them into patches">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {q.biggest_corrections.map(r => {
                 const ag = agentOf(r.agent);

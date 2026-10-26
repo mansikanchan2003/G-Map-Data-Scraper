@@ -2979,3 +2979,86 @@ def test_each_source_shows_when_it_was_refreshed(db, client):
     keys = {r["key"] for r in rows}
     assert {"tara", "journeys", "approved", "faq", "golden", "runs"} <= keys
     assert all(r["status"] in ("fresh", "stale", "never") for r in rows)
+
+
+# --- The learning loop (blueprint phase 4, 2026-10-26) ----------------------------
+
+def _gate_passes(monkeypatch, passes=True):
+    from src.services import learning_loop
+    report = {"total": 31, "passed": 31 if passes else 29,
+              "failures": [] if passes else [{"id": "rd-01", "title": "x", "problems": ["broke"]}]}
+    monkeypatch.setattr(learning_loop, "_gate", lambda rules: report)
+
+
+def test_a_reviewers_rewrite_becomes_a_lesson_the_copywriter_is_given(db, client, monkeypatch):
+    from src.services import agent_telemetry, learning_loop, template_studio
+    agent_telemetry.log(db, "template_writer", "template", "t-1", "Pakki kamaai ka mauka!\nAaj hi apply karein!",
+                        final_output="Kamaai ka ek naya mauka!\nAaj hi apply karein!", finalized_by="kavya@eko.co.in")
+    db.commit()
+    props = client.get("/api/v1/agents/learning").json()["proposals"]
+    lesson = next(p for p in props if p["kind"] == "copy_lesson")
+    assert "Kamaai ka ek naya mauka" in lesson["after"] and "Pakki" in lesson["before"]
+    r = client.post(f"/api/v1/agents/learning/{lesson['id']}/accept")
+    assert r.status_code == 200, r.text
+    _, _, history = template_studio.trimmed_context(db, [], [], {})
+    assert history["accepted_lessons"] and "Kamaai ka ek naya mauka" in history["accepted_lessons"][0]
+    assert not [p for p in client.get("/api/v1/agents/learning").json()["proposals"] if p["id"] == lesson["id"]]
+
+
+def test_a_reply_the_team_read_differently_becomes_a_rule_after_the_golden_gate(db, client, monkeypatch):
+    _gate_passes(monkeypatch)
+    tap_campaign(db)
+    say(db, "busy hoon abhi")
+    _record(client, "busy_later")
+    rule = next(p for p in client.get("/api/v1/agents/learning").json()["proposals"] if p["kind"] == "rule_phrase")
+    assert rule["key"] == "busy_later" and rule["phrase"] == "busy hoon abhi"
+    assert client.post(f"/api/v1/agents/learning/{rule['id']}/accept").status_code == 200
+    say(db, "busy hoon abhi")
+    assert conv(db).disposition == "busy_later" and conv(db).disposition_by == "bot"
+    trial = client.post("/api/v1/agents/playground/reply", json={"text": "busy hoon abhi"}).json()
+    assert trial["today"]["key"] == "busy_later" and trial["today"]["by"] == "an accepted rule"
+    assert client.post(f"/api/v1/agents/learning/{rule['id']}/undo").status_code == 200
+    assert client.post("/api/v1/agents/playground/reply", json={"text": "busy hoon abhi"}).json()["today"]["key"] == "busy_busy"
+
+
+def test_a_rule_that_breaks_the_golden_set_is_refused(db, client, monkeypatch):
+    _gate_passes(monkeypatch, passes=False)
+    tap_campaign(db)
+    say(db, "busy hoon abhi")
+    _record(client, "ni_currently")
+    rule = next(p for p in client.get("/api/v1/agents/learning").json()["proposals"] if p["kind"] == "rule_phrase")
+    r = client.post(f"/api/v1/agents/learning/{rule['id']}/accept")
+    assert r.status_code == 409 and r.json()["detail"]["gate"]["failures"][0]["id"] == "rd-01"
+    say(db, "busy hoon abhi")
+    assert conv(db).disposition == "busy_busy"
+
+
+def test_a_dismissed_proposal_does_not_come_back(db, client):
+    tap_campaign(db)
+    say(db, "busy hoon abhi")
+    _record(client, "busy_later")
+    rule = next(p for p in client.get("/api/v1/agents/learning").json()["proposals"] if p["kind"] == "rule_phrase")
+    state = client.post(f"/api/v1/agents/learning/{rule['id']}/dismiss").json()
+    assert not [p for p in state["proposals"] if p["id"] == rule["id"]] and state["log"][0]["what"] == "dismissed"
+
+
+def test_the_playground_writes_two_drafts_side_by_side(db, client, monkeypatch):
+    from src.services import learning_loop, template_studio
+    from src.services import gemini_client
+    seen = []
+
+    def fake_write(client_, prompt, angles, lang):
+        seen.append(prompt)
+        return [{"body": "with change" if "A CHANGE BEING TRIED" in prompt else "today", "angle": "a", "_errors": []}]
+    monkeypatch.setattr(template_studio, "_write_copy", fake_write)
+    monkeypatch.setattr(gemini_client, "GeminiClient", lambda *a, **k: object())
+    monkeypatch.setattr(learning_loop, "SessionLocal", None, raising=False)
+    import src.database as database
+    monkeypatch.setattr(database, "SessionLocal", lambda: db)
+    monkeypatch.setattr(db, "close", lambda: None)
+    jid = client.post("/api/v1/agents/playground/copy",
+                      json={"state": "Gujarat", "instruction": "Mention free training", "without": ["performance"]}).json()["id"]
+    job = client.get(f"/api/v1/agents/playground/copy/{jid}").json()
+    assert job["status"] == "done", job
+    assert job["today"]["body"] == "today" and job["changed"]["body"] == "with change"
+    assert "Mention free training" in seen[1] and "Mention free training" not in seen[0]

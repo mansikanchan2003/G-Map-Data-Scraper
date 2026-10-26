@@ -407,6 +407,7 @@ def photo_lessons(photos: Optional[dict]) -> str:
     return f"{image_prompts.PHOTOS_HEADING}\n" + "\n".join(f"- {l}" for l in lines) if lines else ""
 
 
+LESSONS_HEADING = "LESSONS THE TEAM ACCEPTED FROM REVIEWERS' CORRECTIONS — always follow these:"
 MISTAKES_HEADING = (
     "MISTAKES IN YOUR EARLIER DRAFTS — caught by the checker or corrected by a reviewer. "
     "Do not make them again:"
@@ -465,6 +466,8 @@ def trimmed_context(db: Session, references: List[str], performance: List[dict],
         history["mistakes"] = []
     if not on("growth_goal"):
         history["growth"] = None
+    from src.services import learning_loop
+    history["accepted_lessons"] = learning_loop.lessons(db) if on("accepted_lesson") else []
     return (references if on("approved_example") else [], performance if on("performance") else [], history)
 
 
@@ -482,6 +485,7 @@ def prompt_context(references: List[str], performance: List[dict], history: dict
     out += [c("performance", f"{p['name']}: {p.get('angle_key') or ''}", p.get("template_id")) for p in performance[:12]]
     out += [c("rejected_draft", f"{r['angle']}: {r['reason']}") for r in history.get("rejected") or []]
     out += [c("past_mistake", m) for m in history.get("mistakes") or []]
+    out += [c("accepted_lesson", m) for m in history.get("accepted_lessons") or []]
     if history.get("growth"):
         out.append(c("growth_goal", history["growth"]))
     if brief:
@@ -541,6 +545,8 @@ EARLIER VARIANTS FOR {state.upper()} (find a fresh way into the angle, do not re
 ANGLES A REVIEWER APPROVED: {'; '.join(history['approved']) or 'none'}
 DRAFTS A REVIEWER REJECTED, AND WHY (avoid these mistakes):
 {bullets([f"{r['angle']}: {r['reason']}" for r in history['rejected']])}
+{LESSONS_HEADING if history.get('accepted_lessons') else ''}
+{bullets(history.get('accepted_lessons') or []) if history.get('accepted_lessons') else ''}
 {MISTAKES_HEADING}
 {bullets(history.get('mistakes') or [])}
 {photo_lessons(history.get('photos'))}

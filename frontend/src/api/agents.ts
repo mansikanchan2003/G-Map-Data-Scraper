@@ -91,3 +91,34 @@ export const fetchControls = () => call<Controls>('/controls');
 export const setSwitch = (group: 'agents' | 'context', key: string, enabled: boolean) =>
   call<Controls>(`/controls/${group}/${key}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled }) });
+
+export interface Patch {
+  id: string; kind: 'copy_lesson' | 'rule_phrase' | 'faq_review'; agent: string; title: string; lesson: string;
+  before: string; after: string; key?: string; phrase?: string; question?: string;
+  evidence: { run_id: string; agent: string; edit_ratio: number | null; by: string | null; at: string | null };
+  accepted_by?: string; accepted_at?: string; gate?: { passed: number; total: number } | null;
+}
+export interface Learning { proposals: Patch[]; accepted: Patch[]; log: { what: string; id: string; lesson?: string; by: string; at: string }[] }
+export interface GateReport { total: number; passed: number; failures: { id: string; title: string; problems: string[] }[] }
+/** The learning loop: patches proposed from corrections, those in force, and what was done. */
+export const fetchLearning = () => call<Learning>('/learning');
+export const acceptPatch = async (id: string): Promise<{ ok: true } | { ok: false; message: string; gate?: GateReport }> => {
+  const res = await fetch(`${base()}/learning/${id}/accept`, { method: 'POST', credentials: 'include' });
+  const json = await res.json().catch(() => ({}));
+  if (res.ok) return { ok: true };
+  const d = json.detail;
+  return { ok: false, message: typeof d === 'string' ? d : d?.message || `Request failed (${res.status})`, gate: d?.gate };
+};
+export const dismissPatch = (id: string) => call<Learning>(`/learning/${id}/dismiss`, { method: 'POST' });
+export const undoPatch = (id: string) => call<Learning>(`/learning/${id}/undo`, { method: 'POST' });
+
+export interface Reading { key: string | null; label: string; by: string; confidence: number | null }
+export const tryReply = (text: string) => call<{ text: string; today: Reading; with_patches: Reading; pending_rules: number }>(
+  '/playground/reply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+export interface Draft { body: string | null; angle: string | null; problems: string[]; prompt_tokens: number }
+export interface CopyTrial { status: 'running' | 'done' | 'failed'; state: string; instruction: string; without: string[];
+  today?: Draft; changed?: Draft; error?: string }
+export const startCopyTrial = (state: string, instruction: string, without: string[]) =>
+  call<{ id: string }>('/playground/copy', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state, instruction, without }) });
+export const fetchCopyTrial = (id: string) => call<CopyTrial>(`/playground/copy/${id}`);

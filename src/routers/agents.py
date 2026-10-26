@@ -4,7 +4,7 @@ and each run's full chain, with the context it used, for the "why".
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -46,6 +46,81 @@ def sources(db: Session = Depends(get_db)):
 
 class SwitchRequest(BaseModel):
     enabled: bool
+
+
+class TextRequest(BaseModel):
+    text: str
+
+
+class CopyTrialRequest(BaseModel):
+    state: str
+    instruction: str = ""
+    without: list = []
+
+
+@router.get("/learning")
+def learning(db: Session = Depends(get_db)):
+    """The learning loop: patches proposed from corrections, those accepted, and what was done."""
+    from src.services import learning_loop
+    return learning_loop.state(db)
+
+
+@router.post("/learning/{pid}/accept")
+def accept_patch(pid: str, db: Session = Depends(get_db), admin: User = Depends(current_admin)):
+    """Put a patch into force (admin only). A rule must keep the golden set passing first."""
+    from src.services import learning_loop
+    try:
+        return learning_loop.accept(db, pid, admin.email)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="No such proposal")
+    except learning_loop.GateFailed as e:
+        raise HTTPException(status_code=409, detail={"message": "The golden set fails with this patch, so it was not accepted.",
+                                                     "gate": e.report})
+
+
+@router.post("/learning/{pid}/dismiss")
+def dismiss_patch(pid: str, db: Session = Depends(get_db), admin: User = Depends(current_admin)):
+    from src.services import learning_loop
+    learning_loop.dismiss(db, pid, admin.email)
+    return learning_loop.state(db)
+
+
+@router.post("/learning/{pid}/undo")
+def undo_patch(pid: str, db: Session = Depends(get_db), admin: User = Depends(current_admin)):
+    from src.services import learning_loop
+    try:
+        learning_loop.undo(db, pid, admin.email)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Not an accepted patch")
+    return learning_loop.state(db)
+
+
+@router.post("/playground/reply")
+def playground_reply(req: TextRequest, db: Session = Depends(get_db)):
+    """How the bot reads a reply today, and with every pending rule accepted."""
+    from src.services import learning_loop
+    return learning_loop.try_reply(db, req.text.strip()[:500])
+
+
+@router.post("/playground/copy")
+def playground_copy(req: CopyTrialRequest, background: BackgroundTasks, db: Session = Depends(get_db),
+                    admin: User = Depends(current_admin)):
+    """Two drafts side by side: today's prompt, and with the change (admin only; uses the free model)."""
+    from src.services import creative_brief, learning_loop
+    if not creative_brief.language_for_state(req.state):
+        raise HTTPException(status_code=400, detail=f"No language is set for {req.state}.")
+    jid = learning_loop.start_copy_trial(db, req.state, req.instruction.strip()[:600], [str(w) for w in req.without])
+    background.add_task(learning_loop.run_copy_trial, jid)
+    return {"id": jid}
+
+
+@router.get("/playground/copy/{jid}")
+def playground_copy_result(jid: str):
+    from src.services import learning_loop
+    job = learning_loop.copy_trial(jid)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No such trial")
+    return job
 
 
 @router.get("/controls")
