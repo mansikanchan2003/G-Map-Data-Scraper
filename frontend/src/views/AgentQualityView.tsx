@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackToParent } from '../components/SubPage';
 import type { NavTab } from '../components/Header';
 import {
-  fetchAgentQuality, fetchAgentRun, fetchAgentRuns, fetchGolden, type AgentQuality, type AgentRun, type ContextChunk,
-  type GoldenHistory,
+  fetchAgentQuality, fetchAgentRun, fetchAgentRuns, fetchControls, fetchGolden, fetchSources, setSwitch,
+  type AgentQuality, type AgentRun, type ContextChunk, type Controls, type GoldenHistory, type SourceRow,
 } from '../api/agents';
 import { formatDateTime } from '../utils/datetime';
 
@@ -423,6 +423,7 @@ const SUITE: Record<string, { label: string; icon: string; note: string }> = {
   reply_disposition: { label: 'Dispositions from replies', icon: 'rule', note: 'And replies that must not be read as one' },
   trust: { label: 'Trust concerns', icon: 'verified_user', note: 'Answered, recorded, sent to the team on time' },
   copy_check: { label: 'Copy checker', icon: 'spellcheck', note: 'Drafts it must pass or stop' },
+  disposition_sheet: { label: 'Dispositions vs the sheet', icon: 'fact_check', note: 'Each disposition does what the approved sheet says, and Lead Journey shows it' },
 };
 
 /** The golden set: real cases with the right answer, run before every deploy (blueprint phase 2). */
@@ -513,7 +514,135 @@ const GoldenCard: React.FC<{ g: GoldenHistory }> = ({ g }) => {
   );
 };
 
-export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ can }) => {
+
+const ago = (iso: string | null) => {
+  if (!iso) return '';
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+};
+
+/** Where the agents' knowledge comes from, and how fresh each source is (the blueprint's freshness badges). */
+const Freshness: React.FC<{ rows: SourceRow[] }> = ({ rows }) => (
+  <div className="flex flex-wrap gap-2">
+    {rows.map(r => {
+      const tone = r.status === 'fresh' ? { dot: 'var(--st-good)', text: r.synced_at ? `Synced ${ago(r.synced_at)}` : 'Built in' }
+        : r.status === 'stale' ? { dot: 'var(--st-warn)', text: `Stale · ${ago(r.synced_at)}` }
+        : { dot: 'var(--st-wait)', text: 'Not refreshed yet' };
+      return (
+        <span key={r.key} title={r.note}
+          className="inline-flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full border border-slate-800 bg-slate-900 text-[12px] shadow-sm">
+          <Icon name={r.icon} className="text-[16px] text-sky-300" />
+          <span className="text-slate-200 font-medium">{r.label}</span>
+          <span className="flex items-center gap-1 text-slate-400">
+            <span className={`h-2 w-2 rounded-full ${r.status === 'fresh' ? 'animate-pulse' : ''}`} style={{ background: tone.dot }} />{tone.text}
+          </span>
+        </span>
+      );
+    })}
+  </div>
+);
+
+/** A switch: the admin's one click; others see where it stands. */
+const Toggle: React.FC<{ on: boolean; disabled?: boolean; busy?: boolean; onChange: (v: boolean) => void; label: string }> =
+  ({ on, disabled, busy, onChange, label }) => (
+  <button role="switch" aria-checked={on} aria-label={label} disabled={disabled || busy} onClick={() => onChange(!on)}
+    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+    style={{ background: on ? 'var(--st-good)' : 'var(--st-wait)' }}>
+    <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[22px]' : 'translate-x-[2px]'}`} />
+  </button>
+);
+
+/** The guardrails: one switch per agent, and each piece of context the template agents get (admin only). */
+const ControlsCard: React.FC<{ isAdmin: boolean; tokens: Record<string, number> }> = ({ isAdmin, tokens }) => {
+  const [c, setC] = useState<Controls | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { fetchControls().then(setC).catch(e => setErr(e.message)); }, []);
+  const flip = async (group: 'agents' | 'context', key: string, v: boolean) => {
+    setBusy(key); setErr(null);
+    try { setC(await setSwitch(group, key, v)); } catch (e: any) { setErr(e.message); } finally { setBusy(null); }
+  };
+  if (!c) return null;
+  const offCount = c.agents.filter(a => !a.enabled).length;
+  return (
+    <Card title="Controls" icon="admin_panel_settings"
+      sub={isAdmin ? 'One click takes an agent’s automatic action away; it is back with another' : 'Only the admin can change these'}
+      right={(
+        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11.5px] font-semibold ${offCount ? 'bg-amber-950 text-amber-300' : 'bg-emerald-950 text-emerald-300'}`}>
+          <Icon name={offCount ? 'pause_circle' : 'play_circle'} className="text-[15px]" />{offCount ? `${offCount} agent${offCount > 1 ? 's' : ''} turned off` : 'Every agent on'}
+        </span>
+      )}>
+      {err && <div className="mb-3 p-2.5 rounded-lg border border-rose-800/60 bg-rose-950 text-rose-300 text-[12.5px]">{err}</div>}
+      <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
+        <ul className="space-y-2">
+          {c.agents.map(a => {
+            const ag = agentOf(a.key);
+            return (
+              <li key={a.key} className={`rounded-xl border p-3 flex items-start gap-3 transition-colors ${a.enabled ? 'border-slate-800 bg-slate-950/60' : 'border-amber-800/60 bg-amber-950/20'}`}>
+                <span className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: `color-mix(in srgb, ${ag.color} 18%, transparent)`, color: ag.color }}>
+                  <Icon name={ag.icon} className="text-[20px]" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-semibold text-slate-100">{a.label}</div>
+                  <div className="text-[12px] text-slate-400 mt-0.5">{a.enabled ? a.on : a.off}</div>
+                  {a.changed_by && <div className="text-[11px] text-slate-500 mt-1">{a.enabled ? 'Turned on' : 'Turned off'} by {a.changed_by} · {ago(a.changed_at)}</div>}
+                </div>
+                <Toggle on={a.enabled} disabled={!isAdmin} busy={busy === a.key} label={a.label} onChange={v => flip('agents', a.key, v)} />
+              </li>
+            );
+          })}
+        </ul>
+        <div>
+          <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 mb-2 flex items-center gap-1.5">
+            <Icon name="tune" className="text-[15px]" />What the template agents are given
+          </div>
+          <ul className="space-y-2">
+            {c.context.map(x => (
+              <li key={x.key} className={`rounded-xl border p-3 flex items-center gap-3 ${x.enabled ? 'border-slate-800 bg-slate-950/60' : 'border-slate-800 bg-slate-950/30 opacity-70'}`}>
+                <span className="h-8 w-8 rounded-lg bg-violet-950 text-violet-300 flex items-center justify-center shrink-0"><Icon name="neurology" className="text-[17px]" /></span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12.5px] font-semibold text-slate-100">{x.label}
+                    {tokens[x.key] ? <span className="ml-1.5 font-normal text-slate-500">≈ {num(tokens[x.key])} tokens a run</span> : null}</div>
+                  <div className="text-[11.5px] text-slate-500">{x.about}</div>
+                </div>
+                <Toggle on={x.enabled} disabled={!isAdmin} busy={busy === x.key} label={x.label} onChange={v => flip('context', x.key, v)} />
+              </li>
+            ))}
+          </ul>
+          {c.history.length > 0 && (
+            <div className="mt-4">
+              <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 mb-1.5">Changes</div>
+              <ul className="space-y-1 text-[11.5px] text-slate-400 max-h-32 overflow-y-auto">
+                {c.history.slice(0, 8).map((h, i) => (
+                  <li key={i} className="flex items-center gap-1.5">
+                    <Icon name={h.on ? 'toggle_on' : 'toggle_off'} className="text-[16px]" style={{ color: h.on ? 'var(--st-good)' : 'var(--st-wait)' }} />
+                    <span className="text-slate-300">{h.what}</span> {h.on ? 'on' : 'off'} · {h.by} · {ago(h.at)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+/** Why a template draft reads the way it does: its run, in the inspector (opened from Template Studio). */
+export const WhyThisDraft: React.FC<{ templateId: string }> = ({ templateId }) => {
+  const [r, setR] = useState<AgentRun | null | undefined>(undefined);
+  useEffect(() => { fetchAgentRuns(undefined, undefined, 1, templateId).then(l => setR(l[0] || null)).catch(() => setR(null)); }, [templateId]);
+  return (
+    <div className="aq">
+      <style>{STYLE}</style>
+      {r === undefined ? <div className="h-40 rounded-xl bg-slate-900 animate-pulse" />
+        : r === null ? <div className="text-[13px] text-slate-500">This draft was written before runs were recorded (26 Oct 2026), so its context is not kept.</div>
+        : <Inspector r={r} />}
+    </div>
+  );
+};
+
+export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean; isAdmin?: boolean }> = ({ can, isAdmin = false }) => {
   const [days, setDays] = useState(30);
   const [q, setQ] = useState<AgentQuality | null>(null);
   const [runs, setRuns] = useState<AgentRun[]>([]);
@@ -521,6 +650,8 @@ export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ c
   const [outcome, setOutcome] = useState('');
   const [picked, setPicked] = useState<AgentRun | null>(null);
   const [golden, setGolden] = useState<GoldenHistory | null>(null);
+  const [sources, setSources] = useState<SourceRow[]>([]);
+  useEffect(() => { fetchSources().then(setSources).catch(() => setSources([])); }, []);
   useEffect(() => { fetchGolden().then(setGolden).catch(() => setGolden({ last: null, history: [] })); }, []);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
@@ -537,6 +668,12 @@ export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ c
   const decided = o ? o.accepted + o.edited + o.rejected : 0;
   const onTarget = o?.acceptance_rate != null && q ? o.acceptance_rate >= q.targets.acceptance_rate : null;
   const hitlSeries = useMemo(() => (q?.weeks || []).map(w => w.hitl), [q]);
+  const contextTokens = useMemo(() => {
+    const runsWith = runs.filter(r => r.agent === 'template_writer' || r.agent === 'business_agent');
+    const sum: Record<string, number> = {};
+    runsWith.forEach(r => r.context.forEach(c => { sum[c.source] = (sum[c.source] || 0) + (c.tokens || 0); }));
+    return Object.fromEntries(Object.entries(sum).map(([k, v]) => [k, Math.round(v / Math.max(runsWith.length, 1))]));
+  }, [runs]);
 
   return (
     <div className="aq flex-1 overflow-y-auto bg-slate-950 text-slate-100">
@@ -613,6 +750,8 @@ export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ c
           </div>
         </section>
 
+        {sources.length > 0 && <Freshness rows={sources} />}
+
         {q && (
           <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
             <Card title="Week by week" icon="show_chart" sub="Share kept as it was and share completed · hover a week">
@@ -678,6 +817,8 @@ export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ c
           </Card>
         )}
 
+        <ControlsCard isAdmin={isAdmin} tokens={contextTokens} />
+
         {golden && <GoldenCard g={golden} />}
 
         {q && q.biggest_corrections.length > 0 && (
@@ -734,7 +875,14 @@ export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ c
                             <Icon name={oc.icon} className="text-[15px]" style={{ color: oc.color }} />
                             <span className="text-slate-400">{oc.label}</span>
                           </div>
-                          <div className="text-[12.5px] text-slate-300 mt-1 line-clamp-2">{r.error || r.output || '—'}</div>
+                          <div className="text-[12.5px] text-slate-300 mt-1 line-clamp-2">{r.output === 'clarify'
+                            ? <>Could mean {(r.evaluation?.ambiguous || []).join(' or ')}: left for a person</> : (r.error || r.output || '—')}</div>
+                          {(r.output === 'clarify' || (r.evaluation?.confidence != null && r.evaluation.confidence < 0.75)) && (
+                            <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-amber-950 text-amber-300">
+                              <Icon name={r.output === 'clarify' ? 'help' : 'speed'} className="text-[13px]" />
+                              {r.output === 'clarify' ? 'Clarify: read two ways' : `Low confidence · ${Math.round((r.evaluation?.confidence || 0) * 100)}%`}
+                            </span>
+                          )}
                           <div className="text-[10.5px] text-slate-500 mt-1">{r.created_at ? formatDateTime(r.created_at) : ''}{r.outcome === 'edited' && r.edit_distance != null ? ` · ${r.edit_distance} chars changed` : ''}</div>
                         </div>
                       </button>

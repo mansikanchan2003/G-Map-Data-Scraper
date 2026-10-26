@@ -2885,3 +2885,97 @@ def test_the_quality_page_reports_the_blueprints_kpis(db, client):
     runs = client.get("/api/v1/agents/runs?agent=inbox_ready_reply").json()
     assert len(runs) == 2 and client.get(f"/api/v1/agents/runs/{runs[0]['id']}").json()["id"] == runs[0]["id"]
 
+
+
+# --- Agent controls, confidence and clarify (blueprint phase 3, 2026-10-26) ------
+
+def _switch(client, key, on, group="agents"):
+    r = client.put(f"/api/v1/agents/controls/{group}/{key}", json={"enabled": on})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_the_admin_switches_an_agent_off_and_it_is_recorded_who_did(db, client):
+    state = _switch(client, "bot_reply_disposition", False)
+    row = next(a for a in state["agents"] if a["key"] == "bot_reply_disposition")
+    assert row["enabled"] is False and row["changed_by"] == "admin@eko.co.in"
+    assert state["history"][0]["what"] == "Bot: dispositions read from replies" and state["history"][0]["on"] is False
+    tap_campaign(db)
+    say(db, "busy hoon abhi")
+    assert conv(db).disposition is None
+    _switch(client, "bot_reply_disposition", True)
+    say(db, "busy hoon abhi")
+    assert conv(db).disposition == "busy_busy"
+
+
+def test_only_an_admin_may_switch(db, client):
+    from src.main import app
+    from src.routers.auth import current_user
+
+    class Member:
+        email, role = "member@eko.co.in", "manager"
+    app.dependency_overrides[current_user] = lambda: Member()
+    try:
+        r = client.put("/api/v1/agents/controls/agents/bot_faq", json={"enabled": False})
+        assert r.status_code == 403
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_faq_answers_off_sends_every_question_to_the_team(db, client):
+    _switch(client, "bot_faq", False)
+    tap_campaign(db)
+    say(db, "Apply karne ki fees kitni hai?")
+    c = conv(db)
+    assert c.needs_attention and "Applying is free" not in StubMeta.sent[-1][2]
+    _switch(client, "bot_faq", True)
+
+
+def test_a_reply_read_two_ways_is_left_for_a_person_to_clarify(db):
+    tap_campaign(db)
+    say(db, "busy hoon, not interested")
+    c = conv(db)
+    assert c.disposition is None and c.needs_attention and c.attention_reason.startswith("Clarify:")
+    [run] = _runs(db, "bot_reply_disposition")
+    assert run.output == "clarify" and run.evaluation["ambiguous"] == ["ni_currently", "busy_busy"]
+
+
+def test_a_single_common_word_is_recorded_with_low_confidence(db):
+    tap_campaign(db)
+    say(db, "busy")
+    [run] = _runs(db, "bot_reply_disposition")
+    assert conv(db).disposition == "busy_busy" and run.evaluation["confidence"] < 0.75
+    assert any(c["name"] == "Confidence" and not c["passed"] for c in run.evaluation["checks"])
+
+
+def test_template_agents_switched_off_refuse_new_rounds(db, client):
+    _switch(client, "template_writer", False)
+    r = client.post("/api/v1/whatsapp/studio/generate", json={"state": "Gujarat", "count": 1})
+    assert r.status_code == 423 and "turned off" in r.json()["detail"]
+    _switch(client, "template_writer", True)
+
+
+def test_a_context_source_switched_off_is_left_out_of_the_prompt(db, client):
+    from src.services import template_studio
+    _switch(client, "approved_example", False, "context")
+    _switch(client, "past_mistake", False, "context")
+    refs, perf, history = template_studio.trimmed_context(db, ["example"], [{"name": "t"}],
+                                                          {"mistakes": ["m"], "rejected": [{"angle": "a", "reason": "r"}]})
+    assert refs == [] and perf == [{"name": "t"}] and history["mistakes"] == [] and history["rejected"]
+    _switch(client, "approved_example", True, "context")
+    _switch(client, "past_mistake", True, "context")
+
+
+def test_ready_replies_switched_off_suggest_nothing(db, client):
+    from src.services import chat_summary
+    tap_campaign(db)
+    _switch(client, "inbox_ready_reply", False)
+    assert chat_summary.summarise(db, conv(db))["next"]["reply"] is None
+    _switch(client, "inbox_ready_reply", True)
+
+
+def test_each_source_shows_when_it_was_refreshed(db, client):
+    rows = client.get("/api/v1/agents/sources").json()
+    keys = {r["key"] for r in rows}
+    assert {"tara", "journeys", "approved", "faq", "golden", "runs"} <= keys
+    assert all(r["status"] in ("fresh", "stale", "never") for r in rows)

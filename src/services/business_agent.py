@@ -473,6 +473,15 @@ def run_generation(template_ids: List[str]) -> None:
         try:
             client = GeminiClient()
             learned = learning(db, first.target_state, language_code)
+            # The admin's context switches (agent_controls) apply here too.
+            _, perf, learned["history"] = studio.trimmed_context(db, [], learned.get("templates") or [],
+                                                                 learned.get("history") or {})
+            learned["templates"] = perf
+            from src.services import agent_controls
+            if not agent_controls.context_on(db, "growth_goal"):
+                learned["growth"] = None
+            if not agent_controls.context_on(db, "past_mistake"):
+                learned["mistakes"] = []
             angles = studio.assign_angles(len(rows), learned["history"]["tried_keys"])
             summary = {**gen["audience"], "usable_fields": allowed}
             plans = variety.plan(db, len(rows))

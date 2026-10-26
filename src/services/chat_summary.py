@@ -425,6 +425,11 @@ def in_short(conv: WhatsAppConversation, waiting_questions: int, direct: dict = 
     return first
 
 
+def _ready_replies_on(db: Session) -> bool:
+    from src.services import agent_controls
+    return agent_controls.is_on(db, "inbox_ready_reply")
+
+
 def summarise(db: Session, conv: WhatsAppConversation) -> dict:
     """Everything the summary panel and the attention email show."""
     data = conv.bot_data or {}
@@ -526,7 +531,8 @@ def summarise(db: Session, conv: WhatsAppConversation) -> dict:
         "attention": {"reason": conv.attention_reason, "at": _when(conv.attention_at)} if conv.needs_attention else None,
         "next": {
             "action": step_text if open_window else step_text + " 24 ghante ki window band hai: ab sirf campaign template se hi pahunch sakte hain.",
-            "reply": reply if open_window else None,
+            # The admin can turn ready replies off (agent_controls).
+            "reply": reply if open_window and _ready_replies_on(db) else None,
             "reply_language": LANGUAGE_NAMES.get(lang, lang),
             "window_open": open_window,
         },

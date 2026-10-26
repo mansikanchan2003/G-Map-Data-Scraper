@@ -1,4 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+// The inspector lives with the Agent quality page; loaded only when a draft's "why" is opened.
+const WhyThisDraft = lazy(() => import('./AgentQualityView').then(m => ({ default: m.WhyThisDraft })));
 import { BackToParent } from '../components/SubPage';
 import type { NavTab } from '../components/Header';
 import {
@@ -312,6 +314,7 @@ const DraftCard: React.FC<{
   onZoom: (url: string) => void; onEdit: () => void; onApprove: () => void;
   onReject: () => void; onNewPhoto: () => void;
 }> = ({ draft, busy, onZoom, onEdit, onApprove, onReject, onNewPhoto }) => {
+  const [why, setWhy] = useState(false);
   const img = studioMediaUrl(draft.header_content);
   const gen = draft.generation || {};
   const check = gen.photo_check;
@@ -387,6 +390,28 @@ const DraftCard: React.FC<{
                 headerContent={draft.header_content} footer={draft.footer} buttons={draft.buttons} />
             </div>
           </details>
+        )}
+
+        {draft.body && (
+          <button onClick={() => setWhy(true)}
+            className="self-start inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-sky-800/60 bg-sky-950 text-sky-300 text-[11.5px] font-semibold hover:bg-sky-900 cursor-pointer">
+            <span className="material-symbols-outlined text-[15px]">psychology</span>Why this draft
+          </button>
+        )}
+        {why && (
+          <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setWhy(false)}>
+            <div className="w-full max-w-5xl my-8 rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-[15px] font-semibold text-slate-100 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[20px] text-sky-300">psychology</span>Why this draft reads as it does
+                </h3>
+                <button onClick={() => setWhy(false)} className="h-8 w-8 rounded-lg hover:bg-slate-800 text-slate-400 flex items-center justify-center cursor-pointer">
+                  <span className="material-symbols-outlined text-[20px]">close</span>
+                </button>
+              </div>
+              <Suspense fallback={<div className="h-40 rounded-xl bg-slate-800 animate-pulse" />}><WhyThisDraft templateId={draft.template_id} /></Suspense>
+            </div>
+          </div>
         )}
 
         {awaiting && (

@@ -752,6 +752,10 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
     faq = eko_knowledge.match(said) if said else []
     # Fearing Eko is a fraud: always the answer about who Eko is, with the website.
     doubts = eko_knowledge.distrust(said)
+    from src.services import agent_controls
+    if not agent_controls.is_on(db, "bot_faq"):
+        # Turned off by the admin: no answer from the bot; the question goes to a person.
+        faq, doubts = [], []
     if doubts and "real" not in faq:
         faq = ["real"] + list(faq)
     asked = looks_like_question(said) or voice or bool(faq)
@@ -909,32 +913,56 @@ def _reply_disposition(db, conv, msg) -> bool:
     to the bot's question, a question of their own (the FAQ and the team take
     those), or a voice note, whose transcript can be wrong. True if recorded.
     """
+    from src.services import agent_controls
+    if not agent_controls.is_on(db, "bot_reply_disposition"):
+        return False
     if msg.kind != "text" or getattr(msg, "voice", False) or _answers_the_step(conv, msg):
         return False
     said = (msg.body or "").strip()
     # A question goes to the FAQ and the team; a statement that happens to name an FAQ
     # subject ("meri cibil kharab hai") still says where they stand (the golden set, 2026-10-26).
-    if not said or eko_knowledge.distrust(said) or (eko_knowledge.asks(said) and eko_knowledge.match(said))             or "?" in said:
+    if (not said or "?" in said or eko_knowledge.distrust(said)
+            or (eko_knowledge.asks(said) and eko_knowledge.match(said))):
         return False
     from src.services import reply_dispositions
     hit = reply_dispositions.detect(said)
     if not hit:
         return False
     key, when = hit
-    from src.services import dispositions as dz, handover, nudge_messages, reply_language
+    from src.services import agent_telemetry, dispositions as dz, handover, nudge_messages, reply_language
     _understood(conv)
+    guards = [
+        {"name": "Not an answer to the bot's own question", "passed": True, "detail": f"Step {conv.bot_step or 'none'}"},
+        {"name": "Not a question of theirs (left for the FAQ)", "passed": True, "detail": "No “?”, not asking an FAQ"},
+        {"name": "Not a voice note (a transcript can be wrong)", "passed": True, "detail": "Typed text"},
+    ]
+    # Read two ways ("busy hoon, not interested"): the bot does not guess. A person
+    # clarifies, with a ticket; they hear their message reached the team (2026-10-26).
+    readings = reply_dispositions.ambiguous(said)
+    if readings:
+        labels = " or ".join(dz.label(k) for k in readings)
+        flag(conv, f"Clarify: “{said[:200]}” could mean {labels}. Record the right disposition.")
+        _say(db, conv, _t(db, conv, "acknowledge"))
+        agent_telemetry.log(db, "bot_reply_disposition", "chat", conv.phone, "clarify", prompt=said, context=[
+            agent_telemetry.chunk("rule", reply_dispositions.matched_phrase(said, k) or "", k) for k in readings],
+            evaluation={"checks": guards + [{"name": "One meaning only", "passed": False,
+                                             "detail": f"Could be {labels}: left for a person"}],
+                        "ambiguous": readings})
+        logger.info(f"onboarding_bot event=REPLY_AMBIGUOUS phone=...{conv.phone[-4:]} readings={readings}")
+        return True
+    sure = reply_dispositions.confidence(said, key)
     logger.info(f"onboarding_bot event=REPLY_DISPOSITION phone=...{conv.phone[-4:]} key={key}")
     before = db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone,
                                               WhatsAppMessage.direction == "OUT").count()
     handover.record(db, conv, key, "bot", note=f"They wrote: “{said[:200]}”", at=when)
-    from src.services import agent_telemetry
+    phrase = reply_dispositions.matched_phrase(said, key) or ""
     agent_telemetry.log(db, "bot_reply_disposition", "chat", conv.phone, key, prompt=said, context=[
-        agent_telemetry.chunk("rule", reply_dispositions.matched_phrase(said, key) or "", key),
-        *([agent_telemetry.chunk("when", when.isoformat())] if when else [])], evaluation={"checks": [
-            {"name": "Not an answer to the bot's own question", "passed": True, "detail": f"Step {conv.bot_step or 'none'}"},
-            {"name": "Not a question of theirs (left for the FAQ)", "passed": True, "detail": "No “?”, no FAQ match"},
-            {"name": "Not a voice note (a transcript can be wrong)", "passed": True, "detail": "Typed text"},
-        ]})
+        agent_telemetry.chunk("rule", phrase, key, score=sure),
+        *([agent_telemetry.chunk("when", when.isoformat())] if when else [])], evaluation={
+            "checks": guards + [{"name": "Confidence", "passed": sure >= reply_dispositions.CONFIDENT,
+                                 "detail": f"{round(sure * 100)}% · read from “{phrase}”"
+                                           + ("" if sure >= reply_dispositions.CONFIDENT else ": a single common word, worth a look")}],
+            "confidence": sure})
     db.flush()
     sent = db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone,
                                             WhatsAppMessage.direction == "OUT").count() > before

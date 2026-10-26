@@ -9,6 +9,8 @@ export interface ContextChunk { source: string; ref: string | null; text: string
 export interface Evaluation {
   checks?: { name: string; passed: boolean; detail: string }[];
   first_problems?: string[]; remaining?: string[]; repaired?: boolean;
+  /** How sure the bot was of a reading (0 to 1), and the readings when a reply meant two things. */
+  confidence?: number; ambiguous?: string[];
 }
 
 export interface AgentSummary {
@@ -50,16 +52,17 @@ export interface AgentRun {
 }
 
 const base = () => `${getApiBaseUrl()}/api/v1/agents`;
-const call = async <T>(path: string): Promise<T> => {
-  const res = await fetch(`${base()}${path}`, { credentials: 'include' });
+const call = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  const res = await fetch(`${base()}${path}`, { credentials: 'include', ...init });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.detail || `Request failed (${res.status})`);
   return json as T;
 };
 
 export const fetchAgentQuality = (days = 30) => call<AgentQuality>(`/quality?days=${days}`);
-export const fetchAgentRuns = (agent?: string, outcome?: string, limit = 50) => {
+export const fetchAgentRuns = (agent?: string, outcome?: string, limit = 50, subject?: string) => {
   const q = new URLSearchParams({ limit: String(limit) });
+  if (subject) q.set('subject', subject);
   if (agent) q.set('agent', agent);
   if (outcome) q.set('outcome', outcome);
   return call<AgentRun[]>(`/runs?${q}`);
@@ -74,3 +77,17 @@ export interface GoldenReport {
 export interface GoldenHistory { last: GoldenReport | null; history: { ran_at: string; total: number; passed: number }[] }
 /** The golden set's last run before a deploy, and the ones before it. */
 export const fetchGolden = () => call<GoldenHistory>('/golden');
+
+export interface SourceRow { key: string; label: string; icon: string; synced_at: string | null;
+  status: 'fresh' | 'stale' | 'never'; fresh_for_hours: number; note: string; used_by: string[] }
+/** Each source the agents draw on, with when it was last refreshed. */
+export const fetchSources = () => call<SourceRow[]>('/sources');
+
+export interface Switch { key: string; label: string; enabled: boolean; changed_by: string | null; changed_at: string | null;
+  on?: string; off?: string; about?: string }
+export interface Controls { agents: Switch[]; context: Switch[]; history: { what: string; on: boolean; by: string; at: string }[] }
+/** The admin's guardrails over the agents. */
+export const fetchControls = () => call<Controls>('/controls');
+export const setSwitch = (group: 'agents' | 'context', key: string, enabled: boolean) =>
+  call<Controls>(`/controls/${group}/${key}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }) });

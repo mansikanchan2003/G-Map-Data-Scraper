@@ -12,6 +12,11 @@ and the real database is never touched. Suites:
 - reply_disposition: a reply read as its disposition, and replies that must not be.
 - trust: a doubt about Eko answered, and recorded as a trust concern.
 - copy_check: drafts the copy checker must pass or stop.
+- disposition_sheet: every disposition in the team's approved sheet
+  (disposition_sheet.json, a snapshot of "AutoGMap Dispositions.xlsx"),
+  recorded on a lead and checked against its row: category, owner, ticket
+  and email, the message it sends now or later, whether it closes the lead,
+  and what the Lead Journey screen gets for it.
 
 Run: python -m src.evals.golden [--suite NAME] [--save]
 --save keeps the report in the real database for the Agent quality page.
@@ -33,6 +38,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 CASES_FILE = os.path.join(os.path.dirname(__file__), "golden_cases.json")
+SHEET_FILE = os.path.join(os.path.dirname(__file__), "disposition_sheet.json")
 SETTING_KEY = "golden_eval"
 PHONE = "+919000000001"
 SERVED_PIN = "110001"
@@ -43,6 +49,10 @@ PLACES = {"110001": (28.6328, 77.2197), "110017": (28.55, 77.25), "400001": (19.
 def load_cases(suite: Optional[str] = None) -> List[dict]:
     with open(CASES_FILE, encoding="utf-8") as fh:
         cases = json.load(fh)["cases"]
+    with open(SHEET_FILE, encoding="utf-8") as fh:
+        rows = json.load(fh)["rows"]
+    cases += [{"id": f"sheet-{i:02d}", "suite": "disposition_sheet", "title": f"“{r['label']}” works as the sheet says",
+               "row": r, "expect": {"sheet": True}} for i, r in enumerate(rows, 1)]
     return [c for c in cases if not suite or c["suite"] == suite]
 
 
@@ -223,8 +233,77 @@ def _check_copy(case: dict) -> List[str]:
     return [f"the checker missed {w!r} (found {found})" for w in missing]
 
 
+def _check_sheet(case: dict) -> List[str]:
+    """Record the disposition on a lead the way the team does, and hold it to its row of the sheet."""
+    from datetime import timedelta
+
+    from src.models.inbox import FollowUp, WhatsAppConversation, WhatsAppMessage
+    from src.services import dispositions as dz, handover, inbox, lead_journey, tickets
+
+    row = case["row"]
+    sub = next((x for x in dz.SUBS.values() if x.label == row["label"]), None)
+    if sub is None:
+        return [f"no disposition called {row['label']!r} in the code"]
+    problems = []
+    cat = dz.category_of(sub.key)
+    if not (row["category"] or "").startswith(cat.label):
+        problems.append(f"category {cat.label!r}, the sheet says {row['category']!r}")
+    if (sub.owner or "—") != (row["owner"] or "—"):
+        problems.append(f"owner {sub.owner!r}, the sheet says {row['owner']!r}")
+
+    db = _fresh_db()
+    try:
+        _Meta.sent = []
+        _step(db, {"tap_campaign": "en"})
+        conv = db.query(WhatsAppConversation).filter(WhatsAppConversation.phone == PHONE).one()
+        before = db.query(WhatsAppMessage).filter(WhatsAppMessage.direction == "OUT").count()
+        at = inbox.now() + (timedelta(hours=3) if sub.asks == "time" else timedelta(days=10))
+        handover.record(db, conv, sub.key, "kavya.shukla@eko.co.in", note="golden", at=at if sub.asks else None)
+        db.commit()
+        db.refresh(conv)
+        fups = db.query(FollowUp).filter(FollowUp.phone == PHONE).all()
+        sent_now = db.query(WhatsAppMessage).filter(WhatsAppMessage.direction == "OUT").count() > before
+        later = [f for f in fups if f.status in ("scheduled", "waiting") and f.wants not in (dz.TASK,)]
+        escalates = any(st.wants == dz.ESCALATE for st in sub.steps)
+
+        # Ticket and email: at once where the sheet says Yes, or scheduled (a trust concern).
+        if row["email"] and not (dz.needs_team(sub) or escalates):
+            problems.append("the sheet says the team gets a ticket and email; nothing tells them")
+        if row["email"] and dz.needs_team(sub) and tickets.open_ticket(db, PHONE) is None:
+            problems.append("the sheet says ticket and email; no ticket was raised")
+        if not row["email"] and (dz.needs_team(sub) or escalates):
+            problems.append("the sheet says no email; the team is told")
+        # What goes out, and when.
+        does = (row["does"] or "").strip()
+        if does.startswith("A WhatsApp message now") and not sent_now:
+            problems.append("the sheet says a WhatsApp message now; nothing was sent")
+        if ("tomorrow morning" in does or "on the date" in does) and not later:
+            problems.append("the sheet says a message later; nothing is scheduled")
+        if does.startswith("Nothing") and (sent_now or later):
+            problems.append("the sheet says nothing is sent; something was")
+        # Closing.
+        closed = (row["after"] or "").startswith("Closed")
+        if closed != bool(sub.closes):
+            problems.append(f"closes the lead: {bool(sub.closes)}, the sheet says {'Closed' if closed else 'open'}")
+        if closed and later:
+            problems.append("the sheet says closed; follow-ups are still scheduled")
+        # What the Lead Journey screen gets.
+        block = lead_journey.build(db, conv)["dispositions"][0]
+        if block["label"] != row["label"] or not block["current"]:
+            problems.append(f"Lead Journey shows {block['label']!r} (current: {block['current']}) as the disposition now")
+        if block["recorded_by"] != "Kavya Shukla":
+            problems.append(f"Lead Journey says recorded by {block['recorded_by']!r}")
+        if sent_now and not any(i["status"] == "done" for i in block["items"]):
+            problems.append("a message went out, but Lead Journey shows no done action item for it")
+        if later and not any(i["status"] == "planned" for i in block["items"]):
+            problems.append("a message is scheduled, but Lead Journey shows nothing planned")
+        return problems
+    finally:
+        db.close()
+
+
 CHECKERS = {"bot_flow": _check_bot, "reply_disposition": _check_bot, "trust": _check_bot, "faq": _check_faq,
-            "copy_check": _check_copy}
+            "copy_check": _check_copy, "disposition_sheet": _check_sheet}
 
 
 def run(suite: Optional[str] = None) -> dict:

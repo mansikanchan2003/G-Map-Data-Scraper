@@ -292,10 +292,58 @@ def as_dict(r: AgentRun, full: bool = False) -> dict:
     return out
 
 
-def recent(db: Session, agent: Optional[str] = None, outcome: Optional[str] = None, limit: int = 50) -> List[dict]:
+def recent(db: Session, agent: Optional[str] = None, outcome: Optional[str] = None, limit: int = 50,
+           subject: Optional[str] = None) -> List[dict]:
     q = db.query(AgentRun)
+    if subject:
+        q = q.filter(AgentRun.subject_id == subject)
     if agent:
         q = q.filter(AgentRun.agent == agent)
     if outcome:
         q = q.filter(AgentRun.outcome == outcome)
     return [as_dict(r) for r in q.order_by(AgentRun.created_at.desc()).limit(limit).all()]
+
+
+def sources(db: Session) -> List[dict]:
+    """
+    Each source the agents draw on, with when it was last refreshed (the
+    blueprint's freshness badges): fresh, stale (older than it should be), or
+    never refreshed since the backend started.
+    """
+    from sqlalchemy import func
+
+    from src.models.inbox import LeadJourney
+    from src.services import business_context, eko_knowledge, faq_learning, lead_journey_store, template_studio
+
+    def row(key, label, icon, at, fresh_for, note, used_by):
+        at = _aware(at)
+        age = (now() - at) if at else None
+        status = "never" if at is None else ("fresh" if age <= fresh_for else "stale")
+        return {"key": key, "label": label, "icon": icon, "synced_at": at.isoformat() if at else None,
+                "status": status, "fresh_for_hours": round(fresh_for.total_seconds() / 3600, 2), "note": note,
+                "used_by": used_by}
+
+    ctx = business_context.load() or {}
+    exported = ctx.get("exported_at")
+    journeys = lead_journey_store._last_sync or db.query(func.max(LeadJourney.updated_at)).scalar()
+    approved_at = template_studio._approved_cache.get("at") or 0
+    taught = sum(len(v) for v in faq_learning.taught(db).values())
+    from src.evals import golden
+    g = (golden.latest(db) or {}).get("last") or {}
+    last_run = db.query(func.max(AgentRun.created_at)).scalar()
+    return [
+        row("tara", "Tara business data", "monitoring", datetime.fromisoformat(exported) if exported else None,
+            timedelta(hours=26), "Revenue and CSP numbers for the lead goal (daily at 04:30)", ["template_writer", "business_agent"]),
+        row("journeys", "Lead journeys", "route", journeys, timedelta(minutes=30),
+            "Every lead's steps and dispositions (every 15 minutes)", ["inbox_ready_reply"]),
+        row("approved", "Approved templates", "verified", datetime.fromtimestamp(approved_at, timezone.utc) if approved_at else None,
+            timedelta(hours=2), "Meta-approved templates the copywriter learns from (hourly, when it writes)",
+            ["template_writer", "business_agent"]),
+        row("faq", "Eko's FAQ", "quiz", None, timedelta(days=3650),
+            f"{len(eko_knowledge.FAQ)} confirmed answers in the code, {taught} questions taught by the team",
+            ["bot_faq"]) | {"status": "fresh", "synced_at": None},
+        row("golden", "Golden test set", "workspace_premium", datetime.fromisoformat(g["ran_at"]) if g.get("ran_at") else None,
+            timedelta(days=7), f"{g.get('passed', 0)}/{g.get('total', 0)} cases at the last deploy" if g else "Runs at each deploy",
+            list(AGENTS)),
+        row("runs", "Agent telemetry", "psychology", last_run, timedelta(days=2), "The latest agent run recorded", list(AGENTS)),
+    ]

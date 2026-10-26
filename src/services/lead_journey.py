@@ -598,7 +598,9 @@ def disposition_actions(conv: WhatsAppConversation, activities: List[ChatActivit
     for b in out:
         b.pop("_start", None)
     for b in out:
-        b["items"].sort(key=lambda i: i["when"] or "")
+        # The latest first, the very first last (the user, 2026-10-26); what is still to come
+        # (a later due time) sits on top.
+        b["items"].sort(key=lambda i: i["when"] or "", reverse=True)
     if not out:
         from src.services.handover import current
         now_d = current(conv)

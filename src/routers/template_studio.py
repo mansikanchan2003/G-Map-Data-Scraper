@@ -185,6 +185,10 @@ def list_drafts(db: Session = Depends(get_db)):
 
 @router.post("/generate", response_model=List[StudioDraft])
 def generate(req: GenerateRequest, background: BackgroundTasks, db: Session = Depends(get_db)):
+    from src.services import agent_controls
+    off = agent_controls.refuse_if_off(db, "template_writer")
+    if off:
+        raise HTTPException(status_code=423, detail=off)
     if not creative_brief.language_for_state(req.state):
         raise HTTPException(
             status_code=400,
@@ -382,6 +386,10 @@ def write_business_drafts(req: BusinessDraftRequest, background: BackgroundTasks
     """
     if not GeminiClient().is_configured():
         raise HTTPException(status_code=503, detail="GEMINI_API_KEY is not set on the server, so the agent cannot write.")
+    from src.services import agent_controls
+    off = agent_controls.refuse_if_off(db, "business_agent")
+    if off:
+        raise HTTPException(status_code=423, detail=off)
     try:
         summary = business_agent.summarise(req.rows)
     except ValueError as e:

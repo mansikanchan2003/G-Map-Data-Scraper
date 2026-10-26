@@ -18,7 +18,7 @@ leads write in; matching is on whole phrases, after lower-casing.
 """
 import re
 from datetime import date, datetime, time, timedelta, timezone
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -197,3 +197,52 @@ def matched_phrase(text: Optional[str], key: str) -> Optional[str]:
         if k == rule:
             return next((p for p in phrases if _has(t, p)), None)
     return None
+
+
+# Dispositions that can sit together in one reply ("busy hoon, baad mein call karna");
+# two from different families mean the reply could be read two ways.
+FAMILY = {"busy_busy": "call", "busy_later": "call", "busy_at_time": "call", "int_callback": "call",
+          "ni_mistake": "not_interested", "ni_no_requirement": "not_interested", "ni_currently": "not_interested",
+          "hold_later": "hold", "hold_after_date": "hold", "hold_financial": "hold", "rej_credit": "credit",
+          "inv_incorrect": "invalid", "inv_denied": "invalid", "dup_existing": "existing", "dup_in_process": "existing",
+          "ndm_not_applicant": "someone_else", "ndm_unavailable": "someone_else", "lang_barrier": "language"}
+CONFIDENT = 0.75
+
+
+def all_matches(text: Optional[str], now: Optional[datetime] = None) -> List[str]:
+    """Every disposition a phrase in the reply points to, in the rules' order."""
+    t = _norm(text)
+    now = now or datetime.now(timezone.utc)
+    found = []
+    for key, phrases in RULES:
+        if key == "busy_at_time":
+            if call_time(t, now) and any(_has(t, w) for w in _CALL_OR_BUSY):
+                found.append(key)
+        elif any(_has(t, p) for p in phrases):
+            found.append(key)
+    return found
+
+
+def ambiguous(text: Optional[str]) -> List[str]:
+    """The dispositions a reply could be read as, when they disagree (one from each family); else []."""
+    seen: Dict[str, str] = {}
+    for key in all_matches(text):
+        seen.setdefault(FAMILY.get(key, key), key)
+    return list(seen.values()) if len(seen) > 1 else []
+
+
+def confidence(text: Optional[str], key: str) -> float:
+    """
+    How sure the reading is, by the phrase that made it: a specific phrase
+    ("galti se apply", "5 baje call") is sure; one common word ("busy",
+    "abhi nahi") less so, since it can be part of something else.
+    """
+    phrase = matched_phrase(text, key) or ""
+    if key == "busy_at_time":
+        return 0.9
+    words = len(phrase.split())
+    if words >= 3:
+        return 0.95
+    if words == 2:
+        return 0.85 if phrase.isascii() else 0.9
+    return 0.6 if phrase.isascii() else 0.8

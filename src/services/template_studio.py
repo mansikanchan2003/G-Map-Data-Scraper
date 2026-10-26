@@ -454,6 +454,20 @@ def evaluation(first_problems: List[str], remaining: List[str]) -> dict:
     }
 
 
+def trimmed_context(db: Session, references: List[str], performance: List[dict], history: dict) -> tuple:
+    """What the admin's context switches leave in (agent_controls): a source turned off is not sent."""
+    from src.services import agent_controls
+    on = lambda source: agent_controls.context_on(db, source)
+    history = dict(history)
+    if not on("rejected_draft"):
+        history["rejected"] = []
+    if not on("past_mistake"):
+        history["mistakes"] = []
+    if not on("growth_goal"):
+        history["growth"] = None
+    return (references if on("approved_example") else [], performance if on("performance") else [], history)
+
+
 def prompt_context(references: List[str], performance: List[dict], history: dict, brief: Optional[str],
                    learned: Optional[dict] = None) -> List[dict]:
     """
@@ -1214,8 +1228,8 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
             history = _review_history(db, state)
             angles = assign_angles(len(rows), history["tried_keys"])
             plans = variety.plan(db, len(rows))
-            references = approved_examples(db, language_code)
-            performance = template_performance(db)
+            references, performance, history = trimmed_context(
+                db, approved_examples(db, language_code), template_performance(db), history)
             prompt = _copy_prompt(
                 state, language_code, angles, brief, references, performance, history,
                 variety.prompt_section(plans, variety.already_used(db, language_code)),

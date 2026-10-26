@@ -1,0 +1,335 @@
+{
+ "about": "Snapshot of the team's approved 'AutoGMap Dispositions.xlsx' (2026-10-26): what each disposition must do.",
+ "rows": [
+  {
+   "category": "Interested",
+   "label": "More information required",
+   "action": "Bot will answer their questions",
+   "does": "A WhatsApp message now to invite their questions\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: when they ask for Personal guidance. Team: in the Inbox",
+   "email": true,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Interested",
+   "label": "Trust concern",
+   "action": "Bot answers who Eko is, with the website and our number; the team calls them",
+   "does": "The bot answers who Eko is (Eko Bharat Ventures), with the website link and our number to call; at the documents step it adds the upload link\nAn hour later, the bot's reminder if they are quiet\n2 hours after the answer (an hour after the reminder): ticket and email to Mansi and Kavya, unless the documents came in\nTeam to do: call them about their trust concern",
+   "owner": "Bot - Human",
+   "recorded": "Bot: when they doubt Eko is genuine (“fraud”, “fake”, “vishwas nahi”, “વિશ્વાસ નથી”); the reminder and the team's email follow (see the next column)",
+   "email": true,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Interested",
+   "label": "Callback requested",
+   "action": "Call & WhatsApp notification for call back confirmation",
+   "does": "A WhatsApp message now to confirm we will get back to them at their time\nA WhatsApp message at the time you set to get back to them, as promised\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “call me”, “call kijiye”. Team: in the Inbox",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Interested",
+   "label": "Documents pending",
+   "action": "Follow up by calls & notifications",
+   "does": "A WhatsApp message now to remind them to upload their documents\nA WhatsApp message 2 days later to remind them to upload their documents\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: records it itself when it sends the document upload link",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Interested",
+   "label": "Interested: in the bot's questions",
+   "action": "—",
+   "does": "The bot asks its questions one by one; one reminder after an hour of silence",
+   "owner": "Bot",
+   "recorded": "Bot: while the lead answers the bot's questions (language, PIN, education, investment)",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Interested",
+   "label": "Not qualified for SBI branch code",
+   "action": "Journey continues; kept for another proposal (BT, HDFC...)",
+   "does": "Nothing extra is sent: the bot carries on with education, investment and documents like anyone interested",
+   "owner": "Bot",
+   "recorded": "Bot: when the lead sends a real PIN code outside our SBI branch area. The journey carries on; the lead is kept with the qualified leads (see the Qualification sheet)",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Not Interested",
+   "label": "Investment issue",
+   "action": "Connect for BT proposal",
+   "does": "A WhatsApp message now to offer the lower-investment option\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot First, then Human",
+   "recorded": "Bot: records it itself when they say they cannot invest ₹5 lakh",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Not Interested",
+   "label": "Applied by mistake",
+   "action": "WhatsApp message",
+   "does": "A WhatsApp message now to acknowledge their answer politely and close with care",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “galti se apply ho gaya”, “by mistake”",
+   "email": false,
+   "after": "Closed: nothing more is sent"
+  },
+  {
+   "category": "Not Interested",
+   "label": "No requirement",
+   "action": "WhatsApp message",
+   "does": "A WhatsApp message now to acknowledge their answer politely and close with care",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “nahi chahiye”, “zarurat nahi”, “no need”",
+   "email": false,
+   "after": "Closed: nothing more is sent"
+  },
+  {
+   "category": "Not Interested",
+   "label": "Not interested currently",
+   "action": "WhatsApp message",
+   "does": "A WhatsApp message now to close politely, and say we are here whenever they are interested",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “not interested”, “abhi nahi”, “રસ નથી”",
+   "email": false,
+   "after": "Closed: nothing more is sent"
+  },
+  {
+   "category": "Rejected",
+   "label": "Low credit score",
+   "action": "Connect for BT/other proposal",
+   "does": "A WhatsApp message now to offer the lower-investment option\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “CIBIL kharab hai”, “credit score”",
+   "email": true,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Rejected",
+   "label": "Eligibility criteria not met",
+   "action": "Connect for BT/other proposal",
+   "does": "A WhatsApp message now to offer the lower-investment option\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: when they studied below 12th. Team: in the Inbox",
+   "email": true,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Busy / Callback",
+   "label": "Busy",
+   "action": "Notification & calls",
+   "does": "A WhatsApp message now to confirm we will get back to them at their time\nA WhatsApp message this evening to get back to them, as promised\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “busy hoon”, “meeting mein hoon”, “વ્યસ્ત છું”",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Busy / Callback",
+   "label": "Asked to call later",
+   "action": "Notification & calls",
+   "does": "A WhatsApp message now to confirm we will get back to them at their time\nA WhatsApp message this evening to get back to them, as promised\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “baad mein call karna”, “call later”",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Busy / Callback",
+   "label": "Call at specific time",
+   "action": "Notification & calls",
+   "does": "A WhatsApp message now to confirm we will get back to them at their time\nA WhatsApp message at the time you set to get back to them, as promised\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “shaam 5 baje call karna”, “kal 11 am”: the call-back is set for that time",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "RNR",
+   "label": "No answer",
+   "action": "Reattempt next day & notification",
+   "does": "A WhatsApp message tomorrow morning to try them again\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Automatic: a message that expects a reply gets none in 24 hours",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "RNR",
+   "label": "Ringing but not picked",
+   "action": "Reattempt next day & notification",
+   "does": "A WhatsApp message tomorrow morning to try them again\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Automatic: from the WhatsApp call's result, once calling is on",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Unreachable",
+   "label": "Switched off",
+   "action": "Reattempt next day & notification",
+   "does": "A WhatsApp message tomorrow morning to try them again\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Automatic: from the WhatsApp call's result, once calling is on",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Unreachable",
+   "label": "Out of coverage",
+   "action": "Reattempt next day & notification",
+   "does": "A WhatsApp message tomorrow morning to try them again\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Automatic: from the WhatsApp call's result, once calling is on",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Unreachable",
+   "label": "Number not reachable",
+   "action": "Reattempt next day & notification",
+   "does": "A WhatsApp message tomorrow morning to try them again\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Automatic: WhatsApp could not deliver the message",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Invalid Lead",
+   "label": "Person denied applying",
+   "action": "Convince for BT",
+   "does": "A WhatsApp message now to offer the lower-investment option\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “maine apply nahi kiya”, “I did not apply”",
+   "email": true,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Invalid Lead",
+   "label": "Incorrect customer details",
+   "action": "Mark as bogus lead",
+   "does": "A WhatsApp message now to apologise for the trouble and close",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “wrong number”, “galat number”, “yeh mera number nahi”",
+   "email": false,
+   "after": "Closed: nothing more is sent"
+  },
+  {
+   "category": "Duplicate / Existing",
+   "label": "Duplicate lead",
+   "action": "Map to existing lead/customer or close duplicate",
+   "does": "Nothing is sent",
+   "owner": "Bot",
+   "recorded": "Team: in the Inbox (a second chat from the same lead)",
+   "email": false,
+   "after": "Closed: nothing more is sent"
+  },
+  {
+   "category": "Duplicate / Existing",
+   "label": "Already in process",
+   "action": "Map to existing lead/customer or close duplicate",
+   "does": "A WhatsApp message now to say they are already working with us",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “pehle hi apply kar diya hai”, “already applied”",
+   "email": false,
+   "after": "Closed: nothing more is sent"
+  },
+  {
+   "category": "Duplicate / Existing",
+   "label": "Existing customer / existing CSP",
+   "action": "Map to existing lead/customer or close duplicate",
+   "does": "A WhatsApp message now to say they are already working with us",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “pehle se CSP chala raha hoon”, “already a CSP”",
+   "email": false,
+   "after": "Closed: nothing more is sent"
+  },
+  {
+   "category": "Not Decision Maker",
+   "label": "Person contacted is not applicant",
+   "action": "Obtain correct contact / schedule callback with decision maker",
+   "does": "A WhatsApp message now to ask for the applicant's number\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “mere papa ka number hai”, “I am not the applicant”",
+   "email": true,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Not Decision Maker",
+   "label": "Decision maker not available",
+   "action": "Obtain correct contact / schedule callback with decision maker",
+   "does": "A WhatsApp message now to ask for the applicant's number\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “woh ghar par nahi hain”, “bahar gaye hain”",
+   "email": true,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Hold / Future Prospect",
+   "label": "Interested later",
+   "action": "Put lead on hold and schedule follow-up date",
+   "does": "A WhatsApp message on the date you set to check back with them\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “next month karunga”, “Diwali ke baad”: check back in a month, or the date they say",
+   "email": true,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Hold / Future Prospect",
+   "label": "Financial constraint currently",
+   "action": "Connect for BT/other proposal",
+   "does": "A WhatsApp message now to offer the lower-investment option\nA WhatsApp message on the date you set to check back with them\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “abhi paise nahi hai”, “financial problem”",
+   "email": true,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Hold / Future Prospect",
+   "label": "Wants to proceed after certain date",
+   "action": "Connect for BT/other proposal",
+   "does": "A WhatsApp message on the date you set to check back with them\n(The sheet's call is a WhatsApp nudge until WhatsApp calling is switched on)",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “15 Nov ke baad”: check back on that date",
+   "email": true,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Language Barrier",
+   "label": "Cannot communicate due to language mismatch",
+   "action": "Reassign lead to suitable language caller",
+   "does": "A WhatsApp message now to ask which language they prefer\nTeam to do: Reassign the lead to someone who speaks their language",
+   "owner": "Bot",
+   "recorded": "Bot: reads it from their reply, e.g. “samajh nahi aaya”, “English nahi aati”",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Other (not in the team's sheet)",
+   "label": "Enquiry, not from a campaign",
+   "action": "—",
+   "does": "Nothing is sent; the team reads and replies in the Inbox",
+   "owner": "—",
+   "recorded": "Bot: someone wrote in directly, not from an AutoGMap campaign",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  },
+  {
+   "category": "Other (not in the team's sheet)",
+   "label": "Other",
+   "action": "—",
+   "does": "Nothing is sent; the team reads and replies in the Inbox",
+   "owner": "—",
+   "recorded": "Team: in the Inbox",
+   "email": false,
+   "after": "Open: follow-ups run until they reply or upload"
+  }
+ ]
+}
