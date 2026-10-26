@@ -517,7 +517,7 @@ MORE_KEYS: Dict[str, List[str]] = {
                 "csp kholna", "kiosk kholna", "csp kaise milega", "how do i become", "how to become",
                 "become csp", "become a csp", "join eko", "eko ke saath judna", "eko ke saath kaam", "sbi csp", "सीएसपी कैसे",
                 "कियोस्क ऑपरेटर कैसे", "કેવી રીતે બની", "ਕਿਵੇਂ ਬਣ", "aage kya karna", "kya karna hai aage", "ab kya karna", "kitne din", "kab shuru", "shuru ho jayega", "kab tak chalu", "कितने दिन", "आगे क्या करना", "aage kya karna", "aage kya", "next step", "shuru kaise", "kaise judein", "kaise jude", "kaise apply",
-                "how to apply", "kitne din lagenge", "kitna time lagega", "kab tak shuru", "जुड़ना", "शुरू कैसे"],
+                "how to apply", "kitne din lagenge", "kitna time lagega", "kab tak shuru", "जुड़ना", "शुरू कैसे", "process kya hai", "process kya", "apply karne ka process", "apply karne ka tarika", "apply kaise kare", "apply kaise karein"],
     "services": ["kaun kaun si services", "services de sakte", "kya services de", "kaun si services", "paise nikal sakte", "paise nikal", "nikal sakte", "jama kar sakte", "kya kya kar sakte log", "पैसे निकाल सकते", "kya kya kaam", "kya services", "kaun kaun se kaam", "account kholna", "cash withdrawal", "पैसे निकालना", "खाता खोलना"],
     "setup_cost": ["machine ka kharcha", "kharcha kaun dega", "device ka paisa kaun", "machine kaun dega", "मशीन का खर्चा"],
     "schemes": ["bima", "insurance", "beema", "बीमा", "વીમો", "ਬੀਮਾ"],
@@ -734,6 +734,14 @@ _COMPLAINT = ("bhej diye", "bhej diya", "bhej di", "submit kar diya", "jama kar 
 def is_complaint(text: str) -> bool:
     said = " " + " ".join(_words(text)) + " "
     return any(f" {' '.join(_words(c))} " in said for c in _COMPLAINT)
+
+
+def asks(text: str) -> bool:
+    """Whether a message asks something ("kitni", "kaun si", "chahiye", "lagega", a question mark)."""
+    if "?" in (text or ""):
+        return True
+    said = " " + " ".join(_words(text or "")) + " "
+    return any(f" {' '.join(_words(q))} " in said for q in _ASKING)
 
 
 def match(text: str, limit: int = 2) -> List[str]:

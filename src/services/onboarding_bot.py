@@ -912,7 +912,9 @@ def _reply_disposition(db, conv, msg) -> bool:
     if msg.kind != "text" or getattr(msg, "voice", False) or _answers_the_step(conv, msg):
         return False
     said = (msg.body or "").strip()
-    if not said or "?" in said or eko_knowledge.match(said) or eko_knowledge.distrust(said):
+    # A question goes to the FAQ and the team; a statement that happens to name an FAQ
+    # subject ("meri cibil kharab hai") still says where they stand (the golden set, 2026-10-26).
+    if not said or eko_knowledge.distrust(said) or (eko_knowledge.asks(said) and eko_knowledge.match(said))             or "?" in said:
         return False
     from src.services import reply_dispositions
     hit = reply_dispositions.detect(said)

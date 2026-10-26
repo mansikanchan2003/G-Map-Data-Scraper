@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackToParent } from '../components/SubPage';
 import type { NavTab } from '../components/Header';
 import {
-  fetchAgentQuality, fetchAgentRun, fetchAgentRuns, type AgentQuality, type AgentRun, type ContextChunk,
+  fetchAgentQuality, fetchAgentRun, fetchAgentRuns, fetchGolden, type AgentQuality, type AgentRun, type ContextChunk,
+  type GoldenHistory,
 } from '../api/agents';
 import { formatDateTime } from '../utils/datetime';
 
@@ -416,6 +417,102 @@ const Inspector: React.FC<{ r: AgentRun }> = ({ r }) => {
   );
 };
 
+const SUITE: Record<string, { label: string; icon: string; note: string }> = {
+  bot_flow: { label: 'Bot flow', icon: 'route', note: 'Language, PIN, education, investment, documents' },
+  faq: { label: 'FAQ answers', icon: 'quiz', note: "Questions in the lead's own words" },
+  reply_disposition: { label: 'Dispositions from replies', icon: 'rule', note: 'And replies that must not be read as one' },
+  trust: { label: 'Trust concerns', icon: 'verified_user', note: 'Answered, recorded, sent to the team on time' },
+  copy_check: { label: 'Copy checker', icon: 'spellcheck', note: 'Drafts it must pass or stop' },
+};
+
+/** The golden set: real cases with the right answer, run before every deploy (blueprint phase 2). */
+const GoldenCard: React.FC<{ g: GoldenHistory }> = ({ g }) => {
+  const r = g.last;
+  if (!r) {
+    return (
+      <Card title="Golden test set" icon="workspace_premium" sub="Real cases with the answer AutoGMap must give, run before every deploy">
+        <div className="rounded-xl border border-dashed border-slate-800 p-6 text-center text-[13px] text-slate-500">
+          Not run on this server yet. The deploy runs it: <code className="font-mono-code text-slate-300">python -m src.evals.golden --save</code>
+        </div>
+      </Card>
+    );
+  }
+  const share = r.total ? r.passed / r.total : 0;
+  const all = r.passed === r.total;
+  const runs = [...g.history].reverse().concat([{ ran_at: r.ran_at, total: r.total, passed: r.passed }]).slice(-12);
+  return (
+    <Card title="Golden test set" icon="workspace_premium"
+      sub={<>Real cases with the answer AutoGMap must give · last run {formatDateTime(r.ran_at)} · {r.seconds} s</>}
+      right={(
+        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11.5px] font-semibold ${all ? 'bg-emerald-950 text-emerald-300' : 'bg-rose-950 text-rose-300'}`}>
+          <Icon name={all ? 'verified' : 'gpp_bad'} className="text-[15px]" />{all ? 'Safe to deploy' : `${r.total - r.passed} failing: fix before deploying`}
+        </span>
+      )}>
+      <div className="grid gap-5 lg:grid-cols-[200px_1fr_1fr] items-start">
+        <div className="flex flex-col items-center gap-3">
+          <div className="rounded-full p-1" style={{ background: 'linear-gradient(135deg, #0a3543, #1d5a6e)' }}>
+            <Ring value={share} size={150} stroke={12} color={all ? '#34d399' : '#fb7185'}>
+              <span className="text-3xl font-semibold tabular-nums text-white">{r.passed}<span className="text-white/60 text-lg">/{r.total}</span></span>
+              <span className="text-[11px] text-white/70">cases pass</span>
+            </Ring>
+          </div>
+          {runs.length > 1 && (
+            <div className="w-full">
+              <div className="flex items-end gap-[3px] h-8">
+                {runs.map((h, i) => (
+                  <span key={i} className="flex-1 rounded-t-sm" title={`${h.passed}/${h.total} · ${formatDateTime(h.ran_at)}`}
+                    style={{ height: `${Math.max(10, (h.passed / Math.max(h.total, 1)) * 100)}%`,
+                             background: h.passed === h.total ? 'var(--st-good)' : 'var(--st-bad)', opacity: i === runs.length - 1 ? 1 : 0.55 }} />
+                ))}
+              </div>
+              <div className="text-[10.5px] text-slate-500 text-center mt-1">Last {runs.length} runs</div>
+            </div>
+          )}
+        </div>
+        <ul className="space-y-3">
+          {Object.entries(r.suites).map(([k, s]) => {
+            const meta = SUITE[k] || { label: k, icon: 'checklist', note: '' };
+            const ok = s.passed === s.total;
+            return (
+              <li key={k}>
+                <div className="flex items-center gap-2 text-[12.5px]">
+                  <Icon name={meta.icon} className="text-[17px] text-sky-300" />
+                  <span className="text-slate-100 font-semibold">{meta.label}</span>
+                  <span className="flex-1" />
+                  <span className="tabular-nums text-slate-300">{s.passed}/{s.total}</span>
+                  <Icon name={ok ? 'check_circle' : 'cancel'} className="text-[16px]" style={{ color: ok ? 'var(--st-good)' : 'var(--st-bad)' }} />
+                </div>
+                <div className="h-1.5 rounded-full bg-slate-800 mt-1.5 overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${(s.passed / Math.max(s.total, 1)) * 100}%`, background: ok ? 'var(--st-good)' : 'var(--st-bad)' }} />
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1">{meta.note}</div>
+              </li>
+            );
+          })}
+        </ul>
+        <div>
+          <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 mb-2">{r.failures.length ? 'What failed' : 'Nothing failed'}</div>
+          {r.failures.length ? (
+            <ul className="space-y-2 max-h-64 overflow-y-auto">
+              {r.failures.map(f => (
+                <li key={f.id} className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-2.5">
+                  <div className="text-[12.5px] text-slate-100"><span className="font-mono-code text-rose-300 text-[11px] mr-1.5">{f.id}</span>{f.title}</div>
+                  {f.problems.map((p, i) => <div key={i} className="text-[11.5px] text-rose-200/80 mt-0.5">· {p}</div>)}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="rounded-xl border border-emerald-900/50 bg-emerald-950/30 p-4 flex items-center gap-3">
+              <Icon name="celebration" className="text-[26px] text-emerald-300" />
+              <span className="text-[12.5px] text-slate-300">Every case gives the answer it should. A change that breaks one stops the deploy.</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+};
+
 export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ can }) => {
   const [days, setDays] = useState(30);
   const [q, setQ] = useState<AgentQuality | null>(null);
@@ -423,6 +520,8 @@ export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ c
   const [agent, setAgent] = useState('');
   const [outcome, setOutcome] = useState('');
   const [picked, setPicked] = useState<AgentRun | null>(null);
+  const [golden, setGolden] = useState<GoldenHistory | null>(null);
+  useEffect(() => { fetchGolden().then(setGolden).catch(() => setGolden({ last: null, history: [] })); }, []);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     try {
@@ -578,6 +677,8 @@ export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean }> = ({ c
             </div>
           </Card>
         )}
+
+        {golden && <GoldenCard g={golden} />}
 
         {q && q.biggest_corrections.length > 0 && (
           <Card title="Drift & repair" icon="build_circle" sub="Where people changed the most: what the agents should learn first">

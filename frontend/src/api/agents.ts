@@ -65,3 +65,12 @@ export const fetchAgentRuns = (agent?: string, outcome?: string, limit = 50) => 
   return call<AgentRun[]>(`/runs?${q}`);
 };
 export const fetchAgentRun = (id: string) => call<AgentRun>(`/runs/${id}`);
+
+export interface GoldenReport {
+  ran_at: string; seconds: number; total: number; passed: number;
+  suites: Record<string, { total: number; passed: number }>;
+  failures: { id: string; suite: string; title: string; problems: string[] }[];
+}
+export interface GoldenHistory { last: GoldenReport | null; history: { ran_at: string; total: number; passed: number }[] }
+/** The golden set's last run before a deploy, and the ones before it. */
+export const fetchGolden = () => call<GoldenHistory>('/golden');

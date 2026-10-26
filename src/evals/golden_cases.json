@@ -1,0 +1,1442 @@
+{
+ "about": "AutoGMap's golden evaluation set: run with python -m src.evals.golden (see golden.py).",
+ "bases": {
+  "pa_good": {
+   "angle": "Extra income beside an existing shop",
+   "body": "*ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਜੀ* 🙏\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣੇ ਇਲਾਕੇ ਵਿੱਚ *SBI CSP* ਸ਼ੁਰੂ ਕਰੋ।\n\n📞 ਕਾਲ / WhatsApp: +91 7291988625\n\n*ਧੰਨਵਾਦ ਜੀ।* 🙏",
+   "footer": "ਟੀਮ Eko",
+   "apply_button": "ਹੁਣੇ ਅਪਲਾਈ ਕਰੋ",
+   "callback_button": "ਮੈਨੂੰ ਕਾਲ ਕਰੋ",
+   "poster": {
+    "headline_line1": "ਬੈਂਕਿੰਗ ਸੇਵਾਵਾਂ ਜੋੜੋ,",
+    "headline_line2": "ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ",
+    "headline_highlight": "ਕਾਰੋਬਾਰ ਵਧਾਓ",
+    "subline": "Eko ਨਾਲ ਜੁੜ ਕੇ SBI ਦੇ Kiosk Operator / CSP ਬਣੋ",
+    "callout": "ਹਰ ਮਹੀਨੇ ₹15,000 ਤੋਂ ₹50,000 ਤੱਕ ਕਮਿਸ਼ਨ ਕਮਾਉਣ ਦਾ ਮੌਕਾ",
+    "callout_highlight": "₹15,000 ਤੋਂ ₹50,000",
+    "benefits_title": "ਤੁਹਾਨੂੰ ਮਿਲੇਗਾ",
+    "benefits": [
+     {
+      "icon": "application",
+      "text": "ਆਸਾਨ ਅਰਜ਼ੀ ਪ੍ਰਕਿਰਿਆ"
+     },
+     {
+      "icon": "support",
+      "text": "ਟ੍ਰੇਨਿੰਗ ਅਤੇ ਸਹਾਇਤਾ"
+     },
+     {
+      "icon": "banking",
+      "text": "ਬੈਂਕਿੰਗ ਸੇਵਾਵਾਂ"
+     },
+     {
+      "icon": "income",
+      "text": "ਵਾਧੂ ਕਮਾਈ"
+     },
+     {
+      "icon": "growth",
+      "text": "ਕਾਰੋਬਾਰ ਵਧਾਓ"
+     },
+     {
+      "icon": "schemes",
+      "text": "ਸਰਕਾਰੀ ਯੋਜਨਾਵਾਂ"
+     }
+    ],
+    "cta": "ਅੱਜ ਹੀ ਅਪਲਾਈ ਕਰੋ",
+    "opportunity_title": "ਹਰ ਪੇਸ਼ੇਵਰ ਲਈ ਵਧੀਆ ਮੌਕਾ!",
+    "opportunity_text": "ਆਪਣੇ ਨੈੱਟਵਰਕ ਨਾਲ ਆਪਣੀ ਨਵੀਂ ਪਛਾਣ ਬਣਾਓ।",
+    "sign_title": "ਗਾਹਕ ਸੇਵਾ ਕੇਂਦਰ",
+    "bank_name": "ਭਾਰਤੀ ਸਟੇਟ ਬੈਂਕ",
+    "phone_label": "ਕਾਲ / ਵਟਸਐਪ ਕਰੋ:",
+    "web_label": "ਹੁਣੇ ਅਪਲਾਈ ਕਰੋ:"
+   },
+   "photo_scene": "A Sikh shopkeeper in his forties serves a farmer at the counter."
+  }
+ },
+ "cases": [
+  {
+   "id": "flow-01",
+   "suite": "bot_flow",
+   "title": "Interested asks which language",
+   "steps": [
+    {
+     "tap_campaign": null
+    }
+   ],
+   "expect": {
+    "bot_step": "CHOOSE_LANG"
+   }
+  },
+  {
+   "id": "flow-02",
+   "suite": "bot_flow",
+   "title": "Choosing English asks for the PIN code",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_PIN",
+    "reply_key": "ask_pin"
+   }
+  },
+  {
+   "id": "flow-03",
+   "suite": "bot_flow",
+   "title": "Choosing Hindi asks for the PIN in Hindi",
+   "steps": [
+    {
+     "tap_campaign": "hi"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_PIN",
+    "reply_key": "ask_pin",
+    "lang": "hi",
+    "data": {
+     "lang": "hi"
+    }
+   }
+  },
+  {
+   "id": "flow-04",
+   "suite": "bot_flow",
+   "title": "A typed language name counts",
+   "steps": [
+    {
+     "tap_campaign": null
+    },
+    {
+     "say": "Gujarati"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_PIN",
+    "data": {
+     "lang": "gu"
+    }
+   }
+  },
+  {
+   "id": "flow-05",
+   "suite": "bot_flow",
+   "title": "A PIN we serve asks about education",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_EDUCATION",
+    "reply_key": "ask_education"
+   }
+  },
+  {
+   "id": "flow-06",
+   "suite": "bot_flow",
+   "title": "A PIN inside a sentence is read",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "mera pin code 110001 hai"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_EDUCATION"
+   }
+  },
+  {
+   "id": "flow-07",
+   "suite": "bot_flow",
+   "title": "A real PIN outside our area still carries on (since 23 Oct)",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "400001"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_EDUCATION",
+    "reply_key": "ask_education"
+   }
+  },
+  {
+   "id": "flow-08",
+   "suite": "bot_flow",
+   "title": "A PIN that cannot be found is asked again",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "999999"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_PIN",
+    "reply_key": "unknown_pin"
+   }
+  },
+  {
+   "id": "flow-09",
+   "suite": "bot_flow",
+   "title": "No PIN at all is asked again",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "hello"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_PIN",
+    "reply_key": "bad_pin"
+   }
+  },
+  {
+   "id": "flow-10",
+   "suite": "bot_flow",
+   "title": "12th or diploma goes on to the investment (₹3–5 lakh)",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "tap": "edu:12"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_INVEST",
+    "reply_contains": [
+     "₹3–5 lakh (depending on your location)"
+    ]
+   }
+  },
+  {
+   "id": "flow-11",
+   "suite": "bot_flow",
+   "title": "A graduate goes on to the investment",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "tap": "edu:grad"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_INVEST"
+   }
+  },
+  {
+   "id": "flow-12",
+   "suite": "bot_flow",
+   "title": "Below 12th is a polite no",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "tap": "edu:other"
+    }
+   ],
+   "expect": {
+    "bot_step": "NOT_ELIGIBLE",
+    "reply_key": "not_eligible"
+   }
+  },
+  {
+   "id": "flow-13",
+   "suite": "bot_flow",
+   "title": "Typed '12th pass' counts as 12th",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "say": "12th pass"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_INVEST",
+    "data": {
+     "education": "12"
+    }
+   }
+  },
+  {
+   "id": "flow-14",
+   "suite": "bot_flow",
+   "title": "Typed 'graduate hoon' counts as a graduate",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "say": "graduate hoon"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_INVEST",
+    "data": {
+     "education": "grad"
+    }
+   }
+  },
+  {
+   "id": "flow-15",
+   "suite": "bot_flow",
+   "title": "Typed '10th' is below 12th",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "say": "10th"
+    }
+   ],
+   "expect": {
+    "bot_step": "NOT_ELIGIBLE"
+   }
+  },
+  {
+   "id": "flow-16",
+   "suite": "bot_flow",
+   "title": "Below 12th by mistake, then 12th, carries on",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "tap": "edu:other"
+    },
+    {
+     "say": "12th pass"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_INVEST"
+   }
+  },
+  {
+   "id": "flow-17",
+   "suite": "bot_flow",
+   "title": "Yes to investing asks for the documents",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "tap": "edu:12"
+    },
+    {
+     "tap": "invest:yes"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_DOCS",
+    "reply_contains": [
+     "Aadhaar"
+    ]
+   }
+  },
+  {
+   "id": "flow-18",
+   "suite": "bot_flow",
+   "title": "Typed 'haan' to investing counts as yes",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "tap": "edu:12"
+    },
+    {
+     "say": "haan"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_DOCS"
+   }
+  },
+  {
+   "id": "flow-19",
+   "suite": "bot_flow",
+   "title": "No to investing is an investment issue with the BT offer",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "tap": "edu:12"
+    },
+    {
+     "tap": "invest:no"
+    }
+   ],
+   "expect": {
+    "bot_step": "NOT_INVESTING",
+    "disposition": "ni_investment",
+    "reply_key": "not_investing"
+   }
+  },
+  {
+   "id": "flow-20",
+   "suite": "bot_flow",
+   "title": "Documents ready sends the upload link (documents pending)",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "tap": "edu:12"
+    },
+    {
+     "tap": "invest:yes"
+    },
+    {
+     "tap": "docs:yes"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_UPLOAD",
+    "disposition": "int_docs_pending"
+   }
+  },
+  {
+   "id": "flow-21",
+   "suite": "bot_flow",
+   "title": "Documents later is noted",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "tap": "edu:12"
+    },
+    {
+     "tap": "invest:yes"
+    },
+    {
+     "tap": "docs:no"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_DOCS",
+    "reply_key": "docs_later"
+   }
+  },
+  {
+   "id": "flow-22",
+   "suite": "bot_flow",
+   "title": "Hindi chooser gets the education question in Hindi",
+   "steps": [
+    {
+     "tap_campaign": "hi"
+    },
+    {
+     "say": "110001"
+    }
+   ],
+   "expect": {
+    "bot_step": "AWAIT_EDUCATION",
+    "reply_key": "ask_education",
+    "lang": "hi"
+   }
+  },
+  {
+   "id": "faq-01",
+   "suite": "faq",
+   "title": "“Apply karne ki fees kitni hai?” is answered from the FAQ",
+   "text": "Apply karne ki fees kitni hai?",
+   "expect": {
+    "faq": [
+     "fees"
+    ]
+   }
+  },
+  {
+   "id": "faq-02",
+   "suite": "faq",
+   "title": "“kitna invest karna hoga” is answered from the FAQ",
+   "text": "kitna invest karna hoga",
+   "expect": {
+    "faq": [
+     "investment"
+    ]
+   }
+  },
+  {
+   "id": "faq-03",
+   "suite": "faq",
+   "title": "“Kitna paisa lagega shuru karne ke liye?” is answered from the FAQ",
+   "text": "Kitna paisa lagega shuru karne ke liye?",
+   "expect": {
+    "faq": [
+     "investment"
+    ]
+   }
+  },
+  {
+   "id": "faq-04",
+   "suite": "faq",
+   "title": "“कितना निवेश करना होगा?” is answered from the FAQ",
+   "text": "कितना निवेश करना होगा?",
+   "expect": {
+    "faq": [
+     "investment"
+    ]
+   }
+  },
+  {
+   "id": "faq-05",
+   "suite": "faq",
+   "title": "“રોકાણ કેટલું કરવું પડે?” is answered from the FAQ",
+   "text": "રોકાણ કેટલું કરવું પડે?",
+   "expect": {
+    "faq": [
+     "investment"
+    ]
+   }
+  },
+  {
+   "id": "faq-06",
+   "suite": "faq",
+   "title": "“setup ka kharcha kitna hai” is answered from the FAQ",
+   "text": "setup ka kharcha kitna hai",
+   "expect": {
+    "faq": [
+     "setup_cost"
+    ]
+   }
+  },
+  {
+   "id": "faq-07",
+   "suite": "faq",
+   "title": "“machine kaun dega” is answered from the FAQ",
+   "text": "machine kaun dega",
+   "expect": {
+    "faq": [
+     "setup_cost"
+    ]
+   }
+  },
+  {
+   "id": "faq-08",
+   "suite": "faq",
+   "title": "“Kya yeh naukri hai?” is answered from the FAQ",
+   "text": "Kya yeh naukri hai?",
+   "expect": {
+    "faq": [
+     "job"
+    ]
+   }
+  },
+  {
+   "id": "faq-09",
+   "suite": "faq",
+   "title": "“salary kitni milegi” is answered from the FAQ",
+   "text": "salary kitni milegi",
+   "expect": {
+    "faq": [
+     "salary"
+    ]
+   }
+  },
+  {
+   "id": "faq-10",
+   "suite": "faq",
+   "title": "“Eko asli company hai kya?” is answered from the FAQ",
+   "text": "Eko asli company hai kya?",
+   "expect": {
+    "faq": [
+     "real"
+    ]
+   }
+  },
+  {
+   "id": "faq-11",
+   "suite": "faq",
+   "title": "“documents kya chahiye” is answered from the FAQ",
+   "text": "documents kya chahiye",
+   "expect": {
+    "faq": [
+     "documents"
+    ]
+   }
+  },
+  {
+   "id": "faq-12",
+   "suite": "faq",
+   "title": "“cibil score kharab hai chalega?” is answered from the FAQ",
+   "text": "cibil score kharab hai chalega?",
+   "expect": {
+    "faq": [
+     "cibil"
+    ]
+   }
+  },
+  {
+   "id": "faq-13",
+   "suite": "faq",
+   "title": "“training milegi kya” is answered from the FAQ",
+   "text": "training milegi kya",
+   "expect": {
+    "faq": [
+     "training"
+    ]
+   }
+  },
+  {
+   "id": "faq-14",
+   "suite": "faq",
+   "title": "“commission kab milta hai” is answered from the FAQ",
+   "text": "commission kab milta hai",
+   "expect": {
+    "faq": [
+     "commission_paid"
+    ]
+   }
+  },
+  {
+   "id": "faq-15",
+   "suite": "faq",
+   "title": "“CSP kya hota hai” is answered from the FAQ",
+   "text": "CSP kya hota hai",
+   "expect": {
+    "faq": [
+     "what_csp"
+    ]
+   }
+  },
+  {
+   "id": "faq-16",
+   "suite": "faq",
+   "title": "“process kya hai apply karne ka” is answered from the FAQ",
+   "text": "process kya hai apply karne ka",
+   "expect": {
+    "faq": [
+     "process"
+    ]
+   }
+  },
+  {
+   "id": "faq-17",
+   "suite": "faq",
+   "title": "“online apply kaise karein” is answered from the FAQ",
+   "text": "online apply kaise karein",
+   "expect": {
+    "faq": [
+     "apply_online"
+    ]
+   }
+  },
+  {
+   "id": "faq-18",
+   "suite": "faq",
+   "title": "“eligibility kya hai” is answered from the FAQ",
+   "text": "eligibility kya hai",
+   "expect": {
+    "faq": [
+     "eligibility"
+    ]
+   }
+  },
+  {
+   "id": "faq-19",
+   "suite": "faq",
+   "title": "“mahine ki kamaai kitni hogi” is answered from the FAQ",
+   "text": "mahine ki kamaai kitni hogi",
+   "expect": {
+    "faq": [
+     "earnings"
+    ]
+   }
+  },
+  {
+   "id": "faq-20",
+   "suite": "faq",
+   "title": "“auraton ke liye kuch alag hai? women” is answered from the FAQ",
+   "text": "auraton ke liye kuch alag hai? women",
+   "expect": {
+    "faq": [
+     "women"
+    ]
+   }
+  },
+  {
+   "id": "rd-01",
+   "suite": "reply_disposition",
+   "title": "“busy hoon abhi” is busy_busy",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "busy hoon abhi"
+    }
+   ],
+   "expect": {
+    "disposition": "busy_busy"
+   }
+  },
+  {
+   "id": "rd-02",
+   "suite": "reply_disposition",
+   "title": "“मैं अभी व्यस्त हूँ” is busy_busy",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "मैं अभी व्यस्त हूँ"
+    }
+   ],
+   "expect": {
+    "disposition": "busy_busy"
+   }
+  },
+  {
+   "id": "rd-03",
+   "suite": "reply_disposition",
+   "title": "“હું અત્યારે વ્યસ્ત છું” is busy_busy",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "હું અત્યારે વ્યસ્ત છું"
+    }
+   ],
+   "expect": {
+    "disposition": "busy_busy"
+   }
+  },
+  {
+   "id": "rd-04",
+   "suite": "reply_disposition",
+   "title": "“baad mein call karna” is busy_later",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "baad mein call karna"
+    }
+   ],
+   "expect": {
+    "disposition": "busy_later"
+   }
+  },
+  {
+   "id": "rd-05",
+   "suite": "reply_disposition",
+   "title": "“Abhi busy hoon, shaam 5 baje call karna” is busy_at_time",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "Abhi busy hoon, shaam 5 baje call karna"
+    }
+   ],
+   "expect": {
+    "disposition": "busy_at_time"
+   }
+  },
+  {
+   "id": "rd-06",
+   "suite": "reply_disposition",
+   "title": "“kal 11 am call karna” is busy_at_time",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "kal 11 am call karna"
+    }
+   ],
+   "expect": {
+    "disposition": "busy_at_time"
+   }
+  },
+  {
+   "id": "rd-07",
+   "suite": "reply_disposition",
+   "title": "“please call me” is int_callback",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "please call me"
+    }
+   ],
+   "expect": {
+    "disposition": "int_callback"
+   }
+  },
+  {
+   "id": "rd-08",
+   "suite": "reply_disposition",
+   "title": "“galti se apply ho gaya” is ni_mistake",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "galti se apply ho gaya"
+    }
+   ],
+   "expect": {
+    "disposition": "ni_mistake"
+   }
+  },
+  {
+   "id": "rd-09",
+   "suite": "reply_disposition",
+   "title": "“mujhe nahi chahiye” is ni_no_requirement",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "mujhe nahi chahiye"
+    }
+   ],
+   "expect": {
+    "disposition": "ni_no_requirement"
+   }
+  },
+  {
+   "id": "rd-10",
+   "suite": "reply_disposition",
+   "title": "“abhi interested nahi hoon” is ni_currently",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "abhi interested nahi hoon"
+    }
+   ],
+   "expect": {
+    "disposition": "ni_currently"
+   }
+  },
+  {
+   "id": "rd-11",
+   "suite": "reply_disposition",
+   "title": "“મને રસ નથી” is ni_currently",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "મને રસ નથી"
+    }
+   ],
+   "expect": {
+    "disposition": "ni_currently"
+   }
+  },
+  {
+   "id": "rd-12",
+   "suite": "reply_disposition",
+   "title": "“wrong number” is inv_incorrect",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "wrong number"
+    }
+   ],
+   "expect": {
+    "disposition": "inv_incorrect"
+   }
+  },
+  {
+   "id": "rd-13",
+   "suite": "reply_disposition",
+   "title": "“yeh mera number nahi hai” is inv_incorrect",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "yeh mera number nahi hai"
+    }
+   ],
+   "expect": {
+    "disposition": "inv_incorrect"
+   }
+  },
+  {
+   "id": "rd-14",
+   "suite": "reply_disposition",
+   "title": "“maine apply nahi kiya” is inv_denied",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "maine apply nahi kiya"
+    }
+   ],
+   "expect": {
+    "disposition": "inv_denied"
+   }
+  },
+  {
+   "id": "rd-15",
+   "suite": "reply_disposition",
+   "title": "“main pehle se CSP chala raha hoon” is dup_existing",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "main pehle se CSP chala raha hoon"
+    }
+   ],
+   "expect": {
+    "disposition": "dup_existing"
+   }
+  },
+  {
+   "id": "rd-16",
+   "suite": "reply_disposition",
+   "title": "“pehle hi apply kar diya hai” is dup_in_process",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "pehle hi apply kar diya hai"
+    }
+   ],
+   "expect": {
+    "disposition": "dup_in_process"
+   }
+  },
+  {
+   "id": "rd-17",
+   "suite": "reply_disposition",
+   "title": "“yeh mere papa ka number hai” is ndm_not_applicant",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "yeh mere papa ka number hai"
+    }
+   ],
+   "expect": {
+    "disposition": "ndm_not_applicant"
+   }
+  },
+  {
+   "id": "rd-18",
+   "suite": "reply_disposition",
+   "title": "“woh ghar par nahi hain abhi” is ndm_unavailable",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "woh ghar par nahi hain abhi"
+    }
+   ],
+   "expect": {
+    "disposition": "ndm_unavailable"
+   }
+  },
+  {
+   "id": "rd-19",
+   "suite": "reply_disposition",
+   "title": "“meri cibil kharab hai” is rej_credit",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "meri cibil kharab hai"
+    }
+   ],
+   "expect": {
+    "disposition": "rej_credit"
+   }
+  },
+  {
+   "id": "rd-20",
+   "suite": "reply_disposition",
+   "title": "“abhi paise nahi hai” is hold_financial",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "abhi paise nahi hai"
+    }
+   ],
+   "expect": {
+    "disposition": "hold_financial"
+   }
+  },
+  {
+   "id": "rd-21",
+   "suite": "reply_disposition",
+   "title": "“next month karunga” is hold_later",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "next month karunga"
+    }
+   ],
+   "expect": {
+    "disposition": "hold_later"
+   }
+  },
+  {
+   "id": "rd-22",
+   "suite": "reply_disposition",
+   "title": "“15 nov ke baad baad mein dekhenge” is hold_after_date",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "15 nov ke baad baad mein dekhenge"
+    }
+   ],
+   "expect": {
+    "disposition": "hold_after_date"
+   }
+  },
+  {
+   "id": "rd-23",
+   "suite": "reply_disposition",
+   "title": "“samajh nahi aaya” is lang_barrier",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "samajh nahi aaya"
+    }
+   ],
+   "expect": {
+    "disposition": "lang_barrier"
+   }
+  },
+  {
+   "id": "rd-neg-01",
+   "suite": "reply_disposition",
+   "title": "“Kya main baad mein apply kar sakta hoon?” is not read as a disposition",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "Kya main baad mein apply kar sakta hoon?"
+    }
+   ],
+   "expect": {
+    "disposition": null
+   }
+  },
+  {
+   "id": "rd-neg-02",
+   "suite": "reply_disposition",
+   "title": "“ok thanks” is not read as a disposition",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "ok thanks"
+    }
+   ],
+   "expect": {
+    "disposition": null
+   }
+  },
+  {
+   "id": "rd-neg-03",
+   "suite": "reply_disposition",
+   "title": "“hello” is not read as a disposition",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "hello"
+    }
+   ],
+   "expect": {
+    "disposition": null
+   }
+  },
+  {
+   "id": "rd-neg-04",
+   "suite": "reply_disposition",
+   "title": "“nahi” to the investment question is its answer, not a disposition read",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "tap": "edu:12"
+    },
+    {
+     "say": "nahi"
+    }
+   ],
+   "expect": {
+    "bot_step": "NOT_INVESTING",
+    "disposition": "ni_investment"
+   }
+  },
+  {
+   "id": "trust-01",
+   "suite": "trust",
+   "title": "A fraud worry is answered with who Eko is and the website",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "say": "yeh fraud to nahi hai?"
+    }
+   ],
+   "expect": {
+    "disposition": "int_trust",
+    "reply_contains": [
+     "Eko Bharat Ventures",
+     "kiosk.eko.in"
+    ]
+   }
+  },
+  {
+   "id": "trust-02",
+   "suite": "trust",
+   "title": "A Gujarati doubt is answered in Gujarati",
+   "steps": [
+    {
+     "tap_campaign": "gu"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "say": "Na . મને તમારા પર વિશ્ર્વાસ નથી.  તમે કોઈ  frod hy to"
+    }
+   ],
+   "expect": {
+    "disposition": "int_trust",
+    "reply_contains": [
+     "Eko Bharat Ventures",
+     "+91 7291988625"
+    ]
+   }
+  },
+  {
+   "id": "trust-03",
+   "suite": "trust",
+   "title": "A trust concern does not go to the team at once (two hours on)",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "say": "Eko fake company hai kya?"
+    }
+   ],
+   "expect": {
+    "disposition": "int_trust",
+    "flagged": false
+   }
+  },
+  {
+   "id": "trust-04",
+   "suite": "trust",
+   "title": "At the documents question the trust answer ends with the upload link",
+   "steps": [
+    {
+     "tap_campaign": "en"
+    },
+    {
+     "say": "110001"
+    },
+    {
+     "tap": "edu:12"
+    },
+    {
+     "tap": "invest:yes"
+    },
+    {
+     "say": "mujhe vishwas nahi hai, kahin fraud to nahi"
+    }
+   ],
+   "expect": {
+    "disposition": "int_trust",
+    "reply_contains": [
+     "Eko Bharat Ventures"
+    ]
+   }
+  },
+  {
+   "id": "copy-01",
+   "suite": "copy_check",
+   "title": "A good draft passes",
+   "language": "pa",
+   "base": "pa_good",
+   "set": {},
+   "expect": {
+    "clean": true
+   }
+  },
+  {
+   "id": "copy-02",
+   "suite": "copy_check",
+   "title": "A link in the body is stopped",
+   "language": "pa",
+   "base": "pa_good",
+   "set": {
+    "body": "*ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਜੀ* 🙏\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣੇ ਇਲਾਕੇ ਵਿੱਚ *SBI CSP* ਸ਼ੁਰੂ ਕਰੋ।\n\n📞 ਕਾਲ / WhatsApp: +91 7291988625\n\n*ਧੰਨਵਾਦ ਜੀ।* 🙏\nhttps://kiosk.eko.in"
+   },
+   "expect": {
+    "problems_mention": [
+     "URL"
+    ]
+   }
+  },
+  {
+   "id": "copy-03",
+   "suite": "copy_check",
+   "title": "A body without our number is stopped",
+   "language": "pa",
+   "base": "pa_good",
+   "set": {
+    "body": "*ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਜੀ* 🙏\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣੇ ਇਲਾਕੇ ਵਿੱਚ *SBI CSP* ਸ਼ੁਰੂ ਕਰੋ।\n\n📞 ਕਾਲ / WhatsApp: \n\n*ਧੰਨਵਾਦ ਜੀ।* 🙏"
+   },
+   "expect": {
+    "problems_mention": [
+     "contact number"
+    ]
+   }
+  },
+  {
+   "id": "copy-04",
+   "suite": "copy_check",
+   "title": "A {{placeholder}} is stopped",
+   "language": "pa",
+   "base": "pa_good",
+   "set": {
+    "body": "*ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਜੀ* 🙏\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣੇ ਇਲਾਕੇ ਵਿੱਚ *SBI CSP* ਸ਼ੁਰੂ ਕਰੋ।\n\n📞 ਕਾਲ / WhatsApp: +91 7291988625\n\n*ਧੰਨਵਾਦ ਜੀ।* 🙏 {{1}}"
+   },
+   "expect": {
+    "problems_mention": [
+     "placeholder"
+    ]
+   }
+  },
+  {
+   "id": "copy-05",
+   "suite": "copy_check",
+   "title": "**Double asterisks** are stopped",
+   "language": "pa",
+   "base": "pa_good",
+   "set": {
+    "body": "*ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਜੀ* 🙏\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣੇ ਇਲਾਕੇ ਵਿੱਚ **SBI CSP** ਸ਼ੁਰੂ ਕਰੋ।\n\n📞 ਕਾਲ / WhatsApp: +91 7291988625\n\n*ਧੰਨਵਾਦ ਜੀ।* 🙏"
+   },
+   "expect": {
+    "problems_mention": [
+     "double asterisks"
+    ]
+   }
+  },
+  {
+   "id": "copy-06",
+   "suite": "copy_check",
+   "title": "A body over the limit is stopped",
+   "language": "pa",
+   "base": "pa_good",
+   "set": {
+    "body": "*ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਜੀ* 🙏\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣੇ ਇਲਾਕੇ ਵਿੱਚ *SBI CSP* ਸ਼ੁਰੂ ਕਰੋ।\n\n📞 ਕਾਲ / WhatsApp: +91 7291988625\n\n*ਧੰਨਵਾਦ ਜੀ।* 🙏\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ।"
+   },
+   "expect": {
+    "problems_mention": [
+     "the limit is"
+    ]
+   }
+  },
+  {
+   "id": "copy-07",
+   "suite": "copy_check",
+   "title": "A word we do not use (naukri) is stopped",
+   "language": "pa",
+   "base": "pa_good",
+   "set": {
+    "body": "*ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਜੀ* 🙏\n\nEko ਨਾਲ ਜੁੜ ਕੇ ਆਪਣੇ ਇਲਾਕੇ ਵਿੱਚ *SBI CSP* naukri ਸ਼ੁਰੂ ਕਰੋ।\n\n📞 ਕਾਲ / WhatsApp: +91 7291988625\n\n*ਧੰਨਵਾਦ ਜੀ।* 🙏"
+   },
+   "expect": {
+    "problems_mention": [
+     "naukri"
+    ]
+   }
+  },
+  {
+   "id": "copy-08",
+   "suite": "copy_check",
+   "title": "An image phrase not in the text is stopped",
+   "language": "pa",
+   "base": "pa_good",
+   "set": {
+    "image_phrase": "ਬਿਲਕੁਲ ਨਵੀਂ ਲਾਈਨ ਇੱਥੇ"
+   },
+   "expect": {
+    "problems_mention": [
+     "image_phrase"
+    ]
+   }
+  },
+  {
+   "id": "copy-09",
+   "suite": "copy_check",
+   "title": "A poster with five benefits is stopped",
+   "language": "pa",
+   "base": "pa_good",
+   "set": {
+    "poster.benefits": [
+     {
+      "icon": "application",
+      "text": "ਆਸਾਨ ਅਰਜ਼ੀ ਪ੍ਰਕਿਰਿਆ"
+     },
+     {
+      "icon": "support",
+      "text": "ਟ੍ਰੇਨਿੰਗ ਅਤੇ ਸਹਾਇਤਾ"
+     },
+     {
+      "icon": "banking",
+      "text": "ਬੈਂਕਿੰਗ ਸੇਵਾਵਾਂ"
+     },
+     {
+      "icon": "income",
+      "text": "ਵਾਧੂ ਕਮਾਈ"
+     },
+     {
+      "icon": "growth",
+      "text": "ਕਾਰੋਬਾਰ ਵਧਾਓ"
+     }
+    ]
+   },
+   "expect": {
+    "problems_mention": [
+     "exactly 6"
+    ]
+   }
+  },
+  {
+   "id": "copy-10",
+   "suite": "copy_check",
+   "title": "A long Apply button is stopped",
+   "language": "pa",
+   "base": "pa_good",
+   "set": {
+    "apply_button": "ਹੁਣੇ ਅਪਲਾਈ ਕਰੋ ਅਤੇ ਆਪਣਾ ਕਾਰੋਬਾਰ ਵਧਾਓ"
+   },
+   "expect": {
+    "problems_mention": [
+     "apply_button is longer"
+    ]
+   }
+  },
+  {
+   "id": "copy-11",
+   "suite": "copy_check",
+   "title": "A body in another script is stopped",
+   "language": "pa",
+   "base": "pa_good",
+   "set": {
+    "body": "नमस्ते जी 🙏\n\nEko के साथ SBI CSP शुरू करें।\n\n📞 +91 7291988625"
+   },
+   "expect": {
+    "problems_mention": [
+     "body"
+    ]
+   }
+  },
+  {
+   "id": "copy-12",
+   "suite": "copy_check",
+   "title": "A missing angle is stopped",
+   "language": "pa",
+   "base": "pa_good",
+   "set": {
+    "angle": ""
+   },
+   "expect": {
+    "problems_mention": [
+     "angle is missing"
+    ]
+   }
+  }
+ ]
+}
