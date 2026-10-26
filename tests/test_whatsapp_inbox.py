@@ -3174,3 +3174,15 @@ def test_auto_replies_missed_earlier_are_found_and_answered_once(db):
     db.commit()
     assert StubMeta.sent[-1][0] == "buttons"
     assert auto_replies.missed(db) == []
+
+
+def test_the_playground_says_what_the_bot_does_not_only_the_disposition(client):
+    # "Invest" is no disposition, but the bot answers it from the FAQ (the user, 2026-10-26).
+    def bot(text):
+        return client.post("/api/v1/agents/playground/reply", json={"text": text}).json()["bot"]
+    invest = bot("Invest")
+    assert invest["kind"] == "faq" and "3–5 lakh" in invest["answer"]
+    assert bot("abhi busy hoon, 5 baje call karna")["kind"] == "disposition"
+    assert bot("Thank you for contacting Royal Graphics, we will get back to you shortly")["kind"] == "auto_reply"
+    assert bot("kya ye fraud hai?")["title"].endswith("(trust)")
+    assert bot("ok")["kind"] == "step"

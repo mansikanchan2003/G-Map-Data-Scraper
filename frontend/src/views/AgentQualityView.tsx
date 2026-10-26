@@ -5,7 +5,7 @@ import {
   acceptPatch, dismissPatch, fetchAgentQuality, fetchAgentRun, fetchAgentRuns, fetchControls, fetchCopyTrial, fetchGolden,
   fetchLearning, fetchSources, setSwitch, startCopyTrial, tryReply, undoPatch,
   type AgentQuality, type AgentRun, type ContextChunk, type Controls, type CopyTrial, type Draft, type GateReport,
-  type GoldenHistory, type Learning, type Patch, type Reading, type SourceRow,
+  type BotAction, type GoldenHistory, type Learning, type Patch, type Reading, type SourceRow,
 } from '../api/agents';
 import { formatDateTime } from '../utils/datetime';
 
@@ -774,6 +774,15 @@ const SOURCES_OFF = [
 ];
 
 /** Side by side: today's behaviour against a change, before it goes anywhere near a lead. */
+const BOT_ACTIONS: Record<BotAction['kind'], { icon: string; color: string }> = {
+  faq: { icon: 'quiz', color: 'var(--ag-1)' },
+  disposition: { icon: 'label', color: 'var(--ag-3)' },
+  auto_reply: { icon: 'smart_toy', color: 'var(--ag-4)' },
+  clarify: { icon: 'help', color: 'var(--ag-5)' },
+  team: { icon: 'support_agent', color: 'var(--ag-2)' },
+  step: { icon: 'replay', color: 'var(--ag-1)' },
+};
+
 const PlaygroundCard: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
   const [tab, setTab] = useState<'reply' | 'copy'>('reply');
   const [text, setText] = useState('abhi busy hoon, shaam 5 baje call karna');
@@ -853,12 +862,43 @@ const PlaygroundCard: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
               <Icon name="play_arrow" className="text-[17px]" />Read it
             </button>
           </div>
-          {reading && (
-            <div className="grid gap-3 md:grid-cols-2">
-              <Pane title="Today, in production" icon="public" accent="var(--ag-1)"><ReadingView r={reading.today} /></Pane>
-              <Pane title={`With the ${reading.pending_rules} pending rule${reading.pending_rules === 1 ? '' : 's'}`} icon="science" accent="var(--ag-4)"><ReadingView r={reading.with_patches} /></Pane>
-            </div>
-          )}
+          {reading && (() => {
+            const act = BOT_ACTIONS[reading.bot.kind];
+            return (
+              <>
+                {/* What the bot actually does: a disposition is only one of the things it tries. */}
+                <div className="rounded-xl border p-3.5" style={{ borderColor: `color-mix(in srgb, ${act.color} 45%, transparent)`, background: `color-mix(in srgb, ${act.color} 9%, transparent)` }}>
+                  <div className="flex items-start gap-3">
+                    <div className="h-9 w-9 shrink-0 rounded-lg grid place-items-center text-white" style={{ background: act.color }}>
+                      <Icon name={act.icon} className="text-[19px]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-400">What the bot does</div>
+                      <div className="text-[16px] font-semibold text-slate-100 mt-0.5">{reading.bot.title}</div>
+                      <div className="text-[12.5px] text-slate-400 mt-0.5">{reading.bot.detail}</div>
+                      {reading.bot.answer && (
+                        <div className="mt-2.5 rounded-lg bg-slate-950/70 border border-slate-800 p-3 text-[13px] text-slate-200 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto">
+                          {reading.bot.answer}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 pt-1">Read as a disposition</div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Pane title="Today, in production" icon="public" accent="var(--ag-1)"><ReadingView r={reading.today} /></Pane>
+                  {reading.pending_rules ? (
+                    <Pane title={`With the ${reading.pending_rules} pending rule${reading.pending_rules === 1 ? '' : 's'}`} icon="science" accent="var(--ag-4)"><ReadingView r={reading.with_patches} /></Pane>
+                  ) : (
+                    <Pane title="With pending rules" icon="science" accent="var(--ag-4)">
+                      <div className="text-[14px] font-semibold text-slate-300">No rule waiting to be accepted</div>
+                      <div className="text-[12px] text-slate-500 mt-0.5">When the team corrects a disposition, the proposed rule is tried here.</div>
+                    </Pane>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
       ) : (
         <div className="space-y-3">

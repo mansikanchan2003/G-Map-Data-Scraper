@@ -252,7 +252,48 @@ def try_reply(db: Session, text: str) -> dict:
 
     pending = [(p["key"], p["phrase"]) for p in proposals(db) if p["kind"] == "rule_phrase"]
     now = extra_rules(db)
-    return {"text": text, "today": reading(now), "with_patches": reading(now + pending), "pending_rules": len(pending)}
+    today = reading(now)
+    return {"text": text, "today": today, "with_patches": reading(now + pending), "pending_rules": len(pending),
+            "bot": bot_action(db, text, today)}
+
+
+def bot_action(db: Session, text: str, today: dict) -> dict:
+    """
+    What the bot does with this message in a chat mid-way through its
+    questions, in the order onboarding_bot tries things: a disposition is only
+    one of them, so "Invest" is answered from the FAQ (the user, 2026-10-26).
+    """
+    from src.services import agent_controls, auto_replies, eko_knowledge, onboarding_bot
+
+    if auto_replies.is_automatic(text):
+        return {"kind": "auto_reply", "title": "Their shop's auto-reply",
+                "detail": "Before they start the questions: the bot sends its greeting with Interested and "
+                          "Personal Guidance, once."}
+    said = text.strip()
+    faq = eko_knowledge.match(said) if agent_controls.is_on(db, "bot_faq") else []
+    doubts = eko_knowledge.distrust(said) and agent_controls.is_on(db, "bot_faq")
+    asking = "?" in said or doubts or (eko_knowledge.asks(said) and faq)
+    if today.get("key") and not asking and agent_controls.is_on(db, "bot_reply_disposition"):
+        if today["key"] == "clarify":
+            return {"kind": "clarify", "title": "Left for a person to clarify",
+                    "detail": f"Could be {today['by']}: a ticket, and they are told the team will reply."}
+        return {"kind": "disposition", "title": f"Records “{today['label']}”",
+                "detail": "And sends that disposition's message."}
+    if doubts and "real" not in faq:
+        faq = ["real"] + list(faq)
+    if faq:
+        answer = eko_knowledge.reply(faq, "hi", said)
+        if "investment" in faq:
+            answer += "\n\n" + onboarding_bot.bot_messages.HINGLISH.get(
+                "invest_explained", onboarding_bot.bot_messages.text("hi", "invest_explained"))
+        titles = ", ".join(eko_knowledge._BY_ID[i]["question"] for i in faq if i in eko_knowledge._BY_ID)
+        return {"kind": "faq", "title": "Answers from Eko's FAQ" + (" and tells the team (trust)" if doubts else ""),
+                "detail": titles, "answer": answer}
+    if onboarding_bot.looks_like_question(said):
+        return {"kind": "team", "title": "Leaves it for the team",
+                "detail": "No confirmed answer: they are thanked, and the chat gets a ticket."}
+    return {"kind": "step", "title": "Carries on with its question",
+            "detail": "Not a disposition, a question or an answer it knows: the bot repeats the question it asked."}
 
 
 _jobs: Dict[str, dict] = {}

@@ -113,7 +113,8 @@ export const dismissPatch = (id: string) => call<Learning>(`/learning/${id}/dism
 export const undoPatch = (id: string) => call<Learning>(`/learning/${id}/undo`, { method: 'POST' });
 
 export interface Reading { key: string | null; label: string; by: string; confidence: number | null }
-export const tryReply = (text: string) => call<{ text: string; today: Reading; with_patches: Reading; pending_rules: number }>(
+export interface BotAction { kind: 'auto_reply' | 'clarify' | 'disposition' | 'faq' | 'team' | 'step'; title: string; detail: string; answer?: string }
+export const tryReply = (text: string) => call<{ text: string; today: Reading; with_patches: Reading; pending_rules: number; bot: BotAction }>(
   '/playground/reply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
 export interface Draft { body: string | null; angle: string | null; problems: string[]; prompt_tokens: number }
 export interface CopyTrial { status: 'running' | 'done' | 'failed'; state: string; instruction: string; without: string[];
