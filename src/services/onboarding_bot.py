@@ -594,7 +594,7 @@ def _guidance_ask(db, conv) -> str:
 
 
 def _ask_invest(db, conv, lang):
-    """What the ₹5 lakh is for, then the question: the money stays theirs, in an e-wallet."""
+    """What the ₹3–5 lakh is for, then the question: the money stays theirs, in an e-wallet."""
     _say(db, conv, _t(db, conv, "invest_explained"))
     _say(db, conv, _t(db, conv, "ask_invest"), buttons=YES_NO("invest", lang))
 
@@ -1033,7 +1033,7 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
             # The sheet's "Investment issue": its reply offers the lower-investment
             # option, and the team hears so a person follows it up.
             from src.services import followups, handover
-            handover.record(db, conv, "ni_investment", "bot", note="Said they cannot invest ₹5 lakh", run_now=False)
+            handover.record(db, conv, "ni_investment", "bot", note="Said they cannot invest ₹3–5 lakh", run_now=False)
             followups.mark_sent(db, conv, "lower_investment", said)
         else:
             _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n" + _t(db, conv, "ask_invest"),

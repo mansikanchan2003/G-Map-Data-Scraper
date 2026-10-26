@@ -9,7 +9,7 @@ Two uses:
   * the template agents read agent_section() before writing, for personas,
     hooks and facts to build new templates from.
 
-Only the Banking Outlet track for now: the bot's flow (12th pass, ₹5 lakh)
+Only the Banking Outlet track for now: the bot's flow (12th pass, ₹3-5 lakh)
 is the Outlet's, so Touchpoint-only answers and personas are left out. The
 team chose to keep SBI's name and logo, rupee figures and "franchise" as
 they are, so only the Creator Pack's word rules that do not conflict with
@@ -85,11 +85,11 @@ FAQ: List[dict] = [
         "id": "investment", "question": "Kitna invest karna hoga?",
         "keys": ["invest", "investment", "nivesh", "kitna paisa", "kitne paise", "lagat", "kharcha", "5 lakh", "paanch lakh", "निवेश", "लागत", "खर्चा", "રોકાણ", "ખર્ચ", "ਨਿਵੇਸ਼", "ਖਰਚਾ"],
         "answer": {
-            "hinglish": "INR 5 lakh tak, location aur setup par nirbhar.",
-            "en": "Up to ₹5 lakh, depending on the location and the setup.",
-            "hi": "₹5 लाख तक, लोकेशन और सेटअप पर निर्भर।",
-            "gu": "₹5 લાખ સુધી, સ્થાન અને સેટઅપ પર આધારિત.",
-            "pa": "₹5 ਲੱਖ ਤੱਕ, ਲੋਕੇਸ਼ਨ ਅਤੇ ਸੈੱਟਅੱਪ 'ਤੇ ਨਿਰਭਰ।",
+            "hinglish": "INR 3–5 lakh, aapki location aur setup par nirbhar.",
+            "en": "₹3–5 lakh, depending on your location and the setup.",
+            "hi": "₹3–5 लाख, आपकी लोकेशन और सेटअप पर निर्भर।",
+            "gu": "₹3–5 લાખ, તમારા સ્થાન અને સેટઅપ પર આધારિત.",
+            "pa": "₹3–5 ਲੱਖ, ਤੁਹਾਡੀ ਲੋਕੇਸ਼ਨ ਅਤੇ ਸੈੱਟਅੱਪ 'ਤੇ ਨਿਰਭਰ।",
         },
     },
     {
@@ -321,11 +321,11 @@ SITE_FAQ += [
                  "device ka kharcha", "machine ka paisa", "machine ke paise", "branding ka", "सेटअप का खर्च", "एक बार का",
                  "સેટઅપ ખર્ચ", "ਸੈੱਟਅਪ ਖਰਚਾ"],
         "answer": {
-            "hinglish": "Haan. Ek baar ka investment lagta hai jisme Micro-ATM, biometric scanner aur kiosk ki branding aati hai (kul milakar ₹5 lakh tak, location aur setup ke hisaab se). Kuch bhi tay karne se pehle aapka onboarding coordinator poora hisaab batata hai.",
-            "en": "Yes. There is a one-time investment that covers the Micro-ATM, the biometric scanner and the kiosk branding (up to ₹5 lakh in all, depending on location and setup). Your onboarding coordinator shares the full breakdown before you commit to anything.",
-            "hi": "हाँ। एक बार का निवेश लगता है जिसमें माइक्रो-ATM, बायोमेट्रिक स्कैनर और कियोस्क की ब्रांडिंग आती है (कुल मिलाकर ₹5 लाख तक, लोकेशन और सेटअप के हिसाब से)। कुछ भी तय करने से पहले आपका ऑनबोर्डिंग कोऑर्डिनेटर पूरा हिसाब बताता है।",
-            "gu": "હા. એક વખતનું રોકાણ લાગે છે જેમાં માઇક્રો-ATM, બાયોમેટ્રિક સ્કેનર અને કિઓસ્કની બ્રાન્ડિંગ આવે છે (કુલ ₹5 લાખ સુધી, સ્થળ અને સેટઅપ પ્રમાણે). કંઈ પણ નક્કી કરતાં પહેલાં તમારા ઓનબોર્ડિંગ કોઓર્ડિનેટર આખો હિસાબ જણાવે છે.",
-            "pa": "ਹਾਂ। ਇੱਕ ਵਾਰ ਦਾ ਨਿਵੇਸ਼ ਲੱਗਦਾ ਹੈ ਜਿਸ ਵਿੱਚ ਮਾਈਕ੍ਰੋ-ATM, ਬਾਇਓਮੈਟ੍ਰਿਕ ਸਕੈਨਰ ਅਤੇ ਕਿਓਸਕ ਦੀ ਬ੍ਰਾਂਡਿੰਗ ਆਉਂਦੀ ਹੈ (ਕੁੱਲ ₹5 ਲੱਖ ਤੱਕ, ਲੋਕੇਸ਼ਨ ਅਤੇ ਸੈੱਟਅਪ ਮੁਤਾਬਕ)। ਕੁਝ ਵੀ ਤੈਅ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ ਤੁਹਾਡਾ ਆਨਬੋਰਡਿੰਗ ਕੋਆਰਡੀਨੇਟਰ ਪੂਰਾ ਹਿਸਾਬ ਦੱਸਦਾ ਹੈ।",
+            "hinglish": "Haan. Ek baar ka investment lagta hai jisme Micro-ATM, biometric scanner aur kiosk ki branding aati hai (kul milakar ₹3–5 lakh, location aur setup ke hisaab se). Kuch bhi tay karne se pehle aapka onboarding coordinator poora hisaab batata hai.",
+            "en": "Yes. There is a one-time investment that covers the Micro-ATM, the biometric scanner and the kiosk branding (₹3–5 lakh in all, depending on location and setup). Your onboarding coordinator shares the full breakdown before you commit to anything.",
+            "hi": "हाँ। एक बार का निवेश लगता है जिसमें माइक्रो-ATM, बायोमेट्रिक स्कैनर और कियोस्क की ब्रांडिंग आती है (कुल मिलाकर ₹3–5 लाख, लोकेशन और सेटअप के हिसाब से)। कुछ भी तय करने से पहले आपका ऑनबोर्डिंग कोऑर्डिनेटर पूरा हिसाब बताता है।",
+            "gu": "હા. એક વખતનું રોકાણ લાગે છે જેમાં માઇક્રો-ATM, બાયોમેટ્રિક સ્કેનર અને કિઓસ્કની બ્રાન્ડિંગ આવે છે (કુલ ₹3–5 લાખ, સ્થળ અને સેટઅપ પ્રમાણે). કંઈ પણ નક્કી કરતાં પહેલાં તમારા ઓનબોર્ડિંગ કોઓર્ડિનેટર આખો હિસાબ જણાવે છે.",
+            "pa": "ਹਾਂ। ਇੱਕ ਵਾਰ ਦਾ ਨਿਵੇਸ਼ ਲੱਗਦਾ ਹੈ ਜਿਸ ਵਿੱਚ ਮਾਈਕ੍ਰੋ-ATM, ਬਾਇਓਮੈਟ੍ਰਿਕ ਸਕੈਨਰ ਅਤੇ ਕਿਓਸਕ ਦੀ ਬ੍ਰਾਂਡਿੰਗ ਆਉਂਦੀ ਹੈ (ਕੁੱਲ ₹3–5 ਲੱਖ, ਲੋਕੇਸ਼ਨ ਅਤੇ ਸੈੱਟਅਪ ਮੁਤਾਬਕ)। ਕੁਝ ਵੀ ਤੈਅ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ ਤੁਹਾਡਾ ਆਨਬੋਰਡਿੰਗ ਕੋਆਰਡੀਨੇਟਰ ਪੂਰਾ ਹਿਸਾਬ ਦੱਸਦਾ ਹੈ।",
         },
     },
     {
@@ -1045,4 +1045,4 @@ THE PATH EKO RUNS WITH THE OPERATOR (good material for “you are never alone”
 WHO WE SPEAK TO — Banking Outlet operators come from established business families and are graduates; women entrepreneurs are a priority. Pick the persona that fits the businesses this template goes to, answer what holds them back, and adapt (not copy) a hook into the template's language:
 {personas}
 
-WORDS WE DO NOT USE: never call it a job, naukri, vacancy, bharti or joining (it is apna business); never promise a salary, fixed, guaranteed or “pakka” income; no “zero investment”, “limited seats” or “aaj hi payment”; the operator is a Kiosk Operator, not a bank employee or officer, and the outlet is not a mini bank or branch; always write Eko as “Eko”. Being honest about the investment of up to ₹5 lakh and “apply free” builds trust."""
+WORDS WE DO NOT USE: never call it a job, naukri, vacancy, bharti or joining (it is apna business); never promise a salary, fixed, guaranteed or “pakka” income; no “zero investment”, “limited seats” or “aaj hi payment”; the operator is a Kiosk Operator, not a bank employee or officer, and the outlet is not a mini bank or branch; always write Eko as “Eko”. Being honest about the investment of ₹3–5 lakh (depending on location) and “apply free” builds trust."""

@@ -3,7 +3,7 @@ The Applications tab: who has applied through the WhatsApp onboarding bot,
 how far they got, and whether they qualify.
 
 Strongly qualified is the team's definition: a PIN in our area, at least
-12th / Diploma, and Yes to investing ₹5 lakh.
+12th / Diploma, and Yes to investing ₹3–5 lakh.
 """
 from datetime import datetime, timezone
 
@@ -126,7 +126,7 @@ def test_the_totals_follow_the_teams_definitions(client):
     assert apps["+919000000003"]["not_qualified_reasons"] == ["Below 12th"]
     assert apps["+919000000004"]["not_qualified_reasons"] == ["Not qualified for SBI branch code"]
     assert apps["+919000000004"]["verdict"] == "Not qualified for SBI branch code"
-    assert apps["+919000000005"]["not_qualified_reasons"] == ["Cannot invest ₹5 lakh"]
+    assert apps["+919000000005"]["not_qualified_reasons"] == ["Cannot invest ₹3–5 lakh"]
     assert apps["+919000000006"]["verdict"] == "In progress"
 
 
@@ -350,7 +350,7 @@ def test_qualified_and_strongly_qualified_leads_are_kept_with_the_nearest_branch
     assert other["why"][0].startswith("PIN 110001 is outside our SBI branch area")
     strong = leads["+919000000001"]
     assert strong["level"] == "Strongly qualified" and strong["submitted"]
-    assert strong["why"] == ["PIN 363520 is in our area (Chotila)", "Graduate or post-graduate", "Can invest up to ₹5 lakh"]
+    assert strong["why"] == ["PIN 363520 is in our area (Chotila)", "Graduate or post-graduate", "Can invest ₹3–5 lakh"]
     assert strong["district"] == "Surendranagar" and strong["pincode"] == "363520"
     assert strong["branch"]["code"] == "60108" and strong["branch"]["ao"] == "AO Ahmedabad"
     part = leads["+919000000010"]

@@ -198,7 +198,7 @@ def test_the_funnel_finds_where_people_stop(db):
     assert steps["can_invest"]["from_previous"] == 0.2          # 1 of the 5 who answered
     leak = f["biggest_leak"]
     assert (leak["step"], leak["from"], leak["to"]) == ("can_invest", 5, 1)
-    assert "₹5 lakh" in leak["advice"]
+    assert "₹3–5 lakh" in leak["advice"]
 
 
 def test_people_part_way_are_listed_to_call_furthest_first(db):

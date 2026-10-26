@@ -1179,7 +1179,7 @@ def test_a_question_the_faq_answers_is_answered_and_the_question_asked_again(db)
     qualify(db)                                  # now asked about investing
     say(db, "Kitna invest karna hoga?")
     body = StubMeta.sent[-1][2]
-    assert body.startswith("Up to ₹5 lakh")                   # in English, as chosen
+    assert body.startswith("₹3–5 lakh, depending")                   # in English, as chosen
     assert bot_messages.MESSAGES["en"]["ask_invest"] in body     # and the question follows
     c = conv(db)
     assert c.bot_step == onboarding_bot.AWAIT_INVEST
@@ -1275,7 +1275,7 @@ def test_the_summary_shows_questions_answers_and_what_to_send_next(db, client):
     assert any(line.startswith("PIN 110001 diya") for line in s["story"])
     q = s["questions"][-1]
     assert q["text"] == "Kitna invest karna hoga?" and q["answered_by_bot"]
-    assert q["answers"][0]["answer"].startswith("Up to ₹5 lakh")
+    assert q["answers"][0]["answer"].startswith("₹3–5 lakh, depending")
     assert [o["text"] for o in s["other_messages"]] == ["Mera naam Ravi hai"]
     assert "Investment" in s["next"]["action"] and s["next"]["reply"] == bot_messages.MESSAGES["en"]["ask_invest"]
 
@@ -1573,7 +1573,7 @@ def test_hindi_written_in_latin_letters_is_answered_in_latin_letters(db):
     say(db, SERVED_PIN)
     say(db, "Kuch invest krna hoga?")
     body = StubMeta.sent[-1][2]
-    assert body.startswith("INR 5 lakh tak") and "₹3–5 lakh (aapki location ke hisaab se) ka istemal kaise hota hai" in body
+    assert body.startswith("INR 3–5 lakh") and "₹3–5 lakh (aapki location ke hisaab se) ka istemal kaise hota hai" in body
     assert not re.search(r"[\u0900-\u097F]{3,}", body)        # no Devanagari sentences left in it
     # Written in Devanagari, the bot answers in Devanagari again.
     say(db, "कितना निवेश करना होगा?")

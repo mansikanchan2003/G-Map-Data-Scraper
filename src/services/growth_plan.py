@@ -42,7 +42,7 @@ FUNNEL = [
     ("interested", "Started applying"),
     ("area_ok", "PIN in our area"),
     ("education_ok", "12th pass or more"),
-    ("can_invest", "Can invest ₹5 lakh"),
+    ("can_invest", "Can invest ₹3–5 lakh"),
     ("link_sent", "Got the upload link"),
     ("lead", "Submitted documents (lead)"),
 ]
@@ -61,7 +61,7 @@ LEAKS = {
                "the PIN codes people keep sending.",
     "education_ok": "Applicants are below 12th. Target categories run by educated owners (e.g. computer "
                     "centres, insurance and travel agents), and say \"12th pass\" in the template.",
-    "can_invest": "Applicants cannot invest ₹5 lakh. Target established businesses with capital, and mention "
+    "can_invest": "Applicants cannot invest ₹3–5 lakh. Target established businesses with capital, and mention "
                   "the investment honestly in the template, so the ones who answer can afford it.",
     "link_sent": "People stop before the documents step. Call them: they are qualified and need a nudge.",
     "lead": "People got the upload link but have not submitted. Call each one today; offer to help with "
@@ -597,7 +597,7 @@ def agent_brief(db: Session) -> str:
                       for st in p["next_steps"] if st["icon"] != "call") or "- nothing yet"
     return f"""{business_context.process_text(p.get('business'))}
 
-THE GOAL — read this first. Eko earns from LEADS: business owners who tap Interested, qualify (PIN in our area, 12th pass or more, can invest ₹5 lakh) and submit complete, correct documents, so the branch and LHO approve them. Your goal for {g['label']}, which you set from the numbers above: {g['target']} leads; we have {g['leads']}, with {g['days_left']} days left. Why: {why} A template that gets many replies from people who cannot qualify does not help. Write to win QUALIFIED owners: established shops and agencies with capital and an educated owner, and be honest that it is an investment-backed business.
+THE GOAL — read this first. Eko earns from LEADS: business owners who tap Interested, qualify (PIN in our area, 12th pass or more, can invest ₹3–5 lakh) and submit complete, correct documents, so the branch and LHO approve them. Your goal for {g['label']}, which you set from the numbers above: {g['target']} leads; we have {g['leads']}, with {g['days_left']} days left. Why: {why} A template that gets many replies from people who cannot qualify does not help. Write to win QUALIFIED owners: established shops and agencies with capital and an educated owner, and be honest that it is an investment-backed business.
 
 WHAT MOVED PEOPLE SO FAR (judged on “{p['judged_on_label']}”, the furthest step with enough data; 'too early' means not proven yet):
 {lines('angle', 'Message angle')}

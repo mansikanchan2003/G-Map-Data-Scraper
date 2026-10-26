@@ -3,7 +3,7 @@ Qualified and strongly qualified applicants, kept for good.
 
 Every applicant who reaches Qualified (their PIN is in our area and nothing
 rules them out) or Strongly qualified (that, plus 12th or more and able to
-invest up to ₹5 lakh) is stored in qualified_leads, with why, when, where,
+invest ₹3–5 lakh) is stored in qualified_leads, with why, when, where,
 and the nearest SBI branch from our branch list (its code, AO and region).
 A later answer that rules them out, or taking the application off the tab,
 does not remove them: the list shows where they stand now beside it.
@@ -59,7 +59,7 @@ def why(conv: WhatsAppConversation, q: dict) -> List[str]:
     elif edu is None:
         out.append("Education not answered yet")
     if data.get("can_invest") is True:
-        out.append("Can invest up to ₹5 lakh")
+        out.append("Can invest ₹3–5 lakh")
     elif data.get("can_invest") is None:
         out.append("Investment not answered yet")
     return out

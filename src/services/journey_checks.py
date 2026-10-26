@@ -23,7 +23,7 @@ that is missing:
 - tapped a button / clicked the link / replied, but no sent message;
 - delivered or read, but not sent;
 - read, but not delivered (Meta's delivered update did not arrive);
-- documents in, but the qualifying answers (PIN, education, ₹5 lakh) missing;
+- documents in, but the qualifying answers (PIN, education, ₹3–5 lakh) missing;
 - the upload link sent without "can invest" recorded;
 - an education answer with no PIN code before it;
 - documents in since the hand-over began, but nothing queued for Eko Acquisition.

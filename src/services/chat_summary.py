@@ -36,8 +36,8 @@ STEP_NEXT = {
     bot.CHOOSE_LANG: ("Language choose karne ka wait hai. Unse ek language chunne ko kahiye.", "language_prompt"),
     bot.AWAIT_PIN: ("PIN code ka wait hai. Unka 6-digit PIN code maangiye.", "ask_pin"),
     bot.AWAIT_EDUCATION: ("Education ka wait hai. Poochiye kitna padhe hain.", "ask_education"),
-    bot.AWAIT_FRANCHISE: ("Investment ke jawab ka wait hai. ₹5 lakh tak kis cheez ke liye hai samjhaiye, phir poochiye.", "ask_invest"),
-    bot.AWAIT_INVEST: ("Investment ke jawab ka wait hai. ₹5 lakh tak kis cheez ke liye hai (devices, e-wallet, "
+    bot.AWAIT_FRANCHISE: ("Investment ke jawab ka wait hai. ₹3–5 lakh kis cheez ke liye hai samjhaiye, phir poochiye.", "ask_invest"),
+    bot.AWAIT_INVEST: ("Investment ke jawab ka wait hai. ₹3–5 lakh kis cheez ke liye hai (devices, e-wallet, "
                        "setup) samjhaiye aur poochiye ki kya woh invest kar sakte hain.", "ask_invest"),
     bot.AWAIT_DOCS: ("Documents hain ya nahi, iska wait hai. Unke saath documents ki list dekhiye.", "ask_docs"),
     bot.AWAIT_UPLOAD: ("Upload link mil gaya hai par submit nahi kiya. Yaad dilaiye, aur scan ya upload karne mein "
@@ -49,7 +49,7 @@ STEP_NEXT = {
     bot.NOT_ELIGIBLE: ("12th se kam padhe hain, isliye Banking Outlet ke liye eligible nahi. Politely thank you "
                        "boliye.", None),
     bot.NOT_INVESTING: ("Inhone kaha invest nahi kar sakte. Samjhaiye ki paise ka ek hissa unke e-wallet mein unka hi "
-                        "rehta hai, aur poochiye kya ₹5 lakh tak ho sakta hai.", "invest_explained"),
+                        "rehta hai, aur poochiye kya ₹3–5 lakh ho sakta hai.", "invest_explained"),
     bot.HANDOVER: ("Teen baar galat PIN code ke baad bot ne inhe team ko diya. Call kijiye ya PIN dobara maangiye.", "ask_pin"),
     bot.GUIDANCE_QA: ("Personal guidance maangi hai: bot inke sawaalon ke jawab de raha hai. Jo sawaal aapke liye "
                       "chhode hain unka jawab dijiye, aur jab ready hon to Interested tap karne ko kahiye.", None),
@@ -195,7 +195,7 @@ def _story(db: Session, conv: WhatsAppConversation) -> List[str]:
         out.append({"12": "12th/Diploma tak padhe hain.", "grad": "Graduate ya post-graduate hain.",
                     "other": "12th se kam: eligible nahi."}.get(edu, f"Education: {edu}."))
     if data.get("can_invest") is not None:
-        out.append("₹5 lakh tak invest kar sakte hain." if data["can_invest"] else "Kaha ₹5 lakh tak invest nahi kar sakte.")
+        out.append("₹3–5 lakh invest kar sakte hain." if data["can_invest"] else "Kaha ₹3–5 lakh invest nahi kar sakte.")
     docs = db.query(OnboardingDocument).filter(OnboardingDocument.phone == conv.phone).count()
     if conv.documents_submitted_at:
         out.append(f"{_when(conv.documents_submitted_at)} ko {docs} documents submit kiye: yeh lead hai.")
@@ -218,8 +218,8 @@ _TAPS = {
     "edu:12": "Bataya 12th ya diploma tak padhe hain",
     "edu:grad": "Bataya graduate ya post-graduate hain",
     "edu:other": "Bataya 12th se kam padhe hain (eligible nahi)",
-    "invest:yes": "HAAN kaha, ₹5 lakh tak invest kar sakte hain",
-    "invest:no": "NAHI kaha, ₹5 lakh tak invest nahi kar sakte",
+    "invest:yes": "HAAN kaha, ₹3–5 lakh invest kar sakte hain",
+    "invest:no": "NAHI kaha, ₹3–5 lakh invest nahi kar sakte",
     "franchise:yes": "Franchise wale sawaal par haan kaha",
     "franchise:no": "Franchise wale sawaal par nahi kaha",
     "docs:yes": "Bataya documents hain",
@@ -232,8 +232,8 @@ _WAITING = {
     bot.CHOOSE_LANG: "language chunne",
     bot.AWAIT_PIN: "PIN code bhejne",
     bot.AWAIT_EDUCATION: "education batane",
-    bot.AWAIT_FRANCHISE: "₹5 lakh tak invest kar sakte hain ya nahi, yeh batane",
-    bot.AWAIT_INVEST: "₹5 lakh tak invest kar sakte hain ya nahi, yeh batane",
+    bot.AWAIT_FRANCHISE: "₹3–5 lakh invest kar sakte hain ya nahi, yeh batane",
+    bot.AWAIT_INVEST: "₹3–5 lakh invest kar sakte hain ya nahi, yeh batane",
     bot.AWAIT_DOCS: "documents hain ya nahi, yeh batane",
     bot.AWAIT_UPLOAD: "documents upload karne",
     bot.GUIDANCE_QA: "sawaal poochne, ya shuru karne ke liye Interested tap karne",

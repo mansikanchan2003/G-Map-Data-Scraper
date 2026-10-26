@@ -10,7 +10,7 @@ own results alone.
 
 THE PROCESS, as the agent is told it:
  1. AutoGMap messages businesses; some tap Interested and qualify (area,
-    12th pass, can invest ₹5 lakh) and submit documents. That is a LEAD.
+    12th pass, can invest ₹3–5 lakh) and submit documents. That is a LEAD.
  2. The onboarding team takes the lead through CAT-1 and CAT-2: documents,
     then digital and hard-copy approval by the SBI branch, RBO and LHO, and
     the BC-CSP agreement. Many are rejected here, mostly on hard copies.

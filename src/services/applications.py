@@ -2,13 +2,13 @@
 Applications: the people who started onboarding through the WhatsApp bot.
 
 The bot keeps each person's answers on their conversation (bot_data): the PIN
-check, education, franchise background and whether they can invest ₹5 lakh,
+check, education, franchise background and whether they can invest ₹3–5 lakh,
 and the documents they upload are OnboardingDocument rows. An application is
 read from those, so it is always as current as the chat itself.
 
 Qualification, as the team defined it:
 - PIN qualified: the PIN is within our area.
-- Strongly qualified: PIN qualified, at least 12th / Diploma, and Yes to ₹5 lakh.
+- Strongly qualified: PIN qualified, at least 12th / Diploma, and Yes to ₹3–5 lakh.
 - Not qualified: the PIN is outside our area, education is below 12th, or
   they cannot invest. Someone part-way through is none of these yet.
 """
@@ -83,7 +83,7 @@ def qualify(conv: WhatsAppConversation) -> Dict:
     if education == "other":
         reasons.append("Below 12th")
     if can_invest is False:
-        reasons.append("Cannot invest ₹5 lakh")
+        reasons.append("Cannot invest ₹3–5 lakh")
     strong = bool(served) and education in ("12", "grad") and can_invest is True
     return {
         "pin_qualified": served is True,

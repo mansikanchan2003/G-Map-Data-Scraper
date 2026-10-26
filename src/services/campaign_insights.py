@@ -137,7 +137,7 @@ GROUPS = ["Template", "Location", "Category", "Timing"]
 STAGES = [
     ("engaged", "Replied or tapped"),
     ("interested", "Started applying"),
-    ("qualified", "Qualified (area, education, ₹5 lakh)"),
+    ("qualified", "Qualified (area, education, ₹3–5 lakh)"),
     ("lead", "Lead: documents submitted"),
 ]
 STAGE_LABELS = dict(STAGES)
