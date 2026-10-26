@@ -435,6 +435,25 @@ def poster_spec(language_name: str) -> str:
   }}"""
 
 
+def evaluation(first_problems: List[str], remaining: List[str]) -> dict:
+    """
+    What AutoGMap's own checkers made of a draft, apart from the model that
+    wrote it (the evaluator): the problems found first, whether a repair pass
+    fixed them, and what is left for the reviewer.
+    """
+    return {
+        "checks": [
+            {"name": "Copy rules, length and script (validate_copy)", "passed": not remaining,
+             "detail": "; ".join(remaining) or "No problems left"},
+            {"name": "Repair pass", "passed": not (first_problems and remaining),
+             "detail": (f"{len(first_problems)} found first, {'all fixed' if not remaining else f'{len(remaining)} left'}"
+                        if first_problems else "Not needed")},
+        ],
+        "first_problems": first_problems, "remaining": remaining,
+        "repaired": bool(first_problems) and not remaining,
+    }
+
+
 def prompt_context(references: List[str], performance: List[dict], history: dict, brief: Optional[str],
                    learned: Optional[dict] = None) -> List[dict]:
     """
@@ -1247,7 +1266,8 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
                     **look,
                 }
                 agent_telemetry.log(db, "template_writer", "template", tmpl.template_id, tmpl.body, prompt=prompt,
-                                    context=context, model=models["text"], latency_ms=took)
+                                    context=context, model=models["text"], latency_ms=took,
+                                    evaluation=evaluation(first_errors, errors))
                 db.commit()
 
                 try:

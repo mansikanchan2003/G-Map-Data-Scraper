@@ -49,6 +49,24 @@ AGENTS = {
     "inbox_ready_reply": "Inbox: ready replies",
 }
 TEMPLATE_AGENTS = ("template_writer", "business_agent")
+# The context window of the model behind each agent, for the token health bar
+# (the UI spec: green to 60%, yellow to 80%, red past it). The bot's agents use
+# fixed rules and Eko's FAQ: no model, no window.
+CONTEXT_WINDOW = {"template_writer": 128_000, "business_agent": 128_000}
+# The three tiers of context (the UI spec, 2.1): global rules, the project's
+# long-term memory, and this one session's input.
+LAYER = {
+    "facts": "global", "creator_pack": "global", "rules": "global", "trust_rule": "global", "rule": "global",
+    "approved_example": "project", "performance": "project", "rejected_draft": "project",
+    "past_mistake": "project", "growth_goal": "project", "faq": "project",
+    "team_brief": "session", "audience": "session", "when": "session",
+}
+
+
+def layer_of(source: str) -> str:
+    if source.startswith("learned:"):
+        return "project"
+    return LAYER.get(source, "session")
 FAQ_WINDOW = timedelta(hours=2)
 DISPOSITION_WINDOW = timedelta(hours=24)
 TARGETS = {"acceptance": 0.75, "completion": 0.95}
@@ -102,13 +120,15 @@ def _distance(output: Optional[str], final: Optional[str]) -> tuple:
 def log(db: Session, agent: str, subject_type: str, subject_id: str, output: Optional[str],
         prompt: Optional[str] = None, context: Optional[List[dict]] = None, model: Optional[str] = None,
         latency_ms: Optional[int] = None, outcome: str = "pending", error: Optional[str] = None,
-        final_output: Optional[str] = None, finalized_by: Optional[str] = None) -> Optional[str]:
+        final_output: Optional[str] = None, finalized_by: Optional[str] = None,
+        evaluation: Optional[dict] = None) -> Optional[str]:
     """Record one run. Returns its id, or None if it could not be recorded (the agent carries on)."""
     try:
         with db.begin_nested():
             run = AgentRun(run_id=uuid.uuid4().hex, agent=agent, subject_type=subject_type,
                            subject_id=str(subject_id)[:64], model=(model or None) and model[:120], prompt=prompt,
                            context=context or [], output=output, outcome=outcome, error=(error or None) and error[:500],
+                           evaluation=evaluation,
                            prompt_tokens=tokens(prompt) if prompt else None,
                            context_tokens=sum(c.get("tokens") or 0 for c in (context or [])),
                            output_tokens=tokens(output) if output else None, latency_ms=latency_ms,
@@ -239,10 +259,13 @@ def metrics(db: Session, days: int = 30) -> dict:
     for t in tickets:
         hitl_weeks[_week(t.raised_at)] += 1
     all_weeks = sorted(set(weeks) | set(hitl_weeks))
+    edited = sorted((r for r in runs if r.outcome == "edited" and r.edit_ratio), key=lambda r: -(r.edit_ratio or 0))
     return {
         "days": days,
         "targets": {"acceptance_rate": TARGETS["acceptance"], "completion_rate": TARGETS["completion"],
                     "avg_edit_ratio": 0.0},
+        # Drift & repair: where people changed the most, to learn from first.
+        "biggest_corrections": [as_dict(r) for r in edited[:5]],
         "overall": _summary(runs),
         "agents": [{"key": k, "label": label, **_summary(by_agent.get(k, []))} for k, label in AGENTS.items()],
         "hitl_interventions": len(tickets),
@@ -259,7 +282,9 @@ def as_dict(r: AgentRun, full: bool = False) -> dict:
            "output": r.output, "final_output": r.final_output, "edit_distance": r.edit_distance,
            "edit_ratio": r.edit_ratio, "prompt_tokens": r.prompt_tokens, "context_tokens": r.context_tokens,
            "output_tokens": r.output_tokens, "latency_ms": r.latency_ms, "error": r.error,
-           "finalized_by": r.finalized_by, "context": r.context or [],
+           "finalized_by": r.finalized_by,
+           "context": [{**c, "layer": layer_of(c.get("source") or "")} for c in (r.context or [])],
+           "evaluation": r.evaluation, "context_window": CONTEXT_WINDOW.get(r.agent),
            "created_at": _aware(r.created_at).isoformat() if r.created_at else None,
            "finalized_at": _aware(r.finalized_at).isoformat() if r.finalized_at else None}
     if full:

@@ -523,7 +523,8 @@ def run_generation(template_ids: List[str]) -> None:
             }
             tmpl.category = "UTILITY"  # Default to UTILITY as requested
             agent_telemetry.log(db, "business_agent", "template", tmpl.template_id, body, prompt=prompt,
-                                context=context, model=model, latency_ms=took)
+                                context=context, model=model, latency_ms=took,
+                                evaluation=studio.evaluation(first_errors, errors))
             db.commit()  # The copy is kept whatever happens to the photo.
 
             # The image, made from the finished text the same way as the

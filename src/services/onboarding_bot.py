@@ -928,7 +928,11 @@ def _reply_disposition(db, conv, msg) -> bool:
     from src.services import agent_telemetry
     agent_telemetry.log(db, "bot_reply_disposition", "chat", conv.phone, key, prompt=said, context=[
         agent_telemetry.chunk("rule", reply_dispositions.matched_phrase(said, key) or "", key),
-        *([agent_telemetry.chunk("when", when.isoformat())] if when else [])])
+        *([agent_telemetry.chunk("when", when.isoformat())] if when else [])], evaluation={"checks": [
+            {"name": "Not an answer to the bot's own question", "passed": True, "detail": f"Step {conv.bot_step or 'none'}"},
+            {"name": "Not a question of theirs (left for the FAQ)", "passed": True, "detail": "No “?”, no FAQ match"},
+            {"name": "Not a voice note (a transcript can be wrong)", "passed": True, "detail": "Typed text"},
+        ]})
     db.flush()
     sent = db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone,
                                             WhatsAppMessage.direction == "OUT").count() > before

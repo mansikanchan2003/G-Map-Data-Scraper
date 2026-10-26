@@ -24,6 +24,9 @@ class AgentRun(Base):
     # The context injected, chunk by chunk: [{source, ref, text, tokens, score}].
     context = Column(JSON, nullable=True)
     output = Column(Text, nullable=True)
+    # The evaluator: what AutoGMap's own checks found, apart from the agent that wrote it:
+    # {"checks": [{"name", "passed", "detail"}], "first_problems": [...], "repaired": bool}.
+    evaluation = Column(JSON, nullable=True)
     # What a person finally kept (sent, submitted or recorded), when they did.
     final_output = Column(Text, nullable=True)
     # pending | accepted | edited | rejected | failed
