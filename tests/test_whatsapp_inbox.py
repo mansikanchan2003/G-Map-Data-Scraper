@@ -3062,3 +3062,104 @@ def test_the_playground_writes_two_drafts_side_by_side(db, client, monkeypatch):
     assert job["status"] == "done", job
     assert job["today"]["body"] == "today" and job["changed"]["body"] == "with change"
     assert "Mention free training" in seen[1] and "Mention free training" not in seen[0]
+
+
+# --- A shop's own auto-reply to the campaign (the user, 2026-10-26) ----------
+
+ROYAL = ("Hello 👋, Thank you for reaching out to Royal Graphics We specialize in Flex Printing, "
+         "Visiting Cards, Vinyl. We will get back to you shortly. Looking forward to serving you! 🙏")
+
+
+def _templated_campaign(db, sent_at=None):
+    from src.services import campaign_buttons
+    template_id, campaign_id = uuid.uuid4().hex, uuid.uuid4().hex
+    db.add(WhatsAppTemplate(template_id=template_id, name="Gujarat CSP", status="APPROVED",
+                            body="Namaste {{name}}, become an SBI CSP with Eko.\n\nApply today: {{link}}",
+                            buttons=[{"type": "QUICK_REPLY", "text": "Interested"},
+                                     {"type": "QUICK_REPLY", "text": campaign_buttons.webinar_label("en")}]))
+    db.add(WhatsAppCampaign(campaign_id=campaign_id, name="Gujarat CSP", data_source_type="scraped",
+                            status="COMPLETED", total_contacts=1, template_id=template_id))
+    db.add(WhatsAppCampaignRecipient(recipient_id=uuid.uuid4().hex, campaign_id=campaign_id, phone=PHONE,
+                                     name="Royal Graphics", status="SENT", provider_message_id="wamid.gj",
+                                     tracking_token="tok123", sent_at=sent_at or inbox.now()))
+    db.commit()
+
+
+def test_auto_replies_are_told_from_people():
+    from src.services import auto_replies
+    assert auto_replies.is_automatic(ROYAL)
+    assert auto_replies.is_automatic("નમસ્તે, રોયલ ગ્રાફિક્સ સુધી પહોંચવા બદલ આભાર. અમે તમને ટૂંક સમયમાં સંપર્ક કરીશું.")
+    assert auto_replies.is_automatic("We are currently closed. Our business hours are 10am to 7pm.")
+    assert not auto_replies.is_automatic("Haan interested hoon, details bhejo")
+    assert not auto_replies.is_automatic("Kitna paisa lagega?")
+    # Long and within a minute of the campaign: no person typed it.
+    now = inbox.now()
+    long = "Welcome to Shree Krishna Mobile Repair, all brands, all accessories available here"
+    assert auto_replies.is_automatic(long, now, now + timedelta(seconds=8))
+    assert not auto_replies.is_automatic(long, now, now + timedelta(minutes=20))
+
+
+def test_a_shops_auto_reply_gets_the_campaign_text_again_with_its_buttons(db):
+    _templated_campaign(db)
+    say(db, ROYAL)
+
+    kind, _to, body, buttons = StubMeta.sent[-1]
+    assert kind == "buttons"
+    assert body.startswith("Namaste Royal Graphics, become an SBI CSP") and "tok123" in body
+    assert "{{" not in body and "Thank you for contacting" not in body
+    assert [b["id"] for b in buttons] == [onboarding_bot.START_INTERESTED, onboarding_bot.START_WEBINAR]
+    c = conv(db)
+    assert c.bot_step is None and c.needs_attention is False
+    # Marked, so Campaign insights does not count it as them replying.
+    last_in = (db.query(WhatsAppMessage).filter(WhatsAppMessage.direction == "IN")
+               .order_by(WhatsAppMessage.created_at.desc()).first())
+    assert last_in.payload["auto_reply"] is True
+    # Their bot answering again is not answered again: two bots never loop.
+    before = len(StubMeta.sent)
+    say(db, ROYAL)
+    assert len(StubMeta.sent) == before
+    # A tap on the resent button starts the questions as the campaign's would.
+    tap(db, onboarding_bot.START_INTERESTED)
+    assert conv(db).bot_step is not None
+
+
+def test_a_campaign_chat_is_never_shown_as_an_enquiry_of_their_own(db):
+    from src.services import handover
+    _templated_campaign(db)
+    say(db, ROYAL)
+    assert handover.bot_disposition(conv(db)) == "other"
+
+
+def test_a_person_answering_the_campaign_is_not_taken_for_a_bot(db):
+    _templated_campaign(db, sent_at=inbox.now() - timedelta(hours=3))
+    say(db, "hello, what is this about")
+    _kind, _to, body, _b = StubMeta.sent[-1]
+    assert not body.startswith("Namaste Royal Graphics")
+
+
+def test_an_auto_reply_while_the_send_is_still_being_saved_counts_as_a_campaigns(db):
+    campaign_id = uuid.uuid4().hex
+    other = "+919812345670"
+    db.add(WhatsAppCampaign(campaign_id=campaign_id, name="Live", data_source_type="scraped",
+                            status="RUNNING", total_contacts=1))
+    db.add(WhatsAppCampaignRecipient(recipient_id=uuid.uuid4().hex, campaign_id=campaign_id,
+                                     phone=other, status="PROCESSING"))
+    db.commit()
+    assert inbox.from_campaign(db, other) is False
+    assert inbox.being_sent(db, other) is True
+
+
+def test_auto_replies_missed_earlier_are_found_and_answered_once(db):
+    from src.services import auto_replies
+    _templated_campaign(db)
+    # Came in before the bot knew: recorded, but not answered.
+    inbox.record_inbound(db, {"from": PHONE.lstrip("+"), "id": "wamid.royal", "type": "text",
+                              "text": {"body": ROYAL}}, "Royal Graphics")
+    db.commit()
+    found = auto_replies.missed(db)
+    assert [c.phone for c, _m in found] == [PHONE]
+    conv_, msg = found[0]
+    onboarding_bot.handle(db, conv_, msg)
+    db.commit()
+    assert StubMeta.sent[-1][0] == "buttons"
+    assert auto_replies.missed(db) == []

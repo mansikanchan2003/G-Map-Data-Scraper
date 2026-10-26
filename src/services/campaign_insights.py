@@ -329,8 +329,11 @@ def _outcomes(db: Session, recipients: list) -> Dict[str, dict]:
     for chunk in _chunks(phones, 500):
         for c in db.query(WhatsAppConversation).filter(WhatsAppConversation.phone.in_(chunk)):
             convs[c.phone] = c
-        for phone, at in (db.query(WhatsAppMessage.phone, WhatsAppMessage.created_at)
-                          .filter(WhatsAppMessage.phone.in_(chunk), WhatsAppMessage.direction == "IN")):
+        for phone, at, payload in (db.query(WhatsAppMessage.phone, WhatsAppMessage.created_at, WhatsAppMessage.payload)
+                                   .filter(WhatsAppMessage.phone.in_(chunk), WhatsAppMessage.direction == "IN")):
+            # Their shop's auto-reply is not them replying (auto_replies.py).
+            if isinstance(payload, dict) and payload.get("auto_reply"):
+                continue
             first_in.setdefault(phone, []).append(_aware(at))
 
     out = {}

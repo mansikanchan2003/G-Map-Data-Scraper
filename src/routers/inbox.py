@@ -352,7 +352,8 @@ def _thread(db: Session, phone: str) -> List[ThreadMessage]:
     for r, campaign, template in sends:
         items.append(ThreadMessage(
             id=r.recipient_id, direction="OUT", kind="campaign",
-            body=template.body if template else None,
+            # The words as they went out to this person, not the template's blanks.
+            body=onboarding_bot.campaign_text(r, template) if template else None,
             payload=[b.get("text") for b in (template.buttons or []) if isinstance(b, dict) and b.get("text")]
             if template else None,
             status=r.status, error_reason=r.reason, sent_by="campaign", campaign=campaign.name,

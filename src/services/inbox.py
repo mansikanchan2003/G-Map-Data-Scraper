@@ -81,6 +81,19 @@ def from_campaign(db: Session, phone: str) -> bool:
     return phone in campaign_phones(db, [phone])
 
 
+def being_sent(db: Session, phone: str) -> bool:
+    """
+    A campaign message for this number is going out right now. A shop's
+    auto-reply can arrive within seconds of it, before the send is saved
+    (the user, 2026-10-26): the chat is a campaign's all the same.
+    """
+    from src.models.whatsapp import WhatsAppCampaignRecipient
+
+    return db.query(WhatsAppCampaignRecipient.recipient_id).filter(
+        WhatsAppCampaignRecipient.phone == phone,
+        WhatsAppCampaignRecipient.status == "PROCESSING").first() is not None
+
+
 def window_expires_at(conv: WhatsAppConversation) -> Optional[datetime]:
     last = aware(conv.last_inbound_at)
     return last + REPLY_WINDOW if last else None

@@ -709,6 +709,19 @@
    }
   },
   {
+   "id": "faq-21",
+   "suite": "faq",
+   "title": "“Mujhe apna business shuru karne ke liye kuch batao” is told what a CSP is and how to start",
+   "text": "Mujhe apna business shuru karne ke liye kuch batao",
+   "expect": {
+    "faq": [
+     "process",
+     "what_csp"
+    ],
+    "only": true
+   }
+  },
+  {
    "id": "rd-01",
    "suite": "reply_disposition",
    "title": "“busy hoon abhi” is busy_busy",

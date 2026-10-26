@@ -317,6 +317,83 @@ def latest_campaign_name(db: Session, phone: str) -> Optional[str]:
     return row[0] if row else None
 
 
+def latest_send(db: Session, phone: str):
+    """(recipient, template) for the newest campaign message Meta accepted for this number, or None."""
+    from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppTemplate
+
+    return (db.query(WhatsAppCampaignRecipient, WhatsAppTemplate)
+            .join(WhatsAppCampaign, WhatsAppCampaign.campaign_id == WhatsAppCampaignRecipient.campaign_id)
+            .join(WhatsAppTemplate, WhatsAppTemplate.template_id == WhatsAppCampaign.template_id)
+            .filter(WhatsAppCampaignRecipient.phone == phone,
+                    (WhatsAppCampaignRecipient.provider_message_id.isnot(None))
+                    | (WhatsAppCampaignRecipient.status == "PROCESSING"))
+            .order_by(WhatsAppCampaignRecipient.sent_at.desc().nullslast(),
+                      WhatsAppCampaignRecipient.created_at.desc())
+            .first())
+
+
+def campaign_text(rec, template) -> str:
+    """The campaign's words as this person was sent them, placeholders filled."""
+    from src.services.whatsapp_service import parameter_value, template_placeholders
+
+    body = template.body or ""
+    for placeholder in template_placeholders(template):
+        body = body.replace(placeholder, parameter_value(rec, placeholder, template))
+    return body.strip()
+
+
+def _campaign_buttons(db, template, lang) -> list:
+    """The campaign's two quick replies as buttons the bot can act on."""
+    triggers = get_settings(db)["triggers"]
+    buttons = []
+    for b in template.buttons or []:
+        text = (b or {}).get("text") if isinstance(b, dict) else None
+        if not text or (b.get("type") or "QUICK_REPLY") != "QUICK_REPLY":
+            continue
+        if is_trigger(text, triggers) and START_INTERESTED not in [x["id"] for x in buttons]:
+            buttons.append({"id": START_INTERESTED, "title": text[:campaign_buttons.REPLY_BUTTON_LIMIT]})
+        elif campaign_buttons.is_webinar(text) and START_WEBINAR not in [x["id"] for x in buttons]:
+            title = text if len(text) <= campaign_buttons.REPLY_BUTTON_LIMIT else campaign_buttons.webinar_title(lang)
+            buttons.append({"id": START_WEBINAR, "title": title})
+    # A template without them still gets the two ways forward.
+    return buttons or [{"id": START_INTERESTED, "title": campaign_buttons.INTERESTED},
+                       {"id": START_WEBINAR, "title": campaign_buttons.webinar_title(lang)}]
+
+
+def _auto_reply(db, conv, msg) -> bool:
+    """
+    Their business's own bot answered our campaign ("Thank you for reaching
+    out… we will get back to you shortly"): the campaign's text goes again,
+    with its two buttons, so it is what the owner sees when they open the
+    chat (the user, 2026-10-26). Once per campaign message, so two bots
+    cannot answer each other. True if it was an auto-reply.
+    """
+    if conv.bot_step or msg.kind != "text":
+        return False
+    sent = latest_send(db, conv.phone)
+    if sent is None:
+        return False
+    rec, template = sent
+    from src.services import auto_replies
+    if not auto_replies.is_automatic(msg.body, inbox.aware(rec.sent_at),
+                                     inbox.aware(getattr(msg, "created_at", None)) or inbox.now()):
+        return False
+    if isinstance(msg, WhatsAppMessage):
+        # Not a reply from them: Campaign insights leaves it out of "replied".
+        msg.payload = {**(msg.payload or {}), "auto_reply": True}
+    data = conv.bot_data or {}
+    if data.get("auto_reply_for") == rec.recipient_id:
+        # Already sent again for this campaign message: their bot's second word is left be.
+        return True
+    conv.bot_data = {**data, "auto_reply_for": rec.recipient_id, "auto_reply_at": inbox.now().isoformat()}
+    text = campaign_text(rec, template)
+    if text:
+        _say(db, conv, text[:1024], buttons=_campaign_buttons(db, template, _lang(db, conv)))
+    logger.info(f"onboarding_bot event=AUTO_REPLY phone=...{conv.phone[-4:]} "
+                f"phrase={auto_replies.matched(msg.body)!r} resent={bool(text)}")
+    return True
+
+
 def _campaign_lang(db, conv) -> str:
     """
     The language of the newest campaign this person was sent.
@@ -845,8 +922,11 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
     # own. The bot speaks only to people an AutoGMap campaign reached, and
     # only their questions are marked for attention; every other
     # conversation is still shown in the inbox, and left to a person.
-    if not inbox.from_campaign(db, conv.phone):
+    if not (inbox.from_campaign(db, conv.phone) or inbox.being_sent(db, conv.phone)):
         return
+    if not (conv.bot_data or {}).get("campaign"):
+        # Remembered, so the chat is never shown as an enquiry of their own (handover.bot_disposition).
+        conv.bot_data = {**(conv.bot_data or {}), "campaign": True}
 
     # A file that can carry malware (a .zip, a program...) is blocked, not
     # answered: the chat goes to a person with a ticket, so the team knows.
@@ -993,6 +1073,10 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
     if (msg.kind == "button" and campaign_buttons.is_webinar(msg.body)) or tapped == START_WEBINAR:
         _understood(conv)
         _start(db, conv, msg, WEBINAR)
+        return
+
+    # Their own bot answered the campaign, not a person: the campaign goes again.
+    if _auto_reply(db, conv, msg):
         return
 
     if _reply_disposition(db, conv, msg):

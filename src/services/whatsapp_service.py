@@ -795,6 +795,10 @@ class WhatsAppCampaignService:
                         duration_ms=duration_ms
                     )
                     db.add(log)
+                    # Saved at once, not with the batch: a shop's auto-reply can
+                    # arrive within seconds, and the bot must already know the
+                    # chat is a campaign's (the user, 2026-10-26).
+                    db.commit()
 
                     # Respect Meta API rate limits - throttle our sending
                     # If this was real, we would monitor headers like x-ratelimit

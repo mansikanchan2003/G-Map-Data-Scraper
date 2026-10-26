@@ -517,13 +517,20 @@ MORE_KEYS: Dict[str, List[str]] = {
                 "csp kholna", "kiosk kholna", "csp kaise milega", "how do i become", "how to become",
                 "become csp", "become a csp", "join eko", "eko ke saath judna", "eko ke saath kaam", "sbi csp", "सीएसपी कैसे",
                 "कियोस्क ऑपरेटर कैसे", "કેવી રીતે બની", "ਕਿਵੇਂ ਬਣ", "aage kya karna", "kya karna hai aage", "ab kya karna", "kitne din", "kab shuru", "shuru ho jayega", "kab tak chalu", "कितने दिन", "आगे क्या करना", "aage kya karna", "aage kya", "next step", "shuru kaise", "kaise judein", "kaise jude", "kaise apply",
-                "how to apply", "kitne din lagenge", "kitna time lagega", "kab tak shuru", "जुड़ना", "शुरू कैसे", "process kya hai", "process kya", "apply karne ka process", "apply karne ka tarika", "apply kaise kare", "apply kaise karein"],
+                "how to apply", "kitne din lagenge", "kitna time lagega", "kab tak shuru", "जुड़ना", "शुरू कैसे", "process kya hai", "process kya", "apply karne ka process", "apply karne ka tarika", "apply kaise kare", "apply kaise karein",
+                # "Mujhe apna business shuru karne ke liye kuch batao" (the user, 2026-10-26).
+                "business shuru", "business start", "khud ka business", "apna kaam shuru", "dhandha shuru",
+                "बिज़नेस शुरू", "व्यवसाय शुरू", "ધંધો શરૂ", "વ્યવસાય શરૂ"],
     "services": ["kaun kaun si services", "services de sakte", "kya services de", "kaun si services", "paise nikal sakte", "paise nikal", "nikal sakte", "jama kar sakte", "kya kya kar sakte log", "पैसे निकाल सकते", "kya kya kaam", "kya services", "kaun kaun se kaam", "account kholna", "cash withdrawal", "पैसे निकालना", "खाता खोलना"],
     "setup_cost": ["machine ka kharcha", "kharcha kaun dega", "device ka paisa kaun", "machine kaun dega", "मशीन का खर्चा"],
     "schemes": ["bima", "insurance", "beema", "बीमा", "વીમો", "ਬੀਮਾ"],
     "what_csp": ["kis cheez ko kehte", "kise kehte", "kya kehte", "csp matlab", "csp meaning", "csp means", "csp arth", "csp kise kehte", "csp kya cheez", "kiosk matlab",
                  "kiosk meaning", "banking outlet matlab", "customer service point matlab", "सीएसपी मतलब", "सीएसपी अर्थ",
-                 "csp मतलब", "સીએસપી એટલે", "ਸੀਐਸਪੀ ਮਤਲਬ"],
+                 "csp मतलब", "સીએસપી એટલે", "ਸੀਐਸਪੀ ਮਤਲਬ",
+                 # Asking to be told about it at all.
+                 "kuch batao", "kuch bataiye", "jaankari do", "jankari do", "jaankari chahiye", "jankari chahiye",
+                 "details batao", "details do", "detail batao", "tell me more", "more details", "more info",
+                 "कुछ बताओ", "कुछ बताइए", "जानकारी दो", "जानकारी चाहिए", "માહિતી આપો", "કંઈક કહો"],
     "reach": ["kahan kahan hai", "kis state", "kitne state", "kitne log", "kitne kiosk", "network", "हर जगह"],
 }
 for _f in FAQ:

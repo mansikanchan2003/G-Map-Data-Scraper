@@ -208,7 +208,9 @@ export const HandoverBar: React.FC<{
           ? <span><b className="font-semibold">{who(conv.handled_by)}</b> is handling this chat{conv.handled_since ? ` since ${formatDateTime(conv.handled_since)}` : ''}; the bot is quiet.</span>
           : botActive
             ? <span>The bot is handling this chat. A reply by hand takes it over.</span>
-            : <span>{conv.bot_paused ? 'The bot is paused here.' : 'Nobody automatic answers here; reply by hand.'}</span>}
+            : <span>{conv.bot_paused ? 'The bot is paused here.'
+              : conv.from_campaign ? 'The bot answers here when they write or tap a button; a reply by hand takes it over.'
+                : 'Nobody automatic answers here; reply by hand.'}</span>}
       </span>
       <span className="inline-flex items-center gap-1.5">
         <span className="text-slate-500">Outcome:</span>

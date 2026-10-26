@@ -71,7 +71,9 @@ def bot_disposition(conv: WhatsAppConversation) -> str:
         return "int_not_sbi"
     if conv.bot_step:
         return "int_in_bot_flow"
-    return "enquiry"
+    # A campaign's chat that has not started the questions (their shop's
+    # auto-reply, say) is not an enquiry of their own.
+    return "other" if (conv.bot_data or {}).get("campaign") else "enquiry"
 
 
 def current(conv: WhatsAppConversation) -> dict:

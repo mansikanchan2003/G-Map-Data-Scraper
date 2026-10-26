@@ -292,6 +292,12 @@ def timeline(db: Session, conv: WhatsAppConversation) -> List[dict]:
             continue
         if m.kind == "reaction":
             continue
+        if payload.get("auto_reply"):
+            # Their shop's own WhatsApp bot, not them (auto_replies.py).
+            lines.append({"at": at, "kind": "event",
+                          "text": "Unke business ka auto-reply aaya (kisi insaan ne nahi likha). "
+                                  "Bot ne campaign message dobara bheja."})
+            continue
         said = bot.message_text(m)
         if m.kind == "audio":
             if not said:
@@ -416,6 +422,9 @@ def in_short(conv: WhatsAppConversation, waiting_questions: int, direct: dict = 
     elif conv.bot_step in _WAITING:
         good = " aur ab tak fit hain (area, education)" if q["pin_qualified"] and data.get("education") in ("12", "grad") else ""
         first = f"{name} interested hain{good}. Bot unke {_WAITING[conv.bot_step]} ka wait kar raha hai."
+    elif not conv.bot_step and data.get("auto_reply_for"):
+        first = (f"Hamare campaign par {name} ke business ka auto-reply aaya, kisi insaan ka nahi. Bot ne "
+                 f"campaign message dobara bheja hai; unke Interested ya Personal Guidance tap karne ka wait hai.")
     elif not conv.bot_step:
         first = f"{name} ne humein likha par abhi apply karna shuru nahi kiya."
     else:
@@ -440,6 +449,8 @@ def summarise(db: Session, conv: WhatsAppConversation) -> dict:
 
     questions, other = [], []
     for m in messages:
+        if isinstance(m.payload, dict) and m.payload.get("auto_reply"):
+            continue  # their shop's bot, not a question of theirs
         said = bot.message_text(m)
         voice = m.kind == "audio"
         if voice and not said:
