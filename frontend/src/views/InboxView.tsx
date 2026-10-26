@@ -837,8 +837,11 @@ export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not
   });
   useEffect(() => { try { localStorage.setItem('inbox-summary-open', summaryOpen ? '1' : '0'); } catch { /* private window */ } }, [summaryOpen]);
   // A suggested reply goes into the box to be read and sent, never sent by itself.
+  // The ready reply as offered, so what is changed in it before sending is recorded (Agent quality).
+  const [suggested, setSuggested] = useState<string | null>(null);
   const putReply = (text: string) => {
     setDraft(text);
+    setSuggested(text);
     setTimeout(() => textBox.current?.focus(), 0);
   };
   const [sending, setSending] = useState(false);
@@ -983,10 +986,11 @@ export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not
         await sendInboxMedia(selected, attachment, body);
         setAttachment(null);
       } else {
-        await sendInboxMessage(selected, body);
+        await sendInboxMessage(selected, body, suggested || undefined);
       }
       setShowEmoji(false);
       setDraft('');
+      setSuggested(null);
       await loadThread(selected);
       loadList();
     } catch (e) {

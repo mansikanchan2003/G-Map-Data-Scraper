@@ -136,6 +136,9 @@ class ConversationDetail(ConversationSummary):
 
 class SendRequest(BaseModel):
     message: str
+    # The ready reply the Inbox suggested, when this message started from it: what the
+    # team member changed in it is the agent's correction (agent_telemetry).
+    suggested: Optional[str] = Field(None, max_length=4096)
 
 
 class BotStateRequest(BaseModel):
@@ -467,6 +470,10 @@ def send_message(
         )
 
     msg = inbox.send(db, conv.phone, body, sent_by=user.email)
+    if payload.suggested and msg.status != "FAILED":
+        from src.services import agent_telemetry
+        agent_telemetry.log(db, "inbox_ready_reply", "chat", conv.phone, payload.suggested.strip(),
+                            final_output=body, finalized_by=user.email)
     # Someone answering by hand has read the conversation, and has taken it
     # over: the bot stays quiet here until it is handed back.
     conv.last_read_at = inbox.now()

@@ -184,3 +184,16 @@ def detect(text: Optional[str], now: Optional[datetime] = None) -> Optional[Tupl
                 return key, follow_up_date(t, now)
             return key, None
     return None
+
+
+def matched_phrase(text: Optional[str], key: str) -> Optional[str]:
+    """The phrase in their words that made it this disposition: the "why", for the Agent quality page."""
+    t = _norm(text)
+    if key == "busy_at_time":
+        m = _TIME.search(t)
+        return m.group(0) if m else None
+    rule = "hold_later" if key == "hold_after_date" else key
+    for k, phrases in RULES:
+        if k == rule:
+            return next((p for p in phrases if _has(t, p)), None)
+    return None

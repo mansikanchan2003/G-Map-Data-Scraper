@@ -413,7 +413,7 @@ def reject_user(user_id: str, payload: RejectRequest, background: BackgroundTask
 
 TAB_KEYS = {"dashboard", "businesses", "partners", "jobs", "config", "whatsapp-campaign", "whatsapp-templates",
             "whatsapp-studio", "whatsapp-history", "whatsapp-insights", "whatsapp-inbox", "applications",
-            "dispositions"}
+            "dispositions", "agent-quality"}
 
 
 class TabsRequest(BaseModel):

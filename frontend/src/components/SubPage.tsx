@@ -11,10 +11,11 @@ export const PARENT_TAB: Partial<Record<NavTab, NavTab>> = {
   dispositions: 'applications',
   'whatsapp-studio': 'whatsapp-templates',
   'whatsapp-insights': 'whatsapp-history',
+  'agent-quality': 'dashboard',
 };
 
 const LABEL: Partial<Record<NavTab, string>> = {
-  applications: 'Applications', 'whatsapp-templates': 'Templates', 'whatsapp-history': 'Campaign History',
+  applications: 'Applications', 'whatsapp-templates': 'Templates', 'whatsapp-history': 'Campaign History', dashboard: 'Dashboard',
 };
 
 /** The button on the parent page that opens a page inside it. */

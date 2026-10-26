@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -38,7 +39,7 @@ from src.models.whatsapp import (
     WhatsAppButtonClick, WhatsAppCampaign, WhatsAppCampaignRecipient,
     WhatsAppLinkClick, WhatsAppTemplate, HUMAN_LINK_CLICK,
 )
-from src.services import eko_knowledge
+from src.services import agent_telemetry, eko_knowledge
 from src.services import campaign_buttons, creative_brief, image_prompts, poster_renderer, real_photos, variety
 from src.services.gemini_client import GeminiClient, GeminiError, ImageUnavailable
 
@@ -432,6 +433,30 @@ def poster_spec(language_name: str) -> str:
     "phone_label": "the equivalent of 'Call / WhatsApp:', at most 24 characters",
     "web_label": "the equivalent of 'Apply now:', at most 24 characters"
   }}"""
+
+
+def prompt_context(references: List[str], performance: List[dict], history: dict, brief: Optional[str],
+                   learned: Optional[dict] = None) -> List[dict]:
+    """
+    The context a copy prompt injects, piece by piece, for the agent_runs
+    record and its "why": what each part was and how many tokens it took.
+    """
+    c = agent_telemetry.chunk
+    out = [c("facts", "\n".join(creative_brief.FACTS), "creative_brief.FACTS"),
+           c("creator_pack", eko_knowledge.agent_section(), "eko_knowledge"),
+           c("rules", "\n".join(creative_brief.COPY_RULES), "creative_brief.COPY_RULES")]
+    out += [c("approved_example", r, f"example {i}") for i, r in enumerate(references, 1)]
+    out += [c("performance", f"{p['name']}: {p.get('angle_key') or ''}", p.get("template_id")) for p in performance[:12]]
+    out += [c("rejected_draft", f"{r['angle']}: {r['reason']}") for r in history.get("rejected") or []]
+    out += [c("past_mistake", m) for m in history.get("mistakes") or []]
+    if history.get("growth"):
+        out.append(c("growth_goal", history["growth"]))
+    if brief:
+        out.append(c("team_brief", brief))
+    for k, v in (learned or {}).items():
+        if v:
+            out.append(c(f"learned:{k}", str(v)))
+    return out
 
 
 def _copy_prompt(state: str, language_code: str, angles: List[str], brief: Optional[str],
@@ -1165,23 +1190,28 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
                     t.generation = {**(t.generation or {}), "error": reason}
             db.commit()
 
+        started, prompt, context = time.time(), None, []
         try:
             history = _review_history(db, state)
             angles = assign_angles(len(rows), history["tried_keys"])
             plans = variety.plan(db, len(rows))
+            references = approved_examples(db, language_code)
+            performance = template_performance(db)
             prompt = _copy_prompt(
-                state, language_code, angles, brief,
-                approved_examples(db, language_code),
-                template_performance(db),
-                history,
+                state, language_code, angles, brief, references, performance, history,
                 variety.prompt_section(plans, variety.already_used(db, language_code)),
             )
+            context = prompt_context(references, performance, history, brief)
             variants = _write_copy(client, prompt, angles, language_code)
             models = {"text": client.text_model()}
         except Exception as e:
             logger.exception("template_studio event=COPY_FAILED")
+            for t in rows:
+                agent_telemetry.log(db, "template_writer", "template", t.template_id, None, prompt=prompt,
+                                    context=context, outcome="failed", error=str(e))
             fail_all(str(e) if isinstance(e, GeminiError) else f"Copywriting failed: {e}")
             return
+        took = int((time.time() - started) * 1000)
 
         for tmpl, variant, look in zip(rows, variants, plans):
             try:
@@ -1216,6 +1246,8 @@ def run_generation(template_ids: List[str], state: str, brief: Optional[str]) ->
                     # Layout, shot, operator and message shape (variety.plan).
                     **look,
                 }
+                agent_telemetry.log(db, "template_writer", "template", tmpl.template_id, tmpl.body, prompt=prompt,
+                                    context=context, model=models["text"], latency_ms=took)
                 db.commit()
 
                 try:
@@ -1377,6 +1409,8 @@ def approve(db: Session, tmpl: WhatsAppTemplate, reviewer: str, category: str = 
     tmpl.review_note = None
     db.commit()
 
+    agent_telemetry.finalize(db, agent_telemetry.TEMPLATE_AGENTS, tmpl.template_id, tmpl.body or "", reviewer)
+    db.commit()
     result = WhatsAppTemplateSubmissionService(db).submit(tmpl, category=category)
     db.refresh(tmpl)
     if result["status"] != "success":
@@ -1391,6 +1425,7 @@ def approve(db: Session, tmpl: WhatsAppTemplate, reviewer: str, category: str = 
 
 def reject(db: Session, tmpl: WhatsAppTemplate, reviewer: str, reason: str) -> None:
     image_prompts.mark(db, tmpl.template_id, image_prompts.DRAFT_REJECTED)
+    agent_telemetry.finalize(db, agent_telemetry.TEMPLATE_AGENTS, tmpl.template_id, None, reviewer, "rejected")
     tmpl.status = REJECTED
     tmpl.review_note = reason.strip()
     tmpl.reviewed_by = reviewer

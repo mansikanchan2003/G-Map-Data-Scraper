@@ -762,6 +762,13 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
         if "investment" in faq:
             # How much, then what the money is for: it stays theirs.
             answer += "\n\n" + _t(db, conv, "invest_explained")
+        # The run, with the FAQ entries it answered from (agent_telemetry).
+        from src.services import agent_telemetry
+        agent_telemetry.log(db, "bot_faq", "chat", conv.phone, answer, prompt=said, context=[
+            agent_telemetry.chunk("faq", f"{eko_knowledge._BY_ID[i]['question']} → "
+                                         f"{eko_knowledge.answer(i, _lang(db, conv), said)}", i) for i in faq
+            if i in eko_knowledge._BY_ID] + ([agent_telemetry.chunk("trust_rule", "They doubt Eko is genuine")]
+                                             if doubts else []))
         conv.bot_data = {**(conv.bot_data or {}), "faq_answered": (data.get("faq_answered") or []) + faq}
         data = conv.bot_data
         if doubts:
@@ -918,6 +925,10 @@ def _reply_disposition(db, conv, msg) -> bool:
     before = db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone,
                                               WhatsAppMessage.direction == "OUT").count()
     handover.record(db, conv, key, "bot", note=f"They wrote: “{said[:200]}”", at=when)
+    from src.services import agent_telemetry
+    agent_telemetry.log(db, "bot_reply_disposition", "chat", conv.phone, key, prompt=said, context=[
+        agent_telemetry.chunk("rule", reply_dispositions.matched_phrase(said, key) or "", key),
+        *([agent_telemetry.chunk("when", when.isoformat())] if when else [])])
     db.flush()
     sent = db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone,
                                             WhatsAppMessage.direction == "OUT").count() > before

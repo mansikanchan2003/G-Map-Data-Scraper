@@ -113,6 +113,10 @@ def record(db: Session, conv: WhatsAppConversation, key: str, by: str, note: Opt
     key = dz.normalise(key)
     if key not in DISPOSITIONS:
         raise ValueError(f"Unknown disposition: {key}")
+    if by != "bot":
+        # A person's disposition judges the bot's reading of their reply (agent_telemetry).
+        from src.services import agent_telemetry
+        agent_telemetry.disposition_overridden(db, conv.phone, key, by)
     conv.disposition, conv.disposition_by, conv.disposition_at = key, by, inbox.now()
     conv.disposition_note = (note or "").strip()[:500] or None
     _log(db, conv, "disposition", by, key, note)

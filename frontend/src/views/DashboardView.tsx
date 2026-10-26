@@ -1,3 +1,4 @@
+import { SubPageButton } from '../components/SubPage';
 import { formatDateTime } from '../utils/datetime';
 import { MissingStepsCard } from '../components/MissingStepsCard';
 import { DispositionAlertCard } from '../components/DispositionAlertCard';
@@ -110,6 +111,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* Action / Endpoint Indicator */}
         <div className="flex items-center gap-2">
+          <SubPageButton tab="agent-quality" label="Agent quality" icon="psychology" className="h-8 text-xs bg-violet-600 text-white" />
           <div className="px-2.5 h-8 flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded text-xs font-mono-code text-slate-400 shadow-sm">
             <span className="material-symbols-outlined text-[14px] text-emerald-400">cloud_done</span>
             <span>

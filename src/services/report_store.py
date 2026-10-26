@@ -144,7 +144,14 @@ def store_goal(db: Session, now: datetime) -> int:
     return 1
 
 
+def settle_agent_runs(db: Session, now: datetime) -> int:
+    from src.services import agent_telemetry
+    return agent_telemetry.settle(db, now)
+
+
 STORES: Dict[str, Callable[[Session, datetime], int]] = {
+    # Not a copy: the bot's agent runs are judged once their window has passed.
+    "agent_runs": settle_agent_runs,
     "action_items": store_action_items,
     "disposition_mix": store_disposition_mix,
     "lead_alerts": store_lead_alerts,

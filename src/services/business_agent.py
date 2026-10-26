@@ -24,6 +24,7 @@ and forwards to the destination the round was given.
 import json
 import logging
 import re
+import time
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
@@ -32,7 +33,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from src.models.whatsapp import WhatsAppTemplate
-from src.services import eko_knowledge
+from src.services import agent_telemetry, eko_knowledge
 from src.services import campaign_buttons, creative_brief, image_prompts, sheet_templates, variety
 from src.services.gemini_client import GeminiClient, GeminiError, ImageUnavailable
 from src.services import template_studio as studio
@@ -468,6 +469,7 @@ def run_generation(template_ids: List[str]) -> None:
                     t.generation = {**(t.generation or {}), "error": reason}
             db.commit()
 
+        started, prompt, context = time.time(), None, []
         try:
             client = GeminiClient()
             learned = learning(db, first.target_state, language_code)
@@ -475,13 +477,20 @@ def run_generation(template_ids: List[str]) -> None:
             summary = {**gen["audience"], "usable_fields": allowed}
             plans = variety.plan(db, len(rows))
             section = variety.prompt_section(plans, variety.already_used(db, language_code))
-            variants = _write(client, _prompt(summary, language_code, angles, gen.get("brief"), learned, section),
-                              angles, language_code, allowed)
+            prompt = _prompt(summary, language_code, angles, gen.get("brief"), learned, section)
+            context = [agent_telemetry.chunk("audience", str(summary), "business data")] + studio.prompt_context(
+                [], [], learned.get("history") or {}, gen.get("brief"),
+                {k: v for k, v in learned.items() if k not in ("history", "counts")})
+            variants = _write(client, prompt, angles, language_code, allowed)
             model = client.text_model()
         except Exception as e:
             logger.exception("business_agent event=WRITING_FAILED")
+            for t in rows:
+                agent_telemetry.log(db, "business_agent", "template", t.template_id, None, prompt=prompt,
+                                    context=context, outcome="failed", error=str(e))
             fail_all(str(e) if isinstance(e, GeminiError) else f"Writing failed: {e}")
             return
+        took = int((time.time() - started) * 1000)
 
         for tmpl, variant, look in zip(rows, variants, plans):
             errors = variant.pop("_errors", [])
@@ -513,6 +522,8 @@ def run_generation(template_ids: List[str]) -> None:
                 **look,
             }
             tmpl.category = "UTILITY"  # Default to UTILITY as requested
+            agent_telemetry.log(db, "business_agent", "template", tmpl.template_id, body, prompt=prompt,
+                                context=context, model=model, latency_ms=took)
             db.commit()  # The copy is kept whatever happens to the photo.
 
             # The image, made from the finished text the same way as the

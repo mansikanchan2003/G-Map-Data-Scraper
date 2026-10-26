@@ -122,7 +122,8 @@ def db():
     finally:
         session.rollback()
         from src.models.inbox import FollowUp
-        for model in (FollowUp, ChatActivity, AttentionTicket, OnboardingDocument, WhatsAppMessage, WhatsAppConversation, WhatsAppReply,
+        from src.models.agent_runs import AgentRun
+        for model in (AgentRun, FollowUp, ChatActivity, AttentionTicket, OnboardingDocument, WhatsAppMessage, WhatsAppConversation, WhatsAppReply,
                       WhatsAppButtonClick, WhatsAppCampaignRecipient, WhatsAppCampaign,
                       WhatsAppTemplate, Location, AppSetting):
             session.query(model).delete()
@@ -2787,3 +2788,100 @@ def test_every_ticket_and_email_to_the_team_shows_under_the_disposition_of_the_t
     told = [i for i in docs["items"] if i["text"].startswith("Handed to the team: ticket and email to")]
     assert len(told) == 1 and "Kavya Shukla" in told[0]["text"] and told[0]["status"] == "done"
     assert "Mere ghar ka pata badalna hai" in told[0]["result"] and told[0]["result"].endswith("· open")
+
+
+# --- Agent telemetry and quality (the team's blueprint, 2026-10-26) -------------
+
+def _runs(db, agent):
+    from src.models.agent_runs import AgentRun
+    return db.query(AgentRun).filter(AgentRun.agent == agent).order_by(AgentRun.created_at).all()
+
+
+def test_edit_distance_is_levenshtein():
+    from src.services import agent_telemetry as t
+    assert t.levenshtein("kitten", "sitting") == 3 and t.levenshtein("", "abc") == 3 and t.levenshtein("same", "same") == 0
+
+
+def test_an_faq_answer_is_logged_with_its_context_and_accepted_when_nobody_steps_in(db):
+    from datetime import timedelta
+    from src.services import agent_telemetry
+    tap_campaign(db)
+    say(db, "Apply karne ki fees kitni hai?")
+    [run] = _runs(db, "bot_faq")
+    assert run.prompt == "Apply karne ki fees kitni hai?" and run.output and run.outcome == "pending"
+    assert run.context and run.context[0]["source"] == "faq" and run.context_tokens > 0
+    agent_telemetry.settle(db, inbox.now() + timedelta(hours=3))
+    assert run.outcome == "accepted" and run.edit_distance == 0
+
+
+def test_an_faq_answer_a_person_had_to_follow_up_counts_as_corrected(db, client):
+    from datetime import timedelta
+    from src.services import agent_telemetry
+    tap_campaign(db)
+    say(db, "Apply karne ki fees kitni hai?")
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/messages", json={"message": "Bilkul free hai ji"})
+    assert r.status_code == 200, r.text
+    agent_telemetry.settle(db, inbox.now() + timedelta(hours=3))
+    [run] = _runs(db, "bot_faq")
+    assert run.outcome == "edited" and run.final_output == "Bilkul free hai ji" and run.edit_distance > 0
+
+
+def test_a_reply_disposition_is_judged_by_the_teams_own(db, client):
+    tap_campaign(db)
+    say(db, "busy hoon abhi")
+    [run] = _runs(db, "bot_reply_disposition")
+    assert run.output == "busy_busy" and run.context[0] == {**run.context[0], "source": "rule", "text": "busy"}
+    _record(client, "busy_later")
+    db.refresh(run)
+    assert run.outcome == "edited" and run.final_output == "busy_later" and run.finalized_by == "admin@eko.co.in"
+
+
+def test_a_ready_reply_sent_with_changes_records_the_correction(db, client):
+    tap_campaign(db)
+    say(db, "hello")
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/messages",
+                    json={"message": "Namaste ji, aapka message mil gaya.", "suggested": "Namaste, aapka message mil gaya hai."})
+    assert r.status_code == 200, r.text
+    [run] = _runs(db, "inbox_ready_reply")
+    assert run.outcome == "edited" and run.edit_distance > 0 and run.final_output == "Namaste ji, aapka message mil gaya."
+
+
+def test_a_template_draft_is_finalized_by_the_reviewers_approval_or_rejection(db, monkeypatch):
+    import uuid
+    from src.services import agent_telemetry, template_studio, whatsapp_service
+    monkeypatch.setattr(whatsapp_service.WhatsAppTemplateSubmissionService, "submit",
+                        lambda self, tmpl, category="MARKETING": {"status": "success"})
+    drafts = []
+    for body in ("Apna business shuru karein", "Eko ke saath kamaai"):
+        t = WhatsAppTemplate(template_id=uuid.uuid4().hex, name=f"draft_{len(drafts)}", body=body, language_code="hi",
+                             status=template_studio.AWAITING_APPROVAL, origin="agent", generation={})
+        db.add(t)
+        db.flush()
+        agent_telemetry.log(db, "template_writer", "template", t.template_id, body, prompt="write it",
+                            context=[agent_telemetry.chunk("facts", "Applying is free")])
+        drafts.append(t)
+    db.commit()
+    drafts[0].body = "Apna khud ka business shuru karein"
+    template_studio.approve(db, drafts[0], "kavya@eko.co.in")
+    template_studio.reject(db, drafts[1], "kavya@eko.co.in", "Too pushy")
+    runs = {r.subject_id: r for r in _runs(db, "template_writer")}
+    edited, rejected = runs[drafts[0].template_id], runs[drafts[1].template_id]
+    assert edited.outcome == "edited" and edited.edit_distance == len(" khud ka") and edited.finalized_by == "kavya@eko.co.in"
+    assert rejected.outcome == "rejected"
+
+
+def test_the_quality_page_reports_the_blueprints_kpis(db, client):
+    from src.services import agent_telemetry
+    agent_telemetry.log(db, "inbox_ready_reply", "chat", PHONE, "abc", final_output="abc", finalized_by="x")
+    agent_telemetry.log(db, "inbox_ready_reply", "chat", PHONE, "abcd", final_output="abXd", finalized_by="x")
+    agent_telemetry.log(db, "template_writer", "template", "t1", None, outcome="failed", error="quota")
+    db.commit()
+    q = client.get("/api/v1/agents/quality?days=7").json()
+    ready = next(a for a in q["agents"] if a["key"] == "inbox_ready_reply")
+    assert ready["acceptance_rate"] == 0.5 and ready["avg_edit_distance"] == 0.5
+    writer = next(a for a in q["agents"] if a["key"] == "template_writer")
+    assert writer["completion_rate"] == 0.0 and writer["failed"] == 1
+    assert q["targets"]["acceptance_rate"] == 0.75 and q["weeks"]
+    runs = client.get("/api/v1/agents/runs?agent=inbox_ready_reply").json()
+    assert len(runs) == 2 and client.get(f"/api/v1/agents/runs/{runs[0]['id']}").json()["id"] == runs[0]["id"]
+

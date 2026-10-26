@@ -232,9 +232,9 @@ export const fetchInboxSummary = () => call<{ unread_conversations: number }>('/
 export const fetchConversation = (phone: string) =>
   call<ConversationDetail>(`/conversations/${digits(phone)}`);
 
-export const sendInboxMessage = (phone: string, message: string) =>
+export const sendInboxMessage = (phone: string, message: string, suggested?: string) =>
   call<ThreadMessage>(`/conversations/${digits(phone)}/messages`, {
-    method: 'POST', body: JSON.stringify({ message }),
+    method: 'POST', body: JSON.stringify({ message, suggested }),
   });
 
 export const markConversationRead = (phone: string) =>
