@@ -388,12 +388,21 @@ def test_an_amount_mid_question_is_not_read_as_a_pin(db):
 
 
 def test_replies_stop_after_a_few_it_did_not_understand(db, monkeypatch):
-    # An auto-reply answering the bot's answer must not go on for ever.
+    # Lines the bot cannot act on are answered a few times, then left be.
+    monkeypatch.setattr(onboarding_bot, "FALLBACK_GAP", timedelta(0))
+    monkeypatch.setattr(onboarding_bot, "GREETING_GAP", timedelta(0))
+    for i in range(6):
+        say(db, f"ok ji ({i})")
+    assert len(StubMeta.sent) == onboarding_bot.MAX_FALLBACK_STREAK
+
+
+def test_a_repeating_auto_reply_is_greeted_once(db, monkeypatch):
+    # Their bot answering ours must not go on for ever: one greeting, then quiet.
     monkeypatch.setattr(onboarding_bot, "FALLBACK_GAP", timedelta(0))
     monkeypatch.setattr(onboarding_bot, "GREETING_GAP", timedelta(0))
     for i in range(6):
         say(db, f"Thank you for contacting us! ({i})")
-    assert len(StubMeta.sent) == onboarding_bot.MAX_FALLBACK_STREAK
+    assert len(StubMeta.sent) == 1
 
 
 def test_a_paused_bot_says_nothing(db):
@@ -3099,14 +3108,14 @@ def test_auto_replies_are_told_from_people():
     assert not auto_replies.is_automatic(long, now, now + timedelta(minutes=20))
 
 
-def test_a_shops_auto_reply_gets_the_campaign_text_again_with_its_buttons(db):
+def test_a_shops_auto_reply_gets_the_greeting_with_its_buttons(db):
     _templated_campaign(db)
     say(db, ROYAL)
 
     kind, _to, body, buttons = StubMeta.sent[-1]
     assert kind == "buttons"
-    assert body.startswith("Namaste Royal Graphics, become an SBI CSP") and "tok123" in body
-    assert "{{" not in body and "Thank you for contacting" not in body
+    assert body.startswith("Hello! 👋 Thank you for contacting Eko.")
+    assert "SBI Customer Service Point" in body
     assert [b["id"] for b in buttons] == [onboarding_bot.START_INTERESTED, onboarding_bot.START_WEBINAR]
     c = conv(db)
     assert c.bot_step is None and c.needs_attention is False
@@ -3133,8 +3142,10 @@ def test_a_campaign_chat_is_never_shown_as_an_enquiry_of_their_own(db):
 def test_a_person_answering_the_campaign_is_not_taken_for_a_bot(db):
     _templated_campaign(db, sent_at=inbox.now() - timedelta(hours=3))
     say(db, "hello, what is this about")
-    _kind, _to, body, _b = StubMeta.sent[-1]
-    assert not body.startswith("Namaste Royal Graphics")
+    assert conv(db).bot_data.get("auto_reply_for") is None
+    last_in = (db.query(WhatsAppMessage).filter(WhatsAppMessage.direction == "IN")
+               .order_by(WhatsAppMessage.created_at.desc()).first())
+    assert not (last_in.payload or {}).get("auto_reply")
 
 
 def test_an_auto_reply_while_the_send_is_still_being_saved_counts_as_a_campaigns(db):

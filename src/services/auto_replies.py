@@ -5,9 +5,9 @@ apart from a person's reply (the user, 2026-10-26).
 
 Shops reached by a campaign often have a greeting or away message set up in
 WhatsApp Business. It answers within seconds, before anyone has read what we
-sent, so it says nothing about their interest: the bot sends the campaign's
-text again (onboarding_bot._resend_campaign), so it is the last thing in the
-chat when the owner opens it.
+sent, so it says nothing about their interest: the bot sends its greeting,
+with Interested and Personal Guidance (onboarding_bot._auto_reply), so it
+is the last thing in the chat when the owner opens it.
 
 Read by fixed phrases, plus timing: a long message within a minute of the
 campaign is not typed by a person.
@@ -78,7 +78,7 @@ def missed(db) -> list:
     """
     Campaign chats whose last word is their shop's auto-reply, still
     unanswered, with the 24-hour window open: those that came in before the
-    bot sent the campaign again (or while a send was still being saved).
+    bot greeted them (or while a send was still being saved).
     """
     from src.models.inbox import WhatsAppConversation, WhatsAppMessage
     from src.services import inbox, onboarding_bot
@@ -104,7 +104,7 @@ def missed(db) -> list:
 
 def main(argv=None) -> int:
     import argparse
-    ap = argparse.ArgumentParser(description="Send the campaign again to chats a shop's auto-reply answered")
+    ap = argparse.ArgumentParser(description="Greet the chats a shop's auto-reply answered")
     ap.add_argument("--send", action="store_true", help="send; without it, only list them")
     args = ap.parse_args(argv)
     from src.database import SessionLocal
@@ -117,7 +117,7 @@ def main(argv=None) -> int:
             if args.send:
                 onboarding_bot.handle(db, conv, msg)
                 db.commit()
-        print(f"{len(found)} chat(s) " + ("sent the campaign again." if args.send else "would get the campaign again. Add --send to send."))
+        print(f"{len(found)} chat(s) " + ("greeted." if args.send else "would be greeted. Add --send to send."))
     finally:
         db.close()
     return 0

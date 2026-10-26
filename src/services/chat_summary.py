@@ -296,7 +296,7 @@ def timeline(db: Session, conv: WhatsAppConversation) -> List[dict]:
             # Their shop's own WhatsApp bot, not them (auto_replies.py).
             lines.append({"at": at, "kind": "event",
                           "text": "Unke business ka auto-reply aaya (kisi insaan ne nahi likha). "
-                                  "Bot ne campaign message dobara bheja."})
+                                  "Bot ne Eko ka intro message bheja."})
             continue
         said = bot.message_text(m)
         if m.kind == "audio":
@@ -424,7 +424,7 @@ def in_short(conv: WhatsAppConversation, waiting_questions: int, direct: dict = 
         first = f"{name} interested hain{good}. Bot unke {_WAITING[conv.bot_step]} ka wait kar raha hai."
     elif not conv.bot_step and data.get("auto_reply_for"):
         first = (f"Hamare campaign par {name} ke business ka auto-reply aaya, kisi insaan ka nahi. Bot ne "
-                 f"campaign message dobara bheja hai; unke Interested ya Personal Guidance tap karne ka wait hai.")
+                 f"Eko ka intro message bheja hai; unke Interested ya Personal Guidance tap karne ka wait hai.")
     elif not conv.bot_step:
         first = f"{name} ne humein likha par abhi apply karna shuru nahi kiya."
     else:

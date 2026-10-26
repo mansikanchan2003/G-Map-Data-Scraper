@@ -200,7 +200,7 @@ const Bubble: React.FC<{ m: ThreadMessage }> = ({ m }) => {
       who = <><span className="material-symbols-outlined text-[12px]">person</span>{m.sent_by}</>;
     }
   } else if (m.payload?.auto_reply) {
-    // Their shop's own WhatsApp bot answered; the campaign was sent again after it.
+    // Their shop's own WhatsApp bot answered; the bot greeted them after it.
     who = <span title="Their shop's own WhatsApp bot answered, not a person. Not counted as a reply in Campaign insights."
       className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 text-amber-300 px-1.5 py-px">
       <span className="material-symbols-outlined text-[12px]">smart_toy</span>Their auto-reply</span>;
