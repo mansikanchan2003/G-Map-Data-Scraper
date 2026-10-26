@@ -239,7 +239,7 @@ def test_full_onboarding_flow(db, client):
     kind, _to, body, buttons = StubMeta.sent[-1]
     # One question covers the investment and the franchise.
     assert (kind, body) == ("buttons", onboarding_bot.ASK_INVEST)
-    assert body.startswith("Are you able to invest up to 5 Lakh Rupees to set up a Franchise Business?")
+    assert body.startswith("Are you able to invest ₹3–5 lakh (depending on your location) to set up a Franchise Business?")
     assert "A franchise business means" in body
     assert [b["id"] for b in buttons] == ["invest:yes", "invest:no"]
     assert conv(db).bot_data["education"] == "grad"
@@ -1217,10 +1217,10 @@ def test_what_the_5_lakh_is_for_comes_before_the_investment_question(db):
     qualify(db)
     (_k1, _t1, explained, b1), (_k2, _t2, question, b2) = StubMeta.sent[count:count + 2]
     assert explained == bot_messages.MESSAGES["en"]["invest_explained"] and not b1
-    assert explained.startswith("💼 *How up to ₹5 lakh is used*")
-    assert "e-wallet" in explained and "₹1.5–2.5 lakh" in explained and "Some of the money stays with you" in explained and "mini branch" in explained
+    assert explained.startswith("💼 *How ₹3–5 lakh (depending on your location) is used*")
+    assert "e-wallet" in explained and "₹1–1.5 lakh" in explained and "In the evening, the amount you transacted" in explained and "Some of the money stays with you" in explained and "mini branch" in explained
     assert "security deposit" not in explained
-    assert "up to 5 Lakh" in question
+    assert "₹3–5 lakh (depending on your location)" in question
     assert question == bot_messages.MESSAGES["en"]["ask_invest"]
     assert [b["id"] for b in b2] == ["invest:yes", "invest:no"]
 
@@ -1573,11 +1573,11 @@ def test_hindi_written_in_latin_letters_is_answered_in_latin_letters(db):
     say(db, SERVED_PIN)
     say(db, "Kuch invest krna hoga?")
     body = StubMeta.sent[-1][2]
-    assert body.startswith("INR 5 lakh tak") and "₹5 lakh tak ka istemal kaise hota hai" in body
+    assert body.startswith("INR 5 lakh tak") and "₹3–5 lakh (aapki location ke hisaab se) ka istemal kaise hota hai" in body
     assert not re.search(r"[\u0900-\u097F]{3,}", body)        # no Devanagari sentences left in it
     # Written in Devanagari, the bot answers in Devanagari again.
     say(db, "कितना निवेश करना होगा?")
-    assert "₹5 लाख तक का इस्तेमाल" in StubMeta.sent[-1][2]
+    assert "₹3–5 लाख (आपकी लोकेशन के अनुसार) का इस्तेमाल" in StubMeta.sent[-1][2]
 
 
 def test_an_inbox_limited_to_other_chats_never_shows_an_autogmap_one(db, client):
