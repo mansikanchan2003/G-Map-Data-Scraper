@@ -418,3 +418,21 @@ def test_metas_reason_for_a_rejection_reaches_the_templates_page(db):
     finally:
         app.dependency_overrides.pop(get_db, None)
         app.dependency_overrides.pop(current_user, None)
+
+
+def test_a_template_made_here_with_a_blank_it_cannot_fill_is_not_sent_to_meta(db):
+    # {{category}} in a Templates-page template went to Meta as literal text: INVALID_FORMAT (2026-10-27).
+    from src.services.whatsapp_service import WhatsAppTemplateSubmissionService, unfilled_blanks
+
+    t = WhatsAppTemplate(template_id=uuid.uuid4().hex, name="gujarat-101", language_code="gu",
+                         category="MARKETING", header_type="NONE", status="Draft", origin="manual",
+                         body="*નમસ્કાર {{name}}* શું તમે તમારા {{category}} વ્યવસાય… {{link}}")
+    db.add(t)
+    db.commit()
+    assert unfilled_blanks(t) == ["{{category}}"]
+    with patch("src.services.meta_whatsapp_service.MetaWhatsAppService.create_message_template") as create:
+        result = WhatsAppTemplateSubmissionService(db).submit(t)
+    assert result["status"] == "failed" and "{{category}}" in result["error"] and not create.called
+
+    t.body = "*નમસ્કાર {{name}}* શું તમે વ્યવસાય… {{link}}"
+    assert unfilled_blanks(t) == []

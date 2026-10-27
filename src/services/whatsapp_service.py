@@ -70,6 +70,17 @@ def _example_for(template, placeholder: str) -> str:
     return "sample"
 
 
+def unfilled_blanks(template) -> list:
+    """
+    Blanks in the body that would reach Meta as literal text, such as
+    {{category}} in a template made on the Templates page, which only fills
+    {{name}} and {{link}}. Meta rejects those as INVALID_FORMAT (the user's
+    Gujarati video templates, 2026-10-27).
+    """
+    known = set(template_placeholders(template))
+    return [b for b in dict.fromkeys(re.findall(r"\{\{\s*[^{}]*\}\}", template.body or "")) if b not in known]
+
+
 def tracking_link_for(token: str, target: str = None) -> str:
     """
     The per-recipient link that records a click and forwards to the campaign
@@ -210,6 +221,13 @@ class WhatsAppTemplateSubmissionService:
 
     def submit(self, template, category: str = "MARKETING") -> dict:
         meta_name = template.meta_template_name or meta_template_name_for(template.name)
+        blanks = unfilled_blanks(template)
+        if blanks:
+            return {"status": "failed", "error": (
+                f"The message has {', '.join(blanks)}, which a template made here cannot fill; Meta would "
+                "reject it as INVALID_FORMAT. Use only {{name}} and {{link}}, or make the template from a "
+                "messages sheet or Business Data to use other blanks.")}
+
         # Odia has no code at Meta; see creative_brief.META_LANGUAGE_FALLBACK.
         language = meta_language(template.language_code) or "en_US"
 
@@ -305,6 +323,13 @@ class WhatsAppTemplateEditService:
         if not template.meta_template_name:
             return {"status": "skipped",
                     "error": "Template has not been submitted to Meta yet, so there is nothing to update."}
+
+        blanks = unfilled_blanks(template)
+        if blanks:
+            return {"status": "failed", "error": (
+                f"The message has {', '.join(blanks)}, which a template made here cannot fill; Meta would "
+                "reject it as INVALID_FORMAT. Use only {{name}} and {{link}}, or make the template from a "
+                "messages sheet or Business Data to use other blanks.")}
 
         # Odia has no code at Meta; see creative_brief.META_LANGUAGE_FALLBACK.
         language = meta_language(template.language_code) or "en_US"
