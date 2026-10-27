@@ -19,7 +19,7 @@ import { POSTER_EDIT_FIELDS } from '../components/PosterTextEditor';
 import { formatDateTime } from '../utils/datetime';
 import { SignNote } from '../components/SignNote';
 import { PhotoPromptRecord } from '../components/PhotoPromptRecord';
-import { RealPhotoLibrary } from '../components/RealPhotoLibrary';
+import { ReferenceGallery } from '../components/ReferenceGallery';
 import { ImageAllowance } from '../components/ImageAllowance';
 
 // Three ways to make a template.
@@ -77,6 +77,7 @@ export const TemplateStudioView: React.FC<{ can?: (t: NavTab) => boolean }> = ({
   };
   const [ready, setReady] = useState<{ ready: boolean; error: string | null } | null>(null);
   const [states, setStates] = useState<StudioState[]>([]);
+  const [gallery, setGallery] = useState(false);
   const [rules, setRules] = useState<StudioRules | null>(null);
   const [drafts, setDrafts] = useState<StudioDraft[]>([]);
   const [performance, setPerformance] = useState<StudioPerformance[]>([]);
@@ -182,14 +183,22 @@ export const TemplateStudioView: React.FC<{ can?: (t: NavTab) => boolean }> = ({
         </button>}
       </div>
 
-      <div className="flex gap-1 mb-6 p-1 rounded-lg bg-slate-900 border border-slate-800 w-fit">
-        {MODES.map(([m, label, icon]) => (
-          <button key={m} onClick={() => setMode(m)}
-            className={`px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 ${mode === m
-              ? 'bg-sky-900/50 text-sky-300' : 'text-slate-400 hover:text-slate-200'}`}>
-            <span className="material-symbols-outlined text-[16px]">{icon}</span>{label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex gap-1 p-1 rounded-lg bg-slate-900 border border-slate-800 w-fit">
+          {MODES.map(([m, label, icon]) => (
+            <button key={m} onClick={() => setMode(m)}
+              className={`px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 ${mode === m
+                ? 'bg-sky-900/50 text-sky-300' : 'text-slate-400 hover:text-slate-200'}`}>
+              <span className="material-symbols-outlined text-[16px]">{icon}</span>{label}
+            </button>
+          ))}
+        </div>
+        {/* Real CSP photos and reference posters, never buried under the drafts (the user, 2026-10-27). */}
+        <button onClick={() => setGallery(true)}
+          className="h-[38px] px-3.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 text-white shadow-sm cursor-pointer hover:brightness-110"
+          style={{ background: 'linear-gradient(120deg, #0a3543 0%, #16435a 55%, #1d5a6e 100%)' }}>
+          <span className="material-symbols-outlined text-[17px]">photo_library</span>Reference photos &amp; posters
+        </button>
       </div>
 
       {mode !== 'sheet' && <div className="mb-4"><ImageAllowance refreshKey={drafts} /></div>}
@@ -271,7 +280,7 @@ export const TemplateStudioView: React.FC<{ can?: (t: NavTab) => boolean }> = ({
 
       <PerformanceTable rows={performance} />
       </>}
-      {mode !== 'sheet' && <RealPhotoLibrary states={states} />}
+      {gallery && <ReferenceGallery states={states} onClose={() => setGallery(false)} />}
       {mode !== 'sheet' && <PhotoPromptRecord />}
 
       {zoom && (

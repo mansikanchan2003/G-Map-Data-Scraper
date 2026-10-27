@@ -12,7 +12,7 @@ import { formatDateTime } from '../utils/datetime';
  * the state. A photo is retired rather than deleted, so drafts made from it
  * keep their image.
  */
-export const RealPhotoLibrary: React.FC<{ states: StudioState[] }> = ({ states }) => {
+export const RealPhotoLibrary: React.FC<{ states: StudioState[]; bare?: boolean; onCount?: (n: number) => void }> = ({ states, bare, onCount }) => {
   const [photos, setPhotos] = useState<RealPhoto[] | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [state, setState] = useState('');
@@ -50,9 +50,8 @@ export const RealPhotoLibrary: React.FC<{ states: StudioState[] }> = ({ states }
   };
 
   const inUse = (photos || []).filter(p => p.active).length;
-  return (
-    <CollapsiblePanel icon="add_a_photo" iconClass="text-amber-400" title="Real CSP photos"
-      badge={<span className="text-xs text-slate-500">{photos === null ? '' : inUse ? `${inUse} in use` : 'none yet: posters use AI photos'}</span>}>
+  useEffect(() => { if (photos) onCount?.(inUse); }, [photos, inUse, onCount]);
+  const body = (
       <div className="space-y-4 text-xs">
         <p className="text-slate-400">
           Posters are set on a real photo of an SBI Customer Service Point first: one for the draft's state, or one
@@ -109,6 +108,12 @@ export const RealPhotoLibrary: React.FC<{ states: StudioState[] }> = ({ states }
           </div>
         )}
       </div>
+  );
+  if (bare) return body;
+  return (
+    <CollapsiblePanel icon="add_a_photo" iconClass="text-amber-400" title="Real CSP photos"
+      badge={<span className="text-xs text-slate-500">{photos === null ? '' : inUse ? `${inUse} in use` : 'none yet: posters use AI photos'}</span>}>
+      {body}
     </CollapsiblePanel>
   );
 };

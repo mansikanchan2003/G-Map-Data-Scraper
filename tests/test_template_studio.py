@@ -151,8 +151,8 @@ def db(monkeypatch, tmp_path):
     finally:
         session.rollback()
         from src.models import AppSetting
-        from src.models.studio import StudioImagePrompt, StudioRealPhoto
-        for model in (AppSetting, StudioImagePrompt, StudioRealPhoto, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppCampaignRecipient,
+        from src.models.studio import StudioImagePrompt, StudioRealPhoto, StudioReferencePoster
+        for model in (AppSetting, StudioImagePrompt, StudioRealPhoto, StudioReferencePoster, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppCampaignRecipient,
                       WhatsAppCampaign, WhatsAppTemplate, Business, Job, Location):
             session.query(model).delete()
         session.commit()
@@ -1100,3 +1100,71 @@ def test_the_spotlight_layout_sets_the_poster_text():
     html = poster_layouts.build_spotlight(PA_POSTER, "pa", PNG, "image/png")
     assert PA_POSTER["headline_line1"] in html and PA_POSTER["cta"] in html
     assert PA_POSTER["benefits"][0]["text"] in html and PA_POSTER["benefits"][3]["text"] not in html
+
+
+# --- reference posters (the user, 2026-10-27) --------------------------------
+
+LIKED = {"layout": "Mirror", "headline_style": "A short question about earning more",
+         "text_amount": "little", "colours": "deep blue and yellow",
+         "what_to_copy": ["One big number in the headline.", "Benefits as icons, not sentences."]}
+
+
+def _reference_poster(db, monkeypatch, style=None, note="Kavya's favourite"):
+    from src.services import gemini_client, reference_posters
+    FakeGemini.checks = [dict(style or LIKED)]
+    monkeypatch.setattr(gemini_client, "GeminiClient", FakeGemini)
+    data = _jpeg(900, 1200, colour=(20, 50, 150))
+    media_id = template_studio._save_media(data, ".jpg")
+    row = reference_posters.add(db, media_id, data, note=note, uploaded_by="kavya@eko.co.in")
+    reference_posters.read(row.poster_id)
+    db.expire_all()
+    return row
+
+
+def test_a_reference_poster_is_read_once_and_its_colours_measured(db, monkeypatch):
+    from src.services import reference_posters
+    row = _reference_poster(db, monkeypatch)
+    assert row.style["layout"] == "mirror" and row.style["text_amount"] == "little"
+    assert row.palette and row.palette[0].startswith("#")
+    assert row.read_error is None
+    [note] = reference_posters.notes(db)
+    assert note.startswith("“Kavya's favourite”") and "One big number" in note
+    assert reference_posters.preferred_layout(db) == "mirror"
+
+
+def test_a_poster_too_small_to_read_is_refused():
+    from src.services import reference_posters
+    with pytest.raises(reference_posters.PosterRefused):
+        reference_posters.check_image(_jpeg(300, 300))
+    with pytest.raises(reference_posters.PosterRefused):
+        reference_posters.check_image(b"not an image")
+
+
+def test_a_failed_reading_is_recorded_not_used(db, monkeypatch):
+    from src.services import reference_posters
+    row = _reference_poster(db, monkeypatch, style=None)
+    FakeGemini.checks = [RuntimeError("free model busy")]
+    reference_posters.read(row.poster_id)
+    db.expire_all()
+    assert "could not read it" in db.get(type(row), row.poster_id).read_error
+
+
+def test_the_agents_follow_the_reference_posters_and_the_switch_turns_them_off(db, monkeypatch):
+    from src.services import agent_controls, variety
+    _reference_poster(db, monkeypatch)
+    assert variety.plan(db, 3)[0]["layout"] == "mirror"
+    generate(db)
+    assert "POSTERS THE TEAM LIKES" in FakeGemini.prompts[-1] and "One big number" in FakeGemini.prompts[-1]
+
+    agent_controls.set_context(db, "reference_poster", False, "admin@eko.co.in")
+    assert "reference_posters" not in variety.already_used(db, "pa") or not variety.already_used(db, "pa")["reference_posters"]
+    FakeGemini.variants = [copy.deepcopy(PA_VARIANT)]
+    generate(db)
+    assert "POSTERS THE TEAM LIKES" not in FakeGemini.prompts[-1]
+
+
+def test_a_retired_reference_poster_is_no_longer_followed(db, monkeypatch):
+    from src.services import reference_posters
+    row = _reference_poster(db, monkeypatch)
+    reference_posters.set_active(db, row.poster_id, False)
+    assert reference_posters.notes(db) == [] and reference_posters.preferred_layout(db) is None

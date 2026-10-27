@@ -10,7 +10,7 @@ from .autopilot import DiscoveryRound
 from .insights import CampaignInsight, InsightSnapshot
 from .agent_runs import AgentRun
 from .reports import ActionItem, DispositionDaily, DispositionMix, GoalDaily, LeadAlert, NumberUsageDaily
-from .studio import StudioImagePrompt, StudioRealPhoto
+from .studio import StudioImagePrompt, StudioRealPhoto, StudioReferencePoster
 from .inbox import AttentionTicket, ChatActivity, FollowUp, LeadJourney, LeadJourneyStep, WhatsAppConversation, WhatsAppMessage, OnboardingDocument
 from .application import ApplicationComment, ApplicationRemoval, QualifiedLead
 from .whatsapp import WhatsAppAccount, WhatsAppTemplate, WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppCampaignLog, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppReply, NumberActivity
@@ -55,5 +55,6 @@ __all__ = [
     "NumberUsageDaily",
     "StudioImagePrompt",
     "StudioRealPhoto",
+    "StudioReferencePoster",
     "User"
 ]

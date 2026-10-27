@@ -790,6 +790,36 @@ export const uploadRealPhoto = async (file: File, state: string, note: string, c
   return json as RealPhoto;
 };
 
+/** A poster the team likes, read once by the vision model as a style reference for the agents. */
+export interface ReferencePoster {
+  poster_id: string;
+  media_id: string;
+  note: string | null;
+  uploaded_by: string | null;
+  active: boolean;
+  style: { layout: string | null; headline_style: string | null; text_amount: string | null;
+           colours: string | null; what_to_copy: string[] } | null;
+  palette: string[] | null;
+  read_at: string | null;
+  read_error: string | null;
+  created_at: string;
+}
+
+export const fetchReferencePosters = () => studioCall<ReferencePoster[]>('/reference-posters');
+export const setReferencePosterActive = (id: string, active: boolean) =>
+  studioCall<ReferencePoster>(`/reference-posters/${id}`, { method: 'PATCH', body: JSON.stringify({ active }) });
+export const rereadReferencePoster = (id: string) =>
+  studioCall<ReferencePoster>(`/reference-posters/${id}/read`, { method: 'POST' });
+export const uploadReferencePoster = async (file: File, note: string): Promise<ReferencePoster> => {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('note', note);
+  const res = await fetch(`${STUDIO}/reference-posters`, { credentials: 'include', method: 'POST', body: form });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(errorText(json.detail) || `Upload failed (${res.status})`);
+  return json as ReferencePoster;
+};
+
 export const fetchStudioStatus = () => studioCall<{ ready: boolean; error: string | null }>('/status');
 export const fetchStudioRules = () => studioCall<StudioRules>('/rules');
 export const fetchStudioStates = () => studioCall<StudioState[]>('/states');

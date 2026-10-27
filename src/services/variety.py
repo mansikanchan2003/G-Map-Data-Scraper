@@ -68,11 +68,22 @@ def plan(db: Session, count: int) -> List[dict]:
     # draft after the change came out in the very structure it replaced.
     used["layout"]["classic"] += sum(1 for g in recent if not g.get("layout") and g.get("poster"))
     layouts = _least_used(list(LAYOUTS), used["layout"], count)
+    # The first variant takes the layout the team's reference posters prefer (reference_posters).
+    liked = _liked_layout(db)
+    if liked and count:
+        layouts = [liked] + [l for l in layouts if l != liked][:count - 1]
+        while len(layouts) < count:
+            layouts.append(layouts[len(layouts) % len(LAYOUTS)])
     shots = _least_used(list(SHOTS), used["shot"], count)
     operators = _least_used(list(OPERATORS), used["operator"], count)
     shapes = _least_used(list(SHAPES), used["shape"], count)
     return [{"layout": layouts[i], "shot": shots[i], "operator": operators[i], "shape": shapes[i]}
             for i in range(count)]
+
+
+def _liked_layout(db: Session):
+    from src.services import agent_controls, reference_posters
+    return reference_posters.preferred_layout(db) if agent_controls.context_on(db, "reference_poster") else None
 
 
 def photo_direction(p: dict) -> str:
@@ -96,7 +107,9 @@ def already_used(db: Session, language_code: str, limit: int = 10) -> dict:
         first = next((ln.strip() for ln in (t.body or "").splitlines() if ln.strip()), "")
         if first and first not in openings:
             openings.append(first[:120])
-    return {"headlines": headlines[:limit], "openings": openings[:limit]}
+    from src.services import agent_controls, reference_posters
+    liked = reference_posters.notes(db) if agent_controls.context_on(db, "reference_poster") else []
+    return {"headlines": headlines[:limit], "openings": openings[:limit], "reference_posters": liked}
 
 
 def prompt_section(plans: List[dict], used: dict) -> str:
@@ -112,4 +125,8 @@ def prompt_section(plans: List[dict], used: dict) -> str:
                      + "; ".join(used["headlines"]))
     if used.get("openings"):
         lines.append("OPENING LINES ALREADY USED — open differently: " + "; ".join(used["openings"]))
+    if used.get("reference_posters"):
+        lines.append("POSTERS THE TEAM LIKES — write the poster's headline and text in their style "
+                     "(never copy their words or numbers):")
+        lines += [f"- {n}" for n in used["reference_posters"]]
     return "\n".join(lines)

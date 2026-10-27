@@ -169,6 +169,66 @@ def edit_real_photo(photo_id: str, edit: RealPhotoEdit, db: Session = Depends(ge
     return row
 
 
+class ReferencePoster(BaseModel):
+    poster_id: str
+    media_id: str
+    note: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    active: bool
+    style: Optional[dict] = None
+    palette: Optional[List[str]] = None
+    read_at: Optional[datetime] = None
+    read_error: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/reference-posters", response_model=List[ReferencePoster])
+def list_reference_posters(db: Session = Depends(get_db)):
+    from src.services import reference_posters
+    return reference_posters.listing(db)
+
+
+@router.post("/reference-posters", response_model=ReferencePoster)
+async def upload_reference_poster(background: BackgroundTasks, file: UploadFile = File(...), note: str = Form(""),
+                                  db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """A poster the team likes, as a style reference; the vision model reads it in the background."""
+    from src.services import reference_posters
+    data = await file.read(reference_posters.MAX_BYTES + 1)
+    try:
+        ext = reference_posters.check_image(data)
+    except reference_posters.PosterRefused as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    media_id = template_studio._save_media(data, ext)
+    row = reference_posters.add(db, media_id, data, note=note, uploaded_by=user.email)
+    background.add_task(reference_posters.read, row.poster_id)
+    return row
+
+
+@router.post("/reference-posters/{poster_id}/read", response_model=ReferencePoster)
+def reread_reference_poster(poster_id: str, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Read a poster again, after the free vision model failed on it."""
+    from src.models.studio import StudioReferencePoster
+    from src.services import reference_posters
+    row = db.get(StudioReferencePoster, poster_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Poster not found")
+    row.read_error, row.read_at = None, None
+    db.commit()
+    background.add_task(reference_posters.read, poster_id)
+    return row
+
+
+@router.patch("/reference-posters/{poster_id}", response_model=ReferencePoster)
+def edit_reference_poster(poster_id: str, edit: RealPhotoEdit, db: Session = Depends(get_db)):
+    from src.services import reference_posters
+    row = reference_posters.set_active(db, poster_id, edit.active)
+    if not row:
+        raise HTTPException(status_code=404, detail="Poster not found")
+    return row
+
+
 @router.get("/drafts", response_model=List[StudioDraft])
 def list_drafts(db: Session = Depends(get_db)):
     """The poster agent's drafts. The business agent's have their own list."""

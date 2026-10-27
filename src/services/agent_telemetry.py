@@ -58,7 +58,7 @@ CONTEXT_WINDOW = {"template_writer": 128_000, "business_agent": 128_000}
 LAYER = {
     "facts": "global", "creator_pack": "global", "rules": "global", "trust_rule": "global", "rule": "global",
     "approved_example": "project", "performance": "project", "rejected_draft": "project",
-    "past_mistake": "project", "growth_goal": "project", "faq": "project", "accepted_lesson": "project",
+    "past_mistake": "project", "growth_goal": "project", "faq": "project", "accepted_lesson": "project", "reference_poster": "project",
     "team_brief": "session", "audience": "session", "when": "session",
 }
 

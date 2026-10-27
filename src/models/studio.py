@@ -68,3 +68,30 @@ class StudioRealPhoto(Base):
     active = Column(Boolean, nullable=False, default=True)
     times_used = Column(Integer, nullable=False, default=0)
     last_used_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class StudioReferencePoster(Base):
+    """
+    A poster the team likes, uploaded as a style reference for the Template
+    Studio's agents (the user, 2026-10-27).
+
+    Read once by the free vision model: the layout it is closest to, how its
+    headline is written, how much text it carries and what is worth copying;
+    its main colours are measured from the image. The agents are told what
+    the team's references have in common, and the first draft of a round
+    takes the layout they prefer. Retired, never deleted.
+    """
+    __tablename__ = "studio_reference_posters"
+
+    poster_id = Column(String(32), primary_key=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    media_id = Column(String(64), nullable=False)
+    note = Column(String(300), nullable=True)
+    uploaded_by = Column(String(255), nullable=True)
+    active = Column(Boolean, nullable=False, default=True)
+    # What the vision model read: layout, headline_style, text_amount, colours, what_to_copy.
+    style = Column(JSON, nullable=True)
+    # The main colours, measured from the image (#rrggbb, most used first).
+    palette = Column(JSON, nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    read_error = Column(String(300), nullable=True)

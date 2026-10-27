@@ -468,6 +468,8 @@ def trimmed_context(db: Session, references: List[str], performance: List[dict],
         history["growth"] = None
     from src.services import learning_loop
     history["accepted_lessons"] = learning_loop.lessons(db) if on("accepted_lesson") else []
+    from src.services import reference_posters
+    history["reference_posters"] = reference_posters.notes(db) if on("reference_poster") else []
     return (references if on("approved_example") else [], performance if on("performance") else [], history)
 
 
@@ -486,6 +488,7 @@ def prompt_context(references: List[str], performance: List[dict], history: dict
     out += [c("rejected_draft", f"{r['angle']}: {r['reason']}") for r in history.get("rejected") or []]
     out += [c("past_mistake", m) for m in history.get("mistakes") or []]
     out += [c("accepted_lesson", m) for m in history.get("accepted_lessons") or []]
+    out += [c("reference_poster", m) for m in history.get("reference_posters") or []]
     if history.get("growth"):
         out.append(c("growth_goal", history["growth"]))
     if brief:
