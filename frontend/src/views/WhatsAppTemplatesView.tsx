@@ -91,6 +91,27 @@ const CATEGORIES = [
   },
 ];
 
+// What Meta's rejection codes mean, and what to change (Meta's own guidance, in plain words).
+const REJECTION_HELP: Record<string, { title: string; fix: string }> = {
+  INVALID_FORMAT: { title: 'Invalid format',
+    fix: "Something in the template's structure is wrong: often the header media (a video must be MP4 with H.264 video and AAC audio, under 16 MB), a blank like {{1}} at the very start or end of the body, two blanks side by side, or a button link that does not work." },
+  PROMOTIONAL: { title: 'Promotional content in the wrong category',
+    fix: 'Meta read it as marketing while it was sent as utility. Submit it as Marketing, or remove the offer wording.' },
+  INCORRECT_CATEGORY: { title: 'Wrong category',
+    fix: 'The content does not match the category it was submitted under. Resubmit it as Marketing.' },
+  TAG_CONTENT_MISMATCH: { title: 'Content does not match its category',
+    fix: 'The wording and the category disagree. Resubmit it as Marketing, or make the wording match.' },
+  ABUSIVE_CONTENT: { title: 'Against WhatsApp policy',
+    fix: 'Meta saw wording it does not allow, for example guaranteed earnings, pressure or misleading claims. Soften the claims and resubmit.' },
+  SCAM: { title: 'Looks like a scam to Meta',
+    fix: 'Promises of money, urgent requests or unclear senders trigger this. Name Eko and SBI clearly, avoid "guaranteed" or exact earnings, and link only to eko.in pages.' },
+};
+const rejectionHelp = (reason?: string | null) => {
+  const code = (reason || '').toUpperCase();
+  return REJECTION_HELP[code] || { title: code ? code.replace(/_/g, ' ').toLowerCase() : 'No reason given by Meta',
+    fix: 'Meta did not say more. Open the template in WhatsApp Manager for details, or change the wording and resubmit.' };
+};
+
 const statusLabel = (t: WhatsAppTemplate) => {
   const s = (t.status || '').toUpperCase();
   // A template Meta has never seen is a local draft, whatever the row says.
@@ -981,6 +1002,13 @@ export const WhatsAppTemplatesView: React.FC<{ can?: (t: NavTab) => boolean }> =
                           </td>
                           <td className="px-3 py-2.5 font-medium text-slate-200 max-w-[180px]">
                             <span className="block truncate" title={t.name}>{t.name}</span>
+                            {label === 'REJECTED' && (
+                              <span className="mt-0.5 inline-flex items-center gap-1 text-[10.5px] font-semibold text-rose-300 max-w-full"
+                                title={rejectionHelp(t.rejected_reason).fix}>
+                                <span className="material-symbols-outlined text-[13px]">error</span>
+                                <span className="truncate">{rejectionHelp(t.rejected_reason).title}</span>
+                              </span>
+                            )}
                           </td>
                           <td className="px-3 py-2.5 font-mono-code text-xs text-slate-500 max-w-[150px]">
                             <span className="block truncate" title={t.meta_template_name || undefined}>
@@ -1142,6 +1170,16 @@ export const WhatsAppTemplatesView: React.FC<{ can?: (t: NavTab) => boolean }> =
                                       {label}
                                     </span>
                                   </div>
+                                  {label === 'REJECTED' && (
+                                    <div className="rounded-lg border border-rose-800/60 bg-rose-950 p-2.5 text-rose-200 max-w-sm">
+                                      <div className="flex items-center gap-1.5 font-semibold text-rose-300">
+                                        <span className="material-symbols-outlined text-[16px]">error</span>
+                                        Meta's reason: {rejectionHelp(t.rejected_reason).title}
+                                      </div>
+                                      {t.rejected_reason && <div className="font-mono-code text-[10px] text-rose-400/80 mt-0.5">{t.rejected_reason}</div>}
+                                      <div className="mt-1.5 leading-relaxed">{rejectionHelp(t.rejected_reason).fix}</div>
+                                    </div>
+                                  )}
                                   <div>Created: {new Date(t.created_at).toLocaleString()}</div>
                                   <div>Updated: {new Date(t.updated_at || t.created_at).toLocaleString()}</div>
                                   {t.last_used_at && <div>Last used: {new Date(t.last_used_at).toLocaleString()}</div>}

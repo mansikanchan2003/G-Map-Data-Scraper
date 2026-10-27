@@ -66,6 +66,8 @@ class WhatsAppTemplateResponse(WhatsAppTemplateBase):
     # For a template made from a messages sheet: the columns each recipient
     # must carry a value for. Empty for every other template.
     sheet_variables: List[str] = []
+    # Meta's reason when it rejected the template (INVALID_FORMAT, PROMOTIONAL...).
+    rejected_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     last_used_at: Optional[datetime] = None

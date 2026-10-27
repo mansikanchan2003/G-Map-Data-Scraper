@@ -347,6 +347,26 @@ def _meta_status_to_local(meta_status: str) -> str:
     return (meta_status or "PENDING").upper()
 
 
+def _note_rejection(tmpl: WhatsAppTemplate, entry: dict) -> bool:
+    """
+    Keeps Meta's reason for a rejection on the template, so the Templates page
+    can show it (the user, 2026-10-27); cleared once it is no longer rejected.
+    True if it changed.
+    """
+    reason = (entry.get("rejected_reason") or "").strip().upper()
+    status = _meta_status_to_local(entry.get("status"))
+    keep = reason if status == "REJECTED" and reason and reason != "NONE" else None
+    gen = dict(tmpl.generation or {})
+    if gen.get("rejected_reason") == keep:
+        return False
+    if keep:
+        gen["rejected_reason"] = keep
+    else:
+        gen.pop("rejected_reason", None)
+    tmpl.generation = gen
+    return True
+
+
 @router.post("/templates/sync-status", response_model=WhatsAppTemplateSyncResponse)
 def sync_template_statuses(db: Session = Depends(get_db)):
     """
@@ -386,7 +406,8 @@ def sync_template_statuses(db: Session = Depends(get_db)):
             # taken from Meta rather than from what was requested on submit.
             new_category = entry.get("category") or tmpl.category
 
-        if tmpl.status != new_status or tmpl.category != new_category:
+        noted = entry is not None and _note_rejection(tmpl, entry)
+        if tmpl.status != new_status or tmpl.category != new_category or noted:
             tmpl.status = new_status
             tmpl.category = new_category
             updated += 1
@@ -444,6 +465,7 @@ def refresh_template_status(template_id: str, db: Session = Depends(get_db)):
     for t in listing["templates"]:
         if t.get("name") == db_tmpl.meta_template_name and t.get("language") == db_tmpl.language_code:
             db_tmpl.status = _meta_status_to_local(t.get("status"))
+            _note_rejection(db_tmpl, t)
             db.commit()
             db.refresh(db_tmpl)
             break

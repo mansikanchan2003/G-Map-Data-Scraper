@@ -65,6 +65,13 @@ class WhatsAppTemplate(Base):
             return []
         return [v for v in ((self.generation or {}).get("variables") or []) if v not in ("name", "link")]
 
+    @property
+    def rejected_reason(self):
+        """Meta's reason for rejecting it, while it is rejected; kept by the status sync."""
+        if (self.status or "").upper() != "REJECTED":
+            return None
+        return (self.generation or {}).get("rejected_reason")
+
 
 class WhatsAppCampaign(Base):
     __tablename__ = "whatsapp_campaigns"

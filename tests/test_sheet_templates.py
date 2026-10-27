@@ -377,3 +377,44 @@ def test_a_visit_is_recorded_and_lands_on_apply_now(db):
         "&utm_campaign=Kits+Oct#apply-now")
     click = db.query(WhatsAppLinkClick).one()
     assert click.recipient_id == "r1" and click.automated_reason is None
+
+
+def test_metas_reason_for_a_rejection_reaches_the_templates_page(db):
+    # The user, 2026-10-27: a rejected video template showed no reason.
+    from fastapi.testclient import TestClient
+    from src.database import get_db
+    from src.main import app
+    from src.routers.auth import current_user
+
+    t = WhatsAppTemplate(template_id=uuid.uuid4().hex, name="CSP video", meta_template_name="csp_video",
+                         language_code="gu", category="MARKETING", header_type="VIDEO", body="Namaste", status="PENDING")
+    db.add(t)
+    db.commit()
+    rejected = {"status": "success", "templates": [
+        {"name": "csp_video", "language": "gu", "status": "REJECTED", "category": "MARKETING",
+         "rejected_reason": "INVALID_FORMAT"}]}
+
+    class Admin:
+        email, role = "admin@eko.co.in", "admin"
+
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[current_user] = lambda: Admin()
+    try:
+        client = TestClient(app)
+        with patch("src.services.meta_whatsapp_service.MetaWhatsAppService.list_message_templates",
+                   return_value=rejected):
+            assert client.post("/api/v1/whatsapp/templates/sync-status").json()["updated"] == 1
+        shown = next(x for x in client.get("/api/v1/whatsapp/templates").json() if x["template_id"] == t.template_id)
+        assert shown["status"] == "REJECTED" and shown["rejected_reason"] == "INVALID_FORMAT"
+
+        # Approved after a fix: the old reason goes.
+        approved = {"status": "success", "templates": [dict(rejected["templates"][0], status="APPROVED",
+                                                            rejected_reason="NONE")]}
+        with patch("src.services.meta_whatsapp_service.MetaWhatsAppService.list_message_templates",
+                   return_value=approved):
+            client.post("/api/v1/whatsapp/templates/sync-status")
+        shown = next(x for x in client.get("/api/v1/whatsapp/templates").json() if x["template_id"] == t.template_id)
+        assert shown["status"] == "APPROVED" and shown["rejected_reason"] is None
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(current_user, None)

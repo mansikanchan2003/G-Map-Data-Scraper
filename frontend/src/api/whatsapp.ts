@@ -36,6 +36,8 @@ export interface WhatsAppTemplate {
   origin?: string | null;
   /** Columns a sheet template fills per recipient; empty for other templates. */
   sheet_variables?: string[];
+  /** Meta's reason when it rejected the template (INVALID_FORMAT, PROMOTIONAL...). */
+  rejected_reason?: string | null;
 }
 
 export interface WhatsAppCampaign {
