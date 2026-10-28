@@ -221,12 +221,20 @@ def _branches(db: Session) -> List[Dict]:
             for b in db.query(SbiBranch).all() if b.pincode in coords]
 
 
+# Only the branches the bank gave us are known (Gujarat and Chandigarh so
+# far), so the nearest of them can be states away: a Mohali lead was put at
+# Viramgam. Past this distance it is not their branch, and none is given.
+BRANCH_MAX_KM = 50
+
+
 def _nearest_branch(branches: List[Dict], coords: Optional[List[float]]) -> Optional[Dict]:
-    """The SBI branch nearest a PIN, and how far it is."""
+    """The SBI branch nearest a PIN, and how far it is; None if none of ours is within BRANCH_MAX_KM."""
     if not coords or not branches:
         return None
     km, best = min(((haversine_distance(coords[0], coords[1], *b["coords"]), b) for b in branches),
                    key=lambda pair: pair[0])
+    if km > BRANCH_MAX_KM:
+        return None
     return {k: v for k, v in best.items() if k != "coords"} | {"distance_km": round(km, 1)}
 
 

@@ -103,6 +103,10 @@ def sync(db: Session) -> None:
         geo = coverage.get("geo") or {}
         # The nearest of our SBI branches, from the PIN's coordinates (kept by the Applications list).
         near = applications._nearest_branch(branches, coverage.get("coords"))
+        if near is None and branches and coverage.get("coords") and row.branch_code:
+            # Looked up, and none of our branches is near: a branch kept before the limit was wrong.
+            row.branch_code = row.branch_name = row.branch_ao = row.branch_region = row.branch_circle = None
+            row.branch_distance_km, row.branch_checked_pin = None, coverage.get("pincode")
         if near:
             row.branch_code, row.branch_name, row.branch_ao = near["branch_code"], near["branch_name"], near["ao"]
             row.branch_region, row.branch_circle = rbo.get(near["branch_code"], (None, None))

@@ -223,8 +223,8 @@ def test_each_application_shows_its_nearest_sbi_branch_and_ao(client):
     assert apps["+919000000001"]["sbi_branch"] == {"branch_code": "60104", "branch_name": "Chotila",
                                                    "ao": "AO Ahmedabad", "pincode": "363520", "distance_km": 0.0}
     # Far away, still the nearest of the branches, with how far it is.
-    delhi = apps["+919000000004"]["sbi_branch"]
-    assert delhi["branch_code"] == "497" and delhi["distance_km"] > 700
+    # Delhi is over 700 km from any of our (Gujarat) branches: none is its branch.
+    assert apps["+919000000004"]["sbi_branch"] is None
     assert apps["+919000000006"]["sbi_branch"] is None  # no PIN given yet
 
 
@@ -366,4 +366,14 @@ def test_qualified_and_strongly_qualified_leads_are_kept_with_the_nearest_branch
     assert again["+919000000002"]["still_qualified"] is False
     assert again["+919000000002"]["now"].startswith("Not qualified now: cannot invest")
     assert db.query(QualifiedLead).count() == 4
+    # A branch states away, kept before the 50 km limit, is cleared (Mohali was put at Viramgam).
+    assert leads["+919000000004"]["branch"] is None
+    far = db.get(QualifiedLead, "+919000000004")
+    far.branch_code, far.branch_name, far.branch_circle, far.branch_distance_km = "497", "VIRAMGAM", "GANDHINAGAR", 905.0
+    delhi = db.get(WhatsAppConversation, "+919000000004")
+    delhi.bot_data = {**delhi.bot_data, "coverage": {**delhi.bot_data["coverage"], "coords": [28.63, 77.22]}}
+    db.commit()
+    client.get("/api/v1/applications/qualified")
+    db.refresh(far)
+    assert far.branch_code is None and far.branch_circle is None and far.branch_distance_km is None
     db.close()
