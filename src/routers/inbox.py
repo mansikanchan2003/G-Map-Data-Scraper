@@ -373,7 +373,7 @@ def get_conversation(digits: str, db: Session = Depends(get_db)):
     last = next((m for m in reversed(messages) if m.kind != "campaign"), None)
     files = (db.query(OnboardingDocument).filter(OnboardingDocument.phone == conv.phone)
              .order_by(OnboardingDocument.uploaded_at.asc()).all())
-    labels = {d["key"]: d["label"] for d in onboarding_bot.DOCUMENTS}
+    labels = onboarding_bot.DOCUMENT_LABELS
 
     summary = _summary(conv, names.get(conv.phone), None, _unread(db, [conv]).get(conv.phone, 0), len(files),
                        any(m.kind == "campaign" for m in messages))

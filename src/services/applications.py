@@ -38,7 +38,7 @@ ONBOARDING_STEPS = {
     bot.NOT_SERVED, bot.NOT_INVESTING,
 }
 QUALIFICATION = {"12": "12th / Diploma", "grad": "Graduate / Post-Grad", "other": "Below 12th"}
-DOC_LABELS = {d["key"]: d["label"] for d in bot.DOCUMENTS}
+DOC_LABELS = bot.DOCUMENT_LABELS
 REQUIRED_KEYS = [d["key"] for d in bot.REQUIRED_DOCUMENTS]
 
 

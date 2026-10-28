@@ -125,6 +125,10 @@ DOCUMENTS = [
      "hint": None, "required": False},
 ]
 REQUIRED_DOCUMENTS = [d for d in DOCUMENTS if d["required"]]
+# Aadhaar verified with DigiLocker on the upload page: kept beside the
+# uploaded Aadhaar, not in its place, so it is not a row of its own.
+DIGILOCKER_AADHAAR = {"key": "aadhaar_digilocker", "label": "Aadhaar — verified via DigiLocker"}
+DOCUMENT_LABELS = {d["key"]: d["label"] for d in DOCUMENTS + [DIGILOCKER_AADHAAR]}
 
 # A PIN asked for this many times without a usable answer goes to a person.
 MAX_PIN_ATTEMPTS = 3

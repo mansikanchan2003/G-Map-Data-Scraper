@@ -40,7 +40,7 @@ def payload(db: Session, conv: WhatsAppConversation) -> dict:
     cov = data.get("coverage") or {}
     q = db.get(QualifiedLead, conv.phone)
     docs = db.query(OnboardingDocument).filter(OnboardingDocument.phone == conv.phone).all()
-    labels = {d["key"]: d["label"] for d in bot.DOCUMENTS}
+    labels = bot.DOCUMENT_LABELS
     journey = lead_journey.build(db, conv)
     visit = dz.SUBS["int_visit"]
     return {

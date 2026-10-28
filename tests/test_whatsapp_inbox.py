@@ -3186,3 +3186,98 @@ def test_the_playground_says_what_the_bot_does_not_only_the_disposition(client):
     assert bot("Thank you for contacting Royal Graphics, we will get back to you shortly")["kind"] == "auto_reply"
     assert bot("kya ye fraud hai?")["title"].endswith("(trust)")
     assert bot("ok")["kind"] == "step"
+
+
+# --- Aadhaar from DigiLocker --------------------------------------------------
+
+from src.services import eko_digilocker  # noqa: E402
+
+
+def test_eko_signature_matches_the_documented_formula():
+    import base64, hashlib, hmac
+    key = base64.b64encode(b"d2fe1d99-6298-4af2-8cc5-d97dcf46df30").decode()
+    want = base64.b64encode(hmac.new(key.encode(), b"1516705204593", hashlib.sha256).digest()).decode()
+    assert eko_digilocker.signature("d2fe1d99-6298-4af2-8cc5-d97dcf46df30", "1516705204593") == want
+    assert 10 <= len(eko_digilocker.client_ref_id()) <= 20
+
+
+@pytest.fixture
+def digilocker(monkeypatch):
+    """Eko's DigiLocker API, stubbed: nothing here reaches it (a fetch is billed)."""
+    for k, v in {"EKO_DEVELOPER_KEY": "dev", "EKO_ACCESS_KEY": "acc", "EKO_INITIATOR_ID": "9000000000"}.items():
+        monkeypatch.setenv(k, v)
+    calls = []
+    state = {"ready": True}
+
+    def post(path, body):
+        calls.append((path, body))
+        if path == eko_digilocker.CREATE_PATH:
+            return {"status": 0, "data": {"reference_id": 7483920, "url": "https://digilocker.gov.in/auth?s=1",
+                                          "redirect_url": body["redirect_url"]}}
+        if not state["ready"]:
+            return {"status": 1, "message": "Customer has not completed DigiLocker authorisation yet", "data": {}}
+        return {"status": 0, "data": {"verification_status": "SUCCESS", "documents": [{
+            "document_type": "AADHAAR", "name": "Vikram Singh", "dob": "12-11-1987", "gender": "M",
+            "masked_aadhaar": "XXXX-XXXX-2345", "issue_date": "01-01-2020",
+            "address": {"house": "15B", "street": "Nehru Street", "village_or_city": "Chennai",
+                        "district": "Chennai", "state": "Tamil Nadu", "pincode": "600001"}}]}}
+
+    monkeypatch.setattr(eko_digilocker, "_post", post)
+    return {"calls": calls, "state": state}
+
+
+def test_the_upload_page_offers_digilocker_only_with_the_keys(db, client, monkeypatch):
+    token = _link(db)
+    assert '"enabled": false' in client.get(f"/onboard/{token}").text
+    assert client.post(f"/onboard/{token}/digilocker").status_code == 503
+    for k in ("EKO_DEVELOPER_KEY", "EKO_ACCESS_KEY", "EKO_INITIATOR_ID"):
+        monkeypatch.setenv(k, "x")
+    assert '"enabled": true' in client.get(f"/onboard/{token}").text
+
+
+def test_aadhaar_verified_via_digilocker_is_filed_once(db, client, digilocker):
+    token = _link(db)
+    r = client.post(f"/onboard/{token}/digilocker")
+    assert r.json() == {"url": "https://digilocker.gov.in/auth?s=1"}
+    path, body = digilocker["calls"][0]
+    assert body["redirect_url"] == f"https://link.example.in/onboard/{token}/digilocker/done"
+    assert body["document_requested"] == ["AADHAAR"]
+
+    r = client.get(f"/onboard/{token}/digilocker/done", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"../../{token}?digilocker=verified"
+    doc = db.query(OnboardingDocument).filter_by(phone=PHONE, doc_type="aadhaar_digilocker").one()
+    assert doc.content_type == "application/pdf" and doc.original_name.startswith("Aadhaar (verified")
+    assert open(doc.stored_path, "rb").read().startswith(b"%PDF-")
+    db.refresh(conv(db))
+    kept = conv(db).bot_data["digilocker"]["verified"]
+    assert kept["masked_aadhaar"] == "XXXX-XXXX-2345" and kept["pincode"] == "600001"
+    assert "photo" not in kept
+    assert '"verified": true' in client.get(f"/onboard/{token}").text
+
+    # A reload does not fetch (and pay) again.
+    fetches = len(digilocker["calls"])
+    client.get(f"/onboard/{token}/digilocker/done", follow_redirects=False)
+    assert len(digilocker["calls"]) == fetches
+
+    # It is a verification, not the upload: the Aadhaar copy is still asked for.
+    for d in onboarding_bot.REQUIRED_DOCUMENTS:
+        if d["key"] != "aadhaar":
+            client.post(f"/onboard/{token}/files", data={"doc_type": d["key"]}, files={"file": ("a.pdf", PDF)})
+    assert client.post(f"/onboard/{token}/submit").status_code == 400
+    client.post(f"/onboard/{token}/files", data={"doc_type": "aadhaar"}, files={"file": ("aadhaar.pdf", PDF)})
+    assert client.post(f"/onboard/{token}/submit").json() == {"status": "submitted"}
+    db.refresh(conv(db))
+    assert conv(db).bot_data["digilocker"]["verified"]
+    assert db.query(OnboardingDocument).filter_by(phone=PHONE).count() == 4
+
+
+def test_digilocker_not_finished_files_nothing_and_can_be_retried(db, client, digilocker):
+    token = _link(db)
+    digilocker["state"]["ready"] = False
+    client.post(f"/onboard/{token}/digilocker")
+    r = client.get(f"/onboard/{token}/digilocker/done", follow_redirects=False)
+    assert r.headers["location"].endswith("?digilocker=pending")
+    assert db.query(OnboardingDocument).filter_by(phone=PHONE, doc_type="aadhaar_digilocker").count() == 0
+    digilocker["state"]["ready"] = True
+    r = client.get(f"/onboard/{token}/digilocker/done", follow_redirects=False)
+    assert r.headers["location"].endswith("?digilocker=verified")

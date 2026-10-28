@@ -136,7 +136,7 @@ def save_conversation(db: Session, conv: WhatsAppConversation) -> int:
         conv.drive_folder_url = created.get("webViewLink")
         db.commit()
 
-    labels = {d["key"]: d["label"] for d in onboarding_bot.DOCUMENTS}
+    labels = onboarding_bot.DOCUMENT_LABELS
     copied = 0
     for doc in pending:
         name = f"{labels.get(doc.doc_type, doc.doc_type)} - {doc.original_name or doc.doc_type}"

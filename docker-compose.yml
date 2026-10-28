@@ -149,6 +149,12 @@ services:
       # The WhatsApp inbox and onboarding bot.
       WHATSAPP_BUSINESS_NUMBER: ${WHATSAPP_BUSINESS_NUMBER:-}
       ONBOARDING_RADIUS_KM: ${ONBOARDING_RADIUS_KM:-20}
+      # Aadhaar from DigiLocker on the upload page, through Eko's API platform
+      # (eps.eko.in). Without the keys the page offers uploads only.
+      EKO_DEVELOPER_KEY: ${EKO_DEVELOPER_KEY:-}
+      EKO_ACCESS_KEY: ${EKO_ACCESS_KEY:-}
+      EKO_INITIATOR_ID: ${EKO_INITIATOR_ID:-}
+      EKO_BASE_URL: ${EKO_BASE_URL:-https://api.eko.in/ekoicici/v3}
 
       # Campaign link tracking. PUBLIC_BASE_URL must be an address a phone can
       # reach over the internet, otherwise the tracking links will not open.
