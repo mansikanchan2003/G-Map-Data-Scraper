@@ -13,9 +13,12 @@ from src.services import business_context, growth_plan, kiosk_kai
 @pytest.fixture(autouse=True)
 def fresh(monkeypatch):
     kiosk_kai._cache.clear()
+    kiosk_kai._asks.clear()
+    kiosk_kai._asked_today.update(day=None, count=0)
     monkeypatch.delenv("KIOSK_KAI_APP_KEY", raising=False)
     yield
     kiosk_kai._cache.clear()
+    kiosk_kai._asks.clear()
 
 
 class Reply:
@@ -149,3 +152,73 @@ def test_without_kiosk_kai_the_plan_has_no_after_us_part(monkeypatch):
     monkeypatch.setattr(kiosk_kai, "call", lambda tool, **a: None)
     assert growth_plan.beyond({"district": Counter(), "category": Counter(), "pair": Counter()}) is None
     assert growth_plan._beyond_text(None) == ""
+
+
+# --- Questions from the Plan tab ----------------------------------------------
+
+class Inline:
+    """A thread that runs when started, so the answer is there at once."""
+    def __init__(self, target, args, **k):
+        self.run = lambda: target(*args)
+
+    def start(self):
+        self.run()
+
+
+def test_a_question_needs_the_apps_key():
+    with pytest.raises(kiosk_kai.AskRefused):
+        kiosk_kai.ask("How is October's revenue?", "u1")
+
+
+def test_a_question_is_answered_with_its_tools_and_only_shown_to_who_asked(monkeypatch):
+    monkeypatch.setenv("KIOSK_KAI_APP_KEY", "app-key")
+    monkeypatch.setattr(kiosk_kai.threading, "Thread", Inline)
+    sent = stub_server(monkeypatch, {
+        "data": {"answer": "October so far: **₹74.1 lakh** (TARA, to 27 Oct).",
+                 "tools_called": [{"name": "autogmap.tara_context"}, "autogmap.goals", "autogmap.goals"],
+                 "cost_usd": 0.04},
+        "as_of": "2026-10-29T12:00:00+05:30", "caveats": ["TARA lags two days."]})
+    started = kiosk_kai.ask("How is October's revenue?", "u1")
+    body = sent[-1][0]
+    assert body["params"] == {"name": "core.ask", "arguments": {
+        "question": "How is October's revenue?", "skill": kiosk_kai.ASK_SKILL}}
+    out = kiosk_kai.asked(started["id"], "u1")
+    assert out["status"] == "done" and out["answer"].startswith("October so far")
+    assert out["tools"] == ["autogmap.tara_context", "autogmap.goals"]
+    assert out["caveats"] == ["TARA lags two days."] and out["cost"] == 0.04
+    assert "user_id" not in out
+    assert kiosk_kai.asked(started["id"], "u2") is None
+
+
+def test_a_failed_answer_says_so_and_one_question_at_a_time(monkeypatch):
+    monkeypatch.setenv("KIOSK_KAI_APP_KEY", "app-key")
+    monkeypatch.setattr(kiosk_kai.threading, "Thread", Inline)
+    stub_server(monkeypatch, {"data": None, "error": "daily cost limit reached"})
+    out = kiosk_kai.ask("Where is our agent losing people?", "u1")
+    assert kiosk_kai.asked(out["id"], "u1")["status"] == "failed"
+
+    # A question still being answered holds that person's next one back.
+    monkeypatch.setattr(kiosk_kai.threading, "Thread", lambda **k: type("T", (), {"start": lambda self: None})())
+    kiosk_kai.ask("First?", "u1")
+    with pytest.raises(kiosk_kai.AskRefused):
+        kiosk_kai.ask("Second?", "u1")
+    kiosk_kai.ask("Mine?", "u2")
+
+
+def test_questions_stop_at_the_days_limit(monkeypatch):
+    monkeypatch.setenv("KIOSK_KAI_APP_KEY", "app-key")
+    monkeypatch.setenv("KIOSK_KAI_ASK_DAILY", "2")
+    monkeypatch.setattr(kiosk_kai.threading, "Thread", Inline)
+    stub_server(monkeypatch, {"data": {"answer": "Yes."}})
+    kiosk_kai.ask("One?", "u1")
+    kiosk_kai.ask("Two?", "u2")
+    assert kiosk_kai.asks_left() == 0
+    with pytest.raises(kiosk_kai.AskRefused, match="Today's 2 questions"):
+        kiosk_kai.ask("Three?", "u3")
+
+
+def test_a_view_only_member_may_ask():
+    from types import SimpleNamespace
+    from src.services import auth_service
+    member = SimpleNamespace(role=next(iter(auth_service.READ_ONLY_ROLES)))
+    assert auth_service.may_make_request(member, "POST", "/api/v1/whatsapp/insights/ask")

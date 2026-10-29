@@ -46,6 +46,8 @@ READ_ONLY_SAFE_POSTS = (
     "/api/v1/whatsapp/audience/summary",
     "/api/v1/whatsapp/audience/preview",
     "/api/v1/whatsapp/contacts/validate",
+    # A question to Kiosk KAI reads; it changes nothing.
+    "/api/v1/whatsapp/insights/ask",
 )
 
 

@@ -23,6 +23,8 @@ When to use it in this repository:
   (`growth_plan.beyond`: `autogmap.acquisition_funnel`, `ekokiosk.campaign_targets`) and TARA live in the goal
   (`business_context.with_live_tara`: `autogmap.tara_context`). It signs in with the app's own key,
   `KIOSK_KAI_APP_KEY`, never a person's KAI_KEY; without it those parts are off and the plan works as before.
+  The Plan tab's ask bar puts people's questions to `core.ask` (`kiosk_kai.ask`, `/insights/ask`), at most
+  `KIOSK_KAI_ASK_DAILY` (20) a day, one at a time per person.
 - To ask in plain words: `core.ask(question)`. It costs money and the team shares USD 5 a day, so ask the user first.
 
 How to answer with it:

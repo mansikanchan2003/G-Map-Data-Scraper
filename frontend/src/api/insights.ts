@@ -307,3 +307,33 @@ export interface DispositionMix {
   template: MixRow[];
   state: MixRow[];
 }
+
+// --- Questions to Kiosk KAI, from the Plan tab -------------------------------
+
+export interface AskState {
+  id: string;
+  question: string;
+  status: 'running' | 'done' | 'failed';
+  seconds: number;
+  answer?: string;
+  /** Kiosk KAI tools the answer was read from, e.g. "tara.insights". */
+  tools?: string[];
+  as_of?: string | null;
+  caveats?: string[];
+  error?: string;
+}
+
+export interface AskStatus {
+  enabled: boolean;
+  chat_url: string;
+  /** Kiosk KAI's budget is shared, so the app asks a few questions a day. */
+  left_today: number;
+  daily_max: number;
+}
+
+export const fetchAskStatus = () => call<AskStatus>('/ask');
+export const askKai = (question: string) =>
+  call<AskState>('/ask', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question }),
+  });
+export const fetchAsked = (id: string) => call<AskState>(`/ask/${id}`);

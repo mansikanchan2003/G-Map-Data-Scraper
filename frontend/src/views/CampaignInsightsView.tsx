@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackToParent } from '../components/SubPage';
 import type { NavTab } from '../components/Header';
 import { GrowthPlan } from '../components/GrowthPlan';
+import { AskKai } from '../components/AskKai';
 import { DispositionMix } from '../components/DispositionMix';
 import {
   exploreInsights, fetchCampaignInsights, fetchCampaignReport, fetchDimensions,
@@ -202,7 +203,7 @@ export const CampaignInsightsView: React.FC<{ can?: (t: NavTab) => boolean }> = 
 
       <div className="px-6 py-6 max-w-[1500px] w-full mx-auto">
         {error && <div className="mb-4 p-3 rounded-lg border border-rose-800/60 bg-rose-950 text-rose-300 text-sm">{error}</div>}
-        {tab === 'plan' && <GrowthPlan key={book?.computed_at || 'plan'} />}
+        {tab === 'plan' && <><AskKai /><GrowthPlan key={book?.computed_at || 'plan'} /></>}
         {tab === 'deep' && (
           <>
             {book && <Readiness book={book} />}

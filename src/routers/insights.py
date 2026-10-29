@@ -15,7 +15,9 @@ from sqlalchemy.orm import Session
 
 from src.database import get_db
 from src.models.insights import CampaignInsight, InsightSnapshot
+from src.models.user import User
 from src.models.whatsapp import WhatsAppCampaign
+from src.routers.auth import current_user
 from src.services import campaign_insights as ci
 
 router = APIRouter(prefix="/api/v1/whatsapp/insights", tags=["Campaign Insights"])
@@ -155,6 +157,42 @@ def growth(db: Session = Depends(get_db)):
     """
     from src.services import growth_plan
     return growth_plan.plan(db)
+
+
+# --- Questions to Kiosk KAI, from the Plan tab ----------------------------------
+
+class Question(BaseModel):
+    question: str = Field(..., min_length=3, max_length=600)
+
+
+@router.get("/ask")
+def ask_status():
+    """Whether questions can be asked here, and Kiosk KAI's own chat page."""
+    from src.services import kiosk_kai
+    return {"enabled": kiosk_kai.configured(), "chat_url": kiosk_kai.CHAT_URL,
+            "left_today": kiosk_kai.asks_left(), "daily_max": kiosk_kai.ask_daily_max()}
+
+
+@router.post("/ask")
+def ask(req: Question, user: User = Depends(current_user)):
+    """
+    Asks Kiosk KAI about AutoGMap, the application form or TARA's revenue.
+    Answers take up to a few minutes, so this returns at once with an id.
+    """
+    from src.services import kiosk_kai
+    try:
+        return kiosk_kai.ask(req.question.strip(), user.user_id)
+    except kiosk_kai.AskRefused as e:
+        raise HTTPException(status_code=429 if kiosk_kai.configured() else 503, detail=str(e))
+
+
+@router.get("/ask/{ask_id}")
+def asked(ask_id: str, user: User = Depends(current_user)):
+    from src.services import kiosk_kai
+    out = kiosk_kai.asked(ask_id, user.user_id)
+    if out is None:
+        raise HTTPException(status_code=404, detail="That question is no longer here. Ask it again.")
+    return out
 
 
 class RevenueGoal(BaseModel):
