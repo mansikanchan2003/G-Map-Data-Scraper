@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getApiBaseUrl } from '../api';
 import {
-  fetchGrowthPlan, setRevenueGoal, type BusinessSummary, type CreativeRow, type GrowthPlan as Plan, type GrowthRow,
+  fetchGrowthPlan, setRevenueGoal, type Beyond, type BusinessSummary, type CreativeRow, type GrowthPlan as Plan, type GrowthRow,
 } from '../api/insights';
 import { formatDateTime } from '../utils/datetime';
 
@@ -287,7 +287,9 @@ const Business: React.FC<{ b: BusinessSummary; plan: Plan; onSaved: () => void }
   const ch = b.latest_change;
   return (
     <Card icon="account_balance" title="From a lead to revenue" tint="bg-emerald-950 text-emerald-300"
-      subtitle={<>How Eko earns from a CSP, from Tara and the onboarding sheet{b.exported_at ? <> · updated {formatDateTime(b.exported_at)}</> : null}. The agent sets its goal from these numbers.</>}>
+      subtitle={<>How Eko earns from a CSP, from Tara and the onboarding sheet{b.tara_live_as_of
+        ? <> · Tara live via Kiosk KAI, {formatDateTime(b.tara_live_as_of)}</>
+        : b.exported_at ? <> · updated {formatDateTime(b.exported_at)}</> : null}. The agent sets its goal from these numbers.</>}>
       <RevenueGoal plan={plan} onSaved={onSaved} />
       <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {steps.map((s, i) => (
@@ -415,6 +417,120 @@ const NextSteps: React.FC<{ plan: Plan }> = ({ plan }) => (
     </div>
   </Card>
 );
+
+// ---------------------------------------------------------------------------
+// After AutoGMap: the form and TARA, through Kiosk KAI
+// ---------------------------------------------------------------------------
+
+const FORM_STEPS: { key: keyof Beyond['form']['autogmap']; label: string }[] = [
+  { key: 'leads', label: 'Started the form' },
+  { key: 'submitted', label: 'Submitted' },
+  { key: 'qualified', label: 'Qualified' },
+  { key: 'with_documents', label: 'With documents' },
+];
+
+const titleCase = (s: string) => s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+
+const AfterUs: React.FC<{ out: Beyond }> = ({ out }) => {
+  const form = out.form.autogmap;
+  const top = Math.max(form.leads, 1);
+  const t = out.tara.in_lead_states;
+  const csps = t.csps || 0;
+  const maxCircle = Math.max(1, ...out.tara.circles.map(c => c.csps));
+  const maxLeft = Math.max(1, ...out.need_campaign.map(d => d.left));
+  const asOf = out.form.as_of || out.tara.as_of || out.targets_as_of;
+  return (
+    <Card icon="hub" title="After AutoGMap: the form and TARA" tint="bg-teal-950 text-teal-300"
+      subtitle={<>What happens to our leads once they leave the chat, read live through Kiosk KAI{asOf ? <> · {formatDateTime(asOf)}</> : null}. The plan's steps and the template agents use it.</>}>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">
+            <Icon name="assignment" className="text-[16px] text-teal-300" /> Kiosk Application Form · 30 days
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-3xl font-bold text-slate-100 tabular-nums">{num(form.leads)}</span>
+            <span className="text-xs text-slate-500">from AutoGMap, of {num(out.form.all.leads)} in all</span>
+          </div>
+          <ul className="mt-3 space-y-2">
+            {FORM_STEPS.map(s => (
+              <li key={s.key}>
+                <div className="flex justify-between text-[12px]"><span className="text-slate-400">{s.label}</span>
+                  <span className="text-slate-200 font-semibold tabular-nums">{num(form[s.key])}</span></div>
+                <div className="mt-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                  <div className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-400" style={{ width: `${(form[s.key] / top) * 100}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+          {out.uploaded_here != null && (
+            <p className="mt-3 text-[11.5px] text-slate-500">{num(out.uploaded_here)} uploaded documents in our own chat in the same 30 days.</p>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">
+            <Icon name="storefront" className="text-[16px] text-teal-300" /> TARA · CSPs in our leads' states
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-3xl font-bold text-slate-100 tabular-nums">{num(t.active)}</span>
+            <span className="text-xs text-slate-500">active, {num(t.inactive)} inactive</span>
+          </div>
+          {csps > 0 && (
+            <div className="mt-2 flex h-2 rounded-full overflow-hidden bg-slate-800" title={`${t.active} active, ${t.inactive} inactive`}>
+              <div className="bg-emerald-500" style={{ width: `${((t.active || 0) / csps) * 100}%` }} />
+              <div className="bg-amber-500 ml-0.5" style={{ width: `${((t.inactive || 0) / csps) * 100}%` }} />
+            </div>
+          )}
+          <ul className="mt-3 space-y-1.5">
+            {out.tara.circles.map(c => (
+              <li key={c.circle} className="text-[12px]">
+                <div className="flex justify-between"><span className="text-slate-300">{c.circle}</span>
+                  <span className="text-slate-500 tabular-nums">{c.active}{c.inactive ? <span className="text-amber-400"> +{c.inactive} inactive</span> : null}</span></div>
+                <div className="mt-0.5 h-1 rounded-full bg-slate-800 overflow-hidden">
+                  <div className="h-full bg-teal-500/80" style={{ width: `${(c.csps / maxCircle) * 100}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">
+            <Icon name="flag" className="text-[16px] text-teal-300" /> Districts that need a campaign
+          </div>
+          <p className="mt-1 text-[11.5px] text-slate-500">{out.need_campaign_total} on Eko's targeting sheet; bars are businesses we found there and have not messaged.</p>
+          <ul className="mt-3 space-y-2">
+            {out.need_campaign.map(d => (
+              <li key={`${d.state}-${d.district}`} className="text-[12px]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-200 truncate">{titleCase(d.district)} <span className="text-slate-500">· {d.state}</span></span>
+                  {d.replacement_codes > 0 && (
+                    <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800/60">
+                      {d.replacement_codes} to fill
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <div className="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                    <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-teal-400" style={{ width: `${(d.left / maxLeft) * 100}%` }} />
+                  </div>
+                  <span className={`text-[11px] tabular-nums ${d.left ? 'text-slate-300' : 'text-rose-300'}`}>{d.left ? num(d.left) : 'none found'}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      {out.caveats.length > 0 && (
+        <ul className="mt-3 space-y-1">
+          {out.caveats.slice(0, 3).map((c, i) => (
+            <li key={i} className="text-[11px] text-slate-500 flex gap-1"><Icon name="info" className="text-[13px]" />{c}</li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+};
 
 const Advertise: React.FC<{ plan: Plan }> = ({ plan }) => {
   const ad = plan.advertise;
@@ -749,6 +865,7 @@ export const GrowthPlan: React.FC = () => {
           <CallList plan={plan} />
         </div>
       </div>
+      {plan.beyond && <AfterUs out={plan.beyond} />}
       {/* Full width: three lists side by side, then the channels in a row. */}
       <Advertise plan={plan} />
       <Targets plan={plan} />

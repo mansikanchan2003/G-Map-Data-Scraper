@@ -29,7 +29,7 @@ from src.models.inbox import WhatsAppConversation
 from src.models.location import Location
 from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
 from src.services import campaign_insights as ci
-from src.services import business_context, creative_brief, inbox
+from src.services import business_context, creative_brief, inbox, kiosk_kai
 
 IST = ci.IST
 
@@ -458,7 +458,65 @@ def creative(book: dict) -> dict:
     return out
 
 
-def next_steps(g: dict, f: dict, warm: List[dict], t: dict, c: dict, book: dict) -> List[dict]:
+def _district_key(name: Optional[str]) -> str:
+    return re.sub(r"[^a-z]", "", (name or "").lower())
+
+
+# Districts the targeting sheet names, shown at most.
+BEYOND_TARGETS = 8
+
+
+def beyond(pool: Dict[str, Counter]) -> Optional[dict]:
+    """
+    What happens after AutoGMap, from Kiosk KAI: our leads on the Kiosk
+    Application Form, TARA's CSPs where they come from, and the districts
+    Eko's targeting sheet says need a campaign, with the businesses we have
+    there not yet messaged. None without Kiosk KAI.
+    """
+    funnel_answer = kiosk_kai.call("autogmap.acquisition_funnel", days=30)
+    targets_answer = kiosk_kai.call("ekokiosk.campaign_targets")
+    if not funnel_answer and not targets_answer:
+        return None
+    fd = (funnel_answer or {}).get("data") or {}
+    form, tara = fd.get("ekokiosk") or {}, fd.get("tara") or {}
+    ours = fd.get("autogmap") or {}
+
+    left = Counter()
+    for district, n in pool["district"].items():
+        left[_district_key(district)] += n
+    need = []
+    for d in ((targets_answer or {}).get("data") or {}).get("districts") or []:
+        if not d.get("need_campaign"):
+            continue
+        need.append({"state": d.get("state"), "district": d.get("district"), "ao": d.get("ao"),
+                     "existing_csps": d.get("existing_csps") or 0, "replacement_codes": d.get("replacement_codes") or 0,
+                     "left": left.get(_district_key(d.get("district")), 0)})
+    # Replacement codes first (a CSP's place the bank wants filled), then where we can message today.
+    need.sort(key=lambda d: (-d["replacement_codes"], -(d["left"] > 0), -d["left"], d["district"] or ""))
+
+    row = form.get("autogmap_row") or {}
+    return {
+        "form": {
+            "as_of": form.get("as_of"),
+            "autogmap": {k: row.get(k, 0) for k in ("leads", "submitted", "qualified", "with_documents")},
+            "all": form.get("total") or {},
+        },
+        "uploaded_here": (ours.get("journeys") or {}).get("reached_uploaded"),
+        "tara": {
+            "as_of": tara.get("as_of"),
+            "in_lead_states": tara.get("in_lead_states") or {},
+            "circles": (tara.get("circles") or [])[:6],
+        },
+        "need_campaign": need[:BEYOND_TARGETS],
+        "need_campaign_total": len(need),
+        "targets_as_of": (targets_answer or {}).get("as_of"),
+        "caveats": [*((funnel_answer or {}).get("caveats") or []), *((targets_answer or {}).get("caveats") or [])],
+        "source": "Kiosk KAI (Kiosk Application Form, TARA)",
+    }
+
+
+def next_steps(g: dict, f: dict, warm: List[dict], t: dict, c: dict, book: dict,
+               out: Optional[dict] = None) -> List[dict]:
     """What to do now, most effective first."""
     steps = []
     if warm:
@@ -481,6 +539,30 @@ def next_steps(g: dict, f: dict, warm: List[dict], t: dict, c: dict, book: dict)
                    f"({(1 - leak['lost']) * 100:.0f}%).",
             "impact": "high",
         })
+    if out and out["need_campaign"]:
+        ready = [d for d in out["need_campaign"] if d["left"]]
+        bare = [d for d in out["need_campaign"] if not d["left"]]
+        if ready:
+            steps.append({
+                "icon": "flag",
+                "title": "Message the districts Eko's targeting sheet needs",
+                "detail": "; ".join(f"{d['district'].title()} ({d['state']}): {d['left']} businesses not yet messaged"
+                                    + (f", {d['replacement_codes']} CSP place{'s' if d['replacement_codes'] != 1 else ''} to fill"
+                                       if d["replacement_codes"] else "")
+                                    for d in ready[:4]),
+                "why": "The bank's targeting sheet marks these districts as needing a campaign, so a lead there "
+                       "has a branch waiting for it.",
+                "impact": "high",
+            })
+        if bare:
+            steps.append({
+                "icon": "travel_explore",
+                "title": "Find businesses where the targeting sheet needs CSPs",
+                "detail": "Nothing found there yet: " + ", ".join(
+                    f"{d['district'].title()} ({d['state']})" for d in bare[:6]) + ". Add them as scraping targets.",
+                "why": "These districts need a campaign and we have no one there to message.",
+                "impact": "medium",
+            })
     good_places = [d for d in t["districts"] if d["success"] and d["left"]]
     if good_places:
         top = good_places[:3]
@@ -549,6 +631,7 @@ def plan(db: Session) -> dict:
     pool = _untapped(db)
     t = targets(db, book, pool)
     c = creative(book)
+    out = beyond(pool)
     return {
         "advertise": advertise(db, people, pool, c.get("showcase")),
         "computed_at": datetime.now(timezone.utc).isoformat(),
@@ -561,8 +644,21 @@ def plan(db: Session) -> dict:
         "stages": book["stages"],
         "targets": t,
         "creative": c,
-        "next_steps": next_steps(g, f, warm, t, c, book),
+        "beyond": out,
+        "next_steps": next_steps(g, f, warm, t, c, book, out),
     }
+
+
+def _beyond_text(out: Optional[dict]) -> str:
+    """The plan's Kiosk KAI part, for a template agent: where leads are wanted, and how they fare after us."""
+    if not out:
+        return ""
+    form = out["form"]["autogmap"]
+    places = ", ".join(f"{d['district'].title()} ({d['state']})" for d in out["need_campaign"][:5])
+    return (f"\nAFTER US (Kiosk KAI): on the Kiosk Application Form, {form['leads']} applications came from AutoGMap "
+            f"in 30 days, {form['qualified']} qualified. "
+            + (f"Eko's targeting sheet needs campaigns in {places}: write for owners there (their language, their trade)."
+               if places else ""))
 
 
 def agent_brief(db: Session) -> str:
@@ -605,7 +701,7 @@ WHAT MOVED PEOPLE SO FAR (judged on “{p['judged_on_label']}”, the furthest s
 {lines('image_headline', 'Image headline')}
 {lines('language_match', 'Language')}
 {lines('body_length', 'Message length')}
-WHERE PEOPLE DROP OUT: {(leak['label'] + ' — ' + leak['advice']) if leak else 'not enough data yet'}
+WHERE PEOPLE DROP OUT: {(leak['label'] + ' — ' + leak['advice']) if leak else 'not enough data yet'}{_beyond_text(p.get('beyond'))}
 NOT TRIED YET (worth testing): angles {', '.join(c['untried_angles'][:4]) or 'none'}; layouts {', '.join(c['untried_layouts']) or 'none'}.
 WHAT TO DO NEXT, the plan's own suggestions (Campaign Insights, Plan tab), most effective first. Follow the ones about templates, and write for the places and kinds of business they name (their language, their trade):
 {steps}

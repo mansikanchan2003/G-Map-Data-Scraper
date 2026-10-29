@@ -236,6 +236,8 @@ export interface GrowthPlan {
   };
   /** icon: a Material Symbols name. */
   next_steps: { title: string; detail: string; why: string; impact: 'high' | 'medium' | 'low'; icon?: string }[];
+  /** What happens after AutoGMap, from Kiosk KAI (the form and TARA); null without the app's Kiosk KAI key. */
+  beyond?: Beyond | null;
   /** Where else to advertise to win strongly qualified leads. */
   advertise?: {
     based_on: { strong: number; qualified: number };
@@ -257,8 +259,24 @@ export const setRevenueGoal = (inr: number | null, start?: string, end?: string)
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inr, start, end }),
   });
 
+export interface Beyond {
+  form: { as_of: string | null; autogmap: { leads: number; submitted: number; qualified: number; with_documents: number };
+    all: { leads?: number; submitted?: number; qualified?: number; with_documents?: number } };
+  uploaded_here: number | null;
+  tara: { as_of: string | null;
+    in_lead_states: { csps?: number; active?: number; inactive?: number; transacting_this_month?: number; transacting_last_month?: number };
+    circles: { circle: string; csps: number; active: number; inactive: number }[] };
+  need_campaign: { state: string; district: string; ao: string | null; existing_csps: number; replacement_codes: number; left: number }[];
+  need_campaign_total: number;
+  targets_as_of: string | null;
+  caveats: string[];
+  source: string;
+}
+
 export interface BusinessSummary {
   exported_at: string | null;
+  /** Set when TARA's figures were read live through Kiosk KAI. */
+  tara_live_as_of?: string | null;
   months: { month: string; label: string; active_csps: number | null; transactions: number | null;
     revenue_inr: number | null; revenue_basis: 'actual' | 'projected' | 'estimated' | null; new_csps: number | null }[];
   revenue_per_txn: number | null;

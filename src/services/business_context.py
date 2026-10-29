@@ -82,11 +82,36 @@ MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "O
 
 
 def load() -> Optional[dict]:
+    """
+    The business data: the 04:30 export, with TARA's part read live through
+    Kiosk KAI when the app has a key for it. The export's onboarding figures
+    (from the pipeline sheets) stay, as Kiosk KAI does not have them.
+    """
     try:
         with open(CONTEXT_FILE, encoding="utf-8") as f:
-            return json.load(f)
+            ctx = json.load(f)
     except (OSError, ValueError):
-        return None
+        ctx = None
+    return with_live_tara(ctx)
+
+
+def with_live_tara(ctx: Optional[dict]) -> Optional[dict]:
+    """ctx with TARA's CSP network and revenue forecasts as they are now, if Kiosk KAI answers."""
+    from src.services import kiosk_kai
+
+    answer = kiosk_kai.call("autogmap.tara_context")
+    live = ((answer or {}).get("data") or {}).get("business_context") or {}
+    if not live.get("csp_network") and not live.get("revenue_forecasts"):
+        return ctx
+    ctx = dict(ctx or {})
+    for key in ("csp_network", "revenue_forecasts"):
+        before, now = ctx.get(key) or {}, live.get(key) or {}
+        # Month by month: months only the export has (from before Kiosk KAI's
+        # window) are kept, and every month Kiosk KAI has is the live one.
+        ctx[key] = {k: ({**before[k], **v} if isinstance(v, dict) and isinstance(before.get(k), dict) else v)
+                    for k, v in {**before, **now}.items()}
+    ctx["tara_live_as_of"] = answer.get("as_of")
+    return ctx
 
 
 def _key(label: str) -> str:
@@ -194,6 +219,8 @@ def summarise(ctx: dict) -> dict:
 
     return {
         "exported_at": ctx.get("exported_at"),
+        # Set when TARA's figures were read live through Kiosk KAI, not from the export.
+        "tara_live_as_of": ctx.get("tara_live_as_of"),
         "months": table,
         "revenue_per_txn": round(rpt, 2) if rpt else None,
         "mature_csp": {"median_txns": mature_txns, "revenue_inr": round(mature_txns * rpt) if mature_txns and rpt else None},

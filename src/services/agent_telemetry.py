@@ -324,7 +324,8 @@ def sources(db: Session) -> List[dict]:
                 "used_by": used_by}
 
     ctx = business_context.load() or {}
-    exported = ctx.get("exported_at")
+    # Read live through Kiosk KAI when the app has a key; else the 04:30 export.
+    exported = ctx.get("tara_live_as_of") or ctx.get("exported_at")
     journeys = lead_journey_store._last_sync or db.query(func.max(LeadJourney.updated_at)).scalar()
     approved_at = template_studio._approved_cache.get("at") or 0
     taught = sum(len(v) for v in faq_learning.taught(db).values())
