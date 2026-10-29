@@ -1,0 +1,13 @@
+{
+    "enabledMcpjsonServers": [
+        "kiosk-kai"
+    ],
+    "permissions": {
+        "allow": [
+            "mcp__kiosk-kai"
+        ],
+        "ask": [
+            "mcp__kiosk-kai__core_ask"
+        ]
+    }
+}

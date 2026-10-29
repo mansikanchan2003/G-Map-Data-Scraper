@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "kiosk-kai": {
+      "type": "http",
+      "url": "https://indev.eko.in/kiosk-kai/mcp",
+      "headers": {"Authorization": "Bearer ${KAI_KEY}"}
+    }
+  }
+}
