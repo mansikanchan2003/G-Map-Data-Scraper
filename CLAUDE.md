@@ -13,8 +13,9 @@ When to use it in this repository:
   Their `across` section already joins the three systems.
 - For the TARA figures our growth agent's goal is set from (`scripts/export_business_context.py` copies them into
   `data/business_context.json`): `autogmap.tara_context(states)` gives them live, in the same keys
-  (`csp_network`, `revenue_forecasts`). Use it to check whether `business_context.json` is stale; the export's 04:30
-  run had been failing since 17 October 2026.
+  (`csp_network`, `revenue_forecasts`). Use it to check whether `business_context.json` is stale (its `exported_at`
+  should be today's 04:30 IST run). The export failed from 17 October 2026; it ran again on 29 October and matched
+  TARA live.
 - For the form's or TARA's code: `core.search_code(system="ekokiosk" or "tara", query)`, then `core.read_code`. For
   AUTOGMAP's own code, this repository is the truth; Kiosk KAI's copy (`system="autogmap"`) is a snapshot that can
   lag. `core.impact(system, target)` lists what depends on a file, table or job.
