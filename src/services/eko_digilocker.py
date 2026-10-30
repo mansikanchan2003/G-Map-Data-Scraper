@@ -1,23 +1,30 @@
 """
-Aadhaar from DigiLocker, through Eko's own API platform (eps.eko.in/docs).
+Documents from DigiLocker, through Eko's own API platform (eps.eko.in/docs).
 
-On the upload page a person can verify their Aadhaar with DigiLocker in
-place of uploading a photo of it:
+On the upload page a person can fetch their Aadhaar, PAN and Driving Licence
+from DigiLocker in one go, and then upload only what DigiLocker did not give
+(the team's call, 30 Oct 2026):
 
-1. "Create DigiLocker URL" gives a one-time DigiLocker link for them, with
-   our page as where DigiLocker sends them back.
-2. They sign in on DigiLocker's own site and approve sharing their Aadhaar.
-   We never see their password or OTP.
-3. Back on our page, "Get DigiLocker Document" returns the verified details:
-   name, date of birth, gender, the Aadhaar number with the first eight
-   digits masked, the address and the photo. Never the full number.
+1. "Create DigiLocker URL" gives a one-time DigiLocker link for them, asking
+   for all three, with our page as where DigiLocker sends them back.
+2. They sign in on DigiLocker's own site and approve sharing. We never see
+   their password or OTP.
+3. Back on our page, "Get DigiLocker Document" is called once per type and
+   returns that document's verified details (not a scan of the card). A type
+   they do not have, or did not share, comes back refused, and costs nothing.
 
-Those details are turned into a one-page PDF and filed as the Aadhaar
-document, like an upload, so the inbox, Drive and the team see it the same
-way. Only the masked number and the details are kept on the conversation.
+Each document's details are turned into a one-page PDF and filed as its own
+record, which counts for that row of the upload page, so the inbox, Drive and
+the team see it like an upload. The Aadhaar number is kept as its last four
+digits only, whatever comes.
 
-Eko charges for each successful fetch (Rs 2.50 + GST), so a fetch is made
-once per DigiLocker session: reloading the return page does not fetch again.
+Production's replies are not the documented shape: Aadhaar's details sit in
+data itself (seen 30 Oct 2026). PAN's and the licence's had not been seen
+when this was written, so they are read leniently and their first replies'
+shape is logged (keys and numbers only, never text) to check against.
+
+Eko charges for each successful fetch (Rs 2.50 + GST per document), so a
+document is fetched once: reloading the return page does not fetch it again.
 The Status API is billable too and is not used.
 
 Credentials come from the environment: EKO_DEVELOPER_KEY, EKO_ACCESS_KEY,
@@ -43,6 +50,9 @@ PRODUCTION_BASE_URL = "https://api.eko.in/ekoicici/v3"
 CREATE_PATH = "/tools/kyc/digilocker"
 DOCUMENT_PATH = "/tools/kyc/digilocker/document"
 DOCUMENT_TYPE = "AADHAAR"
+# Every type Eko's DigiLocker API serves ("document_type should be AADHAAR/PAN/DRIVING_LICENSE").
+DOCUMENT_TYPES = ("AADHAAR", "PAN", "DRIVING_LICENSE")
+TITLES = {"AADHAAR": "Aadhaar", "PAN": "PAN Card", "DRIVING_LICENSE": "Driving Licence"}
 TIMEOUT = 25
 
 # A DigiLocker session left this long is started afresh on the next tap.
@@ -103,9 +113,9 @@ def _post(path: str, body: dict) -> dict:
     return out
 
 
-def create_url(redirect_url: str) -> dict:
-    """A one-time DigiLocker link: {"reference_id", "url"}."""
-    out = _post(CREATE_PATH, {"document_requested": [DOCUMENT_TYPE], "redirect_url": redirect_url})
+def create_url(redirect_url: str, types=DOCUMENT_TYPES) -> dict:
+    """A one-time DigiLocker link asking for these documents: {"reference_id", "url"}."""
+    out = _post(CREATE_PATH, {"document_requested": list(types), "redirect_url": redirect_url})
     data = out.get("data") or {}
     if out.get("status") != 0 or not data.get("url") or data.get("reference_id") in (None, ""):
         logger.warning(f"digilocker event=CREATE_REFUSED status={out.get('status')} "
@@ -124,45 +134,68 @@ def _mask(number) -> Optional[str]:
     return f"XXXX-XXXX-{digits[-4:]}" if len(digits) >= 4 else None
 
 
-def _from_production(data) -> Optional[dict]:
-    """
-    Production's reply (seen 30 Oct 2026) is not the documented one: the
-    details sit in data itself (name, dob, gender, uid: the masked number,
-    care_of, split_address, photo_link), not in data.documents. Mapped onto
-    the documented document so the rest reads one shape.
-    """
-    if not isinstance(data, dict) or not data.get("name") or not (data.get("uid") or data.get("split_address")):
-        return None
-    addr = data.get("split_address") if isinstance(data.get("split_address"), dict) else {}
-    street = ", ".join(str(addr[k]) for k in ("street", "landmark", "po") if addr.get(k))
-    photo = data.get("photo_link") or data.get("photo")
+def _address(addr) -> dict:
+    addr = addr if isinstance(addr, dict) else {}
     return {
-        "document_type": DOCUMENT_TYPE,
-        "name": data.get("name"),
-        "dob": data.get("dob"),
-        "gender": data.get("gender"),
-        # uid is 12 characters; whether masked or not, only the last four are kept.
-        "masked_aadhaar": _mask(data.get("uid") or data.get("masked_aadhaar")),
-        "care_of": data.get("care_of"),
-        # A link would need fetching; only an inline image is drawn.
-        "photo": photo if isinstance(photo, str) and not photo.startswith("http") else None,
-        "address": {
-            "house": addr.get("house"),
-            "street": street,
-            "village_or_city": addr.get("vtc"),
-            "district": addr.get("dist") or addr.get("subdist"),
-            "state": addr.get("state"),
-            "pincode": addr.get("pincode"),
-        },
+        "house": addr.get("house"),
+        "street": ", ".join(str(addr[k]) for k in ("street", "landmark", "po") if addr.get(k)),
+        "village_or_city": addr.get("vtc") or addr.get("village_or_city") or addr.get("city"),
+        "district": addr.get("dist") or addr.get("district") or addr.get("subdist"),
+        "state": addr.get("state"),
+        "pincode": addr.get("pincode"),
     }
 
 
-def _find_aadhaar(node, depth: int = 0) -> Optional[dict]:
-    """The Aadhaar document wherever the reply puts it (the documented data.documents, or elsewhere)."""
+# Where a PAN's or licence's number may be, in a reply not yet seen.
+NUMBER_KEYS = ("pan", "pan_number", "pan_no", "dl_number", "dl_no", "licence_number", "license_number",
+               "document_number", "id_number", "number", "uid")
+# Not listed among a document's other details: the call's ids, links, images and the address.
+_NOT_FIELDS = {"tid", "reference_id", "verification_id", "status", "photo", "photo_link", "image", "split_address",
+               "address", "documents", "verification_status", "document_type", "name", "dob", "gender", "care_of"}
+
+
+def _from_production(data, doc_type: str = DOCUMENT_TYPE) -> Optional[dict]:
+    """
+    Production's reply mapped onto the documented document, so the rest reads
+    one shape. Aadhaar's (30 Oct 2026) has the details in data itself: name,
+    dob, gender, uid (the number), care_of, split_address and photo_link.
+    """
+    if not isinstance(data, dict):
+        return None
+    number_key = next((k for k in NUMBER_KEYS if data.get(k)), None)
+    if not data.get("name") and not number_key:
+        return None
+    if doc_type == DOCUMENT_TYPE and not (data.get("uid") or data.get("split_address") or data.get("masked_aadhaar")):
+        return None
+    photo = data.get("photo_link") or data.get("photo") or data.get("image")
+    doc = {
+        "document_type": doc_type,
+        "name": data.get("name"),
+        "dob": data.get("dob"),
+        "gender": data.get("gender"),
+        "care_of": data.get("care_of"),
+        # A link would need fetching; only an inline image is drawn.
+        "photo": photo if isinstance(photo, str) and photo and not photo.startswith("http") else None,
+        "address": _address(data.get("split_address") or data.get("address")),
+        "fields": {},
+    }
+    if doc_type == DOCUMENT_TYPE:
+        # uid is 12 characters; whether masked or not, only the last four are kept.
+        doc["masked_aadhaar"] = _mask(data.get("uid") or data.get("masked_aadhaar"))
+    else:
+        doc["number"] = str(data[number_key]) if number_key else None
+        doc["fields"] = {k: v for k, v in data.items()
+                         if k not in _NOT_FIELDS and k != number_key
+                         and isinstance(v, (str, int, float)) and str(v).strip()}
+    return doc
+
+
+def _find(node, doc_type: str, depth: int = 0) -> Optional[dict]:
+    """The document where the documentation puts it (data.documents), or wherever else it is."""
     if depth > 4:
         return None
     if isinstance(node, dict):
-        if str(node.get("document_type") or "").upper() == DOCUMENT_TYPE and ("name" in node or "masked_aadhaar" in node):
+        if str(node.get("document_type") or "").upper() == doc_type and ("name" in node or "masked_aadhaar" in node):
             return node
         children = node.values()
     elif isinstance(node, list):
@@ -170,7 +203,7 @@ def _find_aadhaar(node, depth: int = 0) -> Optional[dict]:
     else:
         return None
     for child in children:
-        found = _find_aadhaar(child, depth + 1)
+        found = _find(child, doc_type, depth + 1)
         if found:
             return found
     return None
@@ -188,49 +221,66 @@ def _shape(node, depth: int = 0):
     return f"str[{len(str(node))}]"
 
 
-# DigiLocker hands back before Eko has the document: the first fetch can come
-# back accepted but empty. A failed fetch is free, so it is asked again.
+# DigiLocker can hand back before Eko has the document: a fetch can come back
+# accepted with ids only. A failed fetch is free, so that one is asked again.
 FETCH_TRIES = 4
 FETCH_WAIT_SECONDS = 3
 
 
-def fetch_aadhaar(reference_id: str, verification_id: Optional[str] = None) -> Optional[dict]:
+def fetch(doc_type: str, reference_id: str, verification_id: Optional[str] = None) -> Optional[dict]:
     """
-    The verified Aadhaar details, or None while the person has not finished
-    on DigiLocker. Raises DigiLockerError when it cannot be fetched at all.
+    One document's verified details, or None when DigiLocker has none to give
+    (not finished, not shared, or not in their DigiLocker). Raises
+    DigiLockerError when it cannot be fetched at all.
     """
     for attempt in range(1, FETCH_TRIES + 1):
         out = _post(DOCUMENT_PATH, {
             # One type as a string here; a list is refused ("document_type should be
             # AADHAAR/PAN/DRIVING_LICENSE"), though creating the link takes a list.
-            "document_type": DOCUMENT_TYPE,
+            "document_type": doc_type,
             "reference_id": str(reference_id),
             "verification_id": str(verification_id or reference_id),
         })
         if out.get("status") != 0:
-            logger.info(f"digilocker event=NOT_READY type={out.get('response_type_id')} message={str(out.get('message'))[:200]}")
+            logger.info(f"digilocker event=NOT_READY doc={doc_type} type={out.get('response_type_id')} "
+                        f"message={str(out.get('message'))[:200]}")
             return None
-        doc = _from_production(out.get("data")) or _find_aadhaar(out)
+        data = out.get("data")
+        documented = _find(out, doc_type)
+        doc = documented or _from_production(data, doc_type)
         if doc:
+            if doc_type != DOCUMENT_TYPE and not documented:
+                # Not seen when this was written: its shape, to check the reading against.
+                logger.info(f"digilocker event=FETCHED doc={doc_type} shape={_shape(out)}")
             return doc
-        logger.warning(f"digilocker event=NO_AADHAAR try={attempt} shape={_shape(out)}")
+        logger.warning(f"digilocker event=EMPTY doc={doc_type} try={attempt} shape={_shape(out)}")
+        if not (isinstance(data, dict) and set(data) <= {"status", "tid"}):
+            return None
         if attempt < FETCH_TRIES:
             time.sleep(FETCH_WAIT_SECONDS)
     return None
 
 
+def fetch_aadhaar(reference_id: str, verification_id: Optional[str] = None) -> Optional[dict]:
+    return fetch(DOCUMENT_TYPE, reference_id, verification_id)
+
+
 def summary(doc: dict) -> dict:
-    """What is kept on the conversation: the details, with the number masked and no photo."""
+    """What is kept on the conversation: the details, an Aadhaar number masked, and no photo."""
     addr = doc.get("address") or {}
-    return {
+    out = {
         "name": doc.get("name"),
         "dob": doc.get("dob"),
         "gender": doc.get("gender"),
-        "masked_aadhaar": doc.get("masked_aadhaar"),
         "address": ", ".join(str(addr[k]) for k in ("house", "street", "village_or_city", "district", "state")
                              if addr.get(k)),
         "pincode": addr.get("pincode"),
     }
+    if str(doc.get("document_type") or DOCUMENT_TYPE).upper() == DOCUMENT_TYPE:
+        out["masked_aadhaar"] = _mask(doc.get("masked_aadhaar"))
+    else:
+        out["number"] = doc.get("number")
+    return out
 
 
 _GENDER = {"M": "Male", "F": "Female", "T": "Transgender"}
@@ -259,8 +309,12 @@ def _wrap(draw, text: str, font, width: int) -> list:
     return lines + ([line] if line else [])
 
 
+def _pretty(key: str) -> str:
+    return str(key).replace("_", " ").strip().capitalize()
+
+
 def pdf(doc: dict, verified_at: str) -> bytes:
-    """A one-page A4 PDF of the verified details, filed as the Aadhaar document."""
+    """A one-page A4 PDF of a document's verified details, filed as that document."""
     from PIL import Image, ImageDraw
 
     page = Image.new("RGB", (1240, 1754), "white")  # A4 at 150 dpi
@@ -268,7 +322,9 @@ def pdf(doc: dict, verified_at: str) -> bytes:
     navy, muted, ok = (12, 37, 49), (85, 112, 128), (15, 138, 95)
 
     draw.rectangle((0, 0, 1240, 190), fill=navy)
-    draw.text((80, 48), "Aadhaar - verified via DigiLocker", font=_font(48, True), fill="white")
+    kind = str(doc.get("document_type") or DOCUMENT_TYPE).upper()
+    aadhaar = kind == DOCUMENT_TYPE
+    draw.text((80, 48), f"{TITLES.get(kind, kind.title())} - from DigiLocker", font=_font(48, True), fill="white")
     draw.text((80, 120), "Fetched from DigiLocker with the applicant's consent, through Eko's API.",
               font=_font(26), fill=(213, 227, 231))
 
@@ -286,13 +342,17 @@ def pdf(doc: dict, verified_at: str) -> bytes:
     s = summary(doc)
     rows = [
         ("Name", s["name"]),
-        ("Aadhaar number", s["masked_aadhaar"]),
+        ("Aadhaar number" if aadhaar else {"PAN": "PAN", "DRIVING_LICENSE": "Licence number"}.get(kind, "Number"),
+         s.get("masked_aadhaar") if aadhaar else s.get("number")),
         ("Date of birth", s["dob"]),
         ("Gender", _GENDER.get(str(s["gender"] or "").upper(), s["gender"])),
+        ("Care of", doc.get("care_of")),
         ("Address", s["address"]),
         ("PIN code", s["pincode"]),
         ("Issued on", doc.get("issue_date")),
     ]
+    # A PAN's or licence's other details, as they come (validity, father's name, ...).
+    rows += [(_pretty(k), v) for k, v in list((doc.get("fields") or {}).items())[:8]]
     label, value = _font(26), _font(34, True)
     y = top
     for name, text in rows:
@@ -308,8 +368,8 @@ def pdf(doc: dict, verified_at: str) -> bytes:
     y = max(y, top + 420) + 20
     draw.rounded_rectangle((80, y, 1160, y + 110), radius=18, fill=(230, 246, 239))
     draw.text((110, y + 22), "Verified by DigiLocker", font=_font(32, True), fill=ok)
-    draw.text((110, y + 66), f"Fetched on {verified_at}. The first eight digits of the number are masked.",
-              font=_font(24), fill=muted)
+    note = " The first eight digits of the number are masked." if aadhaar else ""
+    draw.text((110, y + 66), f"Fetched on {verified_at}.{note}", font=_font(24), fill=muted)
 
     buf = io.BytesIO()
     page.save(buf, "PDF", resolution=150.0)

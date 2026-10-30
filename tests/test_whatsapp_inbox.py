@@ -3207,7 +3207,8 @@ def digilocker(monkeypatch):
     for k, v in {"EKO_DEVELOPER_KEY": "dev", "EKO_ACCESS_KEY": "acc", "EKO_INITIATOR_ID": "9000000000"}.items():
         monkeypatch.setenv(k, v)
     calls = []
-    state = {"ready": True, "empty": 0, "production": False}
+    # has: what is in this person's DigiLocker; production: Aadhaar in production's shape (30 Oct 2026).
+    state = {"ready": True, "empty": 0, "production": False, "has": {"AADHAAR", "PAN"}}
     monkeypatch.setattr(eko_digilocker.time, "sleep", lambda s: None)
 
     def post(path, body):
@@ -3215,12 +3216,19 @@ def digilocker(monkeypatch):
         if path == eko_digilocker.CREATE_PATH:
             return {"status": 0, "data": {"reference_id": 7483920, "url": "https://digilocker.gov.in/auth?s=1",
                                           "redirect_url": body["redirect_url"]}}
+        kind = body["document_type"]
         if not state["ready"]:
             return {"status": 1, "message": "Customer has not completed DigiLocker authorisation yet", "data": {}}
+        if kind not in state["has"]:
+            return {"status": 1, "message": "Document not found", "data": {}}
         if state["empty"]:
-            # What production answered first on 30 Oct 2026: accepted, no document yet.
+            # What production answered once on 30 Oct 2026: accepted, ids only.
             state["empty"] -= 1
             return {"status": 0, "data": {"status": 0, "tid": "3580743894"}}
+        if kind == "PAN":
+            # Not seen from production yet: read leniently.
+            return {"status": 0, "data": {"name": "ASHA VERMA", "pan": "ABCPV1234K", "dob": "03-05-1999",
+                                          "father_name": "RAM VERMA", "tid": 3580746700}}
         if state["production"]:
             # Production's reply (30 Oct 2026), not the documented one; made-up details.
             return {"status": 0, "response_status_id": 0, "response_type_id": 0, "data": {
@@ -3239,6 +3247,10 @@ def digilocker(monkeypatch):
     return {"calls": calls, "state": state}
 
 
+def _fetches(dl):
+    return [b["document_type"] for p, b in dl["calls"] if p == eko_digilocker.DOCUMENT_PATH]
+
+
 def test_the_upload_page_offers_digilocker_only_with_the_keys(db, client, monkeypatch):
     token = _link(db)
     assert '"enabled": false' in client.get(f"/onboard/{token}").text
@@ -3248,45 +3260,55 @@ def test_the_upload_page_offers_digilocker_only_with_the_keys(db, client, monkey
     assert '"enabled": true' in client.get(f"/onboard/{token}").text
 
 
-def test_aadhaar_verified_via_digilocker_is_filed_once(db, client, digilocker):
+def test_documents_from_digilocker_fill_their_rows_and_only_the_rest_is_uploaded(db, client, digilocker):
     token = _link(db)
     r = client.post(f"/onboard/{token}/digilocker")
     assert r.json() == {"url": "https://digilocker.gov.in/auth?s=1"}
     path, body = digilocker["calls"][0]
     assert body["redirect_url"] == f"https://link.example.in/onboard/{token}/digilocker/done"
-    assert body["document_requested"] == ["AADHAAR"]
+    assert body["document_requested"] == ["AADHAAR", "PAN", "DRIVING_LICENSE"]
 
     # DigiLocker comes back with the session's verification_id (seen 30 Oct 2026).
     r = client.get(f"/onboard/{token}/digilocker/done?verification_id=3580740241", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == f"../../{token}?digilocker=verified"
-    path, body = digilocker["calls"][1]
-    # Eko refuses a list here: "document_type should be AADHAAR/PAN/DRIVING_LICENSE".
-    assert body["document_type"] == "AADHAAR" and body["verification_id"] == "3580740241"
-    assert body["reference_id"] == "7483920"
-    doc = db.query(OnboardingDocument).filter_by(phone=PHONE, doc_type="aadhaar_digilocker").one()
-    assert doc.content_type == "application/pdf" and doc.original_name.startswith("Aadhaar (verified")
-    assert open(doc.stored_path, "rb").read().startswith(b"%PDF-")
-    db.refresh(conv(db))
-    kept = conv(db).bot_data["digilocker"]["verified"]
-    assert kept["masked_aadhaar"] == "XXXX-XXXX-2345" and kept["pincode"] == "600001"
-    assert "photo" not in kept
-    assert '"verified": true' in client.get(f"/onboard/{token}").text
+    assert r.status_code == 303 and r.headers["location"] == f"../../{token}?digilocker=fetched"
+    fetches = [b for p, b in digilocker["calls"] if p == eko_digilocker.DOCUMENT_PATH]
+    # One type a call, as a string: Eko refuses a list ("document_type should be AADHAAR/PAN/DRIVING_LICENSE").
+    assert [b["document_type"] for b in fetches] == ["AADHAAR", "PAN", "DRIVING_LICENSE"]
+    assert all(b["verification_id"] == "3580740241" and b["reference_id"] == "7483920" for b in fetches)
 
-    # A reload does not fetch (and pay) again.
-    fetches = len(digilocker["calls"])
+    kinds = {d.doc_type: d for d in db.query(OnboardingDocument).filter_by(phone=PHONE)}
+    assert set(kinds) == {"aadhaar_digilocker", "pan_digilocker"}  # no licence in this DigiLocker
+    assert kinds["pan_digilocker"].original_name == "PAN Card (from DigiLocker).pdf"
+    assert open(kinds["aadhaar_digilocker"].stored_path, "rb").read().startswith(b"%PDF-")
+    got = conv(db).bot_data["digilocker"]["got"]
+    assert got["aadhaar"]["masked_aadhaar"] == "XXXX-XXXX-2345" and got["pan"]["number"] == "ABCPV1234K"
+    assert '"got": ["aadhaar", "pan"]' in client.get(f"/onboard/{token}").text
+
+    # A reload does not fetch (and pay for) a document again; the licence, not given, is asked once more (free).
     client.get(f"/onboard/{token}/digilocker/done", follow_redirects=False)
-    assert len(digilocker["calls"]) == fetches
+    assert _fetches(digilocker)[3:] == ["DRIVING_LICENSE"]
 
-    # It is a verification, not the upload: the Aadhaar copy is still asked for.
-    for d in onboarding_bot.REQUIRED_DOCUMENTS:
-        if d["key"] != "aadhaar":
-            client.post(f"/onboard/{token}/files", data={"doc_type": d["key"]}, files={"file": ("a.pdf", PDF)})
-    assert client.post(f"/onboard/{token}/submit").status_code == 400
-    client.post(f"/onboard/{token}/files", data={"doc_type": "aadhaar"}, files={"file": ("aadhaar.pdf", PDF)})
+    # PAN and Aadhaar came from DigiLocker: only the photo is left to upload.
+    assert client.post(f"/onboard/{token}/submit").json()["detail"] == "Please upload: Passport Size Photo"
+    client.post(f"/onboard/{token}/files", data={"doc_type": "photo"}, files={"file": ("p.jpg", PDF)})
     assert client.post(f"/onboard/{token}/submit").json() == {"status": "submitted"}
-    db.refresh(conv(db))
-    assert conv(db).bot_data["digilocker"]["verified"]
-    assert db.query(OnboardingDocument).filter_by(phone=PHONE).count() == 4
+
+    # Another DigiLocker trip asks only for what has not come.
+    assert client.post(f"/onboard/{token}/digilocker").status_code == 409  # submitted
+
+
+def test_a_new_trip_asks_digilocker_only_for_what_is_missing(db, client, digilocker):
+    token = _link(db)
+    digilocker["state"]["has"] = {"AADHAAR"}
+    client.post(f"/onboard/{token}/digilocker")
+    client.get(f"/onboard/{token}/digilocker/done", follow_redirects=False)
+    digilocker["state"]["has"] = {"AADHAAR", "PAN"}
+    client.post(f"/onboard/{token}/digilocker")
+    assert digilocker["calls"][-1][1]["document_requested"] == ["PAN", "DRIVING_LICENSE"]
+    before = len(_fetches(digilocker))
+    client.get(f"/onboard/{token}/digilocker/done", follow_redirects=False)
+    assert _fetches(digilocker)[before:] == ["PAN", "DRIVING_LICENSE"]
+    assert set(conv(db).bot_data["digilocker"]["got"]) == {"aadhaar", "pan"}
 
 
 def test_digilocker_not_finished_files_nothing_and_can_be_retried(db, client, digilocker):
@@ -3295,40 +3317,47 @@ def test_digilocker_not_finished_files_nothing_and_can_be_retried(db, client, di
     client.post(f"/onboard/{token}/digilocker")
     r = client.get(f"/onboard/{token}/digilocker/done", follow_redirects=False)
     assert r.headers["location"].endswith("?digilocker=pending")
-    assert db.query(OnboardingDocument).filter_by(phone=PHONE, doc_type="aadhaar_digilocker").count() == 0
+    assert db.query(OnboardingDocument).filter_by(phone=PHONE).count() == 0
     digilocker["state"]["ready"] = True
     r = client.get(f"/onboard/{token}/digilocker/done", follow_redirects=False)
-    assert r.headers["location"].endswith("?digilocker=verified")
+    assert r.headers["location"].endswith("?digilocker=fetched")
+
+
+def test_an_aadhaar_verified_before_the_change_still_fills_its_row(db, client, digilocker):
+    token = _link(db)
+    c = conv(db)
+    c.bot_data = {**c.bot_data, "digilocker": {"reference_id": "1", "fetched": True, "verified": {"name": "A"}}}
+    db.commit()
+    assert '"got": ["aadhaar"]' in client.get(f"/onboard/{token}").text
+    client.post(f"/onboard/{token}/digilocker")
+    assert digilocker["calls"][-1][1]["document_requested"] == ["PAN", "DRIVING_LICENSE"]
 
 
 def test_digilocker_accepted_but_empty_is_asked_again(db, client, digilocker):
-    token = _link(db)
-    client.post(f"/onboard/{token}/digilocker")
     digilocker["state"]["empty"] = 2
-    r = client.get(f"/onboard/{token}/digilocker/done?verification_id=1", follow_redirects=False)
-    assert r.headers["location"].endswith("?digilocker=verified")
-    assert len(digilocker["calls"]) == 1 + 3
+    assert eko_digilocker.fetch("AADHAAR", "7483920", "1")["masked_aadhaar"] == "XXXX-XXXX-2345"
+    assert len(_fetches(digilocker)) == 3
 
-    # Still empty after every try: not ready, asked FETCH_TRIES times.
+    # Still empty after every try: none, asked FETCH_TRIES times.
     digilocker["state"]["empty"] = 99
-    before = len(digilocker["calls"])
-    assert eko_digilocker.fetch_aadhaar("7483920", "1") is None
-    assert len(digilocker["calls"]) - before == eko_digilocker.FETCH_TRIES
+    before = len(_fetches(digilocker))
+    assert eko_digilocker.fetch("AADHAAR", "7483920", "1") is None
+    assert len(_fetches(digilocker)) - before == eko_digilocker.FETCH_TRIES
 
     # The log shows a reply's shape, not a person's details: no text at all, however short.
-    assert eko_digilocker._shape({"status": 0, "data": {"tid": 3580743894, "name": "Vikram Singh", "dob": "03-05-2003"}}) ==         {"status": 0, "data": {"tid": 3580743894, "name": "str[12]", "dob": "str[10]"}}
+    assert eko_digilocker._shape({"status": 0, "data": {"tid": 3580743894, "name": "Vikram Singh", "dob": "03-05-2003"}}) == \
+        {"status": 0, "data": {"tid": 3580743894, "name": "str[12]", "dob": "str[10]"}}
 
 
 def test_digilocker_reads_productions_reply(db, client, digilocker):
     digilocker["state"]["production"] = True
-    token = _link(db)
-    client.post(f"/onboard/{token}/digilocker")
-    r = client.get(f"/onboard/{token}/digilocker/done?verification_id=3580743894", follow_redirects=False)
-    assert r.headers["location"].endswith("?digilocker=verified")
-    assert len(digilocker["calls"]) == 2  # one fetch: a reply with details is not asked for again
-    db.refresh(conv(db))
-    kept = conv(db).bot_data["digilocker"]["verified"]
+    doc = eko_digilocker.fetch("AADHAAR", "7483920", "1")
+    assert len(_fetches(digilocker)) == 1  # a reply with details is not asked for again
+    kept = eko_digilocker.summary(doc)
     assert kept["name"] == "Asha Verma" and kept["masked_aadhaar"] == "XXXX-XXXX-4321"
     assert kept["pincode"] == "242001" and "Shahjahanpur" in kept["address"] and "Civil Lines" in kept["address"]
     # A full number, should one come, is never kept.
     assert eko_digilocker._mask("123456789012") == "XXXX-XXXX-9012"
+    pan = eko_digilocker.fetch("PAN", "7483920", "1")
+    assert pan["number"] == "ABCPV1234K" and pan["fields"] == {"father_name": "RAM VERMA"}
+    assert eko_digilocker.pdf(pan, "30 Oct 2026").startswith(b"%PDF-")

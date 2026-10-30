@@ -125,10 +125,22 @@ DOCUMENTS = [
      "hint": None, "required": False},
 ]
 REQUIRED_DOCUMENTS = [d for d in DOCUMENTS if d["required"]]
-# Aadhaar verified with DigiLocker on the upload page: kept beside the
-# uploaded Aadhaar, not in its place, so it is not a row of its own.
-DIGILOCKER_AADHAAR = {"key": "aadhaar_digilocker", "label": "Aadhaar — verified via DigiLocker"}
-DOCUMENT_LABELS = {d["key"]: d["label"] for d in DOCUMENTS + [DIGILOCKER_AADHAAR]}
+# Documents fetched from DigiLocker on the upload page (eko_digilocker): each
+# filed as its own record that counts for its row, so the person uploads only
+# what DigiLocker did not give (the team's call, 30 Oct 2026).
+DIGILOCKER_DOCS = [
+    {"row": "aadhaar", "key": "aadhaar_digilocker", "eko": "AADHAAR", "label": "Aadhaar — from DigiLocker"},
+    {"row": "pan", "key": "pan_digilocker", "eko": "PAN", "label": "PAN — from DigiLocker"},
+    {"row": "voter_dl", "key": "dl_digilocker", "eko": "DRIVING_LICENSE", "label": "Driving Licence — from DigiLocker"},
+]
+DIGILOCKER_AADHAAR = DIGILOCKER_DOCS[0]
+DOCUMENT_LABELS = {d["key"]: d["label"] for d in DOCUMENTS + DIGILOCKER_DOCS}
+
+
+def rows_done(keys) -> set:
+    """The upload page's rows these documents fill: an upload, or the same document from DigiLocker."""
+    keys = set(keys)
+    return keys | {d["row"] for d in DIGILOCKER_DOCS if d["key"] in keys}
 
 # A PIN asked for this many times without a usable answer goes to a person.
 MAX_PIN_ATTEMPTS = 3

@@ -107,11 +107,11 @@ def upload_page(token: str, db: Session = Depends(get_db)):
         "accepted": ACCEPTED_LABEL,
         "maxBytes": MAX_BYTES,
         "whatsapp": f"https://wa.me/{number}" if number else None,
-        # Aadhaar can be verified with DigiLocker in place of a photo.
+        # Aadhaar, PAN and the licence can come from DigiLocker in place of an upload.
         "digilocker": {
             "enabled": eko_digilocker.configured(),
-            "doc": DIGILOCKER_ROW,
-            "verified": bool(conv and _digilocker(conv).get("verified")),
+            "rows": {d["row"]: d["label"] for d in onboarding_bot.DIGILOCKER_DOCS},
+            "got": sorted(_got(conv)) if conv else [],
         },
     }
     with open(os.path.join(_ASSETS, "eko-logo.svg"), encoding="utf-8") as fh:
@@ -185,12 +185,11 @@ def _store(db: Session, conv, doc_type: str, data: bytes, name: str, content_typ
     ))
 
 
-# --- Aadhaar from DigiLocker (see services/eko_digilocker) ------------------
+# --- Documents from DigiLocker (see services/eko_digilocker) -----------------
 
-# The verified record is filed beside the uploaded Aadhaar, which stays required.
-DIGILOCKER_DOC = onboarding_bot.DIGILOCKER_AADHAAR["key"]
-DIGILOCKER_ROW = "aadhaar"
-DIGILOCKER_NAME = "Aadhaar (verified via DigiLocker).pdf"
+# Each document DigiLocker gives is filed as its own record and fills its row,
+# so the person uploads only the rest.
+DIGILOCKER_BY_EKO = {d["eko"]: d for d in onboarding_bot.DIGILOCKER_DOCS}
 
 
 def _digilocker(conv) -> dict:
@@ -201,35 +200,48 @@ def _set_digilocker(conv, **fields) -> None:
     conv.bot_data = {**(conv.bot_data or {}), "digilocker": {**_digilocker(conv), **fields}}
 
 
+def _got(conv) -> set:
+    """The rows filled from DigiLocker: fetched, or (before 30 Oct 2026) the Aadhaar verified."""
+    dl = _digilocker(conv)
+    rows = set((dl.get("got") or {}).keys())
+    if dl.get("verified"):
+        rows.add("aadhaar")
+    return rows
+
+
 @router.post("/onboard/{token}/digilocker", include_in_schema=False)
 def digilocker_start(token: str, db: Session = Depends(get_db)):
-    """A one-time DigiLocker link for this person, coming back to our page."""
+    """A one-time DigiLocker link for this person, asking for what it has not given yet."""
     conv = _conversation(db, token)
     if conv is None:
         raise HTTPException(status_code=404, detail="This link has expired. Please ask us for a new one on WhatsApp.")
     if conv.documents_submitted_at:
         raise HTTPException(status_code=409, detail="Your documents have already been submitted.")
     if not eko_digilocker.configured():
-        raise HTTPException(status_code=503, detail="DigiLocker is not available just now. Please upload a photo instead.")
+        raise HTTPException(status_code=503, detail="DigiLocker is not available just now. Please upload your documents instead.")
+    got = _got(conv)
+    types = [d["eko"] for d in onboarding_bot.DIGILOCKER_DOCS if d["row"] not in got]
+    if not types:
+        raise HTTPException(status_code=409, detail="Your documents from DigiLocker are already here.")
     back = f"{onboarding_bot.public_base_url()}/onboard/{token}/digilocker/done"
     try:
-        session = eko_digilocker.create_url(back)
+        session = eko_digilocker.create_url(back, types)
     except eko_digilocker.DigiLockerError as e:
         raise HTTPException(status_code=502, detail=str(e))
     _set_digilocker(conv, reference_id=session["reference_id"],
                     verification_id=session.get("verification_id"),
-                    started_at=inbox.now().isoformat(), fetched=False)
+                    started_at=inbox.now().isoformat(), asked=types, tried=[])
     db.commit()
-    logger.info(f"onboarding event=DIGILOCKER_STARTED phone=...{conv.phone[-4:]}")
+    logger.info(f"onboarding event=DIGILOCKER_STARTED phone=...{conv.phone[-4:]} asked={','.join(types)}")
     return {"url": session["url"]}
 
 
 @router.get("/onboard/{token}/digilocker/done", include_in_schema=False)
 def digilocker_done(token: str, request: Request, db: Session = Depends(get_db)):
     """
-    Where DigiLocker sends the person back. The verified Aadhaar is fetched
-    once and filed beside the Aadhaar they upload, and they go back to the
-    upload page, which says how it went.
+    Where DigiLocker sends the person back. Each document asked for is
+    fetched once and filed in its row, and they go back to the upload page,
+    which says what came.
     """
     page = f"../../{token}"
     conv = _conversation(db, token)
@@ -238,28 +250,49 @@ def digilocker_done(token: str, request: Request, db: Session = Depends(get_db))
     dl = _digilocker(conv)
     if not dl.get("reference_id"):
         return RedirectResponse(page, status_code=303)
-    if dl.get("fetched"):
-        # A reload: the fetch is billed, so it is not made again.
-        return RedirectResponse(f"{page}?digilocker={'verified' if dl.get('verified') else 'pending'}", status_code=303)
 
-    # DigiLocker may name the session's verification id on the way back.
+    # DigiLocker names the session's verification id on the way back.
     verification_id = (request.query_params.get("verification_id") or request.query_params.get("verificationId")
                        or dl.get("verification_id"))
     logger.info(f"onboarding event=DIGILOCKER_BACK phone=...{conv.phone[-4:]} params={sorted(request.query_params.keys())}")
-    try:
-        doc = eko_digilocker.fetch_aadhaar(dl["reference_id"], verification_id)
-    except eko_digilocker.DigiLockerError:
-        return RedirectResponse(f"{page}?digilocker=failed", status_code=303)
-    if doc is None:
-        # Not finished on DigiLocker (or declined): nothing was charged, they can try again.
-        return RedirectResponse(f"{page}?digilocker=pending", status_code=303)
-
+    got = _got(conv)
+    # A reload does not fetch (and pay for) a document again; one not given yet is asked once more, free if refused.
+    todo = [t for t in (dl.get("asked") or [eko_digilocker.DOCUMENT_TYPE])
+            if t in DIGILOCKER_BY_EKO and DIGILOCKER_BY_EKO[t]["row"] not in got]
+    fetched, failed = [], False
     verified_at = inbox.now().astimezone(IST).strftime("%d %b %Y, %I:%M %p IST")
-    _store(db, conv, DIGILOCKER_DOC, eko_digilocker.pdf(doc, verified_at), DIGILOCKER_NAME, "application/pdf", "pdf")
-    _set_digilocker(conv, fetched=True, verified=eko_digilocker.summary(doc), verified_at=inbox.now().isoformat())
+    for kind in todo:
+        spec = DIGILOCKER_BY_EKO[kind]
+        try:
+            doc = eko_digilocker.fetch(kind, dl["reference_id"], verification_id)
+        except eko_digilocker.DigiLockerError:
+            failed = True
+            continue
+        if doc is None:
+            continue
+        doc = {**doc, "document_type": kind}
+        title = eko_digilocker.TITLES.get(kind, kind.title())
+        _store(db, conv, spec["key"], eko_digilocker.pdf(doc, verified_at), f"{title} (from DigiLocker).pdf",
+               "application/pdf", "pdf")
+        entry = {**eko_digilocker.summary(doc), "at": inbox.now().isoformat()}
+        _set_digilocker(conv, got={**(_digilocker(conv).get("got") or {}), spec["row"]: entry})
+        if kind == eko_digilocker.DOCUMENT_TYPE:
+            _set_digilocker(conv, verified=eko_digilocker.summary(doc), verified_at=entry["at"])
+        db.commit()
+        fetched.append(spec["row"])
+    _set_digilocker(conv, tried=todo)
     db.commit()
-    logger.info(f"onboarding event=DIGILOCKER_VERIFIED phone=...{conv.phone[-4:]}")
-    return RedirectResponse(f"{page}?digilocker=verified", status_code=303)
+    logger.info(f"onboarding event=DIGILOCKER_FETCHED phone=...{conv.phone[-4:]} "
+                f"asked={','.join(todo) or '-'} got={','.join(fetched) or '-'}")
+    if fetched:
+        outcome = "fetched"
+    elif failed:
+        outcome = "failed"
+    elif got:
+        outcome = "fetched"
+    else:
+        outcome = "pending"
+    return RedirectResponse(f"{page}?digilocker={outcome}", status_code=303)
 
 
 @router.post("/onboard/{token}/submit", include_in_schema=False)
@@ -270,7 +303,9 @@ def submit(token: str, background: BackgroundTasks, db: Session = Depends(get_db
     if conv.documents_submitted_at:
         return {"status": "submitted"}
 
-    have = {d.doc_type for d in db.query(OnboardingDocument).filter(OnboardingDocument.phone == conv.phone).all()}
+    # A document from DigiLocker fills its row as an upload does.
+    have = onboarding_bot.rows_done(
+        d.doc_type for d in db.query(OnboardingDocument).filter(OnboardingDocument.phone == conv.phone).all())
     # Only the required documents hold up a submission; the rest are sent
     # if the person has them.
     missing = [d["label"] for d in onboarding_bot.REQUIRED_DOCUMENTS if d["key"] not in have]
@@ -349,13 +384,18 @@ PAGE = """<!doctype html>
   .banner.err { display: block; background: var(--err-bg); color: var(--err); }
   .banner.ok { display: block; background: var(--ok-bg); color: var(--ok); font-weight: 600; }
   .banner.top { margin: 0 0 14px; }
-  .dl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; padding: 10px 12px;
-        border-radius: 12px; background: linear-gradient(135deg, #eaf3ff, #f2ecff); border: 1px solid #d6e2fb; }
-  .dl .why { flex: 1; min-width: 150px; font-size: .8rem; color: #3b4f8a; }
-  .dl .why b { display: block; font-size: .86rem; color: #1d2f6f; }
-  .dl[hidden], .dlok[hidden] { display: none; }
-  .dlok .verified { margin: 6px 0 0; }
-  .btn-dl { background: #3b5bdb; color: #fff; min-height: 40px; padding: 8px 12px; font-size: .85rem; }
+  .dl { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 16px; padding: 14px;
+        border-radius: 14px; background: linear-gradient(135deg, #eaf3ff, #f2ecff); border: 1px solid #d6e2fb; }
+  .dl .icon { font-size: 1.6rem; line-height: 1; }
+  .dl .why { flex: 1; min-width: 180px; font-size: .84rem; color: #3b4f8a; }
+  .dl .why b { display: block; font-size: .95rem; color: #1d2f6f; margin-bottom: 2px; }
+  .dl .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .dl .chip { font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 2px 9px; background: #fff; color: #3b4f8a;
+              border: 1px solid #d6e2fb; }
+  .dl .chip.got { background: var(--ok-bg); color: var(--ok); border-color: #bfe6d3; }
+  .dl[hidden] { display: none; }
+  .tag.dlg { background: var(--ok-bg); color: var(--ok); }
+  .btn-dl { background: #3b5bdb; color: #fff; min-height: 44px; padding: 8px 14px; font-size: .9rem; }
   .btn-dl:hover { background: #2f4bc0; }
   .btn-dl:disabled { background: #a5b4e8; cursor: wait; }
   .verified { display: inline-flex; align-items: center; gap: 4px; background: var(--ok-bg); color: var(--ok);
@@ -392,10 +432,14 @@ if (CFG.state === 'invalid') {
   done('Documents received', 'Thank you for sharing your documents. One of our team members will reach out to you shortly.');
 } else {
   const uploaded = Object.assign({}, CFG.uploaded);
-  const DL = Object.assign({ enabled: false }, CFG.digilocker);
+  const DL = Object.assign({ enabled: false, rows: {}, got: [] }, CFG.digilocker);
+  const got = new Set(DL.got);
+  // A row is done by an upload, or by the same document from DigiLocker.
+  const filled = key => !!uploaded[key] || got.has(key);
   app.innerHTML = `<h1>Upload your documents</h1>
     <p class="lead">The first three are required. Please add the others too if you have them, then tap Submit.</p>
     <div class="banner top" id="dlmsg" role="status"></div>
+    <div class="dl" id="dlcard" hidden></div>
     <span class="accepted">Accepted formats: ${esc(CFG.accepted)}</span>
     <div id="docs"></div>
     <div class="banner" id="msg" role="alert"></div>
@@ -412,20 +456,19 @@ if (CFG.state === 'invalid') {
       <label class="pick"><input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
         aria-label="Upload ${esc(d.label)}"><span class="btn btn-outline">Upload</span></label>`;
     docs.appendChild(row);
-    if (DL.enabled && d.key === DL.doc) digiLocker(row);
     const input = row.querySelector('input'), btn = row.querySelector('.pick .btn'), file = row.querySelector('.file');
+    const tag = row.querySelector('.tag');
     const show = () => {
-      const name = uploaded[d.key];
-      row.classList.toggle('done', !!name);
+      const name = uploaded[d.key], fromDl = got.has(d.key);
+      row.classList.toggle('done', filled(d.key));
       file.className = 'file' + (name ? ' ok' : '');
       file.textContent = name ? '✓ ' + name : '';
-      if (d.key === DL.doc) {
-        const box = row.querySelector('.dl');
-        if (box) box.hidden = DL.verified;
-        const tick = row.querySelector('.dlok');
-        if (tick) tick.hidden = !DL.verified;
+      if (fromDl) {
+        // DigiLocker has given it: the upload becomes optional.
+        tag.className = 'tag dlg';
+        tag.textContent = '✓ From DigiLocker';
       }
-      btn.textContent = name ? 'Replace' : 'Upload';
+      btn.textContent = name ? 'Replace' : (fromDl ? 'Add copy' : 'Upload');
       refresh();
     };
     input.addEventListener('change', async () => {
@@ -455,17 +498,22 @@ if (CFG.state === 'invalid') {
     show();
   });
 
-  // Aadhaar from DigiLocker: off to DigiLocker's own sign-in, and back here.
-  function digiLocker(row) {
-    const box = document.createElement('div');
-    box.className = 'dl';
-    box.innerHTML = `<div class="why"><b>Step 1: Verify with DigiLocker</b>Sign in on DigiLocker and share your Aadhaar. Then upload a copy here.</div>
-      <button type="button" class="btn btn-dl">🔐 Verify</button>`;
-    const tick = document.createElement('div');
-    tick.className = 'dlok';
-    tick.innerHTML = '<span class="verified">✓ Verified via DigiLocker</span>';
-    row.querySelector('.info').append(box, tick);
-    const b = box.querySelector('button');
+  // Documents from DigiLocker: off to DigiLocker's own sign-in, and back here.
+  function dlCard() {
+    const card = document.getElementById('dlcard');
+    const rows = Object.keys(DL.rows);
+    const left = rows.filter(r => !got.has(r));
+    if (!DL.enabled || !left.length) { card.hidden = true; return; }
+    const name = r => (CFG.documents.find(d => d.key === r) || {}).label || r;
+    const short = { aadhaar: 'Aadhaar', pan: 'PAN', voter_dl: 'Driving Licence' };
+    card.hidden = false;
+    card.innerHTML = `<div class="icon">📲</div>
+      <div class="why"><b>${got.size ? 'Get the rest from DigiLocker' : 'Get your documents from DigiLocker'}</b>
+        Sign in on DigiLocker and share them: we fetch them for you, so you upload only what is missing.
+        <div class="chips">${rows.map(r => `<span class="chip ${got.has(r) ? 'got' : ''}" title="${esc(name(r))}">${got.has(r) ? '✓ ' : ''}${esc(short[r] || name(r))}</span>`).join('')}</div>
+      </div>
+      <button type="button" class="btn btn-dl">🔐 ${got.size ? 'Try again' : 'Fetch from DigiLocker'}</button>`;
+    const b = card.querySelector('button');
     b.addEventListener('click', async () => {
       const msg = document.getElementById('dlmsg');
       b.disabled = true;
@@ -479,25 +527,34 @@ if (CFG.state === 'invalid') {
         msg.className = 'banner top err';
         msg.textContent = e.message;
         b.disabled = false;
-        b.textContent = '🔐 Verify';
+        b.textContent = '🔐 Fetch from DigiLocker';
       }
     });
   }
+  dlCard();
 
   const back = new URLSearchParams(location.search).get('digilocker');
   if (back) {
     const msg = document.getElementById('dlmsg');
+    const short = { aadhaar: 'Aadhaar', pan: 'PAN', voter_dl: 'Driving Licence' };
+    const names = [...got].map(r => short[r] || r).join(', ');
+    // Only a required document DigiLocker did not give is called out; the licence is optional.
+    const required = new Set(CFG.documents.filter(d => d.required).map(d => d.key));
+    const missing = Object.keys(DL.rows).filter(r => !got.has(r) && required.has(r)).map(r => short[r] || r).join(', ');
     const says = {
-      verified: ['ok', '✅ Your Aadhaar is verified via DigiLocker. Now upload a copy of your Aadhaar and the other documents.'],
-      pending: ['err', 'DigiLocker was not completed. Tap Verify to try again.'],
-      failed: ['err', 'We could not reach DigiLocker just now. Please try again in a minute.'],
+      fetched: ['ok', `✅ From DigiLocker: ${names}.` + (missing
+        ? ` ${missing} did not come from DigiLocker, so please upload ${missing.includes(',') ? 'them' : 'it'} with the rest below.`
+        : ' Now upload the remaining documents below.')],
+      verified: ['ok', `✅ From DigiLocker: ${names}. Now upload the remaining documents.`],
+      pending: ['err', 'Nothing came from DigiLocker. Please finish sharing there and try again, or upload your documents below.'],
+      failed: ['err', 'We could not reach DigiLocker just now. Please try again in a minute, or upload your documents below.'],
     }[back];
     if (says) { msg.className = 'banner top ' + says[0]; msg.textContent = says[1]; }
     history.replaceState(null, '', location.pathname);
   }
 
   function refresh() {
-    const left = CFG.documents.filter(d => d.required && !uploaded[d.key]).length;
+    const left = CFG.documents.filter(d => d.required && !filled(d.key)).length;
     const b = document.getElementById('submit');
     if (!b) return;
     b.disabled = left > 0;

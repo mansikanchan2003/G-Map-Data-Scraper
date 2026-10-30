@@ -286,7 +286,8 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
         geo = (pin_info.get("geo") if current else None) or {}
         q = qualify(conv)
         mine = docs.get(conv.phone, [])
-        have = {d.doc_type for d in mine}
+        # A document from DigiLocker fills its row as an upload does.
+        have = bot.rows_done(d.doc_type for d in mine)
         items.append({
             "phone": conv.phone,
             "name": conv.profile_name,
@@ -312,7 +313,7 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
             "documents": [{"document_id": d.document_id, "type": d.doc_type,
                            "label": DOC_LABELS.get(d.doc_type, d.doc_type), "name": d.original_name,
                            "drive_url": d.drive_url, "uploaded_at": _iso(d.uploaded_at)} for d in mine],
-            "documents_count": len(have),
+            "documents_count": len(have & {d["key"] for d in bot.DOCUMENTS}),
             "documents_total": len(bot.DOCUMENTS),
             "required_documents_done": all(k in have for k in REQUIRED_KEYS),
             "drive_folder_url": conv.drive_folder_url,
