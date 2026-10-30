@@ -70,6 +70,53 @@ def _example_for(template, placeholder: str) -> str:
     return "sample"
 
 
+# --- Header media: Meta's id kept and reused ---------------------------------
+#
+# The server uploads to Meta very slowly (a 2.1 MB video took 278 s on 30 Oct
+# 2026), so a header uploaded in 30 seconds timed out and the campaign failed
+# before sending. The upload now gets HEADER_UPLOAD_TIMEOUT (the campaign runs
+# in the background), and Meta's id for the file is kept for HEADER_MEDIA_DAYS
+# (Meta keeps media 30 days), so the same template's next campaigns reuse it.
+
+HEADER_UPLOAD_TIMEOUT = 1800
+HEADER_MEDIA_DAYS = 25
+HEADER_MEDIA_KEY = "header_media:"
+
+
+def _kept_header(db, path: str):
+    """(setting row or None, kept id or None) for this file, unchanged and within HEADER_MEDIA_DAYS."""
+    from datetime import timedelta
+    from src.models.app_setting import AppSetting
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == HEADER_MEDIA_KEY + os.path.basename(path)).first()
+        kept = json.loads(row.value) if row is not None and isinstance(row.value, str) else {}
+        stamp = f"{os.path.getsize(path)}:{int(os.path.getmtime(path))}"
+        fresh = kept.get("media_id") and kept.get("file") == stamp and kept.get("uploaded_at") and \
+            datetime.now(timezone.utc) - datetime.fromisoformat(kept["uploaded_at"]) < timedelta(days=HEADER_MEDIA_DAYS)
+        return row, (kept["media_id"] if fresh else None)
+    except Exception:
+        return None, None
+
+
+def _keep_header(db, path: str, media_id: str) -> None:
+    from src.models.app_setting import AppSetting
+    try:
+        value = json.dumps({"media_id": media_id, "file": f"{os.path.getsize(path)}:{int(os.path.getmtime(path))}",
+                            "uploaded_at": datetime.now(timezone.utc).isoformat()})
+        row = db.query(AppSetting).filter(AppSetting.key == HEADER_MEDIA_KEY + os.path.basename(path)).first()
+        if row is not None and hasattr(row, "value") and isinstance(getattr(row, "value", None), str):
+            row.value = value
+        else:
+            db.add(AppSetting(key=HEADER_MEDIA_KEY + os.path.basename(path), value=value))
+        db.commit()
+    except Exception as e:
+        logger.warning(f"whatsapp_campaign event=HEADER_ID_NOT_KEPT error={type(e).__name__}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 def unfilled_blanks(template) -> list:
     """
     Blanks in the body that would reach Meta as literal text, such as
@@ -619,14 +666,22 @@ class WhatsAppCampaignService:
                 else:
                     media_id = header_data.get("media_id")
                     local_path = os.path.join("data", "whatsapp_media", os.path.basename(media_id or ""))
-                    meta_media_id = None
+                    _row, meta_media_id = _kept_header(db, local_path)
+                    if meta_media_id:
+                        logger.info(f"whatsapp_campaign campaign_id={campaign_id} event=MEDIA_REUSED")
                     # A media upload is worth retrying: it is one call for the
                     # whole campaign, so a transient failure here is expensive.
-                    for attempt in range(3):
-                        meta_media_id = self.meta_service.upload_media(local_path, media_type)
+                    # The link to Meta is slow, so each try may take minutes.
+                    for attempt in range(0 if meta_media_id else 2):
+                        started = time.monotonic()
+                        meta_media_id = self.meta_service.upload_media(local_path, media_type,
+                                                                       timeout=HEADER_UPLOAD_TIMEOUT)
                         if meta_media_id:
+                            logger.info(f"whatsapp_campaign campaign_id={campaign_id} event=MEDIA_UPLOADED "
+                                        f"seconds={round(time.monotonic() - started)}")
+                            _keep_header(db, local_path, meta_media_id)
                             break
-                        if attempt < 2:
+                        if attempt < 1:
                             logger.warning(
                                 f"whatsapp_campaign campaign_id={campaign_id} "
                                 f"event=MEDIA_UPLOAD_RETRY attempt={attempt + 1}"
