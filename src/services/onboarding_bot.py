@@ -37,6 +37,7 @@ import logging
 import os
 import re
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -669,9 +670,111 @@ def _guidance_ask(db, conv) -> str:
     return _t(db, conv, key)
 
 
+# --- The investment video, for people a Gujarat campaign reached ------------
+#
+# For them the ₹3–5 lakh breakdown is a Gujarati video, not the text (the
+# user, 30 Oct 2026): before the investment question, and whenever they ask
+# about the investment. The file is put on the server by hand (it is not in
+# git); WhatsApp takes a video of 16 MB at most. Meta keeps an uploaded video
+# for 30 days, so its id is kept and reused for INVEST_VIDEO_DAYS. Without the
+# file, or if WhatsApp refuses it, the text breakdown goes as before.
+
+INVEST_VIDEO_GU = os.environ.get("BOT_INVEST_VIDEO_GU", os.path.join("data", "bot_media", "investment_gu.mp4"))
+INVEST_VIDEO_MAX_BYTES = 16 * 1024 * 1024
+INVEST_VIDEO_DAYS = 25
+INVEST_VIDEO_SETTING = "bot_invest_video_gu"
+# Asked again soon after: not sent twice in a row.
+INVEST_VIDEO_AGAIN = timedelta(minutes=30)
+
+
+def from_gujarat_campaign(db: Session, phone: str) -> bool:
+    """Whether the newest campaign that reached this number was a Gujarat one (written for Gujarat, or in Gujarati)."""
+    from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
+
+    row = (db.query(WhatsAppCampaign)
+           .join(WhatsAppCampaignRecipient,
+                 WhatsAppCampaignRecipient.campaign_id == WhatsAppCampaign.campaign_id)
+           .filter(WhatsAppCampaignRecipient.phone == phone,
+                   WhatsAppCampaignRecipient.provider_message_id.isnot(None),
+                   WhatsAppCampaign.template_id.isnot(None))
+           .order_by(WhatsAppCampaignRecipient.created_at.desc())
+           .first())
+    template = row.template if row else None
+    if template is None:
+        return False
+    return (template.target_state or "").strip().lower() == "gujarat" or language_of_template(template) == "gu"
+
+
+def _invest_video_id(db: Session, path: str) -> Optional[str]:
+    """Meta's id for the video: the kept one while it is fresh and the file unchanged, else a new upload."""
+    stamp = f"{os.path.getsize(path)}:{int(os.path.getmtime(path))}"
+    row = db.query(AppSetting).filter(AppSetting.key == INVEST_VIDEO_SETTING).first()
+    kept = json.loads(row.value) if row and row.value else {}
+    if kept.get("media_id") and kept.get("file") == stamp and kept.get("uploaded_at") and \
+            inbox.now() - datetime.fromisoformat(kept["uploaded_at"]) < timedelta(days=INVEST_VIDEO_DAYS):
+        return kept["media_id"]
+    # Through inbox's own name for the API, so it is one place to stand in for it.
+    meta = inbox.MetaWhatsAppService()
+    media_id = meta.upload_media(path, "video")
+    if not media_id:
+        logger.warning(f"bot event=INVEST_VIDEO_UPLOAD_FAILED error={getattr(meta, 'last_media_error', None)}")
+        return None
+    value = json.dumps({"media_id": media_id, "file": stamp, "uploaded_at": inbox.now().isoformat()})
+    if row:
+        row.value = value
+    else:
+        db.add(AppSetting(key=INVEST_VIDEO_SETTING, value=value))
+    db.flush()
+    return media_id
+
+
+def _send_invest_video(db, conv) -> bool:
+    """The Gujarati investment video, recorded in the thread. False when it could not go (the text goes instead)."""
+    from src.models.inbox import WhatsAppMessage
+
+    path = INVEST_VIDEO_GU
+    if not os.path.isfile(path) or os.path.getsize(path) > INVEST_VIDEO_MAX_BYTES:
+        logger.warning(f"bot event=INVEST_VIDEO_MISSING path={path} "
+                       f"size={os.path.getsize(path) if os.path.isfile(path) else None}")
+        return False
+    media_id = _invest_video_id(db, path)
+    if not media_id:
+        return False
+    caption = _t(db, conv, "invest_video_caption")
+    ok, provider_id, _s, error, _c = inbox.MetaWhatsAppService().send_media_message(
+        conv.phone, "video", media_id, caption, None)
+    if not ok:
+        logger.warning(f"bot event=INVEST_VIDEO_NOT_SENT phone=...{conv.phone[-4:]} error={str(error)[:200]}")
+        # A kept id Meta no longer has is uploaded afresh next time.
+        db.query(AppSetting).filter(AppSetting.key == INVEST_VIDEO_SETTING).delete()
+        return False
+    db.add(WhatsAppMessage(
+        message_id=uuid.uuid4().hex, phone=conv.phone, direction="OUT", kind="video",
+        body=f"[Video] {caption}",
+        payload={"stored": path, "mime_type": "video/mp4", "filename": os.path.basename(path),
+                 "size": os.path.getsize(path), "bot": "invest_video"},
+        provider_message_id=provider_id, status="SENT", sent_by="bot", created_at=inbox.now(),
+    ))
+    conv.last_message_at = inbox.now()
+    conv.bot_data = {**(conv.bot_data or {}), "invest_video_at": inbox.now().isoformat()}
+    db.flush()
+    return True
+
+
+def _invest_breakdown(db, conv) -> bool:
+    """For a Gujarat campaign's lead, the breakdown as the video. True when the video went."""
+    if not from_gujarat_campaign(db, conv.phone):
+        return False
+    last = (conv.bot_data or {}).get("invest_video_at")
+    if last and inbox.now() - datetime.fromisoformat(last) < INVEST_VIDEO_AGAIN:
+        return True  # just sent: not again
+    return _send_invest_video(db, conv)
+
+
 def _ask_invest(db, conv, lang):
     """What the ₹3–5 lakh is for, then the question: the money stays theirs, in an e-wallet."""
-    _say(db, conv, _t(db, conv, "invest_explained"))
+    if not _invest_breakdown(db, conv):
+        _say(db, conv, _t(db, conv, "invest_explained"))
     _say(db, conv, _t(db, conv, "ask_invest"), buttons=YES_NO("invest", lang))
 
 
@@ -826,6 +929,7 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
     # question it was asked at, if any, follows. Anything else, and any voice
     # note (a transcript can be wrong), is left for a person.
     faq = eko_knowledge.match(said) if said else []
+    invest_video, rest = False, None
     # Fearing Eko is a fraud: always the answer about who Eko is, with the website.
     doubts = eko_knowledge.distrust(said)
     from src.services import agent_controls
@@ -840,8 +944,12 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
         if kind_intro:
             answer = f"{_t(db, conv, 'guidance_intro')} {answer}"
         if "investment" in faq:
-            # How much, then what the money is for: it stays theirs.
-            answer += "\n\n" + _t(db, conv, "invest_explained")
+            # How much, then what the money is for: it stays theirs. A Gujarat
+            # campaign's lead gets the video after the answer instead of the text.
+            if from_gujarat_campaign(db, conv.phone):
+                invest_video = True
+            else:
+                answer += "\n\n" + _t(db, conv, "invest_explained")
         # The run, with the FAQ entries it answered from (agent_telemetry).
         from src.services import agent_telemetry
         agent_telemetry.log(db, "bot_faq", "chat", conv.phone, answer, prompt=said, context=[
@@ -881,7 +989,12 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
             # The bot answered it itself: a ticket solved by the bot, with its answer.
             from src.services import tickets
             tickets.answered_by_bot(db, conv, said, answer)
-        body = answer if body == _t(db, conv, "acknowledge") else f"{answer}\n\n{body}"
+        if invest_video:
+            # The answer, the video, then the question they were at: in that order.
+            rest = None if body == _t(db, conv, "acknowledge") else body
+            body = answer
+        else:
+            body = answer if body == _t(db, conv, "acknowledge") else f"{answer}\n\n{body}"
     elif asked:
         flag(conv, f"Voice note: {said}" if voice and said else ("Voice note" if voice else said))
         ack = _t(db, conv, "question_ack")
@@ -893,7 +1006,14 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
     if not asked and last and inbox.now() - datetime.fromisoformat(last) < gap:
         return
     conv.bot_data = {**data, "fallback_streak": streak + 1, "fallback_at": inbox.now().isoformat()}
-    _say(db, conv, body, **kw)
+    if not invest_video:
+        _say(db, conv, body, **kw)
+        return
+    _say(db, conv, body)
+    if not _invest_breakdown(db, conv):
+        _say(db, conv, _t(db, conv, "invest_explained"))
+    if rest:
+        _say(db, conv, rest, **kw)
 
 
 def _understood(conv):

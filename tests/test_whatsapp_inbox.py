@@ -3377,3 +3377,94 @@ def test_pan_is_not_asked_for_by_default(db, client, digilocker, monkeypatch):
     monkeypatch.setattr(eko_digilocker, "_post", lambda path, body: {"status": 0, "data": {
         "gender": "FEMALE", "reference_id": 11050801, "dob": "03-05-1999", "tid": 3580749787}})
     assert eko_digilocker.fetch("PAN", "1", "2") is None
+
+
+# --- The investment video, for a Gujarat campaign's leads (30 Oct 2026) --------
+
+def _gujarat_campaign(db, target_state="Gujarat", body="નમસ્તે {{1}}, Eko સાથે SBI CSP શરૂ કરો"):
+    """Send PHONE a campaign written for Gujarat."""
+    template_id, campaign_id = uuid.uuid4().hex, uuid.uuid4().hex
+    db.add(WhatsAppTemplate(template_id=template_id, name="Gujarat", body=body, language_code="gu",
+                            target_state=target_state, buttons=campaign_buttons.quick_replies("gu")))
+    db.add(WhatsAppCampaign(campaign_id=campaign_id, name="Gujarat", template_id=template_id,
+                            data_source_type="scraped", status="COMPLETED", total_contacts=1))
+    db.add(WhatsAppCampaignRecipient(recipient_id=uuid.uuid4().hex, campaign_id=campaign_id,
+                                     phone=PHONE, status="READ", provider_message_id="wamid.gujarat"))
+    db.commit()
+
+
+@pytest.fixture
+def invest_video(tmp_path, monkeypatch):
+    path = tmp_path / "investment_gu.mp4"
+    path.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"0" * 1000)
+    monkeypatch.setattr(onboarding_bot, "INVEST_VIDEO_GU", str(path))
+    StubMeta.uploads.clear()
+    return path
+
+
+def _sent_kinds(start):
+    return [(k, body) for k, _to, body, _x in StubMeta.sent[start:]]
+
+
+def test_a_gujarat_lead_gets_the_video_in_place_of_the_breakdown_then_the_question(db, invest_video):
+    _gujarat_campaign(db)
+    tap_campaign(db, lang="en")
+    say(db, SERVED_PIN)
+    count = len(StubMeta.sent)
+    qualify(db)
+    (k1, caption), (k2, question) = _sent_kinds(count)[:2]
+    assert k1 == "video" and caption == bot_messages.MESSAGES["en"]["invest_video_caption"]
+    assert k2 == "buttons" and question == bot_messages.MESSAGES["en"]["ask_invest"]
+    assert not any(bot_messages.MESSAGES["en"]["invest_explained"] == b for _k, b in _sent_kinds(count))
+    assert StubMeta.uploads == [(str(invest_video), "video")]
+    # Recorded in the thread like any message the bot sends.
+    video = db.query(WhatsAppMessage).filter_by(phone=PHONE, kind="video").one()
+    assert video.sent_by == "bot" and video.payload["bot"] == "invest_video"
+
+
+def test_a_gujarat_lead_asking_about_the_investment_gets_the_video(db, invest_video):
+    _gujarat_campaign(db)
+    tap_campaign(db, lang="gu")
+    count = len(StubMeta.sent)
+    say(db, "Kitna invest karna hoga?")
+    kinds = _sent_kinds(count)
+    assert [k for k, _b in kinds][:2] == ["text", "video"]
+    assert bot_messages.MESSAGES["gu"]["invest_explained"] not in kinds[0][1]
+    assert kinds[1][1] == bot_messages.MESSAGES["gu"]["invest_video_caption"]
+
+    # Asked again at once: the video is not sent twice in a row, nor is the text.
+    count = len(StubMeta.sent)
+    c = conv(db)
+    c.bot_data = {k: v for k, v in c.bot_data.items() if k not in ("fallback_at", "fallback_streak")}
+    db.commit()
+    say(db, "Kitna invest karna hoga?")
+    again = _sent_kinds(count)
+    assert "video" not in [k for k, _b in again]
+    assert not any(bot_messages.MESSAGES["gu"]["invest_explained"] in b for _k, b in again)
+    # The uploaded video is reused, not uploaded again.
+    assert len(StubMeta.uploads) == 1
+
+
+def test_other_campaigns_keep_the_text_breakdown(db, invest_video):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    count = len(StubMeta.sent)
+    qualify(db)
+    assert _sent_kinds(count)[0] == ("text", bot_messages.MESSAGES["en"]["invest_explained"])
+    assert StubMeta.uploads == []
+
+
+def test_without_the_video_file_a_gujarat_lead_gets_the_text(db, invest_video):
+    _gujarat_campaign(db)
+    invest_video.unlink()
+    tap_campaign(db, lang="en")
+    say(db, SERVED_PIN)
+    count = len(StubMeta.sent)
+    qualify(db)
+    assert _sent_kinds(count)[0] == ("text", bot_messages.MESSAGES["en"]["invest_explained"])
+
+
+def test_a_gujarat_campaign_is_known_by_its_state_or_its_language(db):
+    assert not onboarding_bot.from_gujarat_campaign(db, PHONE)
+    _gujarat_campaign(db, target_state=None)
+    assert onboarding_bot.from_gujarat_campaign(db, PHONE)
