@@ -30,6 +30,7 @@ import hmac
 import io
 import logging
 import os
+import re
 import secrets
 import time
 from typing import Optional
@@ -117,33 +118,66 @@ def create_url(redirect_url: str) -> dict:
     return result
 
 
+def _find_aadhaar(node, depth: int = 0) -> Optional[dict]:
+    """The Aadhaar document wherever the reply puts it (the documented data.documents, or elsewhere)."""
+    if depth > 4:
+        return None
+    if isinstance(node, dict):
+        if str(node.get("document_type") or "").upper() == DOCUMENT_TYPE and ("name" in node or "masked_aadhaar" in node):
+            return node
+        children = node.values()
+    elif isinstance(node, list):
+        children = node
+    else:
+        return None
+    for child in children:
+        found = _find_aadhaar(child, depth + 1)
+        if found:
+            return found
+    return None
+
+
+def _shape(node, depth: int = 0):
+    """A reply's keys and short codes, never its text: it may hold a person's details."""
+    if isinstance(node, dict) and depth < 3:
+        return {k: _shape(v, depth + 1) for k, v in list(node.items())[:15]}
+    if isinstance(node, list):
+        return f"list[{len(node)}]"
+    if isinstance(node, (int, float, bool)) or node is None:
+        return node
+    text = str(node)
+    # Codes and statuses are short and upper-case or numeric; anything else is hidden.
+    return text if len(text) <= 12 and re.fullmatch(r"[A-Z0-9_\-]*", text) else f"str[{len(text)}]"
+
+
+# DigiLocker hands back before Eko has the document: the first fetch can come
+# back accepted but empty. A failed fetch is free, so it is asked again.
+FETCH_TRIES = 4
+FETCH_WAIT_SECONDS = 3
+
+
 def fetch_aadhaar(reference_id: str, verification_id: Optional[str] = None) -> Optional[dict]:
     """
     The verified Aadhaar details, or None while the person has not finished
     on DigiLocker. Raises DigiLockerError when it cannot be fetched at all.
     """
-    out = _post(DOCUMENT_PATH, {
-        # One type as a string here; a list is refused ("document_type should be
-        # AADHAAR/PAN/DRIVING_LICENSE"), though creating the link takes a list.
-        "document_type": DOCUMENT_TYPE,
-        "reference_id": str(reference_id),
-        "verification_id": str(verification_id or reference_id),
-    })
-    data = out.get("data") or {}
-    if out.get("status") != 0:
-        logger.info(f"digilocker event=NOT_READY type={out.get('response_type_id')} message={str(out.get('message'))[:200]}")
-        return None
-    if str(data.get("verification_status") or "").upper() == "SUCCESS":
-        for doc in data.get("documents") or []:
-            if isinstance(doc, dict) and str(doc.get("document_type") or "").upper() == DOCUMENT_TYPE:
-                return doc
-    # Accepted but no Aadhaar in it: the reply's shape, never its contents (it holds a person's details).
-    docs = data.get("documents")
-    logger.warning(
-        f"digilocker event=NO_AADHAAR type={out.get('response_type_id')} message={str(out.get('message'))[:120]} "
-        f"verification_status={data.get('verification_status')} data_keys={sorted(data)[:15]} "
-        f"documents={type(docs).__name__}:{[d.get('document_type') for d in docs if isinstance(d, dict)] if isinstance(docs, list) else ''}"
-    )
+    for attempt in range(1, FETCH_TRIES + 1):
+        out = _post(DOCUMENT_PATH, {
+            # One type as a string here; a list is refused ("document_type should be
+            # AADHAAR/PAN/DRIVING_LICENSE"), though creating the link takes a list.
+            "document_type": DOCUMENT_TYPE,
+            "reference_id": str(reference_id),
+            "verification_id": str(verification_id or reference_id),
+        })
+        if out.get("status") != 0:
+            logger.info(f"digilocker event=NOT_READY type={out.get('response_type_id')} message={str(out.get('message'))[:200]}")
+            return None
+        doc = _find_aadhaar(out)
+        if doc:
+            return doc
+        logger.warning(f"digilocker event=NO_AADHAAR try={attempt} shape={_shape(out)}")
+        if attempt < FETCH_TRIES:
+            time.sleep(FETCH_WAIT_SECONDS)
     return None
 
 

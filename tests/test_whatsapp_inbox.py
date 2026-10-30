@@ -3207,7 +3207,8 @@ def digilocker(monkeypatch):
     for k, v in {"EKO_DEVELOPER_KEY": "dev", "EKO_ACCESS_KEY": "acc", "EKO_INITIATOR_ID": "9000000000"}.items():
         monkeypatch.setenv(k, v)
     calls = []
-    state = {"ready": True}
+    state = {"ready": True, "empty": 0}
+    monkeypatch.setattr(eko_digilocker.time, "sleep", lambda s: None)
 
     def post(path, body):
         calls.append((path, body))
@@ -3216,6 +3217,10 @@ def digilocker(monkeypatch):
                                           "redirect_url": body["redirect_url"]}}
         if not state["ready"]:
             return {"status": 1, "message": "Customer has not completed DigiLocker authorisation yet", "data": {}}
+        if state["empty"]:
+            # What production answered first on 30 Oct 2026: accepted, no document yet.
+            state["empty"] -= 1
+            return {"status": 0, "data": {"status": 0, "tid": "3580743894"}}
         return {"status": 0, "data": {"verification_status": "SUCCESS", "documents": [{
             "document_type": "AADHAAR", "name": "Vikram Singh", "dob": "12-11-1987", "gender": "M",
             "masked_aadhaar": "XXXX-XXXX-2345", "issue_date": "01-01-2020",
@@ -3286,3 +3291,21 @@ def test_digilocker_not_finished_files_nothing_and_can_be_retried(db, client, di
     digilocker["state"]["ready"] = True
     r = client.get(f"/onboard/{token}/digilocker/done", follow_redirects=False)
     assert r.headers["location"].endswith("?digilocker=verified")
+
+
+def test_digilocker_accepted_but_empty_is_asked_again(db, client, digilocker):
+    token = _link(db)
+    client.post(f"/onboard/{token}/digilocker")
+    digilocker["state"]["empty"] = 2
+    r = client.get(f"/onboard/{token}/digilocker/done?verification_id=1", follow_redirects=False)
+    assert r.headers["location"].endswith("?digilocker=verified")
+    assert len(digilocker["calls"]) == 1 + 3
+
+    # Still empty after every try: not ready, asked FETCH_TRIES times.
+    digilocker["state"]["empty"] = 99
+    before = len(digilocker["calls"])
+    assert eko_digilocker.fetch_aadhaar("7483920", "1") is None
+    assert len(digilocker["calls"]) - before == eko_digilocker.FETCH_TRIES
+
+    # The log shows a reply's shape, not a person's details.
+    assert eko_digilocker._shape({"status": 0, "data": {"status": 0, "tid": "3580743894", "name": "Vikram Singh"}}) ==         {"status": 0, "data": {"status": 0, "tid": "3580743894", "name": "str[12]"}}
