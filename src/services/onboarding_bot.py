@@ -37,6 +37,8 @@ import logging
 import os
 import re
 import secrets
+import threading
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -678,10 +680,18 @@ def _guidance_ask(db, conv) -> str:
 # git); WhatsApp takes a video of 16 MB at most. Meta keeps an uploaded video
 # for 30 days, so its id is kept and reused for INVEST_VIDEO_DAYS. Without the
 # file, or if WhatsApp refuses it, the text breakdown goes as before.
+#
+# The server uploads to Meta very slowly (a 2.1 MB video took 278 s on 30 Oct
+# 2026), so a lead never waits on an upload: it runs in a thread, and the kept
+# id is renewed in the background from INVEST_VIDEO_RENEW_DAYS. Until the first
+# upload is done the text goes.
 
 INVEST_VIDEO_GU = os.environ.get("BOT_INVEST_VIDEO_GU", os.path.join("data", "bot_media", "investment_gu.mp4"))
 INVEST_VIDEO_MAX_BYTES = 16 * 1024 * 1024
 INVEST_VIDEO_DAYS = 25
+INVEST_VIDEO_RENEW_DAYS = 18
+INVEST_VIDEO_UPLOAD_TIMEOUT = 900
+_invest_upload_lock = threading.Lock()
 INVEST_VIDEO_SETTING = "bot_invest_video_gu"
 # Asked again soon after: not sent twice in a row.
 INVEST_VIDEO_AGAIN = timedelta(minutes=30)
@@ -705,27 +715,65 @@ def from_gujarat_campaign(db: Session, phone: str) -> bool:
     return (template.target_state or "").strip().lower() == "gujarat" or language_of_template(template) == "gu"
 
 
+def _video_stamp(path: str) -> str:
+    return f"{os.path.getsize(path)}:{int(os.path.getmtime(path))}"
+
+
+def upload_invest_video(path: Optional[str] = None, db: Optional[Session] = None) -> Optional[str]:
+    """
+    Upload the video to Meta and keep its id; the id, or None. Slow (minutes),
+    so it runs in a thread or by hand, never while a lead waits; one at a time.
+    """
+    from src.database import SessionLocal
+
+    path = path or INVEST_VIDEO_GU
+    if not _invest_upload_lock.acquire(blocking=False):
+        return None  # already uploading
+    try:
+        started = time.monotonic()
+        # Through inbox's own name for the API, so it is one place to stand in for it.
+        meta = inbox.MetaWhatsAppService()
+        media_id = meta.upload_media(path, "video", timeout=INVEST_VIDEO_UPLOAD_TIMEOUT)
+        if not media_id:
+            logger.warning(f"bot event=INVEST_VIDEO_UPLOAD_FAILED seconds={round(time.monotonic() - started)} "
+                           f"error={getattr(meta, 'last_media_error', None)}")
+            return None
+        own = db is None
+        db = SessionLocal() if own else db
+        try:
+            value = json.dumps({"media_id": media_id, "file": _video_stamp(path), "uploaded_at": inbox.now().isoformat()})
+            row = db.query(AppSetting).filter(AppSetting.key == INVEST_VIDEO_SETTING).first()
+            if row:
+                row.value = value
+            else:
+                db.add(AppSetting(key=INVEST_VIDEO_SETTING, value=value))
+            db.commit()
+        finally:
+            if own:
+                db.close()
+        logger.info(f"bot event=INVEST_VIDEO_UPLOADED seconds={round(time.monotonic() - started)}")
+        return media_id
+    finally:
+        _invest_upload_lock.release()
+
+
+def _upload_in_background(path: str) -> None:
+    if not _invest_upload_lock.locked():
+        threading.Thread(target=upload_invest_video, args=(path,), daemon=True, name="invest-video-upload").start()
+
+
 def _invest_video_id(db: Session, path: str) -> Optional[str]:
-    """Meta's id for the video: the kept one while it is fresh and the file unchanged, else a new upload."""
-    stamp = f"{os.path.getsize(path)}:{int(os.path.getmtime(path))}"
+    """Meta's id for the video while the kept one is fresh and the file unchanged; else None, and an upload starts."""
     row = db.query(AppSetting).filter(AppSetting.key == INVEST_VIDEO_SETTING).first()
     kept = json.loads(row.value) if row and row.value else {}
-    if kept.get("media_id") and kept.get("file") == stamp and kept.get("uploaded_at") and \
-            inbox.now() - datetime.fromisoformat(kept["uploaded_at"]) < timedelta(days=INVEST_VIDEO_DAYS):
+    age = (inbox.now() - datetime.fromisoformat(kept["uploaded_at"])) if kept.get("uploaded_at") else None
+    if kept.get("media_id") and kept.get("file") == _video_stamp(path) and age is not None \
+            and age < timedelta(days=INVEST_VIDEO_DAYS):
+        if age >= timedelta(days=INVEST_VIDEO_RENEW_DAYS):
+            _upload_in_background(path)  # renewed before Meta forgets it
         return kept["media_id"]
-    # Through inbox's own name for the API, so it is one place to stand in for it.
-    meta = inbox.MetaWhatsAppService()
-    media_id = meta.upload_media(path, "video")
-    if not media_id:
-        logger.warning(f"bot event=INVEST_VIDEO_UPLOAD_FAILED error={getattr(meta, 'last_media_error', None)}")
-        return None
-    value = json.dumps({"media_id": media_id, "file": stamp, "uploaded_at": inbox.now().isoformat()})
-    if row:
-        row.value = value
-    else:
-        db.add(AppSetting(key=INVEST_VIDEO_SETTING, value=value))
-    db.flush()
-    return media_id
+    _upload_in_background(path)
+    return None
 
 
 def _send_invest_video(db, conv) -> bool:
@@ -745,8 +793,9 @@ def _send_invest_video(db, conv) -> bool:
         conv.phone, "video", media_id, caption, None)
     if not ok:
         logger.warning(f"bot event=INVEST_VIDEO_NOT_SENT phone=...{conv.phone[-4:]} error={str(error)[:200]}")
-        # A kept id Meta no longer has is uploaded afresh next time.
+        # A kept id Meta no longer has: uploaded afresh, in the background.
         db.query(AppSetting).filter(AppSetting.key == INVEST_VIDEO_SETTING).delete()
+        _upload_in_background(path)
         return False
     db.add(WhatsAppMessage(
         message_id=uuid.uuid4().hex, phone=conv.phone, direction="OUT", kind="video",

@@ -353,9 +353,10 @@ class MetaWhatsAppService:
             logger.exception("Failed to read Meta billing")
             return {"total": None, "by_category": {}, "error": self._redact(str(e))}
 
-    def upload_media(self, file_path: str, media_type: str) -> Optional[str]:
+    def upload_media(self, file_path: str, media_type: str, timeout: int = 30) -> Optional[str]:
         """
-        Uploads media to Meta and returns the Meta media ID.
+        Uploads media to Meta and returns the Meta media ID. A large file from
+        a slow link needs a longer `timeout` (the bot's video: see onboarding_bot).
         """
         import os, uuid
         if os.environ.get("MOCK_WHATSAPP_API", "false").lower() == "true":
@@ -386,7 +387,7 @@ class MetaWhatsAppService:
                 data = {
                     "messaging_product": "whatsapp"
                 }
-                response = requests.post(url, headers=headers, data=data, files=files, timeout=30)
+                response = requests.post(url, headers=headers, data=data, files=files, timeout=timeout)
 
             if response.status_code in (200, 201):
                 self.last_media_error = None

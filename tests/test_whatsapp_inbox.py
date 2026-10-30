@@ -66,7 +66,7 @@ class StubMeta:
             return StubMeta.media[media_id] + (None,)
         return None, None, "Media not found"
 
-    def upload_media(self, path, kind):
+    def upload_media(self, path, kind, timeout=30):
         StubMeta.uploads.append((path, kind))
         return "media123"
 
@@ -3394,11 +3394,14 @@ def _gujarat_campaign(db, target_state="Gujarat", body="નમસ્તે {{1}}
 
 
 @pytest.fixture
-def invest_video(tmp_path, monkeypatch):
+def invest_video(db, tmp_path, monkeypatch):
+    """The video on disk, uploaded ahead (as the background upload, or the one by hand, does)."""
     path = tmp_path / "investment_gu.mp4"
     path.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"0" * 1000)
     monkeypatch.setattr(onboarding_bot, "INVEST_VIDEO_GU", str(path))
+    monkeypatch.setattr(onboarding_bot, "_upload_in_background", lambda p: None)
     StubMeta.uploads.clear()
+    onboarding_bot.upload_invest_video(str(path), db=db)
     return path
 
 
@@ -3451,7 +3454,7 @@ def test_other_campaigns_keep_the_text_breakdown(db, invest_video):
     count = len(StubMeta.sent)
     qualify(db)
     assert _sent_kinds(count)[0] == ("text", bot_messages.MESSAGES["en"]["invest_explained"])
-    assert StubMeta.uploads == []
+    assert "video" not in [k for k, _b in _sent_kinds(count)]
 
 
 def test_without_the_video_file_a_gujarat_lead_gets_the_text(db, invest_video):
@@ -3468,3 +3471,31 @@ def test_a_gujarat_campaign_is_known_by_its_state_or_its_language(db):
     assert not onboarding_bot.from_gujarat_campaign(db, PHONE)
     _gujarat_campaign(db, target_state=None)
     assert onboarding_bot.from_gujarat_campaign(db, PHONE)
+
+
+def test_a_lead_never_waits_on_the_video_upload(db, tmp_path, monkeypatch):
+    # The server uploads to Meta slowly (278 s for 2.1 MB): with no video uploaded yet the
+    # text goes now and the upload starts in the background.
+    import json
+    path = tmp_path / "investment_gu.mp4"
+    path.write_bytes(b"0" * 1000)
+    monkeypatch.setattr(onboarding_bot, "INVEST_VIDEO_GU", str(path))
+    started = []
+    monkeypatch.setattr(onboarding_bot, "_upload_in_background", lambda p: started.append(p))
+    _gujarat_campaign(db)
+    tap_campaign(db, lang="en")
+    say(db, SERVED_PIN)
+    count = len(StubMeta.sent)
+    qualify(db)
+    assert _sent_kinds(count)[0] == ("text", bot_messages.MESSAGES["en"]["invest_explained"])
+    assert started == [str(path)]
+
+    # Uploaded: the video goes, and an id nearing Meta's 30 days is renewed in the background.
+    onboarding_bot.upload_invest_video(str(path), db=db)
+    row = db.query(AppSetting).filter_by(key=onboarding_bot.INVEST_VIDEO_SETTING).one()
+    kept = json.loads(row.value)
+    kept["uploaded_at"] = (inbox.now() - timedelta(days=onboarding_bot.INVEST_VIDEO_RENEW_DAYS + 1)).isoformat()
+    row.value = json.dumps(kept)
+    db.commit()
+    started.clear()
+    assert onboarding_bot._invest_video_id(db, str(path)) == "media123" and started == [str(path)]
