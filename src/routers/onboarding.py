@@ -110,7 +110,8 @@ def upload_page(token: str, db: Session = Depends(get_db)):
         # Aadhaar, PAN and the licence can come from DigiLocker in place of an upload.
         "digilocker": {
             "enabled": eko_digilocker.configured(),
-            "rows": {d["row"]: d["label"] for d in onboarding_bot.DIGILOCKER_DOCS},
+            "rows": {d["row"]: d["label"] for d in onboarding_bot.DIGILOCKER_DOCS
+                     if d["eko"] in eko_digilocker.enabled_types()},
             "got": sorted(_got(conv)) if conv else [],
         },
     }
@@ -220,7 +221,8 @@ def digilocker_start(token: str, db: Session = Depends(get_db)):
     if not eko_digilocker.configured():
         raise HTTPException(status_code=503, detail="DigiLocker is not available just now. Please upload your documents instead.")
     got = _got(conv)
-    types = [d["eko"] for d in onboarding_bot.DIGILOCKER_DOCS if d["row"] not in got]
+    types = [d["eko"] for d in onboarding_bot.DIGILOCKER_DOCS
+             if d["row"] not in got and d["eko"] in eko_digilocker.enabled_types()]
     if not types:
         raise HTTPException(status_code=409, detail="Your documents from DigiLocker are already here.")
     back = f"{onboarding_bot.public_base_url()}/onboard/{token}/digilocker/done"

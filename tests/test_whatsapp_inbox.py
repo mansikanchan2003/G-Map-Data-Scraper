@@ -3204,7 +3204,8 @@ def test_eko_signature_matches_the_documented_formula():
 @pytest.fixture
 def digilocker(monkeypatch):
     """Eko's DigiLocker API, stubbed: nothing here reaches it (a fetch is billed)."""
-    for k, v in {"EKO_DEVELOPER_KEY": "dev", "EKO_ACCESS_KEY": "acc", "EKO_INITIATOR_ID": "9000000000"}.items():
+    for k, v in {"EKO_DEVELOPER_KEY": "dev", "EKO_ACCESS_KEY": "acc", "EKO_INITIATOR_ID": "9000000000",
+                 "EKO_DIGILOCKER_DOCUMENTS": "AADHAAR,PAN,DRIVING_LICENSE"}.items():
         monkeypatch.setenv(k, v)
     calls = []
     # has: what is in this person's DigiLocker; production: Aadhaar in production's shape (30 Oct 2026).
@@ -3361,3 +3362,18 @@ def test_digilocker_reads_productions_reply(db, client, digilocker):
     pan = eko_digilocker.fetch("PAN", "7483920", "1")
     assert pan["number"] == "ABCPV1234K" and pan["fields"] == {"father_name": "RAM VERMA"}
     assert eko_digilocker.pdf(pan, "30 Oct 2026").startswith(b"%PDF-")
+
+
+def test_pan_is_not_asked_for_by_default(db, client, digilocker, monkeypatch):
+    # Production's PAN reply had no name or number (30 Oct 2026): off until Eko returns them.
+    monkeypatch.delenv("EKO_DIGILOCKER_DOCUMENTS")
+    token = _link(db)
+    client.post(f"/onboard/{token}/digilocker")
+    assert digilocker["calls"][-1][1]["document_requested"] == ["AADHAAR", "DRIVING_LICENSE"]
+    page = client.get(f"/onboard/{token}").text
+    assert '"pan": "PAN' not in page and '"aadhaar": "Aadhaar' in page
+
+    # Gender and date of birth alone are not a PAN: nothing filed, and not asked again.
+    monkeypatch.setattr(eko_digilocker, "_post", lambda path, body: {"status": 0, "data": {
+        "gender": "FEMALE", "reference_id": 11050801, "dob": "03-05-1999", "tid": 3580749787}})
+    assert eko_digilocker.fetch("PAN", "1", "2") is None

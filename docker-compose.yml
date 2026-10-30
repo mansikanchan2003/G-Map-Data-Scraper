@@ -155,6 +155,8 @@ services:
       EKO_ACCESS_KEY: ${EKO_ACCESS_KEY:-}
       EKO_INITIATOR_ID: ${EKO_INITIATOR_ID:-}
       EKO_BASE_URL: ${EKO_BASE_URL:-https://api.eko.in/ekoicici/v3}
+      # What the upload page fetches from DigiLocker; PAN is off until Eko returns its details.
+      EKO_DIGILOCKER_DOCUMENTS: ${EKO_DIGILOCKER_DOCUMENTS:-AADHAAR,DRIVING_LICENSE}
       # The growth plan reads the form and TARA through Kiosk KAI. The app's
       # OWN Kiosk KAI key (from Abhishek), never a person's. Empty: off.
       KIOSK_KAI_APP_KEY: ${KIOSK_KAI_APP_KEY:-}

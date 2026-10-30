@@ -53,6 +53,19 @@ DOCUMENT_TYPE = "AADHAAR"
 # Every type Eko's DigiLocker API serves ("document_type should be AADHAAR/PAN/DRIVING_LICENSE").
 DOCUMENT_TYPES = ("AADHAAR", "PAN", "DRIVING_LICENSE")
 TITLES = {"AADHAAR": "Aadhaar", "PAN": "PAN Card", "DRIVING_LICENSE": "Driving Licence"}
+# The types the upload page asks for. PAN is left out: on 30 Oct 2026 production
+# answered a PAN fetch "success" with gender and date of birth only, no name or
+# number, so nothing could be filed and the fetch was likely billed. Set
+# EKO_DIGILOCKER_DOCUMENTS to add it back once Eko returns the details.
+DEFAULT_TYPES = ("AADHAAR", "DRIVING_LICENSE")
+
+
+def enabled_types() -> tuple:
+    raw = os.environ.get("EKO_DIGILOCKER_DOCUMENTS")
+    if not raw:
+        return DEFAULT_TYPES
+    picked = tuple(t for t in DOCUMENT_TYPES if t in {x.strip().upper() for x in raw.split(",")})
+    return picked or DEFAULT_TYPES
 TIMEOUT = 25
 
 # A DigiLocker session left this long is started afresh on the next tap.
