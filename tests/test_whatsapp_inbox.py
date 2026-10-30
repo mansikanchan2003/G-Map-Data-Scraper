@@ -3243,8 +3243,13 @@ def test_aadhaar_verified_via_digilocker_is_filed_once(db, client, digilocker):
     assert body["redirect_url"] == f"https://link.example.in/onboard/{token}/digilocker/done"
     assert body["document_requested"] == ["AADHAAR"]
 
-    r = client.get(f"/onboard/{token}/digilocker/done", follow_redirects=False)
+    # DigiLocker comes back with the session's verification_id (seen 30 Oct 2026).
+    r = client.get(f"/onboard/{token}/digilocker/done?verification_id=3580740241", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == f"../../{token}?digilocker=verified"
+    path, body = digilocker["calls"][1]
+    # Eko refuses a list here: "document_type should be AADHAAR/PAN/DRIVING_LICENSE".
+    assert body["document_type"] == "AADHAAR" and body["verification_id"] == "3580740241"
+    assert body["reference_id"] == "7483920"
     doc = db.query(OnboardingDocument).filter_by(phone=PHONE, doc_type="aadhaar_digilocker").one()
     assert doc.content_type == "application/pdf" and doc.original_name.startswith("Aadhaar (verified")
     assert open(doc.stored_path, "rb").read().startswith(b"%PDF-")

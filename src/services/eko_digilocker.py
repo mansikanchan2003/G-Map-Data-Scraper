@@ -123,7 +123,9 @@ def fetch_aadhaar(reference_id: str, verification_id: Optional[str] = None) -> O
     on DigiLocker. Raises DigiLockerError when it cannot be fetched at all.
     """
     out = _post(DOCUMENT_PATH, {
-        "document_type": [DOCUMENT_TYPE],
+        # One type as a string here; a list is refused ("document_type should be
+        # AADHAAR/PAN/DRIVING_LICENSE"), though creating the link takes a list.
+        "document_type": DOCUMENT_TYPE,
         "reference_id": str(reference_id),
         "verification_id": str(verification_id or reference_id),
     })
