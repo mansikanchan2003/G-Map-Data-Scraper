@@ -133,11 +133,17 @@ def fetch_aadhaar(reference_id: str, verification_id: Optional[str] = None) -> O
     if out.get("status") != 0:
         logger.info(f"digilocker event=NOT_READY type={out.get('response_type_id')} message={str(out.get('message'))[:200]}")
         return None
-    if str(data.get("verification_status") or "").upper() != "SUCCESS":
-        return None
-    for doc in data.get("documents") or []:
-        if str(doc.get("document_type") or "").upper() == DOCUMENT_TYPE:
-            return doc
+    if str(data.get("verification_status") or "").upper() == "SUCCESS":
+        for doc in data.get("documents") or []:
+            if isinstance(doc, dict) and str(doc.get("document_type") or "").upper() == DOCUMENT_TYPE:
+                return doc
+    # Accepted but no Aadhaar in it: the reply's shape, never its contents (it holds a person's details).
+    docs = data.get("documents")
+    logger.warning(
+        f"digilocker event=NO_AADHAAR type={out.get('response_type_id')} message={str(out.get('message'))[:120]} "
+        f"verification_status={data.get('verification_status')} data_keys={sorted(data)[:15]} "
+        f"documents={type(docs).__name__}:{[d.get('document_type') for d in docs if isinstance(d, dict)] if isinstance(docs, list) else ''}"
+    )
     return None
 
 
