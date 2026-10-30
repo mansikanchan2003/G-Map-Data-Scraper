@@ -3207,7 +3207,7 @@ def digilocker(monkeypatch):
     for k, v in {"EKO_DEVELOPER_KEY": "dev", "EKO_ACCESS_KEY": "acc", "EKO_INITIATOR_ID": "9000000000"}.items():
         monkeypatch.setenv(k, v)
     calls = []
-    state = {"ready": True, "empty": 0}
+    state = {"ready": True, "empty": 0, "production": False}
     monkeypatch.setattr(eko_digilocker.time, "sleep", lambda s: None)
 
     def post(path, body):
@@ -3221,6 +3221,14 @@ def digilocker(monkeypatch):
             # What production answered first on 30 Oct 2026: accepted, no document yet.
             state["empty"] -= 1
             return {"status": 0, "data": {"status": 0, "tid": "3580743894"}}
+        if state["production"]:
+            # Production's reply (30 Oct 2026), not the documented one; made-up details.
+            return {"status": 0, "response_status_id": 0, "response_type_id": 0, "data": {
+                "name": "Asha Verma", "dob": "03-05-1999", "gender": "F", "uid": "xxxxxxxx4321",
+                "care_of": "D/O Ram Verma", "reference_id": 11048450, "tid": 3580746657, "photo_link": "",
+                "split_address": {"country": "India", "pincode": "242001", "subdist": "Sadar", "vtc": "Shahjahanpur",
+                                  "street": "", "dist": "Shahjahanpur", "state": "Uttar Pradesh", "landmark": "",
+                                  "house": "12", "po": "Civil Lines"}}}
         return {"status": 0, "data": {"verification_status": "SUCCESS", "documents": [{
             "document_type": "AADHAAR", "name": "Vikram Singh", "dob": "12-11-1987", "gender": "M",
             "masked_aadhaar": "XXXX-XXXX-2345", "issue_date": "01-01-2020",
@@ -3307,5 +3315,20 @@ def test_digilocker_accepted_but_empty_is_asked_again(db, client, digilocker):
     assert eko_digilocker.fetch_aadhaar("7483920", "1") is None
     assert len(digilocker["calls"]) - before == eko_digilocker.FETCH_TRIES
 
-    # The log shows a reply's shape, not a person's details.
-    assert eko_digilocker._shape({"status": 0, "data": {"status": 0, "tid": "3580743894", "name": "Vikram Singh"}}) ==         {"status": 0, "data": {"status": 0, "tid": "3580743894", "name": "str[12]"}}
+    # The log shows a reply's shape, not a person's details: no text at all, however short.
+    assert eko_digilocker._shape({"status": 0, "data": {"tid": 3580743894, "name": "Vikram Singh", "dob": "03-05-2003"}}) ==         {"status": 0, "data": {"tid": 3580743894, "name": "str[12]", "dob": "str[10]"}}
+
+
+def test_digilocker_reads_productions_reply(db, client, digilocker):
+    digilocker["state"]["production"] = True
+    token = _link(db)
+    client.post(f"/onboard/{token}/digilocker")
+    r = client.get(f"/onboard/{token}/digilocker/done?verification_id=3580743894", follow_redirects=False)
+    assert r.headers["location"].endswith("?digilocker=verified")
+    assert len(digilocker["calls"]) == 2  # one fetch: a reply with details is not asked for again
+    db.refresh(conv(db))
+    kept = conv(db).bot_data["digilocker"]["verified"]
+    assert kept["name"] == "Asha Verma" and kept["masked_aadhaar"] == "XXXX-XXXX-4321"
+    assert kept["pincode"] == "242001" and "Shahjahanpur" in kept["address"] and "Civil Lines" in kept["address"]
+    # A full number, should one come, is never kept.
+    assert eko_digilocker._mask("123456789012") == "XXXX-XXXX-9012"

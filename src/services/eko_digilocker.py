@@ -118,6 +118,45 @@ def create_url(redirect_url: str) -> dict:
     return result
 
 
+def _mask(number) -> Optional[str]:
+    """An Aadhaar number as XXXX-XXXX-1234: a full number must never be kept."""
+    digits = re.sub(r"\D", "", str(number or ""))
+    return f"XXXX-XXXX-{digits[-4:]}" if len(digits) >= 4 else None
+
+
+def _from_production(data) -> Optional[dict]:
+    """
+    Production's reply (seen 30 Oct 2026) is not the documented one: the
+    details sit in data itself (name, dob, gender, uid: the masked number,
+    care_of, split_address, photo_link), not in data.documents. Mapped onto
+    the documented document so the rest reads one shape.
+    """
+    if not isinstance(data, dict) or not data.get("name") or not (data.get("uid") or data.get("split_address")):
+        return None
+    addr = data.get("split_address") if isinstance(data.get("split_address"), dict) else {}
+    street = ", ".join(str(addr[k]) for k in ("street", "landmark", "po") if addr.get(k))
+    photo = data.get("photo_link") or data.get("photo")
+    return {
+        "document_type": DOCUMENT_TYPE,
+        "name": data.get("name"),
+        "dob": data.get("dob"),
+        "gender": data.get("gender"),
+        # uid is 12 characters; whether masked or not, only the last four are kept.
+        "masked_aadhaar": _mask(data.get("uid") or data.get("masked_aadhaar")),
+        "care_of": data.get("care_of"),
+        # A link would need fetching; only an inline image is drawn.
+        "photo": photo if isinstance(photo, str) and not photo.startswith("http") else None,
+        "address": {
+            "house": addr.get("house"),
+            "street": street,
+            "village_or_city": addr.get("vtc"),
+            "district": addr.get("dist") or addr.get("subdist"),
+            "state": addr.get("state"),
+            "pincode": addr.get("pincode"),
+        },
+    }
+
+
 def _find_aadhaar(node, depth: int = 0) -> Optional[dict]:
     """The Aadhaar document wherever the reply puts it (the documented data.documents, or elsewhere)."""
     if depth > 4:
@@ -138,16 +177,15 @@ def _find_aadhaar(node, depth: int = 0) -> Optional[dict]:
 
 
 def _shape(node, depth: int = 0):
-    """A reply's keys and short codes, never its text: it may hold a person's details."""
+    """A reply's keys and numbers, never its text: it may hold a person's details."""
     if isinstance(node, dict) and depth < 3:
         return {k: _shape(v, depth + 1) for k, v in list(node.items())[:15]}
     if isinstance(node, list):
         return f"list[{len(node)}]"
     if isinstance(node, (int, float, bool)) or node is None:
         return node
-    text = str(node)
-    # Codes and statuses are short and upper-case or numeric; anything else is hidden.
-    return text if len(text) <= 12 and re.fullmatch(r"[A-Z0-9_\-]*", text) else f"str[{len(text)}]"
+    # Every piece of text is hidden: a short one can still be a date of birth or a PIN code.
+    return f"str[{len(str(node))}]"
 
 
 # DigiLocker hands back before Eko has the document: the first fetch can come
@@ -172,7 +210,7 @@ def fetch_aadhaar(reference_id: str, verification_id: Optional[str] = None) -> O
         if out.get("status") != 0:
             logger.info(f"digilocker event=NOT_READY type={out.get('response_type_id')} message={str(out.get('message'))[:200]}")
             return None
-        doc = _find_aadhaar(out)
+        doc = _from_production(out.get("data")) or _find_aadhaar(out)
         if doc:
             return doc
         logger.warning(f"digilocker event=NO_AADHAAR try={attempt} shape={_shape(out)}")
