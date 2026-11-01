@@ -29,7 +29,7 @@ from src.models.user import User
 from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppTemplate
 from src.routers.auth import current_user
 from src.services import dispositions as dz, followups, handover, nudge_templates, tickets
-from src.services import drive_uploads, inbox, onboarding_bot
+from src.services import drive_uploads, inbox, onboarding_bot, opt_out
 
 logger = logging.getLogger("gmap_scraper.inbox")
 
@@ -132,6 +132,8 @@ class ConversationDetail(ConversationSummary):
     document_files: List[DocumentInfo] = []
     # The open ticket while it needs attention.
     ticket_id: Optional[str] = None
+    # On the do-not-message list (services/opt_out): why, by whom, when.
+    opted_out: Optional[dict] = None
 
 
 class SendRequest(BaseModel):
@@ -392,6 +394,7 @@ def get_conversation(digits: str, db: Session = Depends(get_db)):
         upload_url=onboarding_bot.upload_url(conv) if token_live else None,
         drive_folder_url=conv.drive_folder_url,
         ticket_id=(lambda t: t.ticket_id if t else None)(tickets.open_ticket(db, conv.phone)) if conv.needs_attention else None,
+        opted_out=opt_out.as_dict(opt_out.entry(db, conv.phone)),
         messages=messages,
         document_files=[DocumentInfo(
             document_id=f.document_id, doc_type=f.doc_type, label=labels.get(f.doc_type, f.doc_type),
@@ -544,6 +547,44 @@ def set_disposition(digits: str, payload: DispositionRequest, db: Session = Depe
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
     return now
+
+
+class OptOutRequest(BaseModel):
+    reason: Optional[str] = Field(None, max_length=300)
+
+
+@router.post("/conversations/{digits}/opt-out")
+def put_on_opt_out(digits: str, payload: OptOutRequest = None, db: Session = Depends(get_db),
+                   user: User = Depends(current_user)):
+    """Never message this number again: no campaign, reminder or follow-up (the person asked, on a call, say)."""
+    conv = _get_conversation(db, digits)
+    e = opt_out.record(db, conv.phone, opt_out.TEAM, user.email, (payload.reason if payload else None))
+    handover._log(db, conv, "opt_out", user.email, None, (payload.reason if payload else None))
+    db.commit()
+    return opt_out.as_dict(e)
+
+
+@router.delete("/conversations/{digits}/opt-out")
+def take_off_opt_out(digits: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """They asked to hear from us again: campaigns may reach them."""
+    conv = _get_conversation(db, digits)
+    if opt_out.remove(db, conv.phone, user.email, "Taken off by the team"):
+        handover._log(db, conv, "opt_in", user.email, None, None)
+    db.commit()
+    return {"opted_out": None}
+
+
+@router.get("/opt-outs")
+def list_opt_outs(db: Session = Depends(get_db)):
+    """Every number on the do-not-message list, newest first, with counts by reason."""
+    from src.models.opt_out import OptOut
+    rows = [r for r in db.query(OptOut).order_by(OptOut.created_at.desc()).all() if _may_see(db, r.phone)]
+    names = _names(db, [r.phone for r in rows])
+    by = {}
+    for r in rows:
+        by[r.source] = by.get(r.source, 0) + 1
+    return {"total": len(rows), "by_source": by, "sources": opt_out.SOURCES,
+            "numbers": [{"phone": r.phone, "name": names.get(r.phone), **opt_out.as_dict(r)} for r in rows]}
 
 
 @router.get("/conversations/{digits}/activity")

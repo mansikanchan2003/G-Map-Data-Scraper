@@ -456,6 +456,8 @@ export interface AudienceSummary {
   never_contacted: number;
   sendable: number;
   limit_applied?: number | null;
+  /** Asked not to be messaged: never in an audience. */
+  opted_out?: number;
 }
 
 export interface AudiencePreview extends AudienceSummary {

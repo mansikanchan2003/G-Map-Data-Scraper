@@ -257,6 +257,11 @@ def team_names_plain() -> str:
 
 
 def _send(db: Session, conv: WhatsAppConversation, f: FollowUp, now: datetime) -> None:
+    from src.services import opt_out
+    # Only what reaches the person stops; the team's own tasks and emails go on.
+    if f.wants not in (dz.TASK, dz.API, dz.ESCALATE) and opt_out.blocks_followups(opt_out.entry(db, conv.phone)):
+        f.status, f.note, f.done_at = "cancelled", "Asked not to be messaged", now
+        return
     if f.wants == dz.API:
         _send_to_acquisition(db, conv, f, now)
         return

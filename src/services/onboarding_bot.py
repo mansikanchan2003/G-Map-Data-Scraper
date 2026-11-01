@@ -829,6 +829,10 @@ def _ask_invest(db, conv, lang):
 
 def _start(db, conv, msg, flow: str):
     """A campaign button was tapped: start that flow, asking the language if not known."""
+    # Tapping Interested again is asking to hear from us: off the do-not-message list.
+    from src.services import opt_out
+    if opt_out.is_out(db, conv.phone):
+        opt_out.remove(db, conv.phone, "bot", "Tapped a campaign button")
     if flow == ONBOARD and conv.documents_submitted_at:
         _say(db, conv, _t(db, conv, "already_submitted"))
         return
@@ -1116,6 +1120,19 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
         msg = _Spoken(msg, message_text(msg))
 
     _note_script(conv, msg)
+    # Asked not to be messaged (DPDP): on the list, told so once, nothing more.
+    # Even with the bot paused: it is their right, not a conversation.
+    from src.services import opt_out
+    said = message_text(msg)
+    if opt_out.says_stop(said):
+        if not opt_out.is_out(db, conv.phone):
+            opt_out.record(db, conv.phone, opt_out.SAID_STOP, "bot", reason=f"They wrote: “{said[:120]}”")
+            _say(db, conv, _t(db, conv, "opted_out"))
+        return
+    if opt_out.says_start(said) and opt_out.is_out(db, conv.phone):
+        opt_out.remove(db, conv.phone, "bot", "They wrote START")
+        _say(db, conv, _t(db, conv, "opted_in"))
+        return
     flagged_before = inbox.aware(conv.attention_at) if conv.needs_attention else None
     token = _CURRENT.set(msg)
     try:

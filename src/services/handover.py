@@ -123,6 +123,10 @@ def record(db: Session, conv: WhatsAppConversation, key: str, by: str, note: Opt
     conv.disposition_note = (note or "").strip()[:500] or None
     _log(db, conv, "disposition", by, key, note)
     followups.plan(db, conv, key, by, at=at, attempt=attempt, run_now=run_now, note=note, ticket=ticket, tell=tell)
+    from src.services import opt_out
+    if key in opt_out.OPT_OUT_DISPOSITIONS:
+        # Not marketed to again; the disposition's own closing message still goes.
+        opt_out.record(db, conv.phone, opt_out.DISPOSITION, by, reason=DISPOSITIONS[key][0])
     return current(conv)
 
 

@@ -91,6 +91,8 @@ class AudienceSummary(BaseModel):
     never_contacted: int
     sendable: int          # after the contacted rule and the limit
     limit_applied: Optional[int] = None
+    # Asked not to be messaged (services/opt_out): never in the audience.
+    opted_out: int = 0
 
 
 class AudiencePreview(AudienceSummary):
@@ -250,6 +252,8 @@ def _build(db: Session, f: AudienceFilters, with_contacts: bool):
     rows = with_phone_q.order_by(Business.discovered_at.desc()).all()
 
     contacted = _contacted_phones(db)
+    from src.services import opt_out
+    out = opt_out.phones(db)
 
     # Normalise before comparing: a business row may hold "09876543210" while
     # the campaign recorded "+919876543210" for the same person.
@@ -260,6 +264,8 @@ def _build(db: Session, f: AudienceFilters, with_contacts: bool):
         if error or not canonical or canonical in seen:
             continue
         seen.add(canonical)
+        if canonical in out:
+            continue
         # Where the business is and what it does travel with it: the template
         # agent reads them to pick the audience's language and to write to
         # the kind of business, and they fill the template's blanks.
@@ -277,6 +283,7 @@ def _build(db: Session, f: AudienceFilters, with_contacts: bool):
         never_contacted=len(never),
         sendable=len(limited),
         limit_applied=f.limit,
+        opted_out=len(seen & out),
     )
     return summary, limited
 

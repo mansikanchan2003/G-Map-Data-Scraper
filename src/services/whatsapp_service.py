@@ -455,6 +455,12 @@ class WhatsAppCampaignService:
         recipients = []
         pending = 0
         skipped = 0
+        # Numbers that asked not to be messaged (services/opt_out): never sent a campaign.
+        from src.services import opt_out
+        try:
+            opted_out = opt_out.phones(self.db)
+        except Exception:
+            opted_out = set()
 
         # A template made from a sheet fills its columns from each recipient's
         # own row, so someone without a value for one cannot be sent it.
@@ -497,7 +503,11 @@ class WhatsAppCampaignService:
                 reason = error
                 skipped += 1
             else:
-                if canonical in seen_phones:
+                if canonical in opted_out:
+                    status = "SKIPPED"
+                    reason = "Asked not to be messaged"
+                    skipped += 1
+                elif canonical in seen_phones:
                     status = "SKIPPED"
                     reason = "Duplicate number"
                     skipped += 1

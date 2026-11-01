@@ -123,7 +123,8 @@ def db():
         session.rollback()
         from src.models.inbox import FollowUp
         from src.models.agent_runs import AgentRun
-        for model in (AgentRun, FollowUp, ChatActivity, AttentionTicket, OnboardingDocument, WhatsAppMessage, WhatsAppConversation, WhatsAppReply,
+        from src.models.opt_out import OptOut
+        for model in (OptOut, AgentRun, FollowUp, ChatActivity, AttentionTicket, OnboardingDocument, WhatsAppMessage, WhatsAppConversation, WhatsAppReply,
                       WhatsAppButtonClick, WhatsAppCampaignRecipient, WhatsAppCampaign,
                       WhatsAppTemplate, Location, AppSetting):
             session.query(model).delete()
@@ -3499,3 +3500,101 @@ def test_a_lead_never_waits_on_the_video_upload(db, tmp_path, monkeypatch):
     db.commit()
     started.clear()
     assert onboarding_bot._invest_video_id(db, str(path)) == "media123" and started == [str(path)]
+
+
+# --- The do-not-message list (DPDP; services/opt_out) ---------------------------
+
+from src.models.opt_out import OptOut  # noqa: E402
+from src.services import opt_out  # noqa: E402
+
+
+def test_what_counts_as_asking_not_to_be_messaged():
+    for said in ("STOP", "stop.", "Please stop", "unsubscribe", "Don't message me", "do not send messages",
+                 "message mat bhejo", "mujhe msg mat bhejo", "message band karo", "bhejna band kar do",
+                 "मैसेज मत भेजो", "मेसेज बंद करो", "મેસેજ ના મોકલો", "મેસેજ બંધ કરો", "ਮੈਸੇਜ ਨਾ ਭੇਜੋ"):
+        assert opt_out.says_stop(said), said
+    # Not a request: "stop" inside a sentence, or a question about the business.
+    for said in ("bus stop ke paas dukaan hai", "Kitna invest karna hoga?", "stop karna padega kya business?",
+                 "Interested", "", None):
+        assert not opt_out.says_stop(said), said
+    assert opt_out.says_start("START") and not opt_out.says_start("start business kaise kare")
+
+
+def test_saying_stop_puts_them_on_the_list_and_stops_the_bots_reminders(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)                   # the bot asks about education
+    count = len(StubMeta.sent)
+    say(db, "Message mat bhejo")
+    assert StubMeta.sent[count:][0][2] == bot_messages.MESSAGES["en"]["opted_out"]
+    e = db.get(OptOut, PHONE)
+    assert e.source == opt_out.SAID_STOP and "Message mat bhejo" in e.reason
+    # Said again: not answered twice.
+    count = len(StubMeta.sent)
+    say(db, "STOP")
+    assert len(StubMeta.sent) == count
+    # No reminder an hour on.
+    assert nudges.tick(db, _hours_later(1.5)) == 0
+
+    # START: off the list, and welcomed back.
+    say(db, "START")
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["en"]["opted_in"]
+    assert db.get(OptOut, PHONE) is None
+
+
+def test_tapping_interested_again_takes_them_off_the_list(db):
+    tap_campaign(db)
+    say(db, "stop")
+    assert opt_out.is_out(db, PHONE)
+    tap_campaign(db)
+    assert not opt_out.is_out(db, PHONE)
+
+
+def test_closing_a_chat_as_not_interested_puts_it_on_the_list_but_its_reply_still_goes(db, client):
+    tap_campaign(db)
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/disposition",
+                    json={"disposition": "ni_no_requirement"})
+    assert r.status_code == 200
+    e = db.get(OptOut, PHONE)
+    assert e.source == opt_out.DISPOSITION and e.reason == "No requirement"
+    assert not opt_out.blocks_followups(e)
+    # An investment issue is still followed up with the lower-investment offer.
+    db.delete(e)
+    db.commit()
+    client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/disposition", json={"disposition": "ni_investment"})
+    assert db.get(OptOut, PHONE) is None
+
+
+def test_a_campaign_skips_numbers_on_the_list(db):
+    from src.services.whatsapp_service import WhatsAppCampaignService
+    other = "+919000000088"
+    opt_out.record(db, PHONE, opt_out.TEAM, "mansi@eko.co.in", "Asked on the call")
+    db.commit()
+    camp = WhatsAppCampaignService(db).create_campaign_and_recipients(
+        "After opt-out", None, None, "upload", [{"phone": PHONE, "name": "A"}, {"phone": other, "name": "B"}])
+    rows = {r.phone: r for r in db.query(WhatsAppCampaignRecipient).filter_by(campaign_id=camp.campaign_id)}
+    assert rows[PHONE].status == "SKIPPED" and rows[PHONE].reason == "Asked not to be messaged"
+    assert rows[other].status == "PENDING"
+
+
+def test_whatsapp_saying_they_stopped_marketing_puts_them_on_the_list(db):
+    from src.routers.whatsapp import _apply_status_event
+    rec = db.query(WhatsAppCampaignRecipient).filter_by(phone=PHONE).first()
+    _apply_status_event(db, {"id": rec.provider_message_id, "status": "failed", "timestamp": "1793300000",
+                             "errors": [{"code": 131050, "title": "Unable to deliver the message"}]})
+    db.commit()
+    assert db.get(OptOut, PHONE).source == opt_out.META
+
+
+def test_the_team_puts_a_number_on_the_list_from_the_inbox_and_takes_it_off(db, client):
+    tap_campaign(db)
+    digits = PHONE.lstrip("+")
+    r = client.post(f"/api/v1/inbox/conversations/{digits}/opt-out", json={"reason": "Asked on the call"})
+    assert r.status_code == 200 and r.json()["source"] == "team"
+    detail = client.get(f"/api/v1/inbox/conversations/{digits}").json()
+    assert detail["opted_out"]["reason"] == "Asked on the call"
+    listed = client.get("/api/v1/inbox/opt-outs").json()
+    assert listed["total"] == 1 and listed["by_source"] == {"team": 1}
+    assert client.delete(f"/api/v1/inbox/conversations/{digits}/opt-out").status_code == 200
+    assert client.get(f"/api/v1/inbox/conversations/{digits}").json()["opted_out"] is None
+    kinds = [a.kind for a in db.query(ChatActivity).filter_by(phone=PHONE)]
+    assert "opt_out" in kinds and "opt_in" in kinds

@@ -90,6 +90,9 @@ def missed(db) -> list:
     for conv in convs:
         if not inbox.window_open(conv) or not inbox.from_campaign(db, conv.phone):
             continue
+        from src.services import opt_out
+        if opt_out.is_out(db, conv.phone):
+            continue  # asked not to be messaged
         last = (db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone)
                 .order_by(WhatsAppMessage.created_at.desc()).first())
         if last is None or last.direction != "IN" or last.kind != "text":

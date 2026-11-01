@@ -259,6 +259,11 @@ def build(db: Session, conv: WhatsAppConversation, *, messages: Optional[List[Wh
             add("event", "to_person", a.at, None, f"{_who(a.by)} took the chat over from the bot", a.at, by=a.by)
         elif a.kind == "to_bot":
             add("event", "to_bot", a.at, None, f"{_who(a.by)} handed the chat back to the bot", a.at, by=a.by)
+        elif a.kind == "opt_out":
+            add("event", "opt_out", a.at, None, f"{_who(a.by)} put the number on the do-not-message list", a.at,
+                by=a.by, tone="negative", detail=a.note)
+        elif a.kind == "opt_in":
+            add("event", "opt_in", a.at, None, f"{_who(a.by)} took the number off the do-not-message list", a.at, by=a.by)
 
     for f in followups:
         if f.wants == dz.TASK:

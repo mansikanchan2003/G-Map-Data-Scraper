@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ATTENTION_CHANGED, fetchBotSettings, fetchFaqAnswers, teachTheBot, type FaqAnswer, fetchChatSummary, fetchTickets, fetchConversation, fetchConversations, markConversationRead, setAttention, sendInboxMedia,
-  saveBotSettings, saveDocumentsToDrive, sendInboxMessage, documentUrl, mediaUrl,
+  saveBotSettings, saveDocumentsToDrive, sendInboxMessage, documentUrl, mediaUrl, putOnOptOut, takeOffOptOut,
   type BotSettings, type ChatSummary, type ConversationDetail, type Ticket, type ConversationSummary, type ThreadMessage,
 } from '../api/inbox';
 import { DispositionChip, DispositionDialog, HandoverBar, useDispositionOptions } from '../components/Handover';
@@ -1231,6 +1231,10 @@ export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not
                     )}
                   </div>
                 )}
+                {detail && (
+                  <OptOutBar conv={detail} readOnly={readOnly}
+                    onChanged={() => { loadThread(selected); loadList(); }} />
+                )}
                 {detail?.needs_attention && (
                   <div className="flex items-start gap-2 px-3 py-2 border-b border-rose-900 bg-rose-950/60 text-xs text-rose-200 select-text">
                     <span className="material-symbols-outlined text-[16px] text-rose-400">priority_high</span>
@@ -1360,3 +1364,94 @@ export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not
     </div>
   );
 };
+
+
+// ---------------------------------------------------------------------------
+// The do-not-message list (DPDP): no campaign, reminder or follow-up reaches
+// a number on it. The person says "stop", the chat is closed as not
+// interested, WhatsApp says they stopped marketing messages, or the team puts
+// it here (they asked on a call, say).
+// ---------------------------------------------------------------------------
+
+const OPT_OUT_ICON: Record<string, string> = {
+  said_stop: 'do_not_disturb_on', disposition: 'thumb_down', meta: 'notifications_off', team: 'front_hand',
+};
+
+function OptOutBar({ conv, readOnly, onChanged }: { conv: ConversationDetail; readOnly: boolean; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const out = conv.opted_out;
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      setAsking(false);
+      setReason('');
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (out) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-rose-900/70 bg-gradient-to-r from-rose-950/70 to-slate-950 text-xs text-rose-200">
+        <span className="h-7 w-7 shrink-0 rounded-full bg-rose-900/60 flex items-center justify-center">
+          <span className="material-symbols-outlined text-[16px] text-rose-300">{OPT_OUT_ICON[out.source] || 'block'}</span>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="font-semibold">Do not message</span>
+          <span className="text-rose-300/80"> · {out.label}{out.reason && out.reason !== out.label ? `: ${out.reason}` : ''}</span>
+          <span className="block text-[11px] text-rose-300/60">
+            No campaign, reminder or follow-up reaches this number. {out.by === 'bot' ? 'Recorded by the bot' : `By ${out.by}`}
+            {out.at ? ` · ${new Date(out.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
+          </span>
+        </span>
+        {!readOnly && (
+          <button disabled={busy} onClick={() => {
+            if (window.confirm('Take this number off the do-not-message list? Only do this if they asked to hear from us again.')) {
+              run(() => takeOffOptOut(conv.phone));
+            }
+          }}
+            className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded border border-rose-800 text-rose-200 hover:bg-rose-900/50 cursor-pointer disabled:opacity-50 whitespace-nowrap">
+            <span className="material-symbols-outlined text-[15px]">undo</span>They want to hear from us
+          </button>
+        )}
+        {error && <span className="w-full text-rose-400">{error}</span>}
+      </div>
+    );
+  }
+
+  if (readOnly || !conv.from_campaign) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-slate-800 bg-slate-950 text-xs text-slate-400">
+      {!asking ? (
+        <button onClick={() => setAsking(true)}
+          title="They asked not to be contacted: no campaign, reminder or follow-up will reach them"
+          className="ml-auto inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-slate-700 text-slate-300 hover:border-rose-800 hover:text-rose-300 cursor-pointer">
+          <span className="material-symbols-outlined text-[15px]">block</span>Do not message
+        </button>
+      ) : (
+        <>
+          <span className="material-symbols-outlined text-[16px] text-rose-400">block</span>
+          <input autoFocus value={reason} onChange={e => setReason(e.target.value)} maxLength={300}
+            placeholder="Why? e.g. Asked on the call not to be messaged"
+            className="flex-1 min-w-[180px] bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 placeholder:text-slate-500" />
+          <button disabled={busy} onClick={() => run(() => putOnOptOut(conv.phone, reason.trim() || undefined))}
+            className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded border border-rose-800 bg-rose-950 text-rose-200 hover:bg-rose-900 cursor-pointer disabled:opacity-50">
+            Put on the list
+          </button>
+          <button disabled={busy} onClick={() => { setAsking(false); setReason(''); }}
+            className="text-[11px] px-2 py-1 rounded text-slate-400 hover:text-slate-200 cursor-pointer">Cancel</button>
+          {error && <span className="w-full text-rose-400">{error}</span>}
+        </>
+      )}
+    </div>
+  );
+}

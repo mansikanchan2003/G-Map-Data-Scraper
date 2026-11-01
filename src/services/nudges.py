@@ -66,6 +66,9 @@ def due(db: Session, conv: WhatsAppConversation, now: datetime) -> bool:
 
 
 def nudge(db: Session, conv: WhatsAppConversation, now: datetime) -> bool:
+    from src.services import opt_out
+    if opt_out.is_out(db, conv.phone):
+        return False  # asked not to be messaged
     asked = bot.pending_question(db, conv)
     if not asked:
         return False

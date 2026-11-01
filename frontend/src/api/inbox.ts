@@ -198,6 +198,8 @@ export interface ConversationDetail extends ConversationSummary {
   document_files: OnboardingDocument[];
   /** The open ticket while the conversation needs attention. */
   ticket_id: string | null;
+  /** On the do-not-message list: no campaign, reminder or follow-up reaches them. */
+  opted_out?: OptOut | null;
 }
 
 export interface BotSettings {
@@ -479,3 +481,18 @@ export interface Ticket {
 }
 export const fetchTickets = (status?: 'open' | 'resolved') => call<Ticket[]>(`/tickets${status ? `?status=${status}` : ''}`);
 export const fetchRecentlyResolved = () => call<Ticket[]>('/tickets/recently-resolved');
+
+// --- The do-not-message list ---------------------------------------------------
+
+export interface OptOut {
+  source: 'said_stop' | 'disposition' | 'meta' | 'team';
+  label: string;
+  reason: string | null;
+  by: string;
+  at: string | null;
+}
+
+export const putOnOptOut = (phone: string, reason?: string) =>
+  call<OptOut>(`/conversations/${digits(phone)}/opt-out`, { method: 'POST', body: JSON.stringify({ reason }) });
+export const takeOffOptOut = (phone: string) =>
+  call<{ opted_out: null }>(`/conversations/${digits(phone)}/opt-out`, { method: 'DELETE' });

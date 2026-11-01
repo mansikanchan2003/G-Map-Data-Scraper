@@ -227,6 +227,15 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
                 <div className="text-[10px] uppercase text-slate-500 tracking-wider">Never messaged</div>
               </div>
             </div>
+            {!!summary?.opted_out && (
+              <div className="mt-3 flex items-center gap-2 rounded-md border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs text-rose-300">
+                <span className="material-symbols-outlined text-[16px]">block</span>
+                <span>
+                  <b>{summary.opted_out.toLocaleString()}</b> {summary.opted_out === 1 ? 'number has' : 'numbers have'} asked not
+                  to be messaged and {summary.opted_out === 1 ? 'is' : 'are'} left out.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Previously contacted */}

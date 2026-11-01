@@ -30,7 +30,7 @@ const STAGE_ICON: Record<string, string> = {
 };
 const EVENT_ICON: Record<string, string> = {
   nudge: 'notifications', question_ack: 'help', handover: 'support_agent', answered: 'forum', team_reply: 'reply',
-  to_person: 'front_hand', to_bot: 'smart_toy', ticket_solved: 'task_alt', planned: 'event_upcoming',
+  to_person: 'front_hand', to_bot: 'smart_toy', opt_out: 'block', opt_in: 'undo', ticket_solved: 'task_alt', planned: 'event_upcoming',
   to_acquisition: 'handshake', task: 'assignment', bad_pin: 'pin_drop', unknown_pin: 'pin_drop',
 };
 const iconOf = (s: JourneyStep) => s.key.startsWith('disposition:') ? 'label'

@@ -6,6 +6,7 @@ from .business import Business
 from .run_log import RunLog
 from .app_setting import AppSetting
 from .user import User
+from .opt_out import OptOut
 from .autopilot import DiscoveryRound
 from .insights import CampaignInsight, InsightSnapshot
 from .agent_runs import AgentRun
@@ -56,5 +57,6 @@ __all__ = [
     "StudioImagePrompt",
     "StudioRealPhoto",
     "StudioReferencePoster",
-    "User"
+    "User",
+    "OptOut",
 ]

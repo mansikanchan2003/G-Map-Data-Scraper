@@ -1020,6 +1020,9 @@ def _apply_status_event(db: Session, status: dict) -> bool:
         if errors:
             err = errors[0]
             recipient.failure_code = str(err.get("code")) if err.get("code") is not None else None
+            from src.services import opt_out
+            if recipient.failure_code == opt_out.META_STOPPED_CODE and recipient.phone:
+                opt_out.record(db, recipient.phone, opt_out.META, "whatsapp")
             details = (err.get("error_data") or {}).get("details") or ""
             recipient.reason = f"[{err.get('code')}] {err.get('title', '')} {details}".strip()
         elif not recipient.reason:
