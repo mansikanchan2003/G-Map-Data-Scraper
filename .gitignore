@@ -97,3 +97,9 @@ data/backups/
 
 # Business totals exported from Tara on the server (scripts/export_business_context.py)
 data/business_context.json
+
+# ---------------------------------------------------------------------------
+# Deploys (scripts/deploy.sh): database backups and the deploy record
+# ---------------------------------------------------------------------------
+backups/
+.deploy/

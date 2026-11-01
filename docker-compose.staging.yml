@@ -1,0 +1,30 @@
+# Staging: a second, separate copy of AutoGMap on the same server, to try a
+# change on before production (DEPLOYMENT.md, scripts/staging.sh).
+#
+#   docker compose -p autogmap-staging -f docker-compose.yml -f docker-compose.staging.yml up -d postgres backend
+#
+# Its own project name gives it its own containers and its own database
+# volume; it runs from its own folder, so its data/ is its own too. Nothing in
+# it can reach a real person or service: WhatsApp is mocked, no email, no
+# Drive, no DigiLocker, no Kiosk KAI, no scraping or background senders.
+# Reachable only from the server itself (127.0.0.1), through an SSH tunnel.
+services:
+  backend:
+    mem_limit: ${BACKEND_MEMORY_LIMIT:-2g}
+    memswap_limit: ${BACKEND_MEMORY_LIMIT:-2g}
+    environment:
+      ENVIRONMENT: staging
+      MOCK_WHATSAPP_API: "true"
+      DISCOVERY_AUTOPILOT_THREAD: "false"
+      STUDIO_PHOTO_QUEUE_THREAD: "false"
+      BOT_NUDGE_THREAD: "false"
+      FOLLOWUP_THREAD: "false"
+      SMTP_HOST: ""
+      SMTP_FROM: ""
+      GOOGLE_CREDENTIALS_BASE64: ""
+      GOOGLE_DRIVE_FOLDER_ID: ""
+      EKO_DEVELOPER_KEY: ""
+      EKO_ACCESS_KEY: ""
+      EKO_INITIATOR_ID: ""
+      KIOSK_KAI_APP_KEY: ""
+      PUBLIC_BASE_URL: "http://localhost:8100"
