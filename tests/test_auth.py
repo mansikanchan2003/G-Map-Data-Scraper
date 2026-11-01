@@ -47,6 +47,8 @@ def client(monkeypatch):
     # test database too or every request would 401 against an empty one.
     monkeypatch.setattr("src.database.SessionLocal", TestingSessionLocal)
     monkeypatch.setenv("AUTH_JWT_SECRET", "test-secret-long-enough-for-hs256")
+    # Failed sign-ins are counted per process: each test starts with none.
+    auth._failed.clear()
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.pop(get_db, None)
@@ -734,3 +736,68 @@ class TestInboxScope:
         assert client.post("/api/v1/discovery/trigger", json={}).status_code == 403
         # Inside the Inbox it may act (here: no such chat, not "forbidden").
         assert client.post("/api/v1/inbox/conversations/919000000099/messages", json={"message": "hi"}).status_code == 404
+
+
+
+class TestSignInLimits:
+    """Five wrong passwords lock an address for a while (the standards review, 1 Nov 2026)."""
+
+    def test_five_wrong_passwords_lock_the_address_even_for_the_right_one(self, client):
+        email = make_admin()
+        for _ in range(auth.LOGIN_MAX_PER_EMAIL):
+            assert client.post("/api/v1/auth/login", json={"email": email, "password": "wrong-password-1"}).status_code == 401
+        r = client.post("/api/v1/auth/login", json={"email": email, "password": GOOD_PASSWORD})
+        assert r.status_code == 429 and "Try again in" in r.json()["detail"]
+
+    def test_an_address_with_no_account_is_locked_the_same_way(self, client):
+        for _ in range(auth.LOGIN_MAX_PER_EMAIL):
+            client.post("/api/v1/auth/login", json={"email": "nobody@eko.co.in", "password": "x" * 12})
+        r = client.post("/api/v1/auth/login", json={"email": "nobody@eko.co.in", "password": "x" * 12})
+        assert r.status_code == 429
+
+    def test_the_lock_lifts_after_the_window_and_a_success_clears_the_count(self):
+        from datetime import datetime, timedelta, timezone
+        now = datetime(2026, 11, 1, 12, 0, tzinfo=timezone.utc)
+        auth._failed.clear()
+        for _ in range(auth.LOGIN_MAX_PER_EMAIL):
+            auth.login_failed("a@eko.co.in", "1.2.3.4", now)
+        assert auth.login_locked("a@eko.co.in", "1.2.3.4", now) == 16
+        assert auth.login_locked("a@eko.co.in", "1.2.3.4", now + auth.LOGIN_WINDOW) is None
+        auth.login_failed("b@eko.co.in", None, now)
+        auth.login_succeeded("b@eko.co.in")
+        assert "email:b@eko.co.in" not in auth._failed
+
+    def test_many_addresses_from_one_network_address_lock_it(self):
+        auth._failed.clear()
+        for i in range(auth.LOGIN_MAX_PER_IP):
+            auth.login_failed(f"user{i}@eko.co.in", "5.6.7.8")
+        assert auth.login_locked("someone-new@eko.co.in", "5.6.7.8")
+        assert auth.login_locked("someone-new@eko.co.in", "9.9.9.9") is None
+
+
+class TestSessionKey:
+    def test_without_auth_jwt_secret_a_random_key_is_made_once_never_the_db_password(self, monkeypatch, tmp_path):
+        import os
+        monkeypatch.delenv("AUTH_JWT_SECRET", raising=False)
+        monkeypatch.setenv("POSTGRES_PASSWORD", "db-password")
+        path = tmp_path / "key"
+        monkeypatch.setattr(auth, "SECRET_FILE", str(path))
+        monkeypatch.setattr(auth, "_file_secret", None)
+        key = auth.jwt_secret()
+        assert key not in ("db-password", "autogmap-dev-only-secret") and len(key) == 64
+        assert path.read_text() == key
+        if os.name != "nt":
+            assert (path.stat().st_mode & 0o777) == 0o600
+        monkeypatch.setattr(auth, "_file_secret", None)
+        assert auth.jwt_secret() == key   # read back, not made again
+
+    def test_the_configured_key_wins(self, monkeypatch):
+        monkeypatch.setenv("AUTH_JWT_SECRET", "k" * 40)
+        assert auth.jwt_secret() == "k" * 40
+
+
+def test_answers_carry_basic_browser_protections(client):
+    r = client.get("/health")
+    assert r.headers["X-Content-Type-Options"] == "nosniff"
+    assert r.headers["X-Frame-Options"] == "DENY"
+    assert r.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"

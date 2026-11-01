@@ -60,6 +60,9 @@ if [ "$RUNNING" != "0" ] && [ "$RUNNING" != "?" ]; then
 fi
 echo "No scraping job running."
 
+# The settings hold every key: readable by their owner only.
+chmod 600 .env 2>/dev/null || true
+
 # -- 3. Remember what was running ---------------------------------------------------------
 echo "$CURRENT" > .deploy/previous
 echo "$STAMP ${CURRENT:0:7} -> ${TARGET:0:7} started" >> .deploy/history

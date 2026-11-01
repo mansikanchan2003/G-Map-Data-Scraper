@@ -191,9 +191,25 @@ def signup(payload: SignupRequest, background: BackgroundTasks, db: Session = De
             "message": "Request sent. You can sign in once an administrator approves it."}
 
 
+def client_ip(request: Request) -> Optional[str]:
+    """The caller's address. The backend listens on 127.0.0.1 only, so the proxy's header is the real one."""
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    return forwarded or request.headers.get("x-real-ip") or (request.client.host if request.client else None)
+
+
 @router.post("/login")
-def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def login(payload: LoginRequest, response: Response, request: Request, db: Session = Depends(get_db)):
     email = auth.normalise_email(payload.email)
+    ip = client_ip(request)
+    # Too many wrong passwords lately: refused before the password is even read.
+    wait = auth.login_locked(email, ip)
+    if wait:
+        from types import SimpleNamespace
+        from src.services import audit
+        audit.write(SimpleNamespace(email=email[:200] or "(blank)", role=None), "POST", "/api/v1/auth/login", 429,
+                    {"refused": "too many attempts"})
+        raise HTTPException(status_code=429,
+                            detail=f"Too many sign-in attempts. Try again in {wait} minute{'s' if wait > 1 else ''}.")
     user = db.query(User).filter(User.email == email).first()
 
     # One message for "no such account" and "wrong password", so the form
@@ -214,7 +230,10 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     audit.write(SimpleNamespace(email=email[:200] or "(blank)", role=getattr(user, "role", None)), "POST",
                 "/api/v1/auth/login", refused.status_code if refused else 200, None)
     if refused:
+        if refused.status_code == 401:
+            auth.login_failed(email, ip)
         raise refused
+    auth.login_succeeded(email)
 
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()

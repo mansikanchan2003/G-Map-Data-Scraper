@@ -11,7 +11,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Dict, List, Optional
 
 import bcrypt
 import jwt
@@ -65,18 +65,93 @@ COOKIE_NAME = "autogmap_session"
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+# Where the session key is kept when AUTH_JWT_SECRET is not set: made once, at
+# random, readable by its owner only, in data/ (which survives redeploys).
+SECRET_FILE = os.environ.get("AUTH_SECRET_FILE", os.path.join("data", ".auth_jwt_secret"))
+_file_secret: Optional[str] = None
+
+
+def _secret_from_file() -> str:
+    global _file_secret
+    if _file_secret:
+        return _file_secret
+    try:
+        with open(SECRET_FILE, encoding="utf-8") as fh:
+            _file_secret = fh.read().strip()
+    except OSError:
+        _file_secret = None
+    if not _file_secret or len(_file_secret) < 32:
+        import secrets as _secrets
+        os.makedirs(os.path.dirname(SECRET_FILE) or ".", exist_ok=True)
+        _file_secret = _secrets.token_hex(32)
+        fd = os.open(SECRET_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(_file_secret)
+        logger.warning("auth event=SESSION_KEY_CREATED: AUTH_JWT_SECRET is not set, so a random key was made "
+                       f"in {SECRET_FILE}. Everyone signs in again once.")
+    return _file_secret
+
+
 def jwt_secret() -> str:
     """
-    The key sessions are signed with.
-
-    Falls back to the database password so a deployment that forgot to set it
-    still signs with something private rather than a constant everyone knows.
+    The key sessions are signed with: AUTH_JWT_SECRET, or a random key kept in
+    SECRET_FILE. Never the database password or a constant (the standards
+    review, 1 Nov 2026): a key anyone could know lets anyone forge a session.
     """
-    return (
-        os.environ.get("AUTH_JWT_SECRET")
-        or os.environ.get("POSTGRES_PASSWORD")
-        or "autogmap-dev-only-secret"
-    )
+    configured = os.environ.get("AUTH_JWT_SECRET") or ""
+    if configured:
+        if len(configured) < 32:
+            logger.warning("auth event=SHORT_SESSION_KEY: AUTH_JWT_SECRET should be at least 32 characters")
+        return configured
+    return _secret_from_file()
+
+
+# --- Sign-in attempts: slowed down, then refused for a while -------------------------
+#
+# Five wrong passwords for one address in 15 minutes lock that address for 15
+# minutes; 20 from one network address lock that address. The same answer is
+# given whether or not the account exists, so it reveals nothing. Kept in
+# memory: the app runs one worker, and a restart only forgets old failures.
+LOGIN_WINDOW = timedelta(minutes=15)
+LOGIN_MAX_PER_EMAIL = 5
+LOGIN_MAX_PER_IP = 20
+_failed: Dict[str, List[datetime]] = {}
+
+
+def _recent(key: str, now: datetime) -> List[datetime]:
+    kept = [t for t in _failed.get(key, []) if now - t < LOGIN_WINDOW]
+    if kept:
+        _failed[key] = kept
+    else:
+        _failed.pop(key, None)
+    return kept
+
+
+def login_locked(email: str, ip: Optional[str], now: Optional[datetime] = None) -> Optional[int]:
+    """Minutes until sign-in is allowed again for this address or network address; None if it is."""
+    now = now or datetime.now(timezone.utc)
+    waits = []
+    for key, limit in ((f"email:{email}", LOGIN_MAX_PER_EMAIL), (f"ip:{ip}", LOGIN_MAX_PER_IP)):
+        if key == "ip:None":
+            continue
+        recent = _recent(key, now)
+        if len(recent) >= limit:
+            waits.append(LOGIN_WINDOW - (now - recent[-limit]))
+    if not waits:
+        return None
+    return max(1, int(max(waits).total_seconds() // 60) + 1)
+
+
+def login_failed(email: str, ip: Optional[str], now: Optional[datetime] = None) -> None:
+    now = now or datetime.now(timezone.utc)
+    for key in (f"email:{email}", f"ip:{ip}"):
+        if key != "ip:None":
+            _failed.setdefault(key, []).append(now)
+    logger.warning(f"auth event=LOGIN_FAILED email={email} ip={ip}")
+
+
+def login_succeeded(email: str) -> None:
+    _failed.pop(f"email:{email}", None)
 
 
 def normalise_email(email: str) -> str:

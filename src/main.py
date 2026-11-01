@@ -229,6 +229,10 @@ async def require_session(request, call_next):
             db.close()
 
     response = await call_next(request)
+    # Basic browser protections on every answer (the standards review, 1 Nov 2026).
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     if who:
         audit.write(who, request.method, path, response.status_code, getattr(request.state, "audit", None))
     return response

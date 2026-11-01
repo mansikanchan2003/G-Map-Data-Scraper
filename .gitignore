@@ -103,3 +103,6 @@ data/business_context.json
 # ---------------------------------------------------------------------------
 backups/
 .deploy/
+
+# The session key the app makes when AUTH_JWT_SECRET is not set (auth_service.SECRET_FILE)
+data/.auth_jwt_secret

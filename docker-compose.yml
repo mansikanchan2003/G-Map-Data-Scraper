@@ -123,9 +123,9 @@ services:
       EMAIL_MAX_PAGES_PER_SITE: ${EMAIL_MAX_PAGES_PER_SITE:-5}
       EMAIL_NAVIGATION_TIMEOUT_MS: ${EMAIL_NAVIGATION_TIMEOUT_MS:-15000}
 
-      # Sessions and approval emails. Without AUTH_JWT_SECRET the app signs
-      # sessions with the database password, which works but ties the two
-      # together. SMTP is optional: approvals still appear in the queue.
+      # Sessions and approval emails. Without AUTH_JWT_SECRET (32+ characters)
+      # the app makes a random key once in data/.auth_jwt_secret; never the
+      # database password. SMTP is optional: approvals still appear in the queue.
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
       # First password for the seeded admin. Read only while that account
       # has none; it never overwrites one already set.

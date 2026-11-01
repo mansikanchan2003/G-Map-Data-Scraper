@@ -103,7 +103,41 @@ then open http://localhost:8100.
 - **A deploy broke something.** `bash scripts/rollback.sh` (section 3).
 - **Who did what.** Agent quality → Audit log (admin and managers).
 
-## 6. Owners
+## 6. Security
+
+What the app does on its own:
+
+- **Sign-in attempts.** Five wrong passwords for one address in 15 minutes
+  lock it for 15 minutes; 20 from one network address lock that. The same
+  answer either way, so it reveals no accounts. Every sign-in, failed and
+  locked ones too, is in the audit log.
+- **Sessions** are signed with `AUTH_JWT_SECRET` (set it in `.env`, 32+
+  characters: `openssl rand -hex 32`). Without it, a random key is made once
+  in `data/.auth_jwt_secret`; never the database password.
+- **The password reset code** works for 10 minutes and 5 tries.
+- **Browser protections** on every answer: no sniffing, no framing, a strict
+  referrer.
+- **`.env`** is made readable by its owner only on every deploy.
+
+What has to be done by hand:
+
+- **The deploy SSH key.** An SSH key made for an assistant to deploy
+  (`autogmap-deploy`, ED25519, `SHA256:qQup6L5aIVoZrc17sMiRXGzjy0XsX/jKok3IIRQhykI`)
+  is no longer used: deploys are done by hand. Remove it from the server's
+  `authorized_keys` (the line ending in `autogmap-deploy`), then delete
+  `~/.ssh/r730` and `~/.ssh/r730.pub` on the laptop.
+- **Deploying as root.** Every step here runs as root. Running them as the
+  `mansi` user needs that user in the `docker` group, which the server's
+  administrator decides (the docker group is root-equivalent anyway, so the
+  gain is mostly an audit trail of who ran what).
+- **The repository is public.** Anyone can read the code, `CLAUDE.md` and how
+  the bot and agents work; no keys are in it (`.env` is ignored). Making it
+  private (GitHub → Settings → Danger zone → Change visibility) hides that,
+  but GitHub's free Actions minutes for a private repository (2,000 a month)
+  do not cover the uptime check every 5 minutes: it would have to run every
+  30 minutes, or move to an outside service such as UptimeRobot.
+
+## 7. Owners
 
 - Production, deploys and the admin role: Mansi Kanchan.
 - Second approver for large campaigns: Kavya Shukla (manager), or another
