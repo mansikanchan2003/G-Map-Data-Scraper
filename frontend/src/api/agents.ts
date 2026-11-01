@@ -123,3 +123,37 @@ export const startCopyTrial = (state: string, instruction: string, without: stri
   call<{ id: string }>('/playground/copy', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ state, instruction, without }) });
 export const fetchCopyTrial = (id: string) => call<CopyTrial>(`/playground/copy/${id}`);
+
+// --- Personal data: retention and the do-not-message list (services/retention) ----
+
+export interface RetentionPolicy {
+  enabled: boolean;
+  documents_days: number | null;
+  chat_days: number | null;
+  /** What the periods rest on, e.g. "Confirmed by compliance on 5 Nov 2026". */
+  basis: string | null;
+  set_by?: string | null;
+  set_at?: string | null;
+}
+
+export interface DueItem {
+  phone: string;
+  name: string | null;
+  scope: 'documents' | 'chat';
+  since: string;
+  files: number;
+  messages: number;
+}
+
+export interface RetentionState {
+  policy: RetentionPolicy;
+  due: DueItem[];
+  opt_outs: { total: number; by_source: Record<string, number>; sources: Record<string, string> };
+}
+
+export const fetchRetention = () => call<RetentionState>('/retention');
+export const saveRetention = (p: RetentionPolicy) =>
+  call<RetentionPolicy>('/retention', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) });
+export const cleanUp = (items: { phone: string; scope: string }[]) =>
+  call<{ cleaned: number; skipped: number; files: number; messages: number; drive_errors: string[] }>(
+    '/retention/clean', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });

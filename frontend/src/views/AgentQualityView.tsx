@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackToParent } from '../components/SubPage';
 import type { NavTab } from '../components/Header';
 import {
+  cleanUp, fetchRetention, saveRetention, type RetentionState,
   acceptPatch, dismissPatch, fetchAgentQuality, fetchAgentRun, fetchAgentRuns, fetchControls, fetchCopyTrial, fetchGolden,
   fetchLearning, fetchSources, setSwitch, startCopyTrial, tryReply, undoPatch,
   type AgentQuality, type AgentRun, type ContextChunk, type Controls, type CopyTrial, type Draft, type GateReport,
@@ -1130,6 +1131,7 @@ export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean; isAdmin?
         )}
 
         <ControlsCard isAdmin={isAdmin} tokens={contextTokens} />
+        <PersonalDataCard isAdmin={isAdmin} />
 
         {golden && <GoldenCard g={golden} />}
 
@@ -1214,5 +1216,174 @@ export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean; isAdmin?
         </Card>
       </div>
     </div>
+  );
+};
+
+
+// ---------------------------------------------------------------------------
+// Personal data (DPDP): how long chats and documents are kept, what is due
+// under that policy (cleaned up only when the admin confirms), and who asked
+// not to be messaged.
+// ---------------------------------------------------------------------------
+
+const OPT_OUT_COLOR: Record<string, string> = {
+  said_stop: '#fb7185', disposition: '#f59e0b', meta: '#a78bfa', team: '#38bdf8',
+};
+
+const PersonalDataCard: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
+  const [s, setS] = useState<RetentionState | null>(null);
+  const [form, setForm] = useState({ enabled: false, documents_days: '', chat_days: '', basis: '' });
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = () => fetchRetention().then(r => {
+    setS(r);
+    setForm({ enabled: r.policy.enabled, documents_days: r.policy.documents_days?.toString() ?? '',
+      chat_days: r.policy.chat_days?.toString() ?? '', basis: r.policy.basis ?? '' });
+    setPicked(new Set(r.due.map(d => `${d.phone}|${d.scope}`)));
+  }).catch(e => setMsg({ ok: false, text: e.message }));
+  useEffect(() => { load(); }, []);
+
+  const save = async () => {
+    setBusy(true); setMsg(null);
+    try {
+      await saveRetention({ enabled: form.enabled, documents_days: form.documents_days ? Number(form.documents_days) : null,
+        chat_days: form.chat_days ? Number(form.chat_days) : null, basis: form.basis || null });
+      setMsg({ ok: true, text: 'Saved.' });
+      await load();
+    } catch (e: any) { setMsg({ ok: false, text: e.message }); } finally { setBusy(false); }
+  };
+
+  const clean = async () => {
+    if (!s) return;
+    const items = s.due.filter(d => picked.has(`${d.phone}|${d.scope}`)).map(d => ({ phone: d.phone, scope: d.scope }));
+    if (!items.length || !window.confirm(`Clean up ${items.length} chat${items.length > 1 ? 's' : ''} now? ` +
+      'Message text is replaced, files are deleted from the server and Drive files go to Drive\'s trash. This cannot be undone here.')) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await cleanUp(items);
+      setMsg({ ok: !r.drive_errors.length, text: `Cleaned up ${r.cleaned} (${r.files} files, ${r.messages} messages)` +
+        (r.skipped ? `; ${r.skipped} no longer due` : '') + (r.drive_errors.length ? `; Drive: ${r.drive_errors[0]}` : '') });
+      await load();
+    } catch (e: any) { setMsg({ ok: false, text: e.message }); } finally { setBusy(false); }
+  };
+
+  if (!s) return null;
+  const p = s.policy;
+  const total = s.opt_outs.total;
+  const sources = Object.entries(s.opt_outs.sources);
+  const max = Math.max(1, ...sources.map(([k]) => s.opt_outs.by_source[k] || 0));
+  const field = 'w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-[13px] text-slate-100 disabled:opacity-60';
+
+  return (
+    <Card title="Personal data" icon="shield_person"
+      sub="How long chats and documents are kept, and who asked not to be messaged (DPDP)"
+      right={(
+        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11.5px] font-semibold ${p.enabled ? 'bg-emerald-950 text-emerald-300' : 'bg-amber-950 text-amber-300'}`}>
+          <Icon name={p.enabled ? 'verified_user' : 'pending'} className="text-[15px]" />
+          {p.enabled ? `Clean-up on · docs ${p.documents_days} d · chats ${p.chat_days} d` : 'Clean-up off · waiting for compliance'}
+        </span>
+      )}>
+      {msg && <div className={`mb-3 p-2.5 rounded-lg border text-[12.5px] ${msg.ok ? 'border-emerald-800/60 bg-emerald-950 text-emerald-300' : 'border-rose-800/60 bg-rose-950 text-rose-300'}`}>{msg.text}</div>}
+      <div className="grid gap-5 xl:grid-cols-[1fr_1.3fr_0.9fr]">
+        {/* The policy */}
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+          <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 mb-3 flex items-center gap-1.5">
+            <Icon name="schedule" className="text-[15px]" />Keep for
+          </div>
+          <label className="block text-[12px] text-slate-400 mb-1">Documents, after they were submitted (days)</label>
+          <input type="number" min={30} max={3650} value={form.documents_days} disabled={!isAdmin}
+            onChange={e => setForm(f => ({ ...f, documents_days: e.target.value }))} className={field} placeholder="e.g. 180" />
+          <label className="block text-[12px] text-slate-400 mt-3 mb-1">Chats that never submitted, after the last message (days)</label>
+          <input type="number" min={30} max={3650} value={form.chat_days} disabled={!isAdmin}
+            onChange={e => setForm(f => ({ ...f, chat_days: e.target.value }))} className={field} placeholder="e.g. 365" />
+          <label className="block text-[12px] text-slate-400 mt-3 mb-1">Based on</label>
+          <input value={form.basis} maxLength={300} disabled={!isAdmin}
+            onChange={e => setForm(f => ({ ...f, basis: e.target.value }))} className={field}
+            placeholder="e.g. Confirmed by compliance on 5 Nov 2026" />
+          <div className="flex items-center justify-between mt-4">
+            <label className="flex items-center gap-2 text-[12.5px] text-slate-300">
+              <Toggle on={form.enabled} disabled={!isAdmin} label="Clean-up" onChange={v => setForm(f => ({ ...f, enabled: v }))} />
+              Clean-up on
+            </label>
+            <button onClick={save} disabled={!isAdmin || busy}
+              className="px-3 py-1.5 rounded-lg text-[12.5px] font-semibold bg-sky-600 hover:bg-sky-500 text-white disabled:opacity-50">Save</button>
+          </div>
+          <p className="text-[11.5px] text-slate-500 mt-3">
+            {p.set_by ? <>Last set by {p.set_by} · {ago(p.set_at ?? null)}. </> : null}
+            Nothing is ever cleaned up on its own: what is due is listed here and goes only when the admin confirms it.
+          </p>
+        </div>
+
+        {/* Due now */}
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4 min-w-0">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 flex items-center gap-1.5">
+              <Icon name="cleaning_services" className="text-[15px]" />Due for clean-up
+            </div>
+            {s.due.length > 0 && (
+              <button onClick={clean} disabled={!isAdmin || busy || !picked.size}
+                className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-rose-700 hover:bg-rose-600 text-white disabled:opacity-50">
+                Clean up {picked.size}
+              </button>
+            )}
+          </div>
+          {!p.enabled ? (
+            <div className="flex flex-col items-center justify-center text-center py-8 text-slate-500">
+              <Icon name="gavel" className="text-[34px] text-amber-400/80" />
+              <div className="text-[13px] text-slate-300 mt-2 font-semibold">Waiting for the periods</div>
+              <div className="text-[12px] mt-1 max-w-xs">Set them once legal/compliance confirms them. Until then nothing is due.</div>
+            </div>
+          ) : s.due.length === 0 ? (
+            <div className="flex flex-col items-center justify-center text-center py-8 text-slate-500">
+              <Icon name="task_alt" className="text-[34px] text-emerald-400" />
+              <div className="text-[13px] text-slate-300 mt-2 font-semibold">Nothing is due</div>
+            </div>
+          ) : (
+            <ul className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+              {s.due.map(d => {
+                const k = `${d.phone}|${d.scope}`;
+                return (
+                  <li key={k} className="flex items-center gap-2.5 rounded-lg border border-slate-800 px-2.5 py-2 text-[12.5px]">
+                    <input type="checkbox" checked={picked.has(k)} disabled={!isAdmin}
+                      onChange={() => setPicked(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; })} />
+                    <span className={`px-1.5 py-0.5 rounded text-[10.5px] font-semibold ${d.scope === 'documents' ? 'bg-violet-950 text-violet-300' : 'bg-sky-950 text-sky-300'}`}>
+                      {d.scope === 'documents' ? `${d.files} document${d.files > 1 ? 's' : ''}` : `${d.messages} messages`}
+                    </span>
+                    <span className="text-slate-200 truncate flex-1">{d.name || 'No name'} <span className="text-slate-500 font-mono-code">…{d.phone.slice(-4)}</span></span>
+                    <span className="text-slate-500 whitespace-nowrap">{d.scope === 'documents' ? 'submitted' : 'last message'} {ago(d.since)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* The do-not-message list */}
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+          <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 mb-3 flex items-center gap-1.5">
+            <Icon name="block" className="text-[15px]" />Do not message
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-bold text-slate-100 tabular-nums">{num(total)}</span>
+            <span className="text-[12px] text-slate-500">number{total === 1 ? '' : 's'}, skipped by every campaign</span>
+          </div>
+          <ul className="mt-4 space-y-2.5">
+            {sources.map(([k, label]) => {
+              const n = s.opt_outs.by_source[k] || 0;
+              return (
+                <li key={k}>
+                  <div className="flex justify-between text-[12px] text-slate-300"><span>{label}</span><span className="tabular-nums text-slate-400">{n}</span></div>
+                  <div className="h-1.5 rounded-full bg-slate-800 mt-1 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${(n / max) * 100}%`, background: OPT_OUT_COLOR[k] || '#94a3b8' }} />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </div>
+    </Card>
   );
 };

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ATTENTION_CHANGED, fetchBotSettings, fetchFaqAnswers, teachTheBot, type FaqAnswer, fetchChatSummary, fetchTickets, fetchConversation, fetchConversations, markConversationRead, setAttention, sendInboxMedia,
-  saveBotSettings, saveDocumentsToDrive, sendInboxMessage, documentUrl, mediaUrl, putOnOptOut, takeOffOptOut,
+  saveBotSettings, saveDocumentsToDrive, sendInboxMessage, documentUrl, mediaUrl, putOnOptOut, takeOffOptOut, erasePerson,
   type BotSettings, type ChatSummary, type ConversationDetail, type Ticket, type ConversationSummary, type ThreadMessage,
 } from '../api/inbox';
 import { DispositionChip, DispositionDialog, HandoverBar, useDispositionOptions } from '../components/Handover';
@@ -820,7 +820,7 @@ const Details: React.FC<{
 
 // --- The view ----------------------------------------------------------------
 
-export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not_autogmap' | null }> = ({ readOnly = false, scope = null }) => {
+export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not_autogmap' | null; isAdmin?: boolean }> = ({ readOnly = false, scope = null, isAdmin = false }) => {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
@@ -1232,7 +1232,7 @@ export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not
                   </div>
                 )}
                 {detail && (
-                  <OptOutBar conv={detail} readOnly={readOnly}
+                  <OptOutBar conv={detail} readOnly={readOnly} isAdmin={isAdmin}
                     onChanged={() => { loadThread(selected); loadList(); }} />
                 )}
                 {detail?.needs_attention && (
@@ -1377,12 +1377,24 @@ const OPT_OUT_ICON: Record<string, string> = {
   said_stop: 'do_not_disturb_on', disposition: 'thumb_down', meta: 'notifications_off', team: 'front_hand',
 };
 
-function OptOutBar({ conv, readOnly, onChanged }: { conv: ConversationDetail; readOnly: boolean; onChanged: () => void }) {
+function OptOutBar({ conv, readOnly, isAdmin = false, onChanged }: { conv: ConversationDetail; readOnly: boolean; isAdmin?: boolean; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const out = conv.opted_out;
+  const erased = !!(conv.bot_data as any)?.erased;
+  const erase = () => {
+    const reason = window.prompt('Erase this person\'s documents and chat? This cannot be undone here; Drive files go to '
+      + 'Drive\'s trash, and they stay on the do-not-message list.\n\nWhy (e.g. "Asked by email on 3 Nov"):');
+    if (reason && reason.trim().length >= 3) run(() => erasePerson(conv.phone, reason.trim()));
+  };
+  const eraseButton = (
+    <button disabled={busy} onClick={erase} title="DPDP right to erasure (admin only)"
+      className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded border border-rose-900 text-rose-300 hover:bg-rose-950 cursor-pointer disabled:opacity-50 whitespace-nowrap">
+      <span className="material-symbols-outlined text-[15px]">delete_forever</span>Erase data
+    </button>
+  );
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -1413,6 +1425,12 @@ function OptOutBar({ conv, readOnly, onChanged }: { conv: ConversationDetail; re
             {out.at ? ` · ${new Date(out.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
           </span>
         </span>
+        {erased && (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded border border-slate-700 text-slate-300 whitespace-nowrap">
+            <span className="material-symbols-outlined text-[15px]">delete_sweep</span>Data erased
+          </span>
+        )}
+        {isAdmin && !readOnly && !erased && eraseButton}
         {!readOnly && (
           <button disabled={busy} onClick={() => {
             if (window.confirm('Take this number off the do-not-message list? Only do this if they asked to hear from us again.')) {
@@ -1432,11 +1450,14 @@ function OptOutBar({ conv, readOnly, onChanged }: { conv: ConversationDetail; re
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-slate-800 bg-slate-950 text-xs text-slate-400">
       {!asking ? (
+        <>
+        {isAdmin && <span className="ml-auto">{eraseButton}</span>}
         <button onClick={() => setAsking(true)}
           title="They asked not to be contacted: no campaign, reminder or follow-up will reach them"
-          className="ml-auto inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-slate-700 text-slate-300 hover:border-rose-800 hover:text-rose-300 cursor-pointer">
+          className={`${isAdmin ? '' : 'ml-auto '}inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-slate-700 text-slate-300 hover:border-rose-800 hover:text-rose-300 cursor-pointer`}>
           <span className="material-symbols-outlined text-[15px]">block</span>Do not message
         </button>
+        </>
       ) : (
         <>
           <span className="material-symbols-outlined text-[16px] text-rose-400">block</span>

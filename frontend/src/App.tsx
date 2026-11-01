@@ -235,7 +235,7 @@ export default function App() {
 
           {shownTab === 'whatsapp-studio' && <TemplateStudioView can={can} />}
 
-          {shownTab === 'whatsapp-inbox' && <InboxView readOnly={readOnly} scope={user.inbox_scope} />}
+          {shownTab === 'whatsapp-inbox' && <InboxView readOnly={readOnly} scope={user.inbox_scope} isAdmin={user.role === 'admin'} />}
 
           {shownTab === 'applications' && <ApplicationsView readOnly={readOnly} can={can} />}
           {shownTab === 'dispositions' && <DispositionsView readOnly={readOnly} can={can} />}

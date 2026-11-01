@@ -27,7 +27,7 @@ from src.models import Business
 from src.models.inbox import OnboardingDocument, WhatsAppConversation, WhatsAppMessage
 from src.models.user import User
 from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppTemplate
-from src.routers.auth import current_user
+from src.routers.auth import current_admin, current_user
 from src.services import dispositions as dz, followups, handover, nudge_templates, tickets
 from src.services import drive_uploads, inbox, onboarding_bot, opt_out
 
@@ -572,6 +572,25 @@ def take_off_opt_out(digits: str, db: Session = Depends(get_db), user: User = De
         handover._log(db, conv, "opt_in", user.email, None, None)
     db.commit()
     return {"opted_out": None}
+
+
+class EraseRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=300)
+
+
+@router.post("/conversations/{digits}/erase")
+def erase_person(digits: str, payload: EraseRequest, db: Session = Depends(get_db),
+                 admin: User = Depends(current_admin)):
+    """
+    Erase this person's data at their request (DPDP; admin only): documents
+    and chat (see services/retention). Their number stays on the do-not-message list.
+    """
+    from src.services import retention
+    conv = _get_conversation(db, digits)
+    opt_out.record(db, conv.phone, opt_out.TEAM, admin.email, "Asked for their data to be erased")
+    out = retention.erase(db, conv.phone, admin.email, payload.reason.strip(), retention.ALL)
+    db.commit()
+    return out
 
 
 @router.get("/opt-outs")

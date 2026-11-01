@@ -84,6 +84,14 @@ def _create_folder(session, name: str, parent: str) -> dict:
     ))
 
 
+def trash(file_id: str) -> None:
+    """Move a file or folder to Drive's trash (services/retention): recoverable there for 30 days, not deleted."""
+    if not configured():
+        raise RuntimeError("Google Drive is not set up, so the Drive copy was left as it is.")
+    _check(_session().patch(f"{FILES_URL}/{file_id}", params={"supportsAllDrives": "true", "fields": "id"},
+                            json={"trashed": True}, timeout=30))
+
+
 def _upload(session, path: str, name: str, content_type: str, parent: str) -> dict:
     boundary = "autogmap-onboarding-upload"
     meta = json.dumps({"name": name, "parents": [parent]})

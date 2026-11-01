@@ -157,6 +157,8 @@ services:
       EKO_BASE_URL: ${EKO_BASE_URL:-https://api.eko.in/ekoicici/v3}
       # What the upload page fetches from DigiLocker; PAN is off until Eko returns its details.
       EKO_DIGILOCKER_DOCUMENTS: ${EKO_DIGILOCKER_DOCUMENTS:-AADHAAR,DRIVING_LICENSE}
+      # Where people ask to see, correct or erase their data (the privacy notice). Empty: "reply on WhatsApp".
+      PRIVACY_CONTACT_EMAIL: ${PRIVACY_CONTACT_EMAIL:-}
       # The growth plan reads the form and TARA through Kiosk KAI. The app's
       # OWN Kiosk KAI key (from Abhishek), never a person's. Empty: off.
       KIOSK_KAI_APP_KEY: ${KIOSK_KAI_APP_KEY:-}

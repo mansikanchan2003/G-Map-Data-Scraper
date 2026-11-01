@@ -496,3 +496,8 @@ export const putOnOptOut = (phone: string, reason?: string) =>
   call<OptOut>(`/conversations/${digits(phone)}/opt-out`, { method: 'POST', body: JSON.stringify({ reason }) });
 export const takeOffOptOut = (phone: string) =>
   call<{ opted_out: null }>(`/conversations/${digits(phone)}/opt-out`, { method: 'DELETE' });
+
+/** Erase this person's documents and chat at their request (admin only); they stay on the do-not-message list. */
+export const erasePerson = (phone: string, reason: string) =>
+  call<{ files: number; messages: number; drive_errors: string[] }>(
+    `/conversations/${digits(phone)}/erase`, { method: 'POST', body: JSON.stringify({ reason }) });

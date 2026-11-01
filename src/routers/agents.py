@@ -2,7 +2,7 @@
 The Agent quality page: how AutoGMap's agents are doing (agent_telemetry.py),
 and each run's full chain, with the context it used, for the "why".
 """
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -145,6 +145,62 @@ def switch_context(key: str, req: SwitchRequest, db: Session = Depends(get_db), 
         return agent_controls.set_context(db, key, req.enabled, admin.email)
     except KeyError:
         raise HTTPException(status_code=404, detail="No such context source")
+
+
+# --- Personal data: how long it is kept (services/retention) -----------------------
+
+class RetentionPolicy(BaseModel):
+    enabled: bool = False
+    documents_days: Optional[int] = None
+    chat_days: Optional[int] = None
+    # What the periods rest on, e.g. "Confirmed by compliance on 5 Nov 2026".
+    basis: Optional[str] = None
+
+
+class CleanItem(BaseModel):
+    phone: str
+    scope: str
+
+
+class CleanRequest(BaseModel):
+    # Exactly what the admin was shown: only these, if still due, are cleaned up.
+    items: List[CleanItem]
+
+
+@router.get("/retention")
+def retention_state(db: Session = Depends(get_db)):
+    """The retention policy, what is due under it now, and the do-not-message list's size."""
+    from src.models.opt_out import OptOut
+    from src.services import opt_out, retention
+    by = {}
+    for (source,) in db.query(OptOut.source).all():
+        by[source] = by.get(source, 0) + 1
+    return {"policy": retention.policy(db), "due": retention.due(db),
+            "opt_outs": {"total": sum(by.values()), "by_source": by, "sources": opt_out.SOURCES}}
+
+
+@router.put("/retention")
+def set_retention(req: RetentionPolicy, db: Session = Depends(get_db), admin: User = Depends(current_admin)):
+    """Set how long documents and chats are kept (admin only). Off until both periods and their basis are set."""
+    from src.services import retention
+    for days in (req.documents_days, req.chat_days):
+        if days is not None and not 30 <= days <= 3650:
+            raise HTTPException(status_code=400, detail="A period must be between 30 days and 10 years.")
+    try:
+        out = retention.set_policy(db, admin.email, req.enabled, req.documents_days, req.chat_days, req.basis)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    return out
+
+
+@router.post("/retention/clean")
+def clean_up(req: CleanRequest, db: Session = Depends(get_db), admin: User = Depends(current_admin)):
+    """Clean up what the admin confirmed from the due list (admin only)."""
+    from src.services import retention
+    out = retention.clean(db, [i.model_dump() for i in req.items], admin.email)
+    db.commit()
+    return out
 
 
 @router.get("/runs/{run_id}")

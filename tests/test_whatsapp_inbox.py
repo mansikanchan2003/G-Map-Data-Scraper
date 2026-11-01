@@ -3598,3 +3598,104 @@ def test_the_team_puts_a_number_on_the_list_from_the_inbox_and_takes_it_off(db, 
     assert client.get(f"/api/v1/inbox/conversations/{digits}").json()["opted_out"] is None
     kinds = [a.kind for a in db.query(ChatActivity).filter_by(phone=PHONE)]
     assert "opt_out" in kinds and "opt_in" in kinds
+
+
+# --- Personal data: retention, erasure and the privacy notice (services/retention) ---
+
+from src.services import retention  # noqa: E402
+
+
+@pytest.fixture
+def trashed(monkeypatch):
+    out = []
+    monkeypatch.setattr(drive_uploads, "trash", lambda file_id: out.append(file_id))
+    return out
+
+
+def _policy(client, **kw):
+    body = {"enabled": True, "documents_days": 180, "chat_days": 365, "basis": "Confirmed by compliance"}
+    body.update(kw)
+    return client.put("/api/v1/agents/retention", json=body)
+
+
+def test_the_clean_up_starts_off_and_cannot_go_on_without_periods_and_their_basis(db, client):
+    state = client.get("/api/v1/agents/retention").json()
+    assert state["policy"]["enabled"] is False and state["due"] == []
+    r = _policy(client, basis="")
+    assert r.status_code == 400 and "based on" in r.json()["detail"]
+    assert _policy(client, documents_days=10).status_code == 400
+    assert _policy(client).json()["enabled"] is True
+
+
+def test_old_documents_are_listed_and_go_only_when_the_admin_confirms_them(db, client, trashed):
+    import os
+    c = _submitted(db, client)
+    paths = [d.stored_path for d in db.query(OnboardingDocument).filter_by(phone=PHONE)]
+    c.bot_data = {**c.bot_data, "drive_folder_id": "folder1"}
+    c.documents_submitted_at = inbox.now() - timedelta(days=200)
+    db.commit()
+    # Off: nothing is due, however old.
+    assert retention.due(db) == []
+    _policy(client)
+    due = client.get("/api/v1/agents/retention").json()["due"]
+    assert [(d["phone"], d["scope"]) for d in due] == [(PHONE, "documents")] and due[0]["files"] == len(paths)
+
+    # Only what the admin was shown is cleaned up; anything else is skipped.
+    r = client.post("/api/v1/agents/retention/clean",
+                    json={"items": [{"phone": PHONE, "scope": "documents"}, {"phone": "+919000000099", "scope": "chat"}]})
+    assert r.json()["cleaned"] == 1 and r.json()["skipped"] == 1
+    assert trashed == ["folder1"]   # the Drive folder goes to Drive's trash, not deleted
+    assert db.query(OnboardingDocument).filter_by(phone=PHONE).count() == 0
+    assert not any(os.path.exists(p) for p in paths)
+    db.refresh(c)
+    assert c.upload_token is None and c.bot_data["erased"]["scope"] == "documents"
+    assert retention.due(db) == []
+
+
+def test_an_old_chat_that_never_submitted_has_its_text_removed(db, client):
+    tap_campaign(db)
+    say(db, "Mera naam Ravi hai, PIN 110001")
+    c = conv(db)
+    c.profile_name = "Ravi"
+    c.last_message_at = inbox.now() - timedelta(days=400)
+    db.commit()
+    _policy(client)
+    assert [(d["scope"]) for d in retention.due(db)] == ["chat"]
+    client.post("/api/v1/agents/retention/clean", json={"items": [{"phone": PHONE, "scope": "chat"}]})
+    bodies = {m.body for m in db.query(WhatsAppMessage).filter_by(phone=PHONE)}
+    assert bodies == {retention.REMOVED}
+    db.refresh(c)
+    assert c.profile_name is None and "lang" in c.bot_data and retention.due(db) == []
+
+
+def test_an_admin_erases_a_person_at_their_request_and_they_stay_off_campaigns(db, client, trashed):
+    _submitted(db, client)
+    digits = PHONE.lstrip("+")
+    r = client.post(f"/api/v1/inbox/conversations/{digits}/erase", json={"reason": "Asked by email on 3 Nov"})
+    assert r.status_code == 200 and r.json()["files"] > 0 and r.json()["messages"] > 0
+    assert {m.body for m in db.query(WhatsAppMessage).filter_by(phone=PHONE)} == {retention.ERASED}
+    assert opt_out.entry(db, PHONE).reason == "Asked for their data to be erased"
+    detail = client.get(f"/api/v1/inbox/conversations/{digits}").json()
+    assert detail["bot_data"]["erased"]["scope"] == "all" and detail["document_files"] == []
+    assert "erased" in [a.kind for a in db.query(ChatActivity).filter_by(phone=PHONE)]
+
+
+def test_only_an_admin_may_erase(db, client):
+    tap_campaign(db)
+
+    class Operator:
+        email, role = "op@eko.co.in", "operator"
+    app.dependency_overrides[current_user] = lambda: Operator()
+    r = client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/erase", json={"reason": "Asked"})
+    assert r.status_code == 403
+    assert client.put("/api/v1/agents/retention", json={"enabled": False}).status_code == 403
+
+
+def test_the_privacy_notice_is_public_and_linked_from_the_upload_page(db, client, monkeypatch):
+    monkeypatch.setenv("PRIVACY_CONTACT_EMAIL", "privacy@example.in")
+    page = client.get("/onboard/privacy")
+    assert page.status_code == 200 and "How we use your information" in page.text
+    assert "STOP" in page.text and "privacy@example.in" in page.text
+    token = _link(db)
+    upload = client.get(f"/onboard/{token}").text
+    assert 'href="privacy"' in upload and "By submitting, you agree" in upload

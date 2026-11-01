@@ -91,6 +91,62 @@ def favicon():
     return FileResponse(os.path.join(_ASSETS, "eko-favicon.ico"), media_type="image/x-icon")
 
 
+# --- The privacy notice (DPDP), linked from the upload page -------------------------
+#
+# What is collected, why, who sees it, how long it is kept and how to withdraw.
+# Written for compliance to review: the retention periods are theirs to set
+# (services/retention), so the notice says the policy, not a number of days.
+
+def _privacy_contact() -> str:
+    email = (os.environ.get("PRIVACY_CONTACT_EMAIL") or "").strip()
+    return (f'email <a href="mailto:{email}">{email}</a> or reply on WhatsApp' if email
+            else "reply to us on WhatsApp")
+
+
+PRIVACY = """
+<h1>How we use your information</h1>
+<p class="lead">Eko uses the details you share with us only to help you become an SBI Customer Service Point (CSP)
+operator with Eko. <span lang="hi">आपकी जानकारी का उपयोग केवल Eko के साथ SBI CSP बनने में आपकी मदद के लिए किया जाता है।</span></p>
+<h2>What we collect</h2>
+<ul>
+  <li>Your WhatsApp number and name, and what you write to us.</li>
+  <li>Your answers: language, PIN code, education, whether you can invest.</li>
+  <li>The documents you upload, such as PAN, Aadhaar and a photo. If you use DigiLocker, the details DigiLocker
+      shares with your consent; we keep only the last four digits of your Aadhaar number.</li>
+</ul>
+<h2>Why</h2>
+<p>To check whether we can serve your area, to process your application to run a CSP, and to contact you about it.</p>
+<h2>Who sees it</h2>
+<p>Eko's onboarding team. Your application and documents are shared with SBI, and with the service providers we use to
+run this (WhatsApp, Google Drive for document storage, and DigiLocker through Eko's own platform), only as needed for
+your onboarding. We do not sell your information.</p>
+<h2>How long we keep it</h2>
+<p>Only as long as your onboarding needs it, under Eko's data retention policy. After that it is removed.</p>
+<h2>Your choices</h2>
+<ul>
+  <li><b>Stop messages:</b> reply <b>STOP</b> on WhatsApp at any time. Reply <b>START</b> to hear from us again.</li>
+  <li><b>See, correct or erase your information:</b> __CONTACT__. We will act on it and confirm.</li>
+</ul>
+"""
+
+
+@router.get("/onboard/privacy", response_class=HTMLResponse, include_in_schema=False)
+def privacy_notice():
+    with open(os.path.join(_ASSETS, "eko-logo.svg"), encoding="utf-8") as fh:
+        logo = fh.read()
+    logo = logo[logo.index("<svg"):]
+    head = PAGE[:PAGE.index("</style>")].replace("<title>Eko · Upload documents</title>", "<title>Eko · Privacy notice</title>") + """
+  .notice h2 { font: 700 1rem/1.3 "Plus Jakarta Sans", Inter, sans-serif; margin: 18px 0 6px; }
+  .notice p, .notice li { font-size: .92rem; color: var(--ink); }
+  .notice ul { padding-left: 20px; margin: 6px 0; }
+  .notice li { margin: 4px 0; }
+  .notice a { color: var(--teal); font-weight: 600; }
+</style></head><body>"""
+    body = (f'<header>{logo}</header><main><div class="card notice">'
+            f'{PRIVACY.replace("__CONTACT__", _privacy_contact())}</div></main></body></html>')
+    return HTMLResponse(head + body, headers={"Cache-Control": "no-cache", "X-Robots-Tag": "noindex"})
+
+
 @router.get("/onboard/{token}", response_class=HTMLResponse, include_in_schema=False)
 def upload_page(token: str, db: Session = Depends(get_db)):
     conv = _conversation(db, token)
@@ -402,6 +458,8 @@ PAGE = """<!doctype html>
   .btn-dl:disabled { background: #a5b4e8; cursor: wait; }
   .verified { display: inline-flex; align-items: center; gap: 4px; background: var(--ok-bg); color: var(--ok);
               font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 2px 9px; margin-left: 6px; }
+  .consent { font-size: .8rem; color: var(--muted); margin: 18px 0 10px; line-height: 1.45; }
+  .consent a, footer a { color: var(--teal); font-weight: 600; }
   .center { text-align: center; }
   .big { font-size: 3rem; line-height: 1; margin: 6px 0 10px; }
   footer { text-align: center; color: var(--muted); font-size: .78rem; margin: 18px 0 0; }
@@ -413,7 +471,8 @@ PAGE = """<!doctype html>
 <body>
 <header>__LOGO__</header>
 <main><div class="card" id="app"></div>
-<footer>Your documents are shared securely with Eko and used only for your onboarding.</footer></main>
+<footer>Your documents are shared securely with Eko and used only for your onboarding.
+  <a href="privacy" target="_blank" rel="noopener">Privacy notice</a> · Reply STOP on WhatsApp to stop messages.</footer></main>
 <script>
 const CFG = __CONFIG__;
 const app = document.getElementById('app');
@@ -445,6 +504,9 @@ if (CFG.state === 'invalid') {
     <span class="accepted">Accepted formats: ${esc(CFG.accepted)}</span>
     <div id="docs"></div>
     <div class="banner" id="msg" role="alert"></div>
+    <p class="consent">🔒 By submitting, you agree that Eko uses these documents to process your application for an
+      SBI CSP, and shares them with SBI for it. <a href="privacy" target="_blank" rel="noopener">How we use your
+      information</a></p>
     <button class="btn btn-primary" id="submit" disabled>Submit documents</button>`;
 
   const docs = document.getElementById('docs');
