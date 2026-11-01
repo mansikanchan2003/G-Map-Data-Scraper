@@ -1,0 +1,61 @@
+# Tests on every push and pull request (the standards review, 1 Nov 2026: testing
+# and independent validation, controlled deployment). A commit is ready to deploy
+# only when this is green: the full test suite, the golden set of bot
+# conversations, and the frontend build (which type-checks it).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Tests and golden set
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Nothing here reaches WhatsApp, Meta, Eko or Kiosk KAI.
+      MOCK_WHATSAPP_API: "true"
+      DISCOVERY_AUTOPILOT_THREAD: "false"
+      STUDIO_PHOTO_QUEUE_THREAD: "false"
+      BOT_NUDGE_THREAD: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          mkdir -p data
+          pip install -r requirements.txt
+      - name: Tests
+        run: python -m pytest -q -p no:cacheprovider
+      - name: Golden set
+        run: python -m src.evals.golden
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
