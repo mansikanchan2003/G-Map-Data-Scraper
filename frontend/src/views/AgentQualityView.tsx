@@ -37,6 +37,13 @@ const AGENT: Record<string, { icon: string; color: string; short: string }> = {
   bot_faq: { icon: 'quiz', color: 'var(--ag-3)', short: 'Bot FAQ' },
   bot_reply_disposition: { icon: 'rule', color: 'var(--ag-4)', short: 'Bot dispositions' },
   inbox_ready_reply: { icon: 'quickreply', color: 'var(--ag-5)', short: 'Ready replies' },
+  // Automatic actions that are not language agents: neutral ink, their own icons.
+  campaign_sending: { icon: 'campaign', color: 'var(--ag-1)', short: 'Campaigns' },
+  bot_nudges: { icon: 'notifications_active', color: 'var(--ag-3)', short: 'Reminders' },
+  followups: { icon: 'event_repeat', color: 'var(--ag-4)', short: 'Follow-ups' },
+  auto_replies: { icon: 'waving_hand', color: 'var(--ag-5)', short: 'Auto-reply greeting' },
+  invest_video: { icon: 'smart_display', color: 'var(--ag-2)', short: 'Investment video' },
+  digilocker: { icon: 'verified_user', color: 'var(--ag-3)', short: 'DigiLocker' },
 };
 const agentOf = (k: string) => AGENT[k] || { icon: 'smart_toy', color: 'var(--ag-1)', short: k };
 

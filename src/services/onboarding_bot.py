@@ -812,7 +812,8 @@ def _send_invest_video(db, conv) -> bool:
 
 def _invest_breakdown(db, conv) -> bool:
     """For a Gujarat campaign's lead, the breakdown as the video. True when the video went."""
-    if not from_gujarat_campaign(db, conv.phone):
+    from src.services import agent_controls
+    if not agent_controls.is_on(db, "invest_video") or not from_gujarat_campaign(db, conv.phone):
         return False
     last = (conv.bot_data or {}).get("invest_video_at")
     if last and inbox.now() - datetime.fromisoformat(last) < INVEST_VIDEO_AGAIN:

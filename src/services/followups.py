@@ -310,6 +310,9 @@ def tick(db: Session, now: Optional[datetime] = None) -> int:
     from src.services import onboarding_bot as bot
 
     now = now or inbox.now()
+    from src.services import agent_controls
+    if not agent_controls.is_on(db, "followups"):
+        return 0  # turned off by the admin: due follow-ups wait
     if not bot.get_settings(db)["enabled"]:
         return 0
     convs = {}

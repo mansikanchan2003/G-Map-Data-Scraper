@@ -34,6 +34,27 @@ AGENTS: Dict[str, dict] = {
     "inbox_ready_reply": {"label": "Inbox: ready replies",
                           "on": "Suggests a ready reply in the chat summary",
                           "off": "The summary suggests nothing; the team writes every reply"},
+    # Everything else that messages people or fetches their data by itself
+    # (the standards review, 1 Nov 2026: a kill switch for every automatic action).
+    "campaign_sending": {"label": "Campaign sending",
+                         "on": "Campaigns send to their recipients",
+                         "off": "No campaign sends: running ones stop before their next batch and can be "
+                                "resumed later; new ones cannot be launched or approved"},
+    "bot_nudges": {"label": "Bot: reminders",
+                   "on": "Reminds people who went quiet in the bot's questions, once an hour later",
+                   "off": "No reminders; people answer when they come back"},
+    "followups": {"label": "Follow-ups",
+                  "on": "Sends the follow-ups dispositions plan (nudges, callbacks, hand-over to Acquisition)",
+                  "off": "Nothing is sent or handed over automatically; due follow-ups wait until it is back on"},
+    "auto_replies": {"label": "Greeting after a shop's auto-reply",
+                     "on": "Greets chats whose only answer was their shop's automatic reply",
+                     "off": "Those chats are left for the team"},
+    "invest_video": {"label": "Bot: Gujarat investment video",
+                     "on": "Gujarat campaign leads get the ₹3–5 lakh video instead of the text breakdown",
+                     "off": "Everyone gets the text breakdown"},
+    "digilocker": {"label": "DigiLocker on the upload page",
+                   "on": "People can fetch Aadhaar (and their licence) from DigiLocker; each fetch is billed",
+                   "off": "The upload page offers uploads only; nothing is fetched or billed"},
 }
 # The template agents' context, piece by piece (template_studio.prompt_context's sources).
 CONTEXT: Dict[str, dict] = {

@@ -580,6 +580,13 @@ def validate_contacts(req: WhatsAppContactValidateRequest):
 
 from src.services.whatsapp_service import WhatsAppCampaignService
 
+def _refuse_if_sending_off(db: Session) -> None:
+    from src.services import agent_controls
+    why = agent_controls.refuse_if_off(db, "campaign_sending")
+    if why:
+        raise HTTPException(status_code=409, detail=why)
+
+
 @router.post("/campaigns", response_model=WhatsAppCampaignResponse)
 def create_campaign(req: WhatsAppCampaignCreate, background_tasks: BackgroundTasks, request: Request,
                     db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -592,6 +599,8 @@ def create_campaign(req: WhatsAppCampaignCreate, background_tasks: BackgroundTas
     tmpl = db.query(WhatsAppTemplate).filter(WhatsAppTemplate.template_id == req.template_id).first()
     if not tmpl:
         raise HTTPException(status_code=400, detail="Invalid Template")
+
+    _refuse_if_sending_off(db)
 
     # Validation passes, create Campaign record
     campaign_service = WhatsAppCampaignService(db)
@@ -635,6 +644,7 @@ def approve_campaign(campaign_id: str, background_tasks: BackgroundTasks, reques
     camp = db.query(WhatsAppCampaign).filter(WhatsAppCampaign.campaign_id == campaign_id).first()
     if not camp:
         raise HTTPException(status_code=404, detail="Campaign not found")
+    _refuse_if_sending_off(db)
     try:
         campaign_approval.approve(camp, user.email, payload.note if payload else None)
     except campaign_approval.NotAllowed as e:
@@ -996,6 +1006,7 @@ def resume_campaign(campaign_id: str, background_tasks: BackgroundTasks, db: Ses
         raise HTTPException(status_code=400, detail="Campaign is already running")
     if camp.status == "AWAITING_APPROVAL":
         raise HTTPException(status_code=400, detail="This campaign is waiting for a second person to approve it")
+    _refuse_if_sending_off(db)
 
     # A crash can leave recipients claimed but unsent; return them to the queue.
     requeued = db.query(WhatsAppCampaignRecipient).filter(

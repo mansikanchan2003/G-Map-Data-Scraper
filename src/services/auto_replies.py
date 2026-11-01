@@ -84,6 +84,9 @@ def missed(db) -> list:
     from src.services import inbox, onboarding_bot
 
     out = []
+    from src.services import agent_controls
+    if not agent_controls.is_on(db, "auto_replies"):
+        return out  # turned off by the admin
     convs = (db.query(WhatsAppConversation)
              .filter(WhatsAppConversation.bot_step.is_(None),
                      WhatsAppConversation.last_inbound_at >= inbox.now() - inbox.REPLY_WINDOW).all())

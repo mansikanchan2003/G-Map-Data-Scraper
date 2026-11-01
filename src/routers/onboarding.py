@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from src.database import get_db
 from src.models.inbox import OnboardingDocument, WhatsAppConversation
 from src.models.whatsapp import WhatsAppAccount
-from src.services import auth_service, drive_uploads, eko_digilocker, inbox, notifier, onboarding_bot
+from src.services import agent_controls, auth_service, drive_uploads, eko_digilocker, inbox, notifier, onboarding_bot
 
 logger = logging.getLogger("gmap_scraper.onboarding")
 
@@ -165,7 +165,7 @@ def upload_page(token: str, db: Session = Depends(get_db)):
         "whatsapp": f"https://wa.me/{number}" if number else None,
         # Aadhaar, PAN and the licence can come from DigiLocker in place of an upload.
         "digilocker": {
-            "enabled": eko_digilocker.configured(),
+            "enabled": eko_digilocker.configured() and agent_controls.is_on(db, "digilocker"),
             "rows": {d["row"]: d["label"] for d in onboarding_bot.DIGILOCKER_DOCS
                      if d["eko"] in eko_digilocker.enabled_types()},
             "got": sorted(_got(conv)) if conv else [],
@@ -274,7 +274,7 @@ def digilocker_start(token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="This link has expired. Please ask us for a new one on WhatsApp.")
     if conv.documents_submitted_at:
         raise HTTPException(status_code=409, detail="Your documents have already been submitted.")
-    if not eko_digilocker.configured():
+    if not eko_digilocker.configured() or not agent_controls.is_on(db, "digilocker"):
         raise HTTPException(status_code=503, detail="DigiLocker is not available just now. Please upload your documents instead.")
     got = _got(conv)
     types = [d["eko"] for d in onboarding_bot.DIGILOCKER_DOCS

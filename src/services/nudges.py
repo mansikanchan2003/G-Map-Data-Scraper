@@ -89,6 +89,9 @@ def tick(db: Session, now: Optional[datetime] = None) -> int:
     now = now or datetime.now(timezone.utc)
     if not bot.get_settings(db)["enabled"]:
         return 0
+    from src.services import agent_controls
+    if not agent_controls.is_on(db, "bot_nudges"):
+        return 0  # turned off by the admin
     sent = 0
     candidates = (db.query(WhatsAppConversation)
                   .filter(WhatsAppConversation.bot_step.in_(bot.NUDGE_STEPS)).all())

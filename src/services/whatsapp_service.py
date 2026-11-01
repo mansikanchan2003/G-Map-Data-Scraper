@@ -117,6 +117,15 @@ def _keep_header(db, path: str, media_id: str) -> None:
             pass
 
 
+def _sending_on(db) -> bool:
+    """The admin's campaign kill switch; on unless turned off (and on if it cannot be read)."""
+    try:
+        from src.services import agent_controls
+        return bool(agent_controls.is_on(db, "campaign_sending"))
+    except Exception:
+        return True
+
+
 def unfilled_blanks(template) -> list:
     """
     Blanks in the body that would reach Meta as literal text, such as
@@ -722,6 +731,16 @@ class WhatsAppCampaignService:
                 db.refresh(campaign)
                 if campaign.status == "CANCELLED":
                     logger.info(f"Campaign {campaign_id} was cancelled.")
+                    break
+                if not _sending_on(db):
+                    # The admin's kill switch: stop before the next batch; Resume picks up the rest.
+                    campaign.status = "CANCELLED"
+                    db.add(WhatsAppCampaignLog(
+                        log_id=uuid.uuid4().hex, campaign_id=campaign_id, status="ERROR",
+                        error_reason="Stopped: campaign sending was turned off by the admin (Agent quality → Controls). "
+                                "Resume it once it is back on."))
+                    db.commit()
+                    logger.warning(f"whatsapp_campaign campaign_id={campaign_id} event=STOPPED_BY_KILL_SWITCH")
                     break
 
                 # Atomic recipient claiming

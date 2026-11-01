@@ -94,8 +94,13 @@ then open http://localhost:8100.
   GitHub every 5 minutes and emails the admin when it goes down, every
   2 hours while down, and when it is back. On the server: `docker compose ps`,
   `docker compose logs backend --since 15m`.
-- **An agent misbehaves.** Agent quality → Controls: switch that agent off
-  (admin). It stops at once; drafts and chats stay.
+- **An agent or an automatic action misbehaves.** Agent quality → Controls
+  (admin): every one has its own switch, and it stops at once. Besides the
+  template agents and the bot's FAQ answers: **Campaign sending** (running
+  campaigns stop before their next batch; Resume picks them up later), the
+  bot's reminders, follow-ups, the auto-reply greeting, the Gujarat
+  investment video, and DigiLocker. The scraping autopilot has its own switch
+  on the Dashboard.
 - **The bot misbehaves.** Inbox → Bot settings: switch the bot off. Questions
   then go to the team.
 - **A bad campaign.** Campaign History → the campaign → Cancel. Campaigns of

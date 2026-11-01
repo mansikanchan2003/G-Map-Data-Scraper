@@ -3811,3 +3811,60 @@ def test_only_the_admin_and_managers_read_the_audit_log(db, client, launching):
     _as("kavya.shukla@eko.co.in", "manager")
     out = client.get("/api/v1/agents/audit").json()
     assert out["approval_min"] == 3 and isinstance(out["entries"], list)
+
+
+# --- A kill switch for every automatic action (agent_controls) -------------------------
+
+from src.services import agent_controls  # noqa: E402
+
+
+def _off(db, key):
+    agent_controls.set_agent(db, key, False, "admin@eko.co.in")
+
+
+def test_every_automatic_action_has_a_switch():
+    assert {"campaign_sending", "bot_nudges", "followups", "auto_replies", "invest_video", "digilocker"} \
+        <= set(agent_controls.AGENTS)
+
+
+def test_reminders_follow_ups_and_auto_reply_greetings_stop_when_switched_off(db):
+    from src.services import auto_replies
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    _off(db, "bot_nudges")
+    assert nudges.tick(db, _hours_later(1.5)) == 0
+    _off(db, "followups")
+    assert followups.tick(db, _hours_later(48)) == 0
+    _off(db, "auto_replies")
+    assert auto_replies.missed(db) == []
+
+
+def test_the_investment_video_switched_off_gives_everyone_the_text(db, invest_video):
+    _gujarat_campaign(db)
+    _off(db, "invest_video")
+    tap_campaign(db, lang="en")
+    say(db, SERVED_PIN)
+    count = len(StubMeta.sent)
+    qualify(db)
+    assert _sent_kinds(count)[0] == ("text", bot_messages.MESSAGES["en"]["invest_explained"])
+
+
+def test_digilocker_switched_off_is_not_offered_or_started(db, client, digilocker):
+    token = _link(db)
+    assert '"enabled": true' in client.get(f"/onboard/{token}").text
+    _off(db, "digilocker")
+    assert '"enabled": false' in client.get(f"/onboard/{token}").text
+    assert client.post(f"/onboard/{token}/digilocker").status_code == 503
+
+
+def test_campaign_sending_switched_off_refuses_launches_and_approvals(db, client, launching):
+    from src.services import whatsapp_service
+    cid = _launch(client, launching, 3)["campaign_id"]   # waits for approval
+    _off(db, "campaign_sending")
+    assert not whatsapp_service._sending_on(db)
+    r = client.post("/api/v1/whatsapp/campaigns", json={
+        "name": "x", "template_id": launching["template"], "account_id": launching["account"],
+        "data_source_type": "upload", "contacts": [{"name": "A", "phone": "+919000001111"}]})
+    assert r.status_code == 409 and "turned off" in r.json()["detail"]
+    _as("kavya.shukla@eko.co.in", "manager")
+    assert client.post(f"/api/v1/whatsapp/campaigns/{cid}/approve", json={}).status_code == 409
