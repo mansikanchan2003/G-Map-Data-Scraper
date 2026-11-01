@@ -1,0 +1,2 @@
+# Shell scripts run on the Linux server: always LF, or bash reads every line with a stray .
+*.sh text eol=lf
