@@ -202,6 +202,9 @@ export const WhatsAppCampaignView: React.FC = () => {
     }
   };
 
+  // A campaign large enough to wait for a second person: how many it would reach.
+  const [awaitingApproval, setAwaitingApproval] = useState<number | null>(null);
+
   const handleRunCampaign = async () => {
     if (!campaignName) {
       alert("Please enter a campaign name.");
@@ -217,6 +220,7 @@ export const WhatsAppCampaignView: React.FC = () => {
         contacts: validationResult?.valid_contacts || []
       });
       setCampaignSuccessId(camp.campaign_id);
+      setAwaitingApproval(camp.status === 'AWAITING_APPROVAL' ? camp.pending_count : null);
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -231,11 +235,24 @@ export const WhatsAppCampaignView: React.FC = () => {
     return (
       <div className="flex-1 flex items-center justify-center bg-slate-950 p-6 text-slate-100">
         <div className="bg-slate-900 border border-slate-800 p-8 rounded-xl max-w-md text-center">
-          <span className="material-symbols-outlined text-6xl text-emerald-500 mb-4">check_circle</span>
-          <h2 className="text-2xl font-semibold mb-2">Campaign Created</h2>
-          <p className="text-slate-400 mb-6 text-sm">
-            The campaign has been scheduled and is processing in the background.
-          </p>
+          {awaitingApproval !== null ? (
+            <>
+              <span className="material-symbols-outlined text-6xl text-violet-400 mb-4">how_to_reg</span>
+              <h2 className="text-2xl font-semibold mb-2">Waiting for approval</h2>
+              <p className="text-slate-400 mb-6 text-sm">
+                This campaign would reach {awaitingApproval.toLocaleString()} people, so a second person has to approve it
+                before anything is sent. The team has been emailed; it can be approved from Campaign History.
+              </p>
+            </>
+          ) : (
+            <>
+              <span className="material-symbols-outlined text-6xl text-emerald-500 mb-4">check_circle</span>
+              <h2 className="text-2xl font-semibold mb-2">Campaign Created</h2>
+              <p className="text-slate-400 mb-6 text-sm">
+                The campaign has been scheduled and is processing in the background.
+              </p>
+            </>
+          )}
           <button 
             onClick={() => window.location.hash = 'whatsapp-history'}
             className="px-6 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded font-semibold text-sm transition-colors"

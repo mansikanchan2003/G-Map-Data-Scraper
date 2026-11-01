@@ -163,6 +163,8 @@ services:
       # OWN Kiosk KAI key (from Abhishek), never a person's. Empty: off.
       KIOSK_KAI_APP_KEY: ${KIOSK_KAI_APP_KEY:-}
       KIOSK_KAI_ASK_DAILY: ${KIOSK_KAI_ASK_DAILY:-20}
+      # Campaigns this large wait for a second person to approve them (maker-checker); 0 turns it off.
+      CAMPAIGN_APPROVAL_MIN: ${CAMPAIGN_APPROVAL_MIN:-200}
       KIOSK_KAI_URL: ${KIOSK_KAI_URL:-https://indev.eko.in/kiosk-kai/mcp}
 
       # Campaign link tracking. PUBLIC_BASE_URL must be an address a phone can

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from src.database import get_db
 from src.models.user import User
-from src.routers.auth import current_admin
+from src.routers.auth import current_admin, current_user
 from src.services import agent_controls
 from src.models.agent_runs import AgentRun
 from src.services import agent_telemetry
@@ -201,6 +201,20 @@ def clean_up(req: CleanRequest, db: Session = Depends(get_db), admin: User = Dep
     out = retention.clean(db, [i.model_dump() for i in req.items], admin.email)
     db.commit()
     return out
+
+
+# --- The audit log (services/audit) ---------------------------------------------------
+
+@router.get("/audit")
+def audit_log(limit: int = Query(200, ge=1, le=1000), actor: Optional[str] = None, action: Optional[str] = None,
+              db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Who changed what, newest first (admin and manager only). Read-only: nothing here edits or deletes a row."""
+    if user.role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Only the admin and managers can read the audit log")
+    from src.services import audit, campaign_approval
+    rows = audit.recent(db, limit, actor, action)
+    return {"entries": rows, "actors": sorted({r["actor"] for r in rows}),
+            "actions": sorted({r["action"] for r in rows}), "approval_min": campaign_approval.approval_min()}
 
 
 @router.get("/runs/{run_id}")

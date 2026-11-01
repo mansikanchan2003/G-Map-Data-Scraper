@@ -137,6 +137,11 @@ class WhatsAppCampaignResponse(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    # Who launched it and, for a large one, who approved or rejected it (maker-checker).
+    created_by: Optional[str] = None
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    review_note: Optional[str] = None
 
     # Real clicks on this campaign's tracking links.
     # unique_visits  = recipients who opened the link at least once

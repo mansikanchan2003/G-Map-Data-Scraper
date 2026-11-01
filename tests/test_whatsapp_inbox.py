@@ -3699,3 +3699,115 @@ def test_the_privacy_notice_is_public_and_linked_from_the_upload_page(db, client
     token = _link(db)
     upload = client.get(f"/onboard/{token}").text
     assert 'href="privacy"' in upload and "By submitting, you agree" in upload
+
+
+# --- Maker-checker for large campaigns, and the audit log ------------------------------
+
+from src.models.audit import AuditEntry  # noqa: E402
+from src.models.whatsapp import WhatsAppAccount  # noqa: E402
+from src.services import audit, campaign_approval  # noqa: E402
+from src.services.whatsapp_service import WhatsAppCampaignService  # noqa: E402
+
+
+@pytest.fixture
+def launching(db, monkeypatch):
+    """A connected account and a template; sends and emails recorded, not made."""
+    from src.models.audit import AuditEntry as _A
+    _A.__table__.create(bind=db.get_bind(), checkfirst=True)
+    acc, tmpl = uuid.uuid4().hex, uuid.uuid4().hex
+    db.add(WhatsAppAccount(account_id=acc, phone_number="+911111111111", status="Connected"))
+    db.add(WhatsAppTemplate(template_id=tmpl, name="Hello", body="Hello", status="APPROVED"))
+    db.commit()
+    started, emailed = [], []
+    monkeypatch.setattr(WhatsAppCampaignService, "execute_campaign", lambda self, cid: started.append(cid))
+    monkeypatch.setattr(campaign_approval, "email_team", lambda *a: emailed.append(a))
+    monkeypatch.setenv("CAMPAIGN_APPROVAL_MIN", "3")
+    monkeypatch.setattr(audit, "session_factory", TestingSessionLocal)
+    yield {"account": acc, "template": tmpl, "started": started, "emailed": emailed}
+    db.query(_A).delete()
+    db.query(WhatsAppAccount).filter_by(account_id=acc).delete()
+    db.commit()
+
+
+def _launch(client, l, n):
+    contacts = [{"name": f"P{i}", "phone": f"+91900000{1000 + i}"} for i in range(n)]
+    return client.post("/api/v1/whatsapp/campaigns", json={
+        "name": f"Big {n}", "template_id": l["template"], "account_id": l["account"],
+        "data_source_type": "upload", "contacts": contacts}).json()
+
+
+def _as(email, role="operator"):
+    class Person:
+        pass
+    p = Person()
+    p.email, p.role = email, role
+    app.dependency_overrides[current_user] = lambda: p
+
+
+def test_a_small_campaign_starts_at_once(db, client, launching):
+    camp = _launch(client, launching, 2)
+    assert camp["status"] == "PENDING" and camp["created_by"] == "admin@eko.co.in"
+    assert launching["started"] == [camp["campaign_id"]]
+
+
+def test_a_large_campaign_waits_for_someone_other_than_its_launcher(db, client, launching):
+    camp = _launch(client, launching, 3)
+    cid = camp["campaign_id"]
+    assert camp["status"] == "AWAITING_APPROVAL" and launching["started"] == []
+    assert launching["emailed"] and launching["emailed"][0][1] == 3
+    # Not resumed around the check, and not approved by the person who launched it, admin or not.
+    assert client.post(f"/api/v1/whatsapp/campaigns/{cid}/resume").status_code == 400
+    r = client.post(f"/api/v1/whatsapp/campaigns/{cid}/approve", json={})
+    assert r.status_code == 403 and "someone else" in r.json()["detail"]
+
+    _as("kavya.shukla@eko.co.in", "manager")
+    r = client.post(f"/api/v1/whatsapp/campaigns/{cid}/approve", json={"note": "Checked the list"})
+    assert r.status_code == 200
+    out = r.json()
+    assert out["status"] == "PENDING" and out["approved_by"] == "kavya.shukla@eko.co.in"
+    assert launching["started"] == [cid]
+    # Decided once.
+    assert client.post(f"/api/v1/whatsapp/campaigns/{cid}/approve", json={}).status_code == 403
+
+
+def test_a_large_campaign_can_be_turned_down_and_nothing_is_sent(db, client, launching):
+    cid = _launch(client, launching, 4)["campaign_id"]
+    _as("kavya.shukla@eko.co.in", "manager")
+    r = client.post(f"/api/v1/whatsapp/campaigns/{cid}/reject", json={"reason": "Wrong district"})
+    assert r.json()["status"] == "CANCELLED" and r.json()["review_note"] == "Rejected: Wrong district"
+    assert launching["started"] == []
+
+
+def test_every_change_is_in_the_audit_log_with_numbers_cut_short(db, client, launching):
+    cid = _launch(client, launching, 3)["campaign_id"]
+    tap_campaign(db)
+    client.post(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/opt-out", json={"reason": "Asked"})
+    rows = {r.action: r for r in db.query(AuditEntry).all()}
+    launched = rows["Launched a campaign"]
+    assert launched.actor == "test-admin@eko.co.in" and launched.status == 200
+    assert launched.detail["campaign_id"] == cid and launched.detail["status"] == "AWAITING_APPROVAL"
+    opt = rows["Put a number on the do-not-message list"]
+    assert PHONE.lstrip("+") not in opt.path and opt.path.endswith("…" + PHONE[-4:] + "/opt-out")
+    # Reading changes nothing and is not recorded.
+    n = db.query(AuditEntry).count()
+    client.get("/api/v1/agents/audit")
+    assert db.query(AuditEntry).count() == n
+
+
+def test_a_refused_change_is_recorded_too(db, client, launching, monkeypatch):
+    from types import SimpleNamespace
+    from src.services import auth_service
+    member = SimpleNamespace(email="viewer@eko.co.in", role="member", inbox_scope=None)
+    monkeypatch.setattr(auth_service, "user_from_token", lambda db, token: member)
+    r = client.post("/api/v1/whatsapp/campaigns", json={})
+    assert r.status_code == 403
+    row = db.query(AuditEntry).filter_by(actor="viewer@eko.co.in").one()
+    assert row.status == 403 and row.detail == {"refused": "view-only"}
+
+
+def test_only_the_admin_and_managers_read_the_audit_log(db, client, launching):
+    _as("op@eko.co.in", "operator")
+    assert client.get("/api/v1/agents/audit").status_code == 403
+    _as("kavya.shukla@eko.co.in", "manager")
+    out = client.get("/api/v1/agents/audit").json()
+    assert out["approval_min"] == 3 and isinstance(out["entries"], list)

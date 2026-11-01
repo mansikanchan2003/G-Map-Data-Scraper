@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackToParent } from '../components/SubPage';
 import type { NavTab } from '../components/Header';
 import {
-  cleanUp, fetchRetention, saveRetention, type RetentionState,
+  cleanUp, fetchAudit, fetchRetention, saveRetention, type AuditRow, type RetentionState,
   acceptPatch, dismissPatch, fetchAgentQuality, fetchAgentRun, fetchAgentRuns, fetchControls, fetchCopyTrial, fetchGolden,
   fetchLearning, fetchSources, setSwitch, startCopyTrial, tryReply, undoPatch,
   type AgentQuality, type AgentRun, type ContextChunk, type Controls, type CopyTrial, type Draft, type GateReport,
@@ -955,7 +955,7 @@ export const WhyThisDraft: React.FC<{ templateId: string }> = ({ templateId }) =
   );
 };
 
-export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean; isAdmin?: boolean }> = ({ can, isAdmin = false }) => {
+export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean; isAdmin?: boolean; canAudit?: boolean }> = ({ can, isAdmin = false, canAudit = false }) => {
   const [days, setDays] = useState(30);
   const [q, setQ] = useState<AgentQuality | null>(null);
   const [runs, setRuns] = useState<AgentRun[]>([]);
@@ -1132,6 +1132,7 @@ export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean; isAdmin?
 
         <ControlsCard isAdmin={isAdmin} tokens={contextTokens} />
         <PersonalDataCard isAdmin={isAdmin} />
+        {canAudit && <AuditCard />}
 
         {golden && <GoldenCard g={golden} />}
 
@@ -1384,6 +1385,93 @@ const PersonalDataCard: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
           </ul>
         </div>
       </div>
+    </Card>
+  );
+};
+
+
+// ---------------------------------------------------------------------------
+// The audit log: who changed what, from the session gate (services/audit).
+// Read-only, admin and managers.
+// ---------------------------------------------------------------------------
+
+const AUDIT_ICON: [RegExp, string, string][] = [
+  [/campaign/i, 'campaign', '#38bdf8'],
+  [/template|draft/i, 'description', '#a78bfa'],
+  [/erase|clean|retention|do-not-message/i, 'shield_person', '#fb7185'],
+  [/user|password|signed in/i, 'badge', '#f59e0b'],
+  [/agent|patch|bot|faq/i, 'smart_toy', '#34d399'],
+];
+const auditIcon = (action: string) => AUDIT_ICON.find(([re]) => re.test(action)) || [null, 'history', '#94a3b8'];
+
+const AuditCard: React.FC = () => {
+  const [rows, setRows] = useState<AuditRow[] | null>(null);
+  const [actors, setActors] = useState<string[]>([]);
+  const [actions, setActions] = useState<string[]>([]);
+  const [actor, setActor] = useState('');
+  const [action, setAction] = useState('');
+  const [min, setMin] = useState<number | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchAudit({ actor, action, limit: 300 }).then(r => {
+      setRows(r.entries); setMin(r.approval_min);
+      if (!actor && !action) { setActors(r.actors); setActions(r.actions); }
+    }).catch(e => setErr(e.message));
+  }, [actor, action]);
+
+  const refused = (rows || []).filter(r => !r.ok).length;
+  const select = 'bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-[12px] text-slate-200 max-w-[220px]';
+  return (
+    <Card title="Audit log" icon="fact_check"
+      sub={<>Every change made through the app: who, what, when, and whether it went through. Nothing here can be edited or deleted.
+        {min ? <> Campaigns to {num(min)}+ people need a second person to approve them.</> : null}</>}
+      right={(
+        <div className="flex flex-wrap gap-2">
+          <select value={actor} onChange={e => setActor(e.target.value)} className={select}>
+            <option value="">Everyone</option>{actors.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <select value={action} onChange={e => setAction(e.target.value)} className={select}>
+            <option value="">Every action</option>{actions.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+      )}>
+      {err && <div className="mb-3 p-2.5 rounded-lg border border-rose-800/60 bg-rose-950 text-rose-300 text-[12.5px]">{err}</div>}
+      {rows && (
+        <div className="flex flex-wrap gap-3 mb-3 text-[12px]">
+          <span className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300">{num(rows.length)} shown</span>
+          <span className={`px-2.5 py-1 rounded-full ${refused ? 'bg-rose-950 text-rose-300' : 'bg-emerald-950 text-emerald-300'}`}>
+            {refused ? `${num(refused)} refused or failed` : 'Nothing refused'}
+          </span>
+        </div>
+      )}
+      <ul className="divide-y divide-slate-800 max-h-[420px] overflow-y-auto pr-1">
+        {(rows || []).map(r => {
+          const [, icon, color] = auditIcon(r.action);
+          const d = r.detail || {};
+          const extra = Object.entries(d).filter(([, v]) => v !== null && v !== '').slice(0, 4)
+            .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ');
+          return (
+            <li key={r.id} className="flex items-start gap-3 py-2.5">
+              <span className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
+                style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color: color as string }}>
+                <Icon name={icon as string} className="text-[17px]" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] text-slate-100">
+                  <b>{r.actor}</b>{r.role ? <span className="text-slate-500"> ({r.role})</span> : null} · {r.action}
+                  {!r.ok && <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10.5px] font-semibold bg-rose-950 text-rose-300">refused · {r.status}</span>}
+                </div>
+                <div className="text-[11.5px] text-slate-500 truncate" title={`${r.method} ${r.path}`}>
+                  {extra || `${r.method} ${r.path}`}
+                </div>
+              </div>
+              <span className="text-[11px] text-slate-500 whitespace-nowrap">{ago(r.at)}</span>
+            </li>
+          );
+        })}
+        {rows && rows.length === 0 && <li className="py-8 text-center text-[13px] text-slate-500">Nothing recorded yet.</li>}
+      </ul>
     </Card>
   );
 };

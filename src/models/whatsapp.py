@@ -97,6 +97,13 @@ class WhatsAppCampaign(Base):
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Who launched it, and, for a large one, the second person who approved it
+    # (maker-checker, services/campaign_approval): never the same person.
+    created_by = Column(String(200), nullable=True)
+    approved_by = Column(String(200), nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    review_note = Column(String(500), nullable=True)
+
     template = relationship("WhatsAppTemplate")
     account = relationship("WhatsAppAccount")
     recipients = relationship("WhatsAppCampaignRecipient", back_populates="campaign", cascade="all, delete-orphan")

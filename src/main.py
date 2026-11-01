@@ -167,8 +167,11 @@ PUBLIC_API_PREFIXES = (
 async def require_session(request, call_next):
     from starlette.responses import JSONResponse
 
+    from src.services import audit
+
     path = request.url.path
     is_api = path.startswith("/api/") or path in ("/docs", "/redoc", "/openapi.json")
+    who = None
 
     # A CORS preflight never carries the cookie and changes nothing; refusing
     # it made every JSON POST fail from the separately served dev frontend.
@@ -188,6 +191,9 @@ async def require_session(request, call_next):
 
         if not user:
             return JSONResponse({"detail": "Not signed in"}, status_code=401)
+        # Every change this user makes is written to the audit log below,
+        # refused ones too (services/audit).
+        who = user if audit.wanted(request.method, path) else None
         # Which chats this account's Inbox may show; the inbox routes read it.
         request.state.inbox_scope = getattr(user, "inbox_scope", None)
         # An account kept to part of the Inbox (Amit's: the chats not from
@@ -195,18 +201,37 @@ async def require_session(request, call_next):
         # no campaigns, templates or settings, whatever it calls.
         if (request.state.inbox_scope and request.method not in ("GET", "HEAD", "OPTIONS")
                 and not path.startswith(("/api/v1/inbox/", "/api/v1/auth/"))):
+            if who:
+                audit.write(who, request.method, path, 403, {"refused": "inbox-only account"})
             return JSONResponse({"detail": "Your account can only work in the Inbox."}, status_code=403)
 
         # A view-only role is refused here, once, for every route there is
         # or will be: hiding the buttons would stop nobody who called the
         # API directly.
         if not auth_service.may_make_request(user, request.method, path):
+            if who:
+                audit.write(who, request.method, path, 403, {"refused": "view-only"})
             return JSONResponse(
                 {"detail": "You have view-only access, so this cannot be changed from your account."},
                 status_code=403,
             )
 
-    return await call_next(request)
+    elif (is_api and path.startswith("/api/v1/auth/") and path != "/api/v1/auth/login"
+          and audit.wanted(request.method, path)):
+        # The account pages sit outside the gate (signing in must work without a
+        # session), but an admin's changes to users there are audited all the same.
+        from src.database import SessionLocal
+        from src.services import auth_service
+        db = SessionLocal()
+        try:
+            who = auth_service.user_from_token(db, request.cookies.get(auth_service.COOKIE_NAME, ""))
+        finally:
+            db.close()
+
+    response = await call_next(request)
+    if who:
+        audit.write(who, request.method, path, response.status_code, getattr(request.state, "audit", None))
+    return response
 
 
 app.include_router(auth_router.router)

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import uuid
 import logging
 from datetime import datetime, timedelta, timezone
@@ -581,7 +581,8 @@ def validate_contacts(req: WhatsAppContactValidateRequest):
 from src.services.whatsapp_service import WhatsAppCampaignService
 
 @router.post("/campaigns", response_model=WhatsAppCampaignResponse)
-def create_campaign(req: WhatsAppCampaignCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def create_campaign(req: WhatsAppCampaignCreate, background_tasks: BackgroundTasks, request: Request,
+                    db: Session = Depends(get_db), user: User = Depends(current_user)):
     # Verify account
     acc = db.query(WhatsAppAccount).filter(WhatsAppAccount.account_id == req.account_id).first()
     if not acc:
@@ -601,11 +602,72 @@ def create_campaign(req: WhatsAppCampaignCreate, background_tasks: BackgroundTas
         data_source_type=req.data_source_type,
         contacts=req.contacts
     )
+    campaign.created_by = user.email
 
-    # Launch execution in background
-    background_tasks.add_task(campaign_service.execute_campaign, campaign.campaign_id)
-
+    # A large campaign waits for a second person (services/campaign_approval).
+    from src.services import audit, campaign_approval
+    if campaign_approval.needs_approval(campaign):
+        campaign_approval.hold(campaign, user.email)
+        db.commit()
+        db.refresh(campaign)
+        base = (os.environ.get("PUBLIC_BASE_URL") or "").rstrip("/")
+        background_tasks.add_task(campaign_approval.email_team, campaign.name, campaign.pending_count or 0,
+                                  user.email, f"{base}/#whatsapp-history" if base else "the Campaign History page")
+    else:
+        db.commit()
+        db.refresh(campaign)
+        background_tasks.add_task(campaign_service.execute_campaign, campaign.campaign_id)
+    audit.note(request, campaign_id=campaign.campaign_id, name=campaign.name, recipients=campaign.pending_count,
+               skipped=campaign.skipped_count, status=campaign.status)
     return campaign
+
+
+class CampaignDecision(BaseModel):
+    note: Optional[str] = Field(None, max_length=500)
+
+
+@router.post("/campaigns/{campaign_id}/approve", response_model=WhatsAppCampaignResponse)
+def approve_campaign(campaign_id: str, background_tasks: BackgroundTasks, request: Request,
+                     payload: CampaignDecision = None, db: Session = Depends(get_db),
+                     user: User = Depends(current_user)):
+    """A second person approves a large campaign; it starts sending. Never its own launcher."""
+    from src.services import audit, campaign_approval
+    camp = db.query(WhatsAppCampaign).filter(WhatsAppCampaign.campaign_id == campaign_id).first()
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    try:
+        campaign_approval.approve(camp, user.email, payload.note if payload else None)
+    except campaign_approval.NotAllowed as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    db.commit()
+    db.refresh(camp)
+    audit.note(request, campaign_id=campaign_id, name=camp.name, launched_by=camp.created_by,
+               recipients=camp.pending_count)
+    background_tasks.add_task(WhatsAppCampaignService(db).execute_campaign, campaign_id)
+    return camp
+
+
+class CampaignRejection(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=400)
+
+
+@router.post("/campaigns/{campaign_id}/reject", response_model=WhatsAppCampaignResponse)
+def reject_campaign(campaign_id: str, payload: CampaignRejection, request: Request, db: Session = Depends(get_db),
+                    user: User = Depends(current_user)):
+    """A second person turns a large campaign down; nothing is sent."""
+    from src.services import audit, campaign_approval
+    camp = db.query(WhatsAppCampaign).filter(WhatsAppCampaign.campaign_id == campaign_id).first()
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    try:
+        campaign_approval.reject(camp, user.email, payload.reason)
+    except campaign_approval.NotAllowed as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    db.commit()
+    db.refresh(camp)
+    audit.note(request, campaign_id=campaign_id, name=camp.name, launched_by=camp.created_by,
+               reason=payload.reason.strip()[:200])
+    return camp
 
 def _visit_counts(db: Session, campaign_ids: List[str]) -> dict:
     """
@@ -932,6 +994,8 @@ def resume_campaign(campaign_id: str, background_tasks: BackgroundTasks, db: Ses
         raise HTTPException(status_code=404, detail="Campaign not found")
     if camp.status == "RUNNING":
         raise HTTPException(status_code=400, detail="Campaign is already running")
+    if camp.status == "AWAITING_APPROVAL":
+        raise HTTPException(status_code=400, detail="This campaign is waiting for a second person to approve it")
 
     # A crash can leave recipients claimed but unsent; return them to the queue.
     requeued = db.query(WhatsAppCampaignRecipient).filter(

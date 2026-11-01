@@ -199,17 +199,22 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     # One message for "no such account" and "wrong password", so the form
     # cannot be used to find out which addresses exist.
     invalid = HTTPException(status_code=401, detail="Incorrect email or password.")
-    if not user or not auth.has_usable_password(user):
-        raise invalid
-    if not auth.verify_password(payload.password, user.password_hash):
-        raise invalid
-
-    if user.status == "PENDING":
-        raise HTTPException(status_code=403, detail="Your account is still waiting for approval.")
-    if user.status == "REJECTED":
-        raise HTTPException(status_code=403, detail="This account was declined.")
-    if user.status != "APPROVED":
-        raise HTTPException(status_code=403, detail="This account is not active.")
+    refused = None
+    if not user or not auth.has_usable_password(user) or not auth.verify_password(payload.password, user.password_hash):
+        refused = invalid
+    elif user.status == "PENDING":
+        refused = HTTPException(status_code=403, detail="Your account is still waiting for approval.")
+    elif user.status == "REJECTED":
+        refused = HTTPException(status_code=403, detail="This account was declined.")
+    elif user.status != "APPROVED":
+        refused = HTTPException(status_code=403, detail="This account is not active.")
+    # Every sign-in, and every failed one, is in the audit log (services/audit).
+    from types import SimpleNamespace
+    from src.services import audit
+    audit.write(SimpleNamespace(email=email[:200] or "(blank)", role=getattr(user, "role", None)), "POST",
+                "/api/v1/auth/login", refused.status_code if refused else 200, None)
+    if refused:
+        raise refused
 
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()

@@ -7,6 +7,7 @@ from .run_log import RunLog
 from .app_setting import AppSetting
 from .user import User
 from .opt_out import OptOut
+from .audit import AuditEntry
 from .autopilot import DiscoveryRound
 from .insights import CampaignInsight, InsightSnapshot
 from .agent_runs import AgentRun
@@ -59,4 +60,5 @@ __all__ = [
     "StudioReferencePoster",
     "User",
     "OptOut",
+    "AuditEntry",
 ]

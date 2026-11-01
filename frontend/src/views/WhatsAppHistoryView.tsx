@@ -67,6 +67,7 @@ export const WhatsAppHistoryView: React.FC<{ can?: (t: NavTab) => boolean }> = (
     switch (status) {
       case 'COMPLETED': return 'text-emerald-400 border-emerald-800 bg-emerald-950/50';
       case 'RUNNING': return 'text-sky-400 border-sky-800 bg-sky-950/50';
+      case 'AWAITING_APPROVAL': return 'text-violet-300 border-violet-800 bg-violet-950/50';
       case 'FAILED': return 'text-rose-400 border-rose-800 bg-rose-950/50';
       case 'PARTIAL': return 'text-amber-400 border-amber-800 bg-amber-950/50';
       case 'CANCELLED': return 'text-slate-400 border-slate-700 bg-slate-800/50';

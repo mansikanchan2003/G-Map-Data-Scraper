@@ -157,3 +157,24 @@ export const saveRetention = (p: RetentionPolicy) =>
 export const cleanUp = (items: { phone: string; scope: string }[]) =>
   call<{ cleaned: number; skipped: number; files: number; messages: number; drive_errors: string[] }>(
     '/retention/clean', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
+
+// --- The audit log (services/audit) -------------------------------------------------
+
+export interface AuditRow {
+  id: number;
+  at: string | null;
+  actor: string;
+  role: string | null;
+  action: string;
+  method: string;
+  path: string;
+  status: number;
+  ok: boolean;
+  detail: Record<string, unknown> | null;
+}
+
+export const fetchAudit = (params: { actor?: string; action?: string; limit?: number } = {}) => {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, String(v)); });
+  return call<{ entries: AuditRow[]; actors: string[]; actions: string[]; approval_min: number }>(`/audit?${q}`);
+};

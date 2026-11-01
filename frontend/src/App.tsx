@@ -239,7 +239,7 @@ export default function App() {
 
           {shownTab === 'applications' && <ApplicationsView readOnly={readOnly} can={can} />}
           {shownTab === 'dispositions' && <DispositionsView readOnly={readOnly} can={can} />}
-          {shownTab === 'agent-quality' && <AgentQualityView can={can} isAdmin={user.role === 'admin'} />}
+          {shownTab === 'agent-quality' && <AgentQualityView can={can} isAdmin={user.role === 'admin'} canAudit={user.role === 'admin' || user.role === 'manager'} />}
           {shownTab === 'partners' && <PartnersView />}
 
           {shownTab === 'whatsapp-history' && <WhatsAppHistoryView can={can} />}

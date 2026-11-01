@@ -55,6 +55,11 @@ export interface WhatsAppCampaign {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  /** Who launched it, and for a large one who approved or rejected it (maker-checker). */
+  created_by?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  review_note?: string | null;
   unique_visits: number;
   repeated_visits: number;
   /** Hits from link-preview fetchers, scanners and scripts: recorded, but
@@ -939,3 +944,16 @@ export interface BusinessDraftRequest {
 export const fetchBusinessDrafts = () => studioCall<StudioDraft[]>('/business-drafts');
 export const writeBusinessDrafts = (req: BusinessDraftRequest) =>
   studioCall<StudioDraft[]>('/business-drafts', { method: 'POST', body: JSON.stringify(req) });
+
+// --- Maker-checker: a large campaign waits for a second person -------------------
+
+const decide = async (campaignId: string, what: 'approve' | 'reject', body: object): Promise<WhatsAppCampaign> => {
+  const res = await fetch(`${API_BASE}/campaigns/${campaignId}/${what}`, {
+    credentials: 'include', method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out.detail || `Could not ${what} the campaign`);
+  return out as WhatsAppCampaign;
+};
+export const approveCampaign = (campaignId: string, note?: string) => decide(campaignId, 'approve', { note });
+export const rejectCampaign = (campaignId: string, reason: string) => decide(campaignId, 'reject', { reason });

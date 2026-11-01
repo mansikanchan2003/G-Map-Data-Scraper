@@ -10,6 +10,8 @@ import {
   type CampaignLogsResponse,
 } from '../api/whatsapp';
 import { WhatsAppPreview } from '../components/WhatsAppPreview';
+import { approveCampaign, rejectCampaign } from '../api/whatsapp';
+import { fetchMe } from '../api';
 
 interface Props {
   campaign: WhatsAppCampaign;
@@ -20,6 +22,7 @@ const statusChip = (status: string) => {
   switch (status) {
     case 'COMPLETED': return 'text-emerald-400 border-emerald-800 bg-emerald-950/50';
     case 'RUNNING': return 'text-sky-400 border-sky-800 bg-sky-950/50';
+    case 'AWAITING_APPROVAL': return 'text-violet-300 border-violet-800 bg-violet-950/50';
     case 'FAILED': return 'text-rose-400 border-rose-800 bg-rose-950/50';
     case 'PARTIAL': return 'text-amber-400 border-amber-800 bg-amber-950/50';
     default: return 'text-slate-400 border-slate-700 bg-slate-800/50';
@@ -117,12 +120,13 @@ export const WhatsAppCampaignDetailView: React.FC<Props> = ({ campaign, onBack }
           <h1 className="text-xl font-semibold tracking-tight truncate">{campaign.name}</h1>
           <p className="text-xs text-slate-400 mt-0.5 font-mono-code">{campaign.campaign_id}</p>
         </div>
-        <span className={`ml-auto text-[10px] uppercase font-bold px-2.5 py-1 rounded border ${statusChip(campaign.status)}`}>
-          {campaign.status}
+        <span className={`ml-auto text-[10px] uppercase font-bold px-2.5 py-1 rounded border ${statusChip(live.status)}`}>
+          {live.status.replace('_', ' ')}
         </span>
       </div>
 
       <div className="flex-1 p-6 space-y-6">
+        <ApprovalBar campaign={live} onDecided={setLive} />
         {loading && <div className="text-slate-500 text-sm">Loading campaign details...</div>}
 
         {error && (
@@ -445,6 +449,72 @@ export const WhatsAppCampaignDetailView: React.FC<Props> = ({ campaign, onBack }
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+};
+
+
+// A large campaign waits for a second person (maker-checker): who launched it,
+// how many it would reach, and Approve / Reject for anyone else. Once decided,
+// who decided and when stays on the page.
+const ApprovalBar: React.FC<{ campaign: WhatsAppCampaign; onDecided: (c: WhatsAppCampaign) => void }> = ({ campaign, onDecided }) => {
+  const [me, setMe] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { fetchMe().then(u => setMe(u?.email ?? null)); }, []);
+
+  if (campaign.status !== 'AWAITING_APPROVAL') {
+    if (!campaign.created_by && !campaign.approved_by) return null;
+    const rejected = campaign.review_note?.startsWith('Rejected');
+    return (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
+        {campaign.created_by && <span className="inline-flex items-center gap-1"><span className="material-symbols-outlined text-[15px]">person</span>Launched by <b className="text-slate-300">{campaign.created_by}</b></span>}
+        {campaign.approved_by && (
+          <span className={`inline-flex items-center gap-1 ${rejected ? 'text-rose-300' : 'text-emerald-300'}`}>
+            <span className="material-symbols-outlined text-[15px]">{rejected ? 'block' : 'verified'}</span>
+            {rejected ? 'Rejected' : 'Approved'} by <b>{campaign.approved_by}</b>
+            {campaign.approved_at ? ` · ${new Date(campaign.approved_at).toLocaleString()}` : ''}
+            {campaign.review_note && !rejected ? ` · “${campaign.review_note}”` : ''}
+            {rejected ? ` · ${campaign.review_note!.replace(/^Rejected: /, '')}` : ''}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  const mine = !!me && !!campaign.created_by && me.toLowerCase() === campaign.created_by.toLowerCase();
+  const act = async (fn: () => Promise<WhatsAppCampaign>) => {
+    setBusy(true); setErr(null);
+    try { onDecided(await fn()); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="rounded-xl border border-violet-800/70 bg-gradient-to-r from-violet-950/70 via-slate-900 to-slate-900 p-4 flex flex-wrap items-center gap-4">
+      <span className="h-11 w-11 rounded-full bg-violet-900/60 flex items-center justify-center shrink-0">
+        <span className="material-symbols-outlined text-violet-200 text-[24px]">how_to_reg</span>
+      </span>
+      <div className="flex-1 min-w-[220px]">
+        <div className="text-sm font-semibold text-violet-100">Waiting for a second person to approve</div>
+        <div className="text-xs text-violet-200/80 mt-0.5">
+          <b>{campaign.created_by || 'Someone'}</b> launched this to <b>{(campaign.pending_count || 0).toLocaleString()}</b> people.
+          Campaigns this large need someone else to check it before anything is sent.
+          {mine && ' You launched it, so someone else has to approve it.'}
+        </div>
+        {err && <div className="text-xs text-rose-300 mt-1">{err}</div>}
+      </div>
+      <div className="flex gap-2">
+        <button disabled={busy || mine} onClick={() => act(() => approveCampaign(campaign.campaign_id))}
+          title={mine ? 'You launched it: someone else approves' : 'Start sending'}
+          className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-40 inline-flex items-center gap-1">
+          <span className="material-symbols-outlined text-[16px]">check</span>Approve and send
+        </button>
+        <button disabled={busy || mine} onClick={() => {
+          const reason = window.prompt('Why are you rejecting it? The person who launched it will see this.');
+          if (reason && reason.trim().length >= 3) act(() => rejectCampaign(campaign.campaign_id, reason.trim()));
+        }}
+          className="px-3.5 py-2 rounded-lg text-xs font-semibold border border-rose-800 text-rose-300 hover:bg-rose-950 disabled:opacity-40 inline-flex items-center gap-1">
+          <span className="material-symbols-outlined text-[16px]">close</span>Reject
+        </button>
       </div>
     </div>
   );
