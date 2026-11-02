@@ -90,9 +90,9 @@ then open http://localhost:8100.
 
 ## 5. When something goes wrong
 
-- **The site is down.** `.github/workflows/uptime.yml` checks `/health` from
-  GitHub every 5 minutes and emails the admin when it goes down, every
-  2 hours while down, and when it is back. On the server: `docker compose ps`,
+- **The site is down.** Uptime is watched from outside AutoGMap, by the
+  team's Grafana (point it at https://indev.eko.in/autogmap/health: healthy
+  is HTTP 200 with `"status":"healthy"`). On the server: `docker compose ps`,
   `docker compose logs backend --since 15m`.
 - **An agent or an automatic action misbehaves.** Agent quality → Controls
   (admin): every one has its own switch, and it stops at once. Besides the
@@ -137,10 +137,9 @@ What has to be done by hand:
   gain is mostly an audit trail of who ran what).
 - **The repository is public.** Anyone can read the code, `CLAUDE.md` and how
   the bot and agents work; no keys are in it (`.env` is ignored). Making it
-  private (GitHub → Settings → Danger zone → Change visibility) hides that,
-  but GitHub's free Actions minutes for a private repository (2,000 a month)
-  do not cover the uptime check every 5 minutes: it would have to run every
-  30 minutes, or move to an outside service such as UptimeRobot.
+  private (GitHub → Settings → Danger zone → Change visibility) hides that;
+  CI then counts against GitHub's 2,000 free Actions minutes a month for a
+  private repository (about 10 minutes a push).
 
 ## 7. Owners
 
