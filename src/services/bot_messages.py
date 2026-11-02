@@ -1060,6 +1060,27 @@ HINGLISH["guidance_open"] = ("Aapka margdarshan karke humein khushi hogi! 🙏 A
                              "*Interested* dabayein.")
 HINGLISH["guidance_more"] = ("😊 Koi aur sawaal ho to bejhijhak poochhiye. "
                              "Shuru karna chahein to *Interested* dabayein.")
+# A question that has nothing to do with Eko or the SBI CSP, during personal
+# guidance: what we can help with, kindly (the user, 2 Nov 2026).
+_OFF_TOPIC = {
+    "en": "Thank you for reaching out! 🙏 We're here to answer your questions about Eko and the SBI CSP: how you can become an SBI CSP with Eko, and roughly how much commission you can earn as a Kiosk Operator. Please ask about these only; we'd love to help you with them. 😊",
+    "hi": "संपर्क करने के लिए धन्यवाद! 🙏 हम यहाँ Eko और SBI CSP से जुड़े आपके सवालों का जवाब देने के लिए हैं: आप Eko के साथ SBI CSP कैसे बन सकते हैं, और Kiosk Operator के रूप में लगभग कितना कमीशन कमा सकते हैं। कृपया इन्हीं विषयों पर सवाल पूछें, हमें आपकी मदद करके खुशी होगी। 😊",
+    "pa": "ਸੰਪਰਕ ਕਰਨ ਲਈ ਧੰਨਵਾਦ! 🙏 ਅਸੀਂ ਇੱਥੇ Eko ਅਤੇ SBI CSP ਨਾਲ ਜੁੜੇ ਤੁਹਾਡੇ ਸਵਾਲਾਂ ਦੇ ਜਵਾਬ ਦੇਣ ਲਈ ਹਾਂ: ਤੁਸੀਂ Eko ਨਾਲ SBI CSP ਕਿਵੇਂ ਬਣ ਸਕਦੇ ਹੋ, ਅਤੇ Kiosk Operator ਵਜੋਂ ਲਗਭਗ ਕਿੰਨਾ ਕਮਿਸ਼ਨ ਕਮਾ ਸਕਦੇ ਹੋ। ਕਿਰਪਾ ਕਰਕੇ ਇਨ੍ਹਾਂ ਵਿਸ਼ਿਆਂ ਬਾਰੇ ਹੀ ਸਵਾਲ ਪੁੱਛੋ, ਸਾਨੂੰ ਤੁਹਾਡੀ ਮਦਦ ਕਰਕੇ ਖੁਸ਼ੀ ਹੋਵੇਗੀ। 😊",
+    "gu": "સંપર્ક કરવા બદલ આભાર! 🙏 અમે અહીં Eko અને SBI CSP વિશેના તમારા પ્રશ્નોના જવાબ આપવા માટે છીએ: તમે Eko સાથે SBI CSP કેવી રીતે બની શકો, અને Kiosk Operator તરીકે આશરે કેટલું કમિશન કમાઈ શકો. કૃપા કરીને આ વિષયો પર જ પ્રશ્નો પૂછો, અમને તમારી મદદ કરવામાં આનંદ થશે. 😊",
+    "mr": "संपर्क केल्याबद्दल धन्यवाद! 🙏 आम्ही इथे Eko आणि SBI CSP बद्दलच्या तुमच्या प्रश्नांची उत्तरे देण्यासाठी आहोत: तुम्ही Eko सोबत SBI CSP कसे बनू शकता, आणि Kiosk Operator म्हणून साधारण किती कमिशन कमवू शकता. कृपया याच विषयांवर प्रश्न विचारा, तुम्हाला मदत करायला आम्हाला आनंद होईल. 😊",
+    "bn": "যোগাযোগ করার জন্য ধন্যবাদ! 🙏 আমরা এখানে Eko এবং SBI CSP নিয়ে আপনার প্রশ্নের উত্তর দিতে আছি: Eko-র সাথে আপনি কীভাবে SBI CSP হতে পারেন, এবং Kiosk Operator হিসেবে মোটামুটি কত কমিশন আয় করতে পারেন। অনুগ্রহ করে শুধু এই বিষয়গুলো নিয়েই প্রশ্ন করুন, আপনাকে সাহায্য করতে পেরে আমরা খুশি হব। 😊",
+    "ta": "தொடர்பு கொண்டதற்கு நன்றி! 🙏 Eko மற்றும் SBI CSP பற்றிய உங்கள் கேள்விகளுக்குப் பதிலளிக்கவே நாங்கள் இங்கே இருக்கிறோம்: Eko உடன் நீங்கள் எப்படி SBI CSP ஆகலாம், Kiosk Operator ஆக ஏறக்குறைய எவ்வளவு கமிஷன் சம்பாதிக்கலாம். தயவுசெய்து இவை பற்றிய கேள்விகளை மட்டும் கேளுங்கள், உங்களுக்கு உதவ மகிழ்ச்சி. 😊",
+    "te": "సంప్రదించినందుకు ధన్యవాదాలు! 🙏 Eko మరియు SBI CSP గురించి మీ ప్రశ్నలకు సమాధానం ఇవ్వడానికి మేము ఇక్కడ ఉన్నాము: Eko తో మీరు SBI CSP ఎలా అవ్వవచ్చు, మరియు Kiosk Operator గా సుమారు ఎంత కమిషన్ సంపాదించవచ్చు. దయచేసి ఈ విషయాల గురించే ప్రశ్నలు అడగండి, మీకు సహాయం చేయడం మాకు సంతోషం. 😊",
+    "kn": "ಸಂಪರ್ಕಿಸಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು! 🙏 Eko ಮತ್ತು SBI CSP ಕುರಿತ ನಿಮ್ಮ ಪ್ರಶ್ನೆಗಳಿಗೆ ಉತ್ತರಿಸಲು ನಾವು ಇಲ್ಲಿದ್ದೇವೆ: Eko ಜೊತೆ ನೀವು SBI CSP ಹೇಗೆ ಆಗಬಹುದು, ಮತ್ತು Kiosk Operator ಆಗಿ ಸುಮಾರು ಎಷ್ಟು ಕಮಿಷನ್ ಗಳಿಸಬಹುದು. ದಯವಿಟ್ಟು ಈ ವಿಷಯಗಳ ಕುರಿತೇ ಪ್ರಶ್ನೆ ಕೇಳಿ, ನಿಮಗೆ ಸಹಾಯ ಮಾಡಲು ನಮಗೆ ಸಂತೋಷ. 😊",
+    "ml": "ബന്ധപ്പെട്ടതിന് നന്ദി! 🙏 Eko, SBI CSP എന്നിവയെക്കുറിച്ചുള്ള നിങ്ങളുടെ ചോദ്യങ്ങൾക്ക് ഉത്തരം നൽകാനാണ് ഞങ്ങൾ ഇവിടെയുള്ളത്: Eko-യോടൊപ്പം നിങ്ങൾക്ക് എങ്ങനെ SBI CSP ആകാം, Kiosk Operator ആയി ഏകദേശം എത്ര കമ്മീഷൻ നേടാം. ദയവായി ഈ വിഷയങ്ങളെക്കുറിച്ച് മാത്രം ചോദിക്കൂ, നിങ്ങളെ സഹായിക്കാൻ ഞങ്ങൾക്ക് സന്തോഷമേയുള്ളൂ. 😊",
+    "or": "ଯୋଗାଯୋଗ କରିଥିବାରୁ ଧନ୍ୟବାଦ! 🙏 Eko ଏବଂ SBI CSP ବିଷୟରେ ଆପଣଙ୍କ ପ୍ରଶ୍ନର ଉତ୍ତର ଦେବା ପାଇଁ ଆମେ ଏଠାରେ ଅଛୁ: Eko ସହ ଆପଣ କିପରି SBI CSP ହୋଇପାରିବେ, ଏବଂ Kiosk Operator ଭାବେ ପ୍ରାୟ କେତେ କମିଶନ ରୋଜଗାର କରିପାରିବେ। ଦୟାକରି କେବଳ ଏହି ବିଷୟରେ ପ୍ରଶ୍ନ ପଚାରନ୍ତୁ, ଆପଣଙ୍କୁ ସାହାଯ୍ୟ କରି ଆମେ ଖୁସି ହେବୁ। 😊",
+}
+for _lang in MESSAGES:
+    MESSAGES[_lang]["off_topic"] = _OFF_TOPIC.get(_lang, _OFF_TOPIC["en"])
+HINGLISH["off_topic"] = ("Sampark karne ke liye dhanyavaad! 🙏 Hum yahan Eko aur SBI CSP se jude aapke sawaalon ka jawab dene "
+                         "ke liye hain: aap Eko ke saath SBI CSP kaise ban sakte hain, aur Kiosk Operator ke roop mein lagbhag "
+                         "kitna commission kama sakte hain. Kripya inhi vishayon par sawaal poochhiye, humein aapki madad "
+                         "karke khushi hogi. 😊")
 _GUIDANCE_INTRO = {"en": "Good question! 😊", "hi": "अच्छा सवाल! 😊", "pa": "ਵਧੀਆ ਸਵਾਲ! 😊", "gu": "સરસ પ્રશ્ન! 😊",
                    "mr": "छान प्रश्न! 😊", "bn": "ভালো প্রশ্ন! 😊", "ta": "நல்ல கேள்வி! 😊", "te": "మంచి ప్రశ్న! 😊",
                    "kn": "ಒಳ್ಳೆಯ ಪ್ರಶ್ನೆ! 😊", "ml": "നല്ല ചോദ്യം! 😊", "or": "ଭଲ ପ୍ରଶ୍ନ! 😊"}

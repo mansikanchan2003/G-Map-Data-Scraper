@@ -640,6 +640,62 @@ def wants_to_start(text: Optional[str]) -> bool:
     return any(f" {p} " in said for p in _START_PHRASES)
 
 
+# What a question about us mentions, in the scripts the bot can read for it:
+# Eko, the CSP and the bank; money, commission and investment; documents and
+# eligibility; the shop, the work and where. Word stems, matched at the start
+# of a word. A question in another script is never called unrelated: when in
+# doubt, it goes to a person as before (the user, 2 Nov 2026).
+_ON_TOPIC = re.compile(
+    r"(?<![a-z])(?:eko|sbi|csp|kio?sk|kyosk|bank|branch|kha?ata|account|a/?c\b|aa?dh?aa?r|pan\b|pan ?card|"
+    r"doc|kaa?gaz|dasta?ve|commi?ss?ion|kama|earn|income|profit|muna?fa|salary|tankh|inv[ae]st|nivesh|pais[ae]|"
+    r"rupa?y|rupee|rs\b|lakh|lac\b|haz[ae]r|franchi|business|vyapa?r|dhandh|duka?a?n|shop|store|cash|withdr|"
+    r"nikal|deposit|jama|transfer|atm|micro|device|machine|laptop|print|biometr|train|form|apply|regist|join|"
+    r"jud|jod|operator|customer|grahak|locat|area|pin|gaa?on|village|city|shaha?r|district|jila|zila|eligib|"
+    r"qualif|12th|10th|graduat|padh|educat|umar|age\b|loan|insur|bima|pension|yojna|yojana|scheme|sarkar|govt|"
+    r"government|rbi|licen|police|cibil|verif|interview|visit|office|guidance|process|start|shuru|kaam|chala|"
+    r"naam|mobile|phone|baat|call|contact|sampark|bol|hindi|gujarati|english|punjabi|sunday|"
+    r"बात|कॉल|संपर्क|વાત|કૉલ|ਗੱਲ|"
+    r"मिनी|बैंक|खाता|कमीशन|कमाई|निवेश|पैसा|पैसे|दुकान|व्यापार|बिज़नेस|बिजनेस|आधार|पैन|दस्तावेज|एसबीआई|सीएसपी|"
+    r"कियोस्क|ट्रेनिंग|फ्रेंचाइज|लाख|रुपय|ग्राहक|लोन|बीमा|योजना|शुरू|"
+    r"બેંક|ખાતું|કમિશન|કમાણી|રોકાણ|પૈસા|દુકાન|વ્યવસાય|બિઝનેસ|આધાર|પાન|દસ્તાવેજ|એસબીઆઈ|સીએસપી|કિઓસ્ક|તાલીમ|લાખ|"
+    r"રૂપિયા|ગ્રાહક|લોન|વીમો|યોજના|શરૂ|"
+    r"ਬੈਂਕ|ਖਾਤਾ|ਕਮਿਸ਼ਨ|ਕਮਾਈ|ਨਿਵੇਸ਼|ਪੈਸਾ|ਦੁਕਾਨ|ਕਾਰੋਬਾਰ|ਆਧਾਰ|ਲੱਖ|ਰੁਪਏ|ਲੋਨ|ਸ਼ੁਰੂ)",
+    re.IGNORECASE)
+# Scripts the stems above cover (Latin, Devanagari, Gujarati, Gurmukhi): only there can a question be called unrelated.
+_READ_FOR_TOPIC = re.compile(r"^[\sA-Za-z0-9\u0900-\u097F\u0A80-\u0AFF\u0A00-\u0A7F.,!?'\"()/:;&@#%*+\-–—₹…]*$")
+# Answered once; asked again soon after, the same answer is not sent twice in a row.
+OFF_TOPIC_AGAIN = timedelta(minutes=10)
+# FAQ words too general to make a question ours on their own: "Hardik Rajput
+# kaun hai?" is not "Eko kaun hai?", nor is "capital of India" an investment.
+_GENERIC_FAQ_WORDS = re.compile(
+    r"\b(?:kaun hai|kon hai|capital|beta|beti|bhai|pati|patni|wife|family|parivaa?r|sach|sacha|sachcha|real|"
+    r"trust|cost|budget|amount|time)\b", re.IGNORECASE)
+# "Aap kaun ho?", "Kya ye sach hai?": about us, so the who-is-Eko answer fits.
+_ABOUT_US = re.compile(r"\b(?:aap|ap|aapki|aapka|tum|tumhari|you|your|ye|yeh|yah|company|kampani|kaun ho|kon ho)\b",
+                       re.IGNORECASE)
+
+
+# Asking who we are is about us, however it is put.
+_WHO_ARE_YOU = re.compile(r"\b(?:aap|ap|tum|you)\s+(?:log\s+)?(?:kaun|kon|who)\b|\b(?:kaun|kon)\s+(?:ho|hain)\b|"
+                          r"\bwho are you\b|आप कौन|તમે કોણ|ਤੁਸੀਂ ਕੌਣ", re.IGNORECASE)
+
+
+def is_off_topic(said: Optional[str]) -> bool:
+    """A question that has nothing to do with Eko, the SBI CSP or becoming one; False whenever in doubt."""
+    said = (said or "").strip()
+    if not said or not looks_like_question(said) or not _READ_FOR_TOPIC.match(said):
+        return False
+    if _ON_TOPIC.search(said) or eko_knowledge.distrust(said) or _WHO_ARE_YOU.search(said):
+        return False
+    faq = eko_knowledge.match(said)
+    if not faq:
+        return True
+    if "real" in faq and _ABOUT_US.search(said):
+        return False
+    # Matched only through a general word: without it, nothing of ours is asked.
+    return not eko_knowledge.match(_GENERIC_FAQ_WORDS.sub(" ", said))
+
+
 def _guidance_reply(db, conv, msg) -> None:
     """
     Personal guidance: answer a question from Eko's FAQ, kindly; leave one it
@@ -658,6 +714,15 @@ def _guidance_reply(db, conv, msg) -> None:
         conv.bot_data = {**kept, "trigger": "PIN during personal guidance"}
         _move(conv, AWAIT_PIN, pin_attempts=0)
         _on_pin(db, conv, msg)
+        return
+    # A question that has nothing to do with us: what we can help with, kindly,
+    # and no ticket for the team (the user, 2 Nov 2026).
+    if said and getattr(msg, "kind", "text") == "text" and is_off_topic(said):
+        _understood(conv)
+        last = (conv.bot_data or {}).get("off_topic_at")
+        if not last or inbox.now() - datetime.fromisoformat(last) >= OFF_TOPIC_AGAIN:
+            conv.bot_data = {**(conv.bot_data or {}), "off_topic_at": inbox.now().isoformat()}
+            _say(db, conv, _t(db, conv, "off_topic"), buttons=_interested_button())
         return
     _fallback(db, conv, _t(db, conv, "guidance_more"), buttons=_interested_button(), kind_intro=True)
 

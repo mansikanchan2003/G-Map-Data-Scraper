@@ -3868,3 +3868,39 @@ def test_campaign_sending_switched_off_refuses_launches_and_approvals(db, client
     assert r.status_code == 409 and "turned off" in r.json()["detail"]
     _as("kavya.shukla@eko.co.in", "manager")
     assert client.post(f"/api/v1/whatsapp/campaigns/{cid}/approve", json={}).status_code == 409
+
+
+# --- Personal guidance: a question that has nothing to do with us (2 Nov 2026) -----------
+
+@pytest.mark.parametrize("said", ["Hardik Rajput kaun hai?", "Aaj mausam kaisa hai?", "What is the capital of India?",
+                                  "क्या आप मेरी शादी करवा सकते हैं?", "IPL ka match kab hai?"])
+def test_an_unrelated_question_gets_a_kind_note_on_what_we_can_help_with_and_no_ticket(db, emailed, said):
+    from src.services import tickets
+    _guidance(db, lang="en")
+    say(db, said)
+    kind, _to, body, buttons = StubMeta.sent[-1]
+    assert body in (bot_messages.MESSAGES["en"]["off_topic"], bot_messages.HINGLISH["off_topic"])
+    assert [b["id"] for b in buttons] == [onboarding_bot.START_INTERESTED]
+    c = conv(db)
+    assert not c.needs_attention and tickets.open_ticket(db, PHONE) is None and emailed == []
+    assert c.bot_step == onboarding_bot.GUIDANCE_QA
+
+
+def test_the_note_is_not_sent_twice_in_a_row(db):
+    _guidance(db, lang="en")
+    say(db, "Aaj mausam kaisa hai?")
+    count = len(StubMeta.sent)
+    say(db, "IPL ka match kab hai?")
+    assert len(StubMeta.sent) == count
+
+
+@pytest.mark.parametrize("said", ["Kya aap Sunday ko bhi baat karte ho?", "Aap kaun ho?", "Kya ye sach hai?",
+                                  "Mera beta bhi kaam kar sakta hai?", "SBI branch ka manager kaun hoga?",
+                                  "Kaun sa mobile lena chahiye?"])
+def test_questions_about_us_are_never_called_unrelated(said):
+    assert not onboarding_bot.is_off_topic(said)
+
+
+def test_the_note_is_written_in_every_language():
+    for lang, messages in bot_messages.MESSAGES.items():
+        assert "SBI CSP" in messages["off_topic"] and "Kiosk Operator" in messages["off_topic"], lang
