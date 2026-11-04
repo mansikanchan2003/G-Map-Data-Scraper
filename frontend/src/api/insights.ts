@@ -258,8 +258,6 @@ export interface NextCampaign {
   size: number; size_why: string; approval_min: number;
   send_day: string; send_time: string; send_why: string;
   send_evidence: { day: SlotEvidence | null; time: SlotEvidence | null };
-  /** When the people our campaigns reached write back most (IST hours). */
-  call: { from_hour: number; to_hour: number; replies: number; replies_counted: number; share: number | null; evidence: boolean };
   /** People expected at each step from this campaign, at today's rates. */
   expect: Record<Stage, number>;
   expect_leads: number; messages_per_lead: number | null; leads_so_far: number;

@@ -685,6 +685,20 @@ def finish_task(followup_id: str, payload: TaskDoneRequest, db: Session = Depend
     return followups.as_dict(f)
 
 
+@router.get("/conversations/{digits}/call-plan")
+def chat_call_plan(digits: str, db: Session = Depends(get_db)):
+    """When to call this lead and what to talk about (for the team, and the AI calling agent)."""
+    from src.services import call_plan
+    return call_plan.for_lead(db, _get_conversation(db, digits))
+
+
+@router.get("/calls")
+def calls_due(db: Session = Depends(get_db)):
+    """Every lead a call is planned for, soonest first, each with its call plan."""
+    from src.services import call_plan
+    return call_plan.due(db)
+
+
 @router.get("/conversations/{digits}/journey")
 def chat_journey(digits: str, db: Session = Depends(get_db)):
     """This lead's journey: each step with its date, and what we did after it."""

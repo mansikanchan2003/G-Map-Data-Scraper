@@ -482,8 +482,19 @@ def queue(db: Session, owner: Optional[str] = None) -> dict:
                       "result": "Answer it in the chat and record what happened",
                       "disposition_label": dz.label(c.disposition), "due_at": raised.isoformat(),
                       "bucket": bucket(raised, journey_checks.ticket_late(t, now)), "can_mark_done": False})
+    # Calls the call plan proposes (call_plan): the team's until the AI calling agent takes them.
+    from src.services import call_plan
+    for p in call_plan.due(db, now):
+        due = datetime.fromisoformat(p["call_at"])
+        items.append({"id": f"call-{p['phone']}", "source": "call", "phone": p["phone"], "name": p["name"],
+                      "owner": "human", "owner_type": QUEUE_OWNERS["human"],
+                      "owner_label": lead_journey.owner_label("human"),
+                      "text": f"Call them: {p['goal'].lower()}", "result": " ".join(p["why"]),
+                      "disposition_label": p["disposition"], "due_at": due.isoformat(),
+                      "bucket": bucket(due, now > due + timedelta(hours=call_plan.WINDOW)),
+                      "can_mark_done": False, "call_plan": p})
 
-    counts = {o: sum(i["owner"] == o for i in items) for o in QUEUE_OWNERS}
+    counts ={o: sum(i["owner"] == o for i in items) for o in QUEUE_OWNERS}
     if owner:
         items = [i for i in items if i["owner"] == owner]
     items.sort(key=lambda i: i["due_at"])

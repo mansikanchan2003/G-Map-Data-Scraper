@@ -170,14 +170,12 @@ const Goal: React.FC<{ plan: Plan }> = ({ plan }) => {
 // The next campaign: the agent's proposal
 // ---------------------------------------------------------------------------
 
-const hourLabel = (h: number) => `${((h + 11) % 12) + 1} ${h < 12 ? 'AM' : 'PM'}`;
 const tenth = (v: number) => (v >= 10 ? Math.round(v).toLocaleString('en-IN') : v.toFixed(1));
 
 const PLAN_TILES = [
   { key: 'where', icon: 'location_on', label: 'Where', tint: 'bg-sky-950 text-sky-300' },
   { key: 'size', icon: 'groups', label: 'How many people', tint: 'bg-purple-950 text-purple-300' },
   { key: 'send', icon: 'schedule_send', label: 'When to send', tint: 'bg-emerald-950 text-emerald-300' },
-  { key: 'call', icon: 'call', label: 'When to call', tint: 'bg-amber-950 text-amber-300' },
 ] as const;
 
 const NextCampaignCard: React.FC<{ plan: Plan }> = ({ plan }) => {
@@ -190,12 +188,6 @@ const NextCampaignCard: React.FC<{ plan: Plan }> = ({ plan }) => {
     },
     size: { value: <>{num(n.size)} <span className="text-slate-400 font-normal text-base">people</span></>, note: n.size_why },
     send: { value: <>{n.send_day}</>, note: <><b className="text-slate-300">{n.send_time}</b>. {n.send_why}</> },
-    call: {
-      value: <>{hourLabel(n.call.from_hour)} – {hourLabel(n.call.to_hour)}</>,
-      note: n.call.evidence
-        ? <>Most replies come in then ({n.call.replies} of {n.call.replies_counted} in the last 60 days): people have the phone in hand.</>
-        : <>Too few replies yet to tell; late morning until there are.</>,
-    },
   };
   const steps: { key: string; label: string; value: number }[] = [
     { key: 'sent', label: 'Messaged', value: n.size },
@@ -207,7 +199,7 @@ const NextCampaignCard: React.FC<{ plan: Plan }> = ({ plan }) => {
   return (
     <Card icon="rocket_launch" title="Next campaign" tint="bg-emerald-950 text-emerald-300"
       subtitle={<>Proposed by the agent from all {num(n.messages_sent)} messages so far. Worked out afresh whenever this page opens.</>}>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-3">
         {PLAN_TILES.map(t => (
           <div key={t.key} className="rounded-lg border border-slate-800 bg-slate-950/60 p-4 min-w-0">
             <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider font-semibold text-slate-500">

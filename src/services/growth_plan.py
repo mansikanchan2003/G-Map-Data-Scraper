@@ -617,7 +617,7 @@ def next_steps(g: dict, f: dict, warm: List[dict], t: dict, c: dict, book: dict,
     return steps
 
 
-# --- The next campaign: where, how many, when to send, when to call, what to expect -----------
+# --- The next campaign: where, how many, when to send, what to expect ----------------------
 
 # Fewer people than this teaches nothing; a campaign is also never sized past
 # the approval threshold, so the agent's proposal can go out without waiting.
@@ -648,7 +648,8 @@ def _best_slot(facts: List[dict], dim: str, outcome: str) -> Optional[dict]:
 
 
 def _call_window(db: Session, people: List[WhatsAppConversation]) -> dict:
-    """The two hours people reached by our campaigns write back most: when they have the phone in hand."""
+    """The two hours people reached by our campaigns write back most: when they have the phone in hand
+    (call_plan's fallback for a lead with too few replies of their own)."""
     since = datetime.now(timezone.utc) - timedelta(days=CALL_DAYS)
     phones = [p.phone for p in people]
     by_hour = Counter()
@@ -673,12 +674,11 @@ def _district_state(db: Session, district: str) -> Optional[str]:
     return row[0][0] if row else None
 
 
-def next_campaign(db: Session, g: dict, book: dict, t: dict, pool: Dict[str, Counter],
-                  people: List[WhatsAppConversation]) -> Optional[dict]:
+def next_campaign(db: Session, g: dict, book: dict, t: dict, pool: Dict[str, Counter]) -> Optional[dict]:
     """
     The agent's proposal for the next campaign: the place and kind of business
-    to message, how many people, when to send it, when to call the ones who
-    answer, and how many of them should go on to each step. Worked out from
+    to message, how many people, when to send it, and how many of them should
+    go on to each step. (When to call each lead is call_plan's, per lead.) Worked out from
     every campaign so far; where the data is thin it says so, and the size
     still teaches us something.
     """
@@ -747,7 +747,6 @@ def next_campaign(db: Session, g: dict, book: dict, t: dict, pool: Dict[str, Cou
         "send_why": ("Judged on “" + (ci.STAGE_LABELS.get(timing_on) or "replied or tapped").lower() + "” across "
                      f"{sent:,} messages." if day or hour else
                      "Not enough campaigns yet to tell which time works; morning on a weekday until they do."),
-        "call": _call_window(db, people),
         "expect": expect,
         "expect_leads": round(size * per_lead, 2),
         "messages_per_lead": int(round(1 / per_lead)) if per_lead else None,
@@ -786,7 +785,7 @@ def plan(db: Session) -> dict:
         "targets": t,
         "creative": c,
         "beyond": out,
-        "next_campaign": next_campaign(db, g, book, t, pool, people),
+        "next_campaign": next_campaign(db, g, book, t, pool),
         "next_steps": next_steps(g, f, warm, t, c, book, out),
     }
 

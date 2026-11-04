@@ -113,7 +113,7 @@ export interface FollowUpItem {
 /** One open action item in the queue: a nudge, a task, the hand-over, or a question for the team. */
 export interface QueueItem {
   id: string;
-  source: 'followup' | 'ticket';
+  source: 'followup' | 'ticket' | 'call';
   phone: string;
   name: string | null;
   owner: 'bot' | 'human' | 'dc' | 'eko_acquisition_api';
@@ -125,6 +125,30 @@ export interface QueueItem {
   due_at: string;
   bucket: 'overdue' | 'today' | 'upcoming';
   can_mark_done: boolean;
+  /** A call the call plan proposes: when, why, and what to talk about. */
+  call_plan?: CallPlan;
+}
+
+/** When to call a lead and what to talk about; `call` false says why no call is planned. */
+export interface CallPlan {
+  phone: string;
+  name: string;
+  call: boolean;
+  /** Why no call is planned (a string), or why this time (a list). */
+  why: string | string[];
+  call_at?: string;
+  /** How long after the bot's last message, e.g. "2 hours"; null for a time they asked for. */
+  after_message?: string | null;
+  overdue?: boolean;
+  language?: string;
+  disposition?: string | null;
+  goal?: string;
+  opening?: string;
+  points?: string[];
+  known?: string[];
+  their_questions?: string[];
+  avoid?: string[];
+  record?: { if_yes: string; if_no: string; no_answer: string; later: string };
 }
 
 export type QueueBucket = 'overdue' | 'today' | 'upcoming';
@@ -376,6 +400,7 @@ export const fetchMissingSteps = () => call<MissingSteps>('/journeys/missing-ste
 /** Leads with no disposition where one is due, and dispositions with a missing or overdue action item. */
 export const fetchMissingActions = () => call<MissingSteps>('/journeys/missing-actions');
 
+export const fetchCallPlan = (phone: string) => call<CallPlan>(`/conversations/${digits(phone)}/call-plan`);
 export const fetchJourney = (phone: string) => call<Journey>(`/conversations/${digits(phone)}/journey`);
 export const fetchJourneys = () => call<JourneyRow[]>('/dispositions/journeys');
 

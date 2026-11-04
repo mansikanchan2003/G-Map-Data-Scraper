@@ -410,7 +410,7 @@ def test_calls_are_suggested_for_when_people_write_back(db):
             db.add(WhatsAppMessage(message_id=uuid.uuid4().hex, phone=p, direction="IN", kind="text", body="ok",
                                    created_at=datetime.now(timezone.utc).replace(hour=12, minute=i * 4 + m)))
     _unmessaged(db, 100, "Rajkot", "Kiosk", start=5000)
-    call = gp.plan(db)["next_campaign"]["call"]
+    call = gp._call_window(db, gp._people(db))
     assert (call["from_hour"], call["to_hour"]) == (17, 19) and call["evidence"]
 
 

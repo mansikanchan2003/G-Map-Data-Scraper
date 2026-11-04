@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { completeFollowUpTask, fetchActionQueue, type ActionQueue as Queue, type QueueBucket, type QueueItem } from '../api/inbox';
 import { formatDateTime } from '../utils/datetime';
+import { CallPlanCard } from './CallPlan';
 
 /**
  * Every open action item across the leads, in one queue: the bot's nudges,
@@ -87,6 +88,7 @@ const Item: React.FC<{ i: QueueItem; outcomes: string[]; onDone: () => void }> =
       <span>{i.source === 'ticket' ? 'Asked' : 'Due'} {formatDateTime(i.due_at)}</span>
     </div>
     {i.result && <div className="mt-1 text-[11.5px] text-slate-400">{i.result}</div>}
+    {i.call_plan && <div className="mt-2"><CallPlanCard plan={i.call_plan} compact /></div>}
     {i.can_mark_done && <MarkDone id={i.id} outcomes={outcomes} onDone={onDone} />}
     {i.source === 'ticket' && (
       <a href={chat(i.phone)}
@@ -129,7 +131,8 @@ export const ActionQueue: React.FC = () => {
       </div>
       <p className="text-[12.5px] text-slate-400 mt-2">
         Every open step across the leads. Overdue goes by the Dashboard alert's rules: a nudge an hour past due, one waiting
-        for a template a day, a team task open 2 days, a question unanswered a day. A task is marked done with how it ended.
+        for a template a day, a team task open 2 days, a question unanswered a day, a call two hours past its time. A task is
+        marked done with how it ended; after a call, record its disposition in the chat.
       </p>
       <div className="grid gap-4 lg:grid-cols-3 mt-4">
         {BUCKETS.map(b => (

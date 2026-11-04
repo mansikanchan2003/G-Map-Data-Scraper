@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchJourney, fetchJourneys, type ActionItem, type DispositionBlock, type Journey, type JourneyRow, type NextItem } from '../api/inbox';
+import { fetchCallPlan, fetchJourney, fetchJourneys, type ActionItem, type CallPlan, type DispositionBlock, type Journey, type JourneyRow, type NextItem } from '../api/inbox';
+import { CallPlanCard } from '../components/CallPlan';
 import { formatDateTime } from '../utils/datetime';
 
 /**
@@ -164,15 +165,18 @@ const Dispositions: React.FC<{ blocks: DispositionBlock[] }> = ({ blocks }) => {
 /** One lead's steps as a plain table: when, what they did, what we did. */
 const Steps: React.FC<{ phone: string }> = ({ phone }) => {
   const [j, setJ] = useState<Journey | null>(null);
+  const [call, setCall] = useState<CallPlan | null>(null);
   const [all, setAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { fetchJourney(phone).then(setJ).catch(e => setError(e.message)); }, [phone]);
+  useEffect(() => { fetchCallPlan(phone).then(setCall).catch(() => setCall(null)); }, [phone]);
   if (error) return <div className="text-sm text-rose-300">Could not load the steps: {error}</div>;
   if (!j) return <div className="h-24 rounded-lg bg-slate-900 animate-pulse" />;
   const steps = all ? j.steps : j.steps.filter(s => s.kind === 'stage');
   return (
     <div className="space-y-3">
       <WhatsNext items={j.whats_next} />
+      {call && <CallPlanCard plan={call} />}
       <Dispositions blocks={j.dispositions} />
       <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold flex items-center gap-1.5 pt-1">
         <Icon name="route" className="text-[15px]" />Journey
