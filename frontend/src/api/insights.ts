@@ -234,6 +234,8 @@ export interface GrowthPlan {
       recipe: Record<string, string>;
     } | null;
   };
+  /** The agent's proposal for the next campaign; null when nobody is left to message. */
+  next_campaign?: NextCampaign | null;
   /** icon: a Material Symbols name. */
   next_steps: { title: string; detail: string; why: string; impact: 'high' | 'medium' | 'low'; icon?: string }[];
   /** What happens after AutoGMap, from Kiosk KAI (the form and TARA); null without the app's Kiosk KAI key. */
@@ -247,6 +249,22 @@ export interface GrowthPlan {
     branch_places: { district: string; branches: string[]; left: number }[];
     channels: { icon: string; title: string; where: string; how: string; why: string }[];
   };
+}
+
+export interface SlotEvidence { name: string; sent: number; success: number; rate: number; confidence: Confidence; direction: string }
+
+export interface NextCampaign {
+  state: string | null; district: string; category: string | null; where_why: string; left: number;
+  size: number; size_why: string; approval_min: number;
+  send_day: string; send_time: string; send_why: string;
+  send_evidence: { day: SlotEvidence | null; time: SlotEvidence | null };
+  /** When the people our campaigns reached write back most (IST hours). */
+  call: { from_hour: number; to_hour: number; replies: number; replies_counted: number; share: number | null; evidence: boolean };
+  /** People expected at each step from this campaign, at today's rates. */
+  expect: Record<Stage, number>;
+  expect_leads: number; messages_per_lead: number | null; leads_so_far: number;
+  /** Leads each day's campaign should bring for the month's goal. */
+  should_get: number; messages_sent: number;
 }
 
 export const fetchGrowthPlan = () => call<GrowthPlan>('/growth');

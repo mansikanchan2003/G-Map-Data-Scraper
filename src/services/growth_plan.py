@@ -15,6 +15,7 @@ facts and the conversations, and labelled with how firm the evidence is.
 Where the data is too thin to say what works, the plan says so and suggests
 what to try, so the next campaigns also teach us something.
 """
+import math
 import os
 import re
 from collections import Counter
@@ -25,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from src.models import Business
 from src.models.business import CONTACTABLE, NOT_PARTNER
-from src.models.inbox import WhatsAppConversation
+from src.models.inbox import WhatsAppConversation, WhatsAppMessage
 from src.models.location import Location
 from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
 from src.services import campaign_insights as ci
@@ -616,6 +617,146 @@ def next_steps(g: dict, f: dict, warm: List[dict], t: dict, c: dict, book: dict,
     return steps
 
 
+# --- The next campaign: where, how many, when to send, when to call, what to expect -----------
+
+# Fewer people than this teaches nothing; a campaign is also never sized past
+# the approval threshold, so the agent's proposal can go out without waiting.
+CAMPAIGN_MIN = 50
+CAMPAIGN_MAX = 500
+# The hours the team calls in, IST, and how wide a calling window is.
+CALL_HOURS = range(9, 20)
+CALL_WINDOW = 2
+# Below this many replies, when people write back says nothing yet.
+CALL_MIN_REPLIES = 10
+CALL_DAYS = 60
+DEFAULT_SEND = {"weekday": "a weekday", "time_of_day": "Morning (9–12)"}
+
+
+def _rate(k: int, n: int) -> float:
+    """k in n, never zero: with none seen yet, half an event (Jeffreys), so a projection stays honest."""
+    return (k if k else 0.5) / (n + (0 if k else 1)) if n else 0.0
+
+
+def _best_slot(facts: List[dict], dim: str, outcome: str) -> Optional[dict]:
+    rows = [r for r in ci.aggregate(facts, (dim,), min_sent=ci.MIN_SENT, outcome=outcome)
+            if not ci.is_unknown(r["values"][dim]) and r["success"]]
+    if not rows:
+        return None
+    r = rows[0]
+    return {"name": r["values"][dim], "sent": r["sent"], "success": r["success"], "rate": r["success_rate"],
+            "confidence": r["confidence"], "direction": r["direction"]}
+
+
+def _call_window(db: Session, people: List[WhatsAppConversation]) -> dict:
+    """The two hours people reached by our campaigns write back most: when they have the phone in hand."""
+    since = datetime.now(timezone.utc) - timedelta(days=CALL_DAYS)
+    phones = [p.phone for p in people]
+    by_hour = Counter()
+    if phones:
+        for (at,) in (db.query(WhatsAppMessage.created_at)
+                      .filter(WhatsAppMessage.phone.in_(phones), WhatsAppMessage.direction == "IN",
+                              WhatsAppMessage.created_at >= since)):
+            by_hour[inbox.aware(at).astimezone(IST).hour] += 1
+    total = sum(by_hour[h] for h in CALL_HOURS)
+    windows = [(sum(by_hour[h + i] for i in range(CALL_WINDOW)), h)
+               for h in CALL_HOURS if h + CALL_WINDOW <= CALL_HOURS.stop]
+    count, start = max(windows, key=lambda w: (w[0], -w[1])) if windows else (0, 11)
+    enough = total >= CALL_MIN_REPLIES and count > 0
+    if not enough:
+        start, count = 11, 0
+    return {"from_hour": start, "to_hour": start + CALL_WINDOW, "replies": count, "replies_counted": total,
+            "share": count / total if total else None, "evidence": enough}
+
+
+def _district_state(db: Session, district: str) -> Optional[str]:
+    row = Counter(s for (s,) in db.query(Business.state).filter(Business.district == district) if s).most_common(1)
+    return row[0][0] if row else None
+
+
+def next_campaign(db: Session, g: dict, book: dict, t: dict, pool: Dict[str, Counter],
+                  people: List[WhatsAppConversation]) -> Optional[dict]:
+    """
+    The agent's proposal for the next campaign: the place and kind of business
+    to message, how many people, when to send it, when to call the ones who
+    answer, and how many of them should go on to each step. Worked out from
+    every campaign so far; where the data is thin it says so, and the size
+    still teaches us something.
+    """
+    from src.services import campaign_approval
+
+    facts = book["_facts"]
+    places = [d for d in t["districts"] if d["left"]]
+    if not places:
+        return None
+    # A place that answered, however few are left there; else the biggest place not tried yet.
+    answered_places = [d for d in places if d["success"]]
+    place = answered_places[0] if answered_places else next(
+        (d for d in places if d["left"] >= CAMPAIGN_MIN), places[0])
+    district = place["name"]
+
+    # The kind of business: one that answered, with people left there; else the biggest pool there.
+    answered = [c["name"] for c in t["categories"] if c["success"]]
+    here = {c: n for (d, c), n in pool["pair"].items() if d == district and n}
+    category = next((c for c in answered if c in here), None) or (max(here, key=here.get) if here else None)
+    left = here.get(category, place["left"]) if category else place["left"]
+
+    # What one message brings, step by step.
+    sent = len(facts)
+    rates = {key: _rate(sum(f.get(key, 0) for f in facts), sent) for key, _ in ci.STAGES}
+    per_lead = rates["lead"]
+
+    # The goal shared out over the days left, one campaign a day.
+    days = max(g["days_left"], 1)
+    should_get = g["still_needed"] / days if g["still_needed"] else 0
+    approval = campaign_approval.approval_min()
+    cap = min(approval - 1 if approval > CAMPAIGN_MIN else CAMPAIGN_MAX, CAMPAIGN_MAX)
+    for_goal = math.ceil(should_get / per_lead) if should_get and per_lead else CAMPAIGN_MIN
+    size = min(max(for_goal, CAMPAIGN_MIN), cap, left)
+    if size == left and left < max(for_goal, CAMPAIGN_MIN):
+        size_why = f"Everyone left there ({left:,})."
+    elif size == cap and for_goal > cap:
+        size_why = (f"The goal would need about {for_goal:,} messages a day at today's rate; {cap:,} is the most "
+                    f"one campaign sends without a second person's approval. Send another tomorrow.")
+    elif size == CAMPAIGN_MIN and for_goal < CAMPAIGN_MIN:
+        size_why = f"The goal needs few messages; {CAMPAIGN_MIN} is the fewest that teaches us something."
+    else:
+        size_why = f"Enough for today's share of the goal ({should_get:.1f} leads) at today's rate."
+
+    stage = book["judged_on"]
+    timing_on = stage if any(f.get(stage) for f in facts) else "responded"
+    day = _best_slot(facts, "weekday", timing_on)
+    hour = _best_slot(facts, "time_of_day", timing_on)
+
+    expect = {key: round(size * rates[key], 1) for key, _ in ci.STAGES}
+    return {
+        "state": _district_state(db, district),
+        "district": district,
+        "category": category,
+        "where_why": (f"{place['success']} of {place['sent']} people reached here went on to "
+                      f"“{ci.STAGE_LABELS[t['judged_on']].lower()}”; {left:,} not messaged yet."
+                      if place["success"] else
+                      f"Not messaged yet: the biggest group of businesses left ({left:,}), so it also teaches us "
+                      "whether this place answers."),
+        "left": left,
+        "size": size,
+        "size_why": size_why,
+        "approval_min": approval,
+        "send_day": day["name"] if day else DEFAULT_SEND["weekday"],
+        "send_time": hour["name"] if hour else DEFAULT_SEND["time_of_day"],
+        "send_evidence": {"day": day, "time": hour},
+        "send_why": ("Judged on “" + (ci.STAGE_LABELS.get(timing_on) or "replied or tapped").lower() + "” across "
+                     f"{sent:,} messages." if day or hour else
+                     "Not enough campaigns yet to tell which time works; morning on a weekday until they do."),
+        "call": _call_window(db, people),
+        "expect": expect,
+        "expect_leads": round(size * per_lead, 2),
+        "messages_per_lead": int(round(1 / per_lead)) if per_lead else None,
+        "leads_so_far": sum(f.get("lead", 0) for f in facts),
+        "should_get": round(should_get, 1),
+        "messages_sent": sent,
+    }
+
+
 def plan(db: Session) -> dict:
     """The whole plan: goal, funnel, warm people, targets, creative lessons and next steps."""
     facts = ci.load_facts(db)
@@ -645,6 +786,7 @@ def plan(db: Session) -> dict:
         "targets": t,
         "creative": c,
         "beyond": out,
+        "next_campaign": next_campaign(db, g, book, t, pool, people),
         "next_steps": next_steps(g, f, warm, t, c, book, out),
     }
 

@@ -346,3 +346,74 @@ def test_figures_left_behind_by_a_stopped_refresh_are_flagged():
     goal = {"inr": 10_000_000, "from": "2026-10-01", "to": "2026-12-31"}
     assert bc.revenue_plan(summary, goal, date(2026, 10, 21))["stale_days"] == 4
     assert bc.revenue_plan(summary, goal, date(2026, 10, 17))["stale_days"] == 0
+
+
+# --- The next campaign the agent proposes (4 Nov 2026) ---------------------------------------
+
+def _unmessaged(db, n, district, category, start):
+    for i in range(start, start + n):
+        bid = uuid.uuid4().hex[:16]
+        db.add(Business(business_id=bid, job_id="J", name="b", phone=_phone(i), category=category,
+                        district=district, state="Gujarat", source_query="q", dedup_key=bid))
+    db.commit()
+
+
+def test_the_next_campaign_goes_where_people_answered_with_what_they_should_bring(db):
+    phones = campaign(db, 60, district="Rajkot", category="Kiosk")
+    for p in phones[:12]:
+        person(db, p, bot.AWAIT_EDUCATION, coverage=SERVED)
+    _unmessaged(db, 300, "Rajkot", "Kiosk", start=5000)
+    _unmessaged(db, 400, "Surat", "Travel agent", start=6000)
+    n = gp.plan(db)["next_campaign"]
+    assert (n["state"], n["district"], n["category"]) == ("Gujarat", "Rajkot", "Kiosk")
+    assert (n["send_day"], n["send_time"]) == ("Wednesday", "Morning (9–12)")
+    # The goal's share for today needs few messages, but never fewer than teach us something.
+    assert n["size"] == gp.CAMPAIGN_MIN
+    assert n["expect"]["interested"] == round(50 * 12 / 60, 1)
+    assert 0 < n["expect_leads"] < 1 and n["leads_so_far"] == 0
+    assert n["messages_per_lead"] == 122          # no lead yet: half a lead in 60 messages, so far
+
+
+def test_a_big_goal_is_sent_in_campaigns_that_need_no_second_approval(db, monkeypatch):
+    phones = campaign(db, 60, district="Rajkot", category="Kiosk")
+    person(db, phones[0], bot.AWAIT_EDUCATION, coverage=SERVED)
+    _unmessaged(db, 300, "Rajkot", "Kiosk", start=5000)
+    real_goal = gp.goal
+    monkeypatch.setattr(gp, "goal", lambda *a, **k: {**real_goal(*a, **k), "still_needed": 7, "days_left": 1})
+    n = gp.plan(db)["next_campaign"]
+    assert n["size"] == 199 and "approval" in n["size_why"] and n["should_get"] == 7
+
+
+def test_a_place_that_answered_comes_before_a_bigger_one_never_tried(db):
+    phones = campaign(db, 60, district="Rajkot", category="Kiosk")
+    person(db, phones[0], bot.AWAIT_EDUCATION, coverage=SERVED)
+    _unmessaged(db, 40, "Rajkot", "Kiosk", start=5000)
+    _unmessaged(db, 400, "Surat", "Travel agent", start=6000)
+    n = gp.plan(db)["next_campaign"]
+    assert n["district"] == "Rajkot" and n["size"] == 40 and n["size_why"] == "Everyone left there (40)."
+
+
+def test_the_next_campaign_is_never_bigger_than_the_people_left(db):
+    phones = campaign(db, 60, district="Rajkot", category="Kiosk")
+    person(db, phones[0], bot.AWAIT_EDUCATION, coverage=SERVED)
+    _unmessaged(db, 30, "Rajkot", "Kiosk", start=5000)
+    n = gp.plan(db)["next_campaign"]
+    assert n["size"] == 30 and n["size_why"] == "Everyone left there (30)."
+
+
+def test_calls_are_suggested_for_when_people_write_back(db):
+    phones = campaign(db, 60)
+    for i, p in enumerate(phones[:12]):
+        person(db, p, bot.AWAIT_EDUCATION, coverage=SERVED)
+        # Most of their replies come in between 5 and 7 pm IST.
+        for m in range(2):
+            db.add(WhatsAppMessage(message_id=uuid.uuid4().hex, phone=p, direction="IN", kind="text", body="ok",
+                                   created_at=datetime.now(timezone.utc).replace(hour=12, minute=i * 4 + m)))
+    _unmessaged(db, 100, "Rajkot", "Kiosk", start=5000)
+    call = gp.plan(db)["next_campaign"]["call"]
+    assert (call["from_hour"], call["to_hour"]) == (17, 19) and call["evidence"]
+
+
+def test_without_anyone_left_to_message_there_is_no_proposal(db):
+    campaign(db, 40)
+    assert gp.plan(db)["next_campaign"] is None

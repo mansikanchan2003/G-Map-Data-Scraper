@@ -167,6 +167,101 @@ const Goal: React.FC<{ plan: Plan }> = ({ plan }) => {
 };
 
 // ---------------------------------------------------------------------------
+// The next campaign: the agent's proposal
+// ---------------------------------------------------------------------------
+
+const hourLabel = (h: number) => `${((h + 11) % 12) + 1} ${h < 12 ? 'AM' : 'PM'}`;
+const tenth = (v: number) => (v >= 10 ? Math.round(v).toLocaleString('en-IN') : v.toFixed(1));
+
+const PLAN_TILES = [
+  { key: 'where', icon: 'location_on', label: 'Where', tint: 'bg-sky-950 text-sky-300' },
+  { key: 'size', icon: 'groups', label: 'How many people', tint: 'bg-purple-950 text-purple-300' },
+  { key: 'send', icon: 'schedule_send', label: 'When to send', tint: 'bg-emerald-950 text-emerald-300' },
+  { key: 'call', icon: 'call', label: 'When to call', tint: 'bg-amber-950 text-amber-300' },
+] as const;
+
+const NextCampaignCard: React.FC<{ plan: Plan }> = ({ plan }) => {
+  const n = plan.next_campaign;
+  if (!n) return null;
+  const tiles: Record<string, { value: React.ReactNode; note: React.ReactNode }> = {
+    where: {
+      value: <>{n.district}{n.state ? <span className="text-slate-400 font-normal">, {n.state}</span> : null}</>,
+      note: <>{n.category ? <><b className="text-slate-300">{n.category}</b> owners. </> : null}{n.where_why}</>,
+    },
+    size: { value: <>{num(n.size)} <span className="text-slate-400 font-normal text-base">people</span></>, note: n.size_why },
+    send: { value: <>{n.send_day}</>, note: <><b className="text-slate-300">{n.send_time}</b>. {n.send_why}</> },
+    call: {
+      value: <>{hourLabel(n.call.from_hour)} – {hourLabel(n.call.to_hour)}</>,
+      note: n.call.evidence
+        ? <>Most replies come in then ({n.call.replies} of {n.call.replies_counted} in the last 60 days): people have the phone in hand.</>
+        : <>Too few replies yet to tell; late morning until there are.</>,
+    },
+  };
+  const steps: { key: string; label: string; value: number }[] = [
+    { key: 'sent', label: 'Messaged', value: n.size },
+    ...plan.stages.map(s => ({ key: s.key, label: STAGE_SHORT[s.key] || s.label, value: n.expect[s.key] ?? 0 })),
+  ];
+  const max = Math.max(1, n.size);
+  const width = (v: number) => `${Math.max(3, (Math.log10(v + 1) / Math.log10(max + 1)) * 100)}%`;
+  const short = n.expect_leads < n.should_get;
+  return (
+    <Card icon="rocket_launch" title="Next campaign" tint="bg-emerald-950 text-emerald-300"
+      subtitle={<>Proposed by the agent from all {num(n.messages_sent)} messages so far. Worked out afresh whenever this page opens.</>}>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {PLAN_TILES.map(t => (
+          <div key={t.key} className="rounded-lg border border-slate-800 bg-slate-950/60 p-4 min-w-0">
+            <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider font-semibold text-slate-500">
+              <span className={`h-7 w-7 rounded-md flex items-center justify-center ${t.tint}`}><Icon name={t.icon} className="text-[17px]" /></span>
+              {t.label}
+            </div>
+            <div className="text-xl font-semibold text-slate-100 mt-2 leading-tight">{tiles[t.key].value}</div>
+            <p className="text-[12px] text-slate-400 mt-1.5 leading-relaxed">{tiles[t.key].note}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+        <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+          <div className="text-[11px] uppercase tracking-wider font-semibold text-slate-500 mb-3">What this campaign should bring, at today's rates</div>
+          <ol className="space-y-2">
+            {steps.map((s, i) => (
+              <li key={s.key} className="grid grid-cols-[38%_1fr] items-center gap-3">
+                <span className="text-[13px] text-slate-300 truncate text-right">{s.label}</span>
+                <div className="flex items-center gap-2">
+                  <div className={`h-6 rounded-md ${i === steps.length - 1 ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                    style={{ width: width(s.value), opacity: 0.4 + 0.6 * (1 - i / steps.length) }} />
+                  <span className="text-[12px] font-semibold text-slate-200 tabular-nums whitespace-nowrap">{tenth(s.value)}</span>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+        <div className={`rounded-lg border p-4 flex flex-col justify-center ${short ? 'border-amber-800/60 bg-amber-950' : 'border-emerald-800/60 bg-emerald-950'}`}>
+          <div className={`text-[11px] uppercase tracking-wider font-semibold ${short ? 'text-amber-300' : 'text-emerald-300'}`}>Leads per campaign</div>
+          <div className="flex items-baseline gap-4 mt-2">
+            <div>
+              <div className="text-3xl font-bold text-slate-100 tabular-nums">{n.should_get.toFixed(1)}</div>
+              <div className="text-[11px] text-slate-400">should get, for the goal</div>
+            </div>
+            <Icon name={short ? 'trending_down' : 'trending_up'} className={`text-[26px] ${short ? 'text-amber-400' : 'text-emerald-400'}`} />
+            <div>
+              <div className="text-3xl font-bold text-slate-100 tabular-nums">{n.expect_leads.toFixed(1)}</div>
+              <div className="text-[11px] text-slate-400">expected, at today's rate</div>
+            </div>
+          </div>
+          <p className="text-[12px] text-slate-300 mt-3 leading-relaxed">
+            {n.leads_so_far
+              ? <>One lead so far for every {num(n.messages_per_lead)} messages.</>
+              : <>No lead yet from {num(n.messages_sent)} messages, so this is an estimate (about one in {num(n.messages_per_lead)}).</>}
+            {short ? ' Calling the people who answer, and fixing the biggest drop below, close the gap faster than sending more.' : ''}
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+// ---------------------------------------------------------------------------
 // From a lead to revenue
 // ---------------------------------------------------------------------------
 
@@ -857,7 +952,8 @@ export const GrowthPlan: React.FC = () => {
   return (
     <div className="space-y-5">
       <Goal plan={plan} />
-      {plan.business && <Business b={plan.business} plan={plan} onSaved={load} />}
+      <NextCampaignCard plan={plan} />
+      {plan.business &&<Business b={plan.business} plan={plan} onSaved={load} />}
       <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
         <NextSteps plan={plan} />
         <div className="space-y-5 min-w-0">
