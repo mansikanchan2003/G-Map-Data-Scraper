@@ -67,7 +67,7 @@ def test_read_and_not_answered_is_called_two_hours_later_in_the_hours_people_ans
     msg(db, "OUT", NOW - timedelta(minutes=30), status="READ")     # 9:30, read
     p = plan(db, c)
     assert p["call"] and at_ist(p) == datetime(2026, 11, 4, 11, 30, tzinfo=IST)
-    assert p["after_message"] == "2 hours" and "read" in p["why"][0]
+    assert p["after_message"] == "2 ghante" and "padh liya" in p["why"][0]
 
 
 def test_unread_waits_longer_and_moves_to_the_next_good_hours(db):
@@ -76,14 +76,14 @@ def test_unread_waits_longer_and_moves_to_the_next_good_hours(db):
     p = plan(db, c)
     # 3 PM + 4 hours is 7 PM, past 11 AM–1 PM: tomorrow at 11.
     assert at_ist(p) == datetime(2026, 11, 5, 11, 0, tzinfo=IST)
-    assert "not read" in p["why"][0]
+    assert "padha nahi" in p["why"][0]
 
 
 def test_a_message_whatsapp_could_not_deliver_is_followed_by_a_call_soon(db):
     c = lead(db)
     msg(db, "OUT", NOW + timedelta(hours=1), status="FAILED")       # 11 AM
     p = plan(db, c)
-    assert at_ist(p) == datetime(2026, 11, 4, 12, 0, tzinfo=IST) and "only a call" in p["why"][0]
+    assert at_ist(p) == datetime(2026, 11, 4, 12, 0, tzinfo=IST) and "sirf call" in p["why"][0]
 
 
 def test_their_own_reply_hours_set_the_time(db):
@@ -92,7 +92,7 @@ def test_their_own_reply_hours_set_the_time(db):
         msg(db, "IN", datetime(2026, 11, 4 - d, 18, 15, tzinfo=IST))
     msg(db, "OUT", NOW - timedelta(minutes=30), status="READ")
     p = plan(db, c)
-    assert at_ist(p).hour in (17, 18) and "usually write" in p["why"][1]
+    assert at_ist(p).hour in (17, 18) and "aksar" in p["why"][1]
 
 
 def test_no_call_once_they_answer_or_hand_over(db):
@@ -125,7 +125,7 @@ def test_a_callback_time_they_asked_for_is_kept(db):
                     created_by="t"))
     db.commit()
     p = plan(db, c)
-    assert at_ist(p) == asked and p["goal"] == "Call back at the time they asked"
+    assert at_ist(p) == asked and p["goal"] == "Unke bataye time par call back karein"
 
 
 def test_what_to_talk_about_follows_where_they_stopped(db):
@@ -136,12 +136,12 @@ def test_what_to_talk_about_follows_where_they_stopped(db):
     msg(db, "IN", NOW - timedelta(days=1), body="Documents kaise upload karne hai?")
     msg(db, "OUT", NOW - timedelta(hours=3), status="READ")
     p = plan(db, c)
-    assert p["goal"] == "Help them upload their documents" and p["language"] == "Gujarati"
+    assert p["goal"] == "Documents upload karne mein madad karein" and p["language"] == "Gujarati"
     assert "PAN" not in p["points"][0] and "Aadhaar" in p["points"][0] and "Photo" in p["points"][0]
-    assert p["known"] == ["PIN 360001 (Rajkot, Gujarat)", "Education: Graduate", "Can invest ₹3–5 lakh"]
+    assert p["known"] == ["PIN 360001 (Rajkot, Gujarat)", "Padhai: Graduate", "₹3–5 lakh invest kar sakte hain"]
     assert p["their_questions"] == ["Documents kaise upload karne hai?"]
-    assert any("fixed income" in a for a in p["avoid"])
-    assert p["record"]["no_answer"].startswith("No answer")
+    assert any("Fixed income" in a for a in p["avoid"])
+    assert "No answer" in p["record"]["no_answer"]
 
 
 def test_a_trust_concern_comes_before_the_step(db):
@@ -149,5 +149,5 @@ def test_a_trust_concern_comes_before_the_step(db):
     c.disposition = "int_trust"
     msg(db, "OUT", NOW - timedelta(hours=3), status="READ")
     p = plan(db, c)
-    assert p["goal"].startswith("Answer their doubt") and any("kiosk.eko.in" in x for x in p["points"])
+    assert p["goal"].startswith("Unka shak door") and any("kiosk.eko.in" in x for x in p["points"])
     assert any("₹3–5 lakh" in x for x in p["points"])        # the step's points follow

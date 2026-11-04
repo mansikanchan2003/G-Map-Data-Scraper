@@ -19,6 +19,9 @@ recorded a disposition after that message (the call was made).
 WHAT. The goal of the call from where they stopped, what we already know
 (so it is not asked again), the questions they asked us, the points to make,
 what to avoid, and what to record as the outcome either way.
+
+Everything a caller reads is in Hinglish, as the team speaks (the user,
+2026-11-04); disposition names stay as the app shows them.
 """
 from collections import Counter
 from datetime import datetime, time, timedelta, timezone
@@ -43,9 +46,9 @@ LANG = {"en": "English", "hi": "Hindi", "hinglish": "Hinglish", "gu": "Gujarati"
         "bn": "Bengali", "ta": "Tamil", "te": "Telugu", "kn": "Kannada", "ml": "Malayalam", "or": "Odia"}
 
 AVOID = [
-    "Do not promise a fixed income: the commission depends on the transactions they do.",
-    "Say ₹3–5 lakh depending on the location, not one figure.",
-    "Do not ask again what they have already told us (below).",
+    "Fixed income ka vaada na karein: commission unke transactions par depend karta hai.",
+    "₹3–5 lakh (location ke hisaab se) bolein, ek fixed amount nahi.",
+    "Jo woh pehle bata chuke hain (neeche), woh dobara na poochhein.",
 ]
 
 
@@ -83,11 +86,11 @@ def _into_window(at: datetime, start_hour: int) -> datetime:
 def _wait_text(d: timedelta) -> str:
     hours = round(d.total_seconds() / 3600)
     if hours < 1:
-        return "within the hour"
+        return "1 ghante ke andar"
     if hours < 24:
-        return f"{hours} hour{'s' if hours != 1 else ''}"
+        return f"{hours} ghante"
     days = round(hours / 24)
-    return f"{days} day{'s' if days != 1 else ''}"
+    return f"{days} din"
 
 
 # --- What to talk about, by where they stopped ------------------------------------------------
@@ -95,40 +98,40 @@ def _wait_text(d: timedelta) -> str:
 def _stage_talk(step: Optional[str], data: dict, missing_docs: List[str]) -> dict:
     from src.services import onboarding_bot as bot
 
-    invest = ("₹3–5 lakh, depending on the location. About ₹1–1.5 lakh is the devices Eko gives and trains them on "
-              "(laptop or tab, biometric device, micro ATM, passbook printer, GPS dongle); some stays with them in "
-              "their own e-wallet to serve customers; the rest sets up the mini branch. They earn a commission on "
-              "every transaction.")
+    invest = ("₹3–5 lakh, location ke hisaab se. Lagbhag ₹1–1.5 lakh ke devices Eko deta hai aur chalana bhi "
+              "sikhata hai (laptop ya tab, biometric device, micro ATM, passbook printer, GPS dongle); thoda paisa "
+              "unke apne e-wallet mein rehta hai jisse woh grahakon ka kaam karte hain; baaki mini branch set-up "
+              "mein lagta hai. Har transaction par commission milta hai.")
     talk = {
-        bot.CHOOSE_LANG: ("See whether they are interested, and in which language to talk",
-                          ["Introduce Eko: we help people open an SBI Customer Service Point (CSP), a mini SBI branch, in their shop or village.",
-                           "Ask which language they are comfortable in, and continue in it."]),
-        bot.AWAIT_PIN: ("Get their PIN code, to find their nearest SBI branch",
-                        ["Ask for the PIN code of the place they would run the CSP from.",
-                         "Say why: the SBI branch near them has to take them on."]),
-        bot.AWAIT_EDUCATION: ("Find out how far they have studied",
-                              ["Ask their education: 12th pass or more is needed.",
-                               "If they are below 12th, ask whether someone in the family who has passed 12th could run it."]),
-        bot.AWAIT_FRANCHISE: ("Find out whether they can invest ₹3–5 lakh", ["Explain the investment: " + invest,
-                                                                             "Ask plainly whether they can invest it."]),
-        bot.AWAIT_INVEST: ("Find out whether they can invest ₹3–5 lakh", ["Explain the investment: " + invest,
-                                                                          "Ask plainly whether they can invest it."]),
-        bot.NOT_INVESTING: ("Offer the lower-investment option",
-                            ["They said they cannot invest ₹3–5 lakh. Tell them about the lower-investment option.",
-                             "Ask what amount would work for them."]),
-        bot.AWAIT_DOCS: ("Get them ready to upload their documents",
-                         ["Go through the documents: PAN, Aadhaar, a passport size photo, and the others on the upload page.",
-                          "Ask which they have now; DigiLocker can fill Aadhaar for them."]),
-        bot.AWAIT_UPLOAD: ("Help them upload their documents",
-                           (["Still missing: " + ", ".join(missing_docs) + "."] if missing_docs else []) +
-                           ["Offer to stay on the line while they open the upload link from WhatsApp.",
-                            "DigiLocker can fill Aadhaar without a photo of the card."]),
-        bot.GUIDANCE_QA: ("Answer their questions, and get them started",
-                          ["Answer what they asked (below).",
-                           "If they are interested, ask them to tap Interested in the chat, or take the details on the call."]),
+        bot.CHOOSE_LANG: ("Interest check karein, aur kis bhasha mein baat karni hai",
+                          ["Eko ke baare mein batayein: hum logon ko unki dukaan ya gaon mein SBI Customer Service Point (CSP), yaani SBI ki mini branch, kholne mein madad karte hain.",
+                           "Poochhein kis bhasha mein baat karna aasaan hai, aur usi mein baat karein."]),
+        bot.AWAIT_PIN: ("Unka PIN code lein, taaki paas ki SBI branch mile",
+                        ["Jahan se CSP chalayenge, us jagah ka PIN code poochhein.",
+                         "Wajah batayein: unke paas ki SBI branch hi unhe CSP degi."]),
+        bot.AWAIT_EDUCATION: ("Padhai ke baare mein poochhein",
+                              ["Kitna padhe hain, poochhein: kam se kam 12th pass zaroori hai.",
+                               "Agar 12th se kam hai, to poochhein ki ghar mein koi 12th pass hai jo CSP chala sake."]),
+        bot.AWAIT_FRANCHISE: ("Poochhein ki ₹3–5 lakh invest kar sakte hain ya nahi", ["Investment samjhayein: " + invest,
+                                                                                      "Seedha poochhein: kya woh itna invest kar sakte hain?"]),
+        bot.AWAIT_INVEST: ("Poochhein ki ₹3–5 lakh invest kar sakte hain ya nahi", ["Investment samjhayein: " + invest,
+                                                                                   "Seedha poochhein: kya woh itna invest kar sakte hain?"]),
+        bot.NOT_INVESTING: ("Kam investment wala option batayein",
+                            ["Unhone kaha tha ki ₹3–5 lakh invest nahi kar sakte. Kam investment wale option ke baare mein batayein.",
+                             "Poochhein kitna amount unke liye theek rahega."]),
+        bot.AWAIT_DOCS: ("Documents upload karne ke liye taiyaar karein",
+                         ["Documents ki list batayein: PAN, Aadhaar, passport size photo, aur upload page par baaki documents.",
+                          "Poochhein abhi kaun se documents unke paas hain; Aadhaar DigiLocker se apne aap aa sakta hai."]),
+        bot.AWAIT_UPLOAD: ("Documents upload karne mein madad karein",
+                           (["Abhi baaki hain: " + ", ".join(missing_docs) + "."] if missing_docs else []) +
+                           ["Call par bane rahein jab tak woh WhatsApp se upload link kholte hain.",
+                            "Aadhaar card ki photo ke bina bhi DigiLocker se Aadhaar aa jata hai."]),
+        bot.GUIDANCE_QA: ("Unke sawaalon ke jawab dein, aur shuruaat karwayein",
+                          ["Unhone jo poochha hai (neeche), uska jawab dein.",
+                           "Interested hain to chat mein Interested dabane ko kahein, ya call par hi details le lein."]),
     }
-    goal, points = talk.get(step, ("Find out where they stand, and the next step",
-                                   ["Ask whether they are still interested in opening an SBI CSP with Eko."]))
+    goal, points = talk.get(step, ("Jaanein woh abhi kahan hain, aur agla step kya hai",
+                                   ["Poochhein ki kya woh abhi bhi Eko ke saath SBI CSP kholne mein interested hain."]))
     return {"goal": goal, "points": points}
 
 
@@ -136,32 +139,32 @@ def _disposition_talk(key: Optional[str]) -> Optional[dict]:
     """A disposition that changes the call: trust, a callback, a hold, the decision maker."""
     key = dz.normalise(key)
     return {
-        "int_trust": {"goal": "Answer their doubt about whether this is genuine",
-                      "points": ["Say who Eko is: Eko India Financial Services works with SBI to set up CSPs.",
-                                 "Point them to kiosk.eko.in, and offer our number to call back on.",
-                                 "Do not push for documents on this call: trust first."]},
-        "int_callback": {"goal": "Call back at the time they asked", "points": ["Thank them for their time; pick up where the chat stopped."]},
-        "busy_busy": {"goal": "Call back: they were busy", "points": ["Ask if now is a good time; if not, fix a time."]},
-        "busy_later": {"goal": "Call back: they asked us to call later", "points": ["Ask if now is a good time; if not, fix a time."]},
-        "busy_at_time": {"goal": "Call back at the time they asked", "points": ["Pick up where the chat stopped."]},
-        "hold_later": {"goal": "Check whether they are ready now", "points": ["They asked for time earlier; ask whether things have changed."]},
-        "hold_financial": {"goal": "Check whether they can invest now", "points": ["Money was the problem; ask again, and mention the lower-investment option."]},
-        "hold_after_date": {"goal": "Check whether they are ready now", "points": ["The date they gave has come; ask whether to go ahead."]},
-        "ndm_not_applicant": {"goal": "Reach the person who wants to apply", "points": ["Ask for the applicant's number, or a time to speak to them."]},
-        "ndm_unavailable": {"goal": "Reach the person who wants to apply", "points": ["Ask when the applicant is free."]},
-        "lang_barrier": {"goal": "Talk in their language", "points": ["Have someone who speaks their language make this call."]},
-        "int_docs_pending": {"goal": "Help them upload their documents", "points": []},
+        "int_trust": {"goal": "Unka shak door karein ki yeh asli hai ya nahi",
+                      "points": ["Batayein Eko kaun hai: Eko India Financial Services, SBI ke saath milkar CSP set up karta hai.",
+                                 "kiosk.eko.in dekhne ko kahein, aur hamara number dein jispar woh call kar sakein.",
+                                 "Is call par documents ke liye zor na dein: pehle bharosa."]},
+        "int_callback": {"goal": "Unke bataye time par call back karein", "points": ["Time dene ke liye shukriya kahein; chat jahan ruki thi wahin se baat shuru karein."]},
+        "busy_busy": {"goal": "Call back: woh busy the", "points": ["Poochhein abhi baat karna theek hai; nahi to ek time fix karein."]},
+        "busy_later": {"goal": "Call back: unhone baad mein call karne ko kaha tha", "points": ["Poochhein abhi baat karna theek hai; nahi to ek time fix karein."]},
+        "busy_at_time": {"goal": "Unke bataye time par call back karein", "points": ["Chat jahan ruki thi wahin se baat shuru karein."]},
+        "hold_later": {"goal": "Poochhein ki kya woh ab taiyaar hain", "points": ["Pehle unhone time maanga tha; poochhein kya ab kuch badla hai."]},
+        "hold_financial": {"goal": "Poochhein ki kya ab invest kar sakte hain", "points": ["Paise ki dikkat thi; dobara poochhein, aur kam investment wala option bhi batayein."]},
+        "hold_after_date": {"goal": "Poochhein ki kya woh ab taiyaar hain", "points": ["Unki batayi date aa gayi hai; poochhein kya aage badhein."]},
+        "ndm_not_applicant": {"goal": "Jo apply karna chahte hain, unse baat karein", "points": ["Applicant ka number lein, ya unse baat karne ka time."]},
+        "ndm_unavailable": {"goal": "Jo apply karna chahte hain, unse baat karein", "points": ["Poochhein applicant kab free honge."]},
+        "lang_barrier": {"goal": "Unki bhasha mein baat karein", "points": ["Yeh call woh karein jo unki bhasha bolte hain."]},
+        "int_docs_pending": {"goal": "Documents upload karne mein madad karein", "points": []},
     }.get(key)
 
 
 def _outcomes(step: Optional[str]) -> dict:
     from src.services import onboarding_bot as bot
-    yes = {bot.AWAIT_UPLOAD: "Documents pending (if they will upload later), and check the upload page",
-           bot.AWAIT_DOCS: "Documents pending: the upload link goes out"}.get(step, "More information required, or Documents pending")
+    yes = {bot.AWAIT_UPLOAD: "“Documents pending” (agar baad mein upload karenge), aur upload page check karein",
+           bot.AWAIT_DOCS: "“Documents pending”: upload link chala jayega"}.get(step, "“More information required” ya “Documents pending”")
     return {"if_yes": yes,
-            "if_no": "Not interested currently, or Investment issue if money is the reason",
-            "no_answer": "No answer (RNR): the bot tries again tomorrow",
-            "later": "Asked to call later, or Call at specific time with the time they give"}
+            "if_no": "“Not interested currently”, ya paise ki wajah ho to “Investment issue”",
+            "no_answer": "“No answer” (RNR): bot kal phir try karega",
+            "later": "“Asked to call later”, ya unke bataye time ke saath “Call at specific time”"}
 
 
 def _known(conv: WhatsAppConversation) -> List[str]:
@@ -171,14 +174,14 @@ def _known(conv: WhatsAppConversation) -> List[str]:
     place = ", ".join(x for x in (cov.get("district"), cov.get("state")) if x)
     if cov.get("pincode"):
         out.append(f"PIN {cov['pincode']}" + (f" ({place})" if place else "")
-                   + ("" if cov.get("served", True) else ": no SBI branch of ours nearby"))
-    edu = {"12": "12th pass", "grad": "Graduate", "other": "Below 12th"}.get(data.get("education"))
+                   + ("" if cov.get("served", True) else ": paas mein hamari SBI branch nahi hai"))
+    edu = {"12": "12th pass", "grad": "Graduate", "other": "12th se kam"}.get(data.get("education"))
     if edu:
-        out.append(f"Education: {edu}")
+        out.append(f"Padhai: {edu}")
     if data.get("can_invest") is True:
-        out.append("Can invest ₹3–5 lakh")
+        out.append("₹3–5 lakh invest kar sakte hain")
     elif data.get("can_invest") is False:
-        out.append("Said they cannot invest ₹3–5 lakh")
+        out.append("Kaha tha ₹3–5 lakh invest nahi kar sakte")
     return out
 
 
@@ -220,11 +223,11 @@ def for_lead(db: Session, conv: WhatsAppConversation, now: Optional[datetime] = 
         return {**base, "call": False, "why": why}
 
     if conv.documents_submitted_at:
-        return none(f"Documents are in: the lead is with {dz.HANDED_TO}.")
+        return none(f"Documents aa gaye hain: lead ab {dz.HANDED_TO} ke paas hai.")
     if opt_out.blocks_followups(opt_out.entry(db, conv.phone)):
-        return none("They asked not to be contacted.")
+        return none("Unhone contact na karne ko kaha hai.")
     if sub and sub.closes:
-        return none(f"Closed as “{sub.label}”.")
+        return none(f"Lead “{sub.label}” ke saath band ho chuki hai.")
 
     messages = (db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone)
                 .order_by(WhatsAppMessage.created_at).all())
@@ -237,29 +240,29 @@ def for_lead(db: Session, conv: WhatsAppConversation, now: Optional[datetime] = 
              .order_by(FollowUp.due_at).first())
     if timed is not None:
         call_at = inbox.aware(timed.due_at)
-        when_why = [f"They asked to be called back then ({dz.label(timed.disposition)})."]
+        when_why = [f"Unhone isi time call back karne ko kaha tha ({dz.label(timed.disposition)})."]
         after = None
     else:
         if last_ours is None or (last_in is not None and inbox.aware(last_in.created_at) > inbox.aware(last_ours.created_at)):
-            return none("They answered our last message: the bot or the team replies first.")
+            return none("Unhone hamare last message ka jawab de diya hai: pehle bot ya team jawab degi.")
         sent = inbox.aware(last_ours.created_at)
         if (conv.disposition_at and conv.disposition_by and conv.disposition_by != "bot"
                 and inbox.aware(conv.disposition_at) > sent):
-            return none(f"{conv.disposition_by.split('@')[0]} recorded “{dz.label(conv.disposition)}” after our last message.")
+            return none(f"Hamare last message ke baad {conv.disposition_by.split('@')[0]} ne “{dz.label(conv.disposition)}” record kiya hai.")
         status = (last_ours.status or "SENT").upper()
-        wait, seen = {"READ": (READ_WAIT, "They read our last message and did not answer"),
-                      "FAILED": (FAILED_WAIT, "WhatsApp could not deliver our last message: only a call can reach them"),
-                      "DELIVERED": (DELIVERED_WAIT, "Our last message reached them but is not read yet")}.get(
-            status, (DELIVERED_WAIT, "Our last message has gone; WhatsApp has not said it was read"))
-        when_why = [f"{seen}; wait {_wait_text(wait)} after it, so they can answer on WhatsApp first."]
+        wait, seen = {"READ": (READ_WAIT, "Unhone hamara last message padh liya par jawab nahi diya"),
+                      "FAILED": (FAILED_WAIT, "WhatsApp hamara last message deliver nahi kar paya: ab sirf call se hi baat ho sakti hai"),
+                      "DELIVERED": (DELIVERED_WAIT, "Hamara last message pahunch gaya par abhi padha nahi gaya")}.get(
+            status, (DELIVERED_WAIT, "Hamara last message chala gaya; WhatsApp ne abhi padhne ki khabar nahi di"))
+        when_why = [f"{seen}; uske {_wait_text(wait)} baad call karein, taaki pehle woh WhatsApp par jawab de sakein."]
         own = [inbox.aware(m.created_at).astimezone(IST).hour for m in messages if m.direction == "IN"]
         start = _window_of(own) if len(own) >= OWN_REPLIES_MIN else None
         if start is not None:
-            when_why.append(f"They usually write between {_hour_label(start)} and {_hour_label(start + WINDOW)}.")
+            when_why.append(f"Yeh aksar {_hour_label(start)} se {_hour_label(start + WINDOW)} ke beech message karte hain.")
         else:
             start = fallback_window if fallback_window is not None else everyone_window(db)
-            when_why.append(f"Too few replies of their own to tell; people our campaigns reached write back most "
-                            f"between {_hour_label(start)} and {_hour_label(start + WINDOW)}.")
+            when_why.append(f"Inke apne messages kam hain; hamari campaigns se jude log zyaadatar "
+                            f"{_hour_label(start)} se {_hour_label(start + WINDOW)} ke beech jawab dete hain.")
         call_at = _into_window(sent + wait, start)
         after = call_at - sent
 
@@ -278,8 +281,8 @@ def for_lead(db: Session, conv: WhatsAppConversation, now: Optional[datetime] = 
         "language": lang,
         "disposition": dz.label(conv.disposition),
         "goal": goal,
-        "opening": f"Namaste {conv.profile_name or ''}, this is Eko, about the SBI CSP you showed interest in on WhatsApp."
-                   .replace("Namaste ,", "Namaste,"),
+        "opening": (f"Namaste {conv.profile_name or ''} ji, main Eko se baat kar raha/rahi hoon. Aapne WhatsApp par SBI CSP "
+                    "mein interest dikhaya tha, usi ke baare mein call kiya hai.").replace("Namaste  ji", "Namaste ji"),
         "points": points,
         "known": _known(conv),
         "their_questions": _their_questions(db, conv, messages),

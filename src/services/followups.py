@@ -489,7 +489,7 @@ def queue(db: Session, owner: Optional[str] = None) -> dict:
         items.append({"id": f"call-{p['phone']}", "source": "call", "phone": p["phone"], "name": p["name"],
                       "owner": "human", "owner_type": QUEUE_OWNERS["human"],
                       "owner_label": lead_journey.owner_label("human"),
-                      "text": f"Call them: {p['goal'].lower()}", "result": " ".join(p["why"]),
+                      "text": f"Call karein: {p['goal']}", "result": " ".join(p["why"]),
                       "disposition_label": p["disposition"], "due_at": due.isoformat(),
                       "bucket": bucket(due, now > due + timedelta(hours=call_plan.WINDOW)),
                       "can_mark_done": False, "call_plan": p})
