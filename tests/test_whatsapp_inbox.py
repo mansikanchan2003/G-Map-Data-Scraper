@@ -1779,9 +1779,32 @@ def test_every_nudge_is_written_in_every_language_without_blanks():
     ("Mujhe aur jankari chahiye bhai", "en", ("hi", True)),
     ("Please call me in the evening", "hi", ("en", False)),
     ("ok", "hi", None),
+    # Other languages typed in Latin letters, mixed with English (5 Nov 2026): their own language.
+    ("Mare potano business 6 aena mate Kai batao", "gu", ("gu", False)),
+    ("Commission ketlu malse?", "en", ("gu", False)),
+    ("Mala kiti paise lagtil sanga", "hi", ("mr", False)),
+    ("Mainu kinne paise lagne aa, dasso", "hi", ("pa", False)),
+    ("Ami koto taka lagbe janate chai", "en", ("bn", False)),
+    # English's own words make it English; borrowed ones ("details", "business") do not.
+    ("Please send me the details", "gu", ("en", False)),
+    ("Business details batao", "gu", ("gu", False)),
+    ("Investment details", "en", ("en", False)),
 ])
 def test_the_language_of_a_reply_is_read_from_its_letters(text, chat, expected):
     assert reply_language.of_text(text, chat) == expected
+
+
+@pytest.mark.parametrize("asked", ["Commission ketlu malse?", "Commission kiti milel?", "Commission kinna milu?",
+                                   "Commission koto pabo?"])
+def test_a_question_typed_in_another_language_and_english_is_understood(asked):
+    from src.services import eko_knowledge
+    assert eko_knowledge.match(asked) == eko_knowledge.match("Commission kitna milega?") == ["earnings"]
+
+
+def test_the_cost_asked_in_gujarati_or_marathi_latin_letters_is_the_investment_question():
+    from src.services import eko_knowledge
+    assert eko_knowledge.match("CSP kholva mate ketla paisa lagse") == ["investment"]
+    assert eko_knowledge.match("CSP sathi kiti paise lagtil") == ["investment"]
 
 
 def test_a_nudge_goes_in_the_language_of_their_last_message(db, client):
@@ -1792,6 +1815,14 @@ def test_a_nudge_goes_in_the_language_of_their_last_message(db, client):
     assert StubMeta.sent[-1][2] == nudge_messages.text("callback_confirm", "gu")
     callback = [f for f in _followups(db) if f.purpose == "callback_due"][0]
     assert callback.status == "scheduled" and callback.wants == dz.CALL
+
+
+def test_gujarati_in_latin_letters_gets_the_gujarati_nudge(db, client):
+    # 4 Nov 2026: chose Gujarati, wrote Gujarati in Latin letters with English, and the nudge went in English.
+    tap_campaign(db, lang="gu")
+    say(db, "Mare potano business 6 aena mate Kai batao")
+    _record(client, "ni_currently")
+    assert StubMeta.sent[-1][2] == nudge_messages.text("closing_later", "gu")
 
 
 def test_hindi_in_latin_letters_gets_the_hinglish_nudge(db, client):

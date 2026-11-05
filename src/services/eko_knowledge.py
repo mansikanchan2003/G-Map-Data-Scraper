@@ -615,18 +615,32 @@ def _vowels(word: str) -> str:
 _SAME_WORD = {
     "kaise": ("kese", "kaisey", "kaese", "kesy", "kaisay", "kase", "kese", "kesay", "kaisa", "kesa", "kaisi", "kesi"),
     "kya": ("kia", "kyaa", "kyà", "kiya"),
-    "kaun": ("kon", "koun", "kaon", "kaunse", "konse", "kon se", "kaun se"),
-    "nahi": ("nhi", "nahin", "nai", "nhin", "nahee", "nahi"),
+    "kaun": ("kon", "koun", "kaon", "kaunse", "konse", "kon se", "kaun se", "kone"),
+    "nahi": ("nhi", "nahin", "nai", "nhin", "nahee", "nahi", "nathi", "nahiye", "nei"),
     "ban": ("bane", "banu", "banoon", "banun", "banna", "bano", "banne", "bnu", "banunga", "banungi", "banenge",
             "banega", "banegi", "banta", "banti", "banate", "bnna", "bnne"),
     "sakta": ("sakti", "sakte", "skta", "skti", "skte", "sakhta", "sakhti", "sakoon", "saku", "sakun", "sakenge"),
     "hun": ("hoon", "hu", "hoo", "hn"),
     "karna": ("krna", "karni", "krni", "karne", "krne"),
-    "milega": ("milegi", "milenge", "milta", "milti", "milte", "milega", "mlega", "milegaa"),
+    "milega": ("milegi", "milenge", "milta", "milti", "milte", "milega", "mlega", "milegaa",
+               "malse", "malshe", "milel", "miltil", "milu", "pabo"),
     "chahiye": ("chahie", "chaiye", "chahiyea", "chahye", "chaiya", "chahiya"),
     "paisa": ("paise", "pese", "paisay", "paisa", "pesa", "paiso"),
     "lena": ("leni", "lene", "lu", "loon", "lun"),
     "kholna": ("kholni", "kholne", "kholu", "kholun", "kholoon"),
+    # The same question words in Gujarati, Marathi, Punjabi and Bengali typed in
+    # Latin letters, often with English ("Commission ketlu malse?", 5 Nov 2026):
+    # read as the Hindi ones the keys and examples are written in.
+    "kitna": ("ketlu", "ketla", "ketli", "kiti", "kinna", "kinne", "kinni", "koto"),
+    "kab": ("kyare", "kevha", "kado", "kadon", "kobe"),
+    "kahan": ("kyathi", "kuthe", "kithe", "kothay"),
+    "mujhe": ("mane", "mala", "mainu", "menu", "mennu", "amake"),
+    "mera": ("maro", "maru", "mazha", "majha", "mazhi", "majhi", "amar"),
+    "liye": ("mate", "sathi", "layi", "jonno"),
+    "batao": ("batavo", "bataavo", "sanga", "sangaa", "dasso", "dass", "bolun", "bolo"),
+    "lagega": ("lagse", "lagshe", "lagel", "lagtil", "lagu", "lagbe"),
+    "karna": ("karvu", "karvanu", "karaycha", "karaychi", "korte", "korbo"),
+    "hai": ("che", "chhe", "aahe", "ahe", "aahet", "hega", "ache", "achhe"),
 }
 _CANON = {v: k for k, vs in _SAME_WORD.items() for v in vs}
 
