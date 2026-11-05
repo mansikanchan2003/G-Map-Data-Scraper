@@ -33,6 +33,13 @@ const GROUP: Record<Group, { label: string; icon: string; stroke: string; bar: s
 const ORDER: Group[] = ['positive', 'follow_up', 'negative', 'other'];
 // The groups' colours on the always-dark banner, where the theme ramps do not apply.
 const ACCENT: Record<Group, string> = { positive: '#34d399', follow_up: '#f9ab10', negative: '#fb7185', other: '#94a3b8' };
+// Each category card's header, in its group's colour with white text (the same in both themes).
+const HERO: Record<Group, string> = {
+  positive: 'linear-gradient(135deg, #065f46 0%, #059669 60%, #10b981 100%)',
+  follow_up: 'linear-gradient(135deg, #92400e 0%, #d97706 60%, #f59e0b 100%)',
+  negative: 'linear-gradient(135deg, #881337 0%, #be123c 60%, #e11d48 100%)',
+  other: 'linear-gradient(135deg, #1e293b 0%, #334155 60%, #475569 100%)',
+};
 
 
 const Icon: React.FC<{ name: string; className?: string; style?: React.CSSProperties }> = ({ name, className = '', style }) =>
@@ -255,46 +262,90 @@ export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => 
 
       <Card title="Every disposition" icon="checklist"
         sub={focus === 'all' ? 'The team\'s sheet: eleven categories and their sub-categories' : <button onClick={() => setFocus('all')} className="text-sky-300 hover:underline cursor-pointer">Showing {GROUP[focus].label} · show all</button>}>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {categories.map(c => {
-            const g = GROUP[c.group as Group] || GROUP.other;
-            const max = Math.max(1, ...c.subs.map(x => x.count));
+            const grp = (c.group as Group) in GROUP ? (c.group as Group) : 'other';
+            const g = GROUP[grp];
             const share = pct(c.count, d.total);
+            const live = [...c.subs.filter(x => x.count)].sort((a, b) => b.count - a.count);
+            const empty = c.subs.filter(x => !x.count);
+            const R = 17, C = 2 * Math.PI * R;
             return (
-              <div key={c.key}
-                className={`group relative rounded-2xl border ${g.ring} bg-slate-900 overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition`}>
-                <span className="absolute inset-x-0 top-0 h-1" style={{ background: ACCENT[(c.group as Group)] || ACCENT.other }} />
-                {/* The category: opens every candidate in it. */}
+              <article key={c.key}
+                className={`group flex flex-col rounded-2xl border ${g.ring} bg-slate-900 overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-200`}>
+                {/* The category, in its group's colour (white text in both themes): opens every candidate in it. */}
                 <button onClick={() => setOpenKey(c.key)} disabled={!c.count}
-                  className={`w-full flex items-center gap-3 px-4 pt-4 pb-3 text-left ${c.count ? 'cursor-pointer' : 'cursor-default'}`}>
-                  <span className={`h-10 w-10 rounded-xl flex items-center justify-center ${g.tint}`}><Icon name={c.icon} className="text-[21px]" /></span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-[14px] font-semibold text-slate-100 truncate">{c.label}</span>
-                    <span className={`block text-[11px] ${c.count ? g.text : 'text-slate-500'}`}>
-                      {c.count ? `${share}% of all chats · see candidates` : 'No candidates yet'}
+                  className={`relative overflow-hidden text-left px-4 pt-4 pb-3.5 text-white ${c.count ? 'cursor-pointer' : 'cursor-default'}`}
+                  style={{ background: HERO[grp] }}>
+                  <Icon name={c.icon} className="absolute -right-3 -bottom-6 text-[96px] text-white/10 pointer-events-none select-none" />
+                  <div className="relative flex items-center gap-3">
+                    <span className="h-11 w-11 rounded-xl bg-white/20 ring-1 ring-white/25 flex items-center justify-center shrink-0 backdrop-blur-sm">
+                      <Icon name={c.icon} className="text-[22px]" />
                     </span>
-                  </span>
-                  <span className="text-[28px] font-bold tabular-nums leading-none text-slate-100">{c.count}</span>
-                  {!!c.count && <Icon name="chevron_right" className="text-[20px] text-slate-500 group-hover:text-slate-300 transition" />}
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[15px] font-semibold leading-tight truncate">{c.label}</span>
+                      <span className="block text-[11.5px] text-white/80 mt-0.5">{g.label} · {share}% of all chats</span>
+                    </span>
+                    {/* The category's share of every chat, as a small ring around its count. */}
+                    <span className="relative h-[52px] w-[52px] shrink-0">
+                      <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90" aria-hidden="true">
+                        <circle cx="22" cy="22" r={R} fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="4" />
+                        <circle cx="22" cy="22" r={R} fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round"
+                          strokeDasharray={`${(Math.max(share, c.count ? 3 : 0) / 100) * C} ${C}`} />
+                      </svg>
+                      <span className="absolute inset-0 flex items-center justify-center text-[17px] font-bold tabular-nums">{c.count}</span>
+                    </span>
+                  </div>
+                  <div className="relative mt-3 flex items-center justify-between text-[11.5px] font-semibold">
+                    <span className="text-white/90">{c.count ? `${c.count} ${c.count === 1 ? 'candidate' : 'candidates'}` : 'No candidates yet'}</span>
+                    {!!c.count && (
+                      <span className="inline-flex items-center gap-0.5 px-2.5 py-1 rounded-full bg-white/20 group-hover:bg-white/30 transition">
+                        See all<Icon name="arrow_forward" className="text-[14px]" />
+                      </span>
+                    )}
+                  </div>
                 </button>
-                <ul className="px-2.5 pb-3 space-y-0.5">
-                  {c.subs.map(x => (
-                    <li key={x.key}>
-                      <button onClick={() => setOpenKey(x.key)} disabled={!x.count}
-                        title={x.action ? `${x.action}${x.owner ? ` · ${x.owner}` : ''}` : x.label}
-                        className={`w-full text-left rounded-lg px-2 py-1.5 transition ${x.count ? 'hover:bg-slate-950/70 cursor-pointer' : 'cursor-default'}`}>
-                        <div className="flex items-center justify-between gap-2 text-[12.5px]">
-                          <span className={x.count ? 'text-slate-200' : 'text-slate-500'}>{x.label}</span>
-                          <span className={`min-w-[26px] text-center px-1.5 py-0.5 rounded-full tabular-nums text-[11.5px] ${x.count ? `font-semibold ${g.tint}` : 'text-slate-600'}`}>{x.count}</span>
-                        </div>
-                        <div className="h-1.5 rounded-full bg-slate-800 mt-1.5 overflow-hidden">
-                          <div className={`h-full rounded-full ${g.bar}`} style={{ width: `${(x.count / max) * 100}%`, opacity: x.count ? 1 : 0 }} />
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+
+                <div className="flex-1 flex flex-col p-3 gap-2">
+                  {live.length > 0 ? (
+                    <ul className="space-y-1.5">
+                      {live.map(x => (
+                        <li key={x.key}>
+                          <button onClick={() => setOpenKey(x.key)}
+                            title={x.action ? `${x.action}${x.owner ? ` · ${x.owner}` : ''}` : x.label}
+                            className="w-full text-left rounded-xl px-3 py-2 border border-slate-800 bg-slate-950/60 hover:bg-slate-950 hover:border-slate-700 cursor-pointer transition">
+                            <div className="flex items-center gap-2 text-[12.5px]">
+                              <span className={`h-2 w-2 rounded-full shrink-0 ${g.bar}`} />
+                              <span className="flex-1 text-slate-100 font-medium">{x.label}</span>
+                              <span className="tabular-nums font-bold text-slate-100">{x.count}</span>
+                              <span className="w-9 text-right tabular-nums text-[11px] text-slate-500">{pct(x.count, c.count)}%</span>
+                              <Icon name="chevron_right" className="text-[16px] text-slate-500" />
+                            </div>
+                            <div className="h-1.5 rounded-full bg-slate-800 mt-1.5 overflow-hidden">
+                              <div className={`h-full rounded-full ${g.bar}`} style={{ width: `${pct(x.count, c.count)}%` }} />
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="flex items-center gap-2 px-3 py-3 rounded-xl border border-dashed border-slate-800 text-[12px] text-slate-500">
+                      <Icon name="hourglass_empty" className="text-[16px]" />Abhi is category mein koi candidate nahi.
+                    </div>
+                  )}
+                  {empty.length > 0 && (
+                    <div className="mt-auto pt-1">
+                      <div className="text-[10.5px] uppercase tracking-wider font-semibold text-slate-500 mb-1.5 px-0.5">Abhi koi nahi</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {empty.map(x => (
+                          <span key={x.key} title={x.action || x.label}
+                            className="px-2 py-0.5 rounded-full text-[11px] border border-slate-800 bg-slate-950/40 text-slate-400">{x.label}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </article>
             );
           })}
         </div>
