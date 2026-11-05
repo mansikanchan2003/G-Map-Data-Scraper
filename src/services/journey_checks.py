@@ -180,7 +180,10 @@ def find(db: Session, groups=RECORDS, limit: Optional[int] = 400) -> Dict:
         if data.get("education") and not pin:
             flag("education_without_pin", c.phone, c.bot_updated_at, f"Education {data.get('education')}", c.profile_name)
 
-    flags = [f for f in flags if f["group"] in groups]
+    # The team's own numbers (where test campaigns go) are tests, not leads (the user, 2026-11-05).
+    from src.services import inbox as _inbox, tickets
+    tests = tickets._test_phones(db)
+    flags = [f for f in flags if f["group"] in groups and _inbox.normalize_phone(f["phone"] or "") not in tests]
     rank = {"high": 0, "medium": 1, "low": 2}
     order = list(GROUPS)
     flags.sort(key=lambda f: (order.index(f["group"]), rank[f["severity"]], f["at"] or ""))

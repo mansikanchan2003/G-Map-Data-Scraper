@@ -2329,6 +2329,21 @@ def test_the_missing_step_alert_keeps_to_its_record_checks(db, client):
     assert "quiet_no_outcome" in {f["check"] for f in actions["flags"]}
 
 
+def test_the_teams_own_test_numbers_are_left_out_of_the_alerts(db, client, monkeypatch):
+    """Deepanshu's and Mansi's test chats showed as missing steps (the user, 2026-11-05)."""
+    from datetime import timedelta
+    from src.services import tickets
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    c = conv(db)
+    c.last_inbound_at = inbox.now() - timedelta(days=4)
+    db.commit()
+    assert client.get("/api/v1/inbox/journeys/missing-steps").json()["flags"]
+    monkeypatch.setattr(tickets, "_test_phones", lambda db: {inbox.normalize_phone(PHONE)})
+    assert client.get("/api/v1/inbox/journeys/missing-steps").json()["flags"] == []
+    assert client.get("/api/v1/inbox/journeys/missing-actions").json()["flags"] == []
+
+
 def test_a_chat_the_team_handled_without_recording_an_outcome_is_flagged(db, client):
     from datetime import timedelta
     tap_campaign(db)

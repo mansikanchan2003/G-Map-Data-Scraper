@@ -173,12 +173,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </section>
 
-      {/* Leads whose recorded steps do not add up; green and quiet when all do. */}
-      <MissingStepsCard />
-
-      {/* Leads with no disposition where one is due, and action items missing or overdue. */}
-      <DispositionAlertCard />
-
       {/* Action feedback banner */}
       {actionMsg && (
         <div className="p-3 rounded-xl bg-sky-950 border border-sky-800 text-[12.5px] text-sky-300 flex items-center justify-between gap-3">
@@ -350,6 +344,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </section>
+
+      {/* The two alerts sit at the bottom (the user, 2026-11-05): leads whose recorded
+          steps do not add up, and dispositions or action items missing or overdue. */}
+      <MissingStepsCard />
+      <DispositionAlertCard />
+
+      <footer className="pt-4 pb-1 border-t border-slate-800 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[11.5px] text-slate-500 text-center">
+        <span>© {new Date().getFullYear()} Eko Bharat Ventures Private Limited. All rights reserved.</span>
+        <span className="hidden sm:inline">·</span>
+        <span>AutoGMap™ and Eko™ are trademarks of Eko Bharat Ventures Private Limited.</span>
+      </footer>
 
       <DiscoveryRunner
         isOpen={runnerOpen}
