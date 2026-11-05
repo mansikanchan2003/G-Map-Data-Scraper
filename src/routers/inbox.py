@@ -648,6 +648,13 @@ def forget_a_teaching(payload: TeachRequest, db: Session = Depends(get_db)):
     return {"status": "ok"}
 
 
+@router.get("/conversations/{digits}/calls")
+def conversation_calls(digits: str, db: Session = Depends(get_db)):
+    """The AI calling agent's calls with this person, newest first: each call's chat and its outcome."""
+    from src.services import ai_calls
+    return ai_calls.for_phone(db, _get_conversation(db, digits).phone)
+
+
 @router.get("/dispositions")
 def disposition_options():
     return handover.options()

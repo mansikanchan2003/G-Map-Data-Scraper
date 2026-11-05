@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     n8n_output_spreadsheet_id: str = ""
 
     # -----------------------------------------------------------------------
+    # AI calling agent (Voxomos): the shared secret its webhook sends in the
+    # X-Webhook-Secret header. Empty = the webhook refuses every call.
+    # -----------------------------------------------------------------------
+    voxomos_webhook_secret: str = ""
+
+    # -----------------------------------------------------------------------
     # Logging & environment
     # -----------------------------------------------------------------------
     log_level: str = "INFO"

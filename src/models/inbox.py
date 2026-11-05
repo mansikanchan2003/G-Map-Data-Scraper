@@ -270,3 +270,35 @@ class LeadJourneyStep(Base):
     by = Column(String(200), nullable=True)
     tone = Column(String(12), nullable=True)
     detail = Column(String(500), nullable=True)
+
+
+class AICall(Base):
+    """
+    A call made by the AI calling agent (Voxomos), as it sent it back: the
+    chat of the call turn by turn, how it ended, and the outcome AutoGMap
+    marked from it (the user, 2026-11-05). Kept in full so the team can read
+    what was said, and so the agent's own reading can be checked.
+    """
+    __tablename__ = "ai_calls"
+
+    call_id = Column(String(32), primary_key=True)
+    phone = Column(String(20), nullable=False, index=True)
+    provider = Column(String(30), nullable=False, default="voxomos")
+    # The provider's own id for the call: a repeat delivery updates, never duplicates.
+    external_id = Column(String(120), nullable=True, unique=True)
+    started_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    duration_seconds = Column(Integer, nullable=True)
+    # "answered", "no_answer", "busy", "failed".
+    status = Column(String(20), nullable=False, default="answered")
+    # [{"speaker": "agent" | "candidate", "text": "...", "at": iso or null}]
+    turns = Column(JSON, nullable=False, default=list)
+    language = Column(String(10), nullable=True)
+    recording_url = Column(String(500), nullable=True)
+    # What the provider said the outcome was, as sent.
+    provider_outcome = Column(String(200), nullable=True)
+    # The disposition AutoGMap recorded from the call, and why.
+    outcome = Column(String(40), nullable=True)
+    outcome_reason = Column(String(300), nullable=True)
+    outcome_at = Column(DateTime(timezone=True), nullable=True)
+    summary = Column(Text, nullable=True)
+    received_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

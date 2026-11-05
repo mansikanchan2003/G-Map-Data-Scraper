@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchCallPlan, fetchJourney, fetchJourneys, type ActionItem, type CallPlan, type DispositionBlock, type Journey, type JourneyRow, type NextItem } from '../api/inbox';
 import { CallPlanCard } from '../components/CallPlan';
+import { AICallsCard } from '../components/AICalls';
 import { formatDateTime } from '../utils/datetime';
 
 /**
@@ -177,6 +178,7 @@ const Steps: React.FC<{ phone: string }> = ({ phone }) => {
     <div className="space-y-3">
       <WhatsNext items={j.whats_next} />
       {call && <CallPlanCard plan={call} />}
+      <AICallsCard phone={phone} />
       <Dispositions blocks={j.dispositions} />
       <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold flex items-center gap-1.5 pt-1">
         <Icon name="route" className="text-[15px]" />Journey

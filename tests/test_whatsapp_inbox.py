@@ -3972,3 +3972,59 @@ def test_questions_about_us_are_never_called_unrelated(said):
 def test_the_note_is_written_in_every_language():
     for lang, messages in bot_messages.MESSAGES.items():
         assert "SBI CSP" in messages["off_topic"] and "Kiosk Operator" in messages["off_topic"], lang
+
+
+# --- The AI calling agent's calls (Voxomos) -------------------------------------------
+
+def _post_call(client, monkeypatch, body, secret="s3cret", sent=None):
+    from src.config import settings
+    monkeypatch.setattr(settings, "voxomos_webhook_secret", "s3cret")
+    return client.post("/api/v1/calls/voxomos/webhook", json=body,
+                       headers={"X-Webhook-Secret": sent if sent is not None else secret})
+
+
+def test_the_call_webhook_refuses_without_the_secret(db, client, monkeypatch):
+    assert _post_call(client, monkeypatch, {"phone": PHONE}, sent="wrong").status_code == 401
+    from src.config import settings
+    monkeypatch.setattr(settings, "voxomos_webhook_secret", "")
+    r = client.post("/api/v1/calls/voxomos/webhook", json={"phone": PHONE}, headers={"X-Webhook-Secret": ""})
+    assert r.status_code == 401, "no secret set means no call gets in"
+
+
+def test_a_call_is_stored_as_a_chat_and_a_callback_time_becomes_the_outcome(db, client, monkeypatch):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    body = {"call_id": "vx-1", "phone": "919000000001", "status": "answered", "duration": "84",
+            "transcript": "Agent: Namaste ji, main Eko se baat kar rahi hoon.\n"
+                          "User: Haan boliye.\n"
+                          "Agent: Aapne PIN bheja tha, kya documents upload kar payenge?\n"
+                          "User: Abhi busy hoon, shaam 5 baje call karna."}
+    r = _post_call(client, monkeypatch, body)
+    assert r.status_code == 200 and r.json()["outcome"] == "busy_at_time"
+    calls = client.get(f"/api/v1/inbox/conversations/{PHONE[1:]}/calls").json()
+    assert len(calls) == 1
+    c = calls[0]
+    assert [t["speaker"] for t in c["turns"]] == ["agent", "candidate", "agent", "candidate"]
+    assert c["outcome_label"] == "Call at specific time" and "shaam 5 baje" in c["outcome_reason"]
+    assert conv(db).disposition == "busy_at_time" and conv(db).disposition_by == "ai_call"
+    # Delivered again: updated, not doubled.
+    _post_call(client, monkeypatch, body)
+    assert len(client.get(f"/api/v1/inbox/conversations/{PHONE[1:]}/calls").json()) == 1
+
+
+def test_an_unanswered_call_is_no_answer_and_voxomos_own_outcome_wins(db, client, monkeypatch):
+    tap_campaign(db)
+    r = _post_call(client, monkeypatch, {"call_id": "vx-2", "phone": PHONE, "status": "no_answer", "transcript": []})
+    assert r.json()["outcome"] == "rnr_no_answer"
+    r = _post_call(client, monkeypatch, {"call_id": "vx-3", "phone": PHONE, "outcome": "Documents pending",
+                                         "transcript": [{"role": "assistant", "text": "Namaste"},
+                                                        {"role": "user", "text": "haan bhejta hoon"}]})
+    assert r.json()["outcome"] == "int_docs_pending"
+
+
+def test_asking_for_our_kiosk_operators_contacts_is_a_trust_concern(db, client, monkeypatch):
+    tap_campaign(db)
+    r = _post_call(client, monkeypatch, {"call_id": "vx-4", "phone": PHONE, "transcript": [
+        {"speaker": "agent", "text": "Hum aapko hamare Kiosk Operators se baat karwa sakte hain."},
+        {"speaker": "customer", "text": "Haan, kisi operator se baat karwa do, unka number bhejo."}]})
+    assert r.json()["outcome"] == "int_trust"

@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from src.routers import (config, jobs, businesses, discovery, export, runs,
                          whatsapp, tracking, audience, template_studio, insights,
-                         inbox, onboarding, applications, partners, agents, auth as auth_router)
+                         inbox, ai_calls, onboarding, applications, partners, agents, auth as auth_router)
 from src.database import init_db, get_db
 from src.utils.logging import setup_logging
 
@@ -150,6 +150,7 @@ app.add_middleware(
 #   /api/v1/auth/*               - signing up and signing in
 #   /r/{token}                   - campaign links, opened by recipients
 #   /api/v1/whatsapp/webhook     - called by Meta, verified by signature
+#   /api/v1/calls/voxomos/webhook - called by Voxomos, verified by a shared secret
 # The onboarding upload page (/onboard/{token}) is outside /api/ altogether;
 # its unguessable, expiring token is what admits the person filling it in.
 # Everything under / that is not an API path falls through to the SPA shell,
@@ -160,6 +161,7 @@ PUBLIC_API_PREFIXES = (
     "/api/v1/auth/",
     "/r/",
     "/api/v1/whatsapp/webhook",
+    "/api/v1/calls/voxomos/webhook",
 )
 
 
@@ -252,6 +254,7 @@ app.include_router(audience.router)
 app.include_router(template_studio.router)
 app.include_router(insights.router)
 app.include_router(inbox.router)
+app.include_router(ai_calls.router)
 app.include_router(partners.router)
 app.include_router(applications.router)
 app.include_router(agents.router)

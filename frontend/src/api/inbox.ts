@@ -400,6 +400,17 @@ export const fetchMissingSteps = () => call<MissingSteps>('/journeys/missing-ste
 /** Leads with no disposition where one is due, and dispositions with a missing or overdue action item. */
 export const fetchMissingActions = () => call<MissingSteps>('/journeys/missing-actions');
 
+/** A call made by the AI calling agent (Voxomos): its chat turn by turn, and the outcome AutoGMap marked. */
+export interface AICallTurn { speaker: 'agent' | 'candidate'; text: string; at: string | null }
+export interface AICall {
+  call_id: string; phone: string; provider: string; status: string;
+  started_at: string | null; duration_seconds: number | null; language: string | null; recording_url: string | null;
+  turns: AICallTurn[]; provider_outcome: string | null;
+  outcome: string | null; outcome_label: string | null; outcome_group: string | null;
+  outcome_reason: string | null; summary: string | null;
+}
+export const fetchAICalls = (phone: string) => call<AICall[]>(`/conversations/${digits(phone)}/calls`);
+
 export const fetchCallPlan = (phone: string) => call<CallPlan>(`/conversations/${digits(phone)}/call-plan`);
 export const fetchJourney = (phone: string) => call<Journey>(`/conversations/${digits(phone)}/journey`);
 export const fetchJourneys = () => call<JourneyRow[]>('/dispositions/journeys');
