@@ -1776,6 +1776,11 @@ def test_every_nudge_is_written_in_every_language_without_blanks():
     ("ਮੈਨੂੰ ਹੋਰ ਜਾਣਕਾਰੀ ਚਾਹੀਦੀ ਹੈ", "en", ("pa", False)),
     ("मुझे और जानकारी चाहिए", "en", ("hi", False)),
     ("मला अधिक माहिती हवी आहे", "mr", ("mr", False)),
+    # Each language mixed with English (the user, 2026-11-05).
+    ("mare documents ready che", "hi", ("gu", False)),
+    ("mere documents ready hai", "gu", ("hi", True)),
+    ("maze documents ready aahet", "hi", ("mr", False)),
+    ("bahut maze aaye yaar", "hi", ("hi", True)),
     ("Mujhe aur jankari chahiye bhai", "en", ("hi", True)),
     ("Please call me in the evening", "hi", ("en", False)),
     ("ok", "hi", None),

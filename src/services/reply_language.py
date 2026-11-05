@@ -51,7 +51,7 @@ _LATIN_TYPED = {
            "ketli", "joie", "joiye", "karvu", "karvanu", "karva", "aapo", "apo", "saru", "haji", "ane", "thay",
            "thase", "thashe", "sakay", "shake", "majama", "batavo", "bataavo", "kyare", "kyathi", "kone", "malse",
            "malshe"},
-    "mr": {"mala", "mazha", "majha", "mazhi", "majhi", "tumhi", "tumcha", "tumchi", "aahe", "ahe", "aahet",
+    "mr": {"mala", "maza", "mazha", "majha", "maze", "majhe", "mazhe", "mazhi", "majhi", "tumhi", "tumcha", "tumchi", "aahe", "ahe", "aahet",
            "nahiye", "kay", "kasa", "kashi", "kase", "kiti", "kevha", "kuthe", "pahije", "havay", "sathi", "milel",
            "miltil", "lagel", "lagtil", "sanga", "sangaa", "kara", "karaycha", "karaychi", "hoil", "kaay", "tar",
            "pan", "ani"},
