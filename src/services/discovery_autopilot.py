@@ -68,7 +68,8 @@ DEFAULTS: Dict = {
     # After each job: this many seconds plus up to the jitter, at random.
     "job_delay_seconds": 4.0,
     "job_delay_jitter_seconds": 6.0,
-    "daily_batch_target": 10,
+    # Fifteen full batches a day (the user, 2026-11-05; was ten).
+    "daily_batch_target": 15,
     # Past the target, keep going instead of stopping for the day.
     "continue_after_target": False,
     # Put failed jobs back in the queue before each round, so they are tried
@@ -198,6 +199,31 @@ def adopt_pace(db: Session) -> bool:
     return True
 
 
+# Raises a saved daily target to the default once, leaving the autopilot as
+# it is (on stays on): a bigger day is not a new pace someone must turn on.
+#   1: fifteen batches a day (was ten), 2026-11-05.
+TARGET_VERSION = 1
+TARGET_VERSION_KEY = "discovery_autopilot_target_version"
+
+
+def adopt_target(db: Session) -> bool:
+    """Brings a saved daily target up to the default, once per TARGET_VERSION."""
+    seen = (_read(db, TARGET_VERSION_KEY) or {}).get("version", 0)
+    if seen >= TARGET_VERSION:
+        return False
+    current = get_settings(db)
+    changed = current["daily_batch_target"] < DEFAULTS["daily_batch_target"]
+    if changed:
+        current["daily_batch_target"] = DEFAULTS["daily_batch_target"]
+        _write(db, SETTINGS_KEY, {k: current[k] for k in DEFAULTS})
+    _write(db, TARGET_VERSION_KEY, {"version": TARGET_VERSION})
+    if changed:
+        state = get_state(db)
+        _event(state, "TARGET_CHANGED", f"Now {DEFAULTS['daily_batch_target']} batches a day.")
+        _write(db, STATE_KEY, state)
+    return changed
+
+
 def get_state(db: Session) -> dict:
     return {"phase": "off", "captcha_level": 0, "clean_streak": 0, "cooldown_until": None,
             "offline_level": 0, "offline_until": None,
@@ -289,14 +315,20 @@ def plan_round(db: Session, state: str, batches: int, batch_size: int,
             loc["retries"].add(cat_id)
 
     used_cats, used_locs, used_tehsils, used_districts = set(), set(), set(), set()
+    taken: set = set()
     plan = []
     for number in range(1, batches + 1):
         def available(loc):
-            return [c for c in loc["jobs"] if c not in used_cats]
+            return [c for c, (job_id, _) in loc["jobs"].items() if c not in used_cats and job_id not in taken]
 
         options = [l for l in locations.values() if available(l)]
         if not options:
-            break
+            # Every category has been searched somewhere this round; the jobs
+            # left are the same categories in other places, which is still work.
+            if not any(j not in taken for l in locations.values() for j, _ in l["jobs"].values()):
+                break
+            used_cats.clear()
+            options = [l for l in locations.values() if available(l)]
 
         def spread(loc):
             tehsil = (loc["district"], loc["tehsil"] or loc["anchor"])
@@ -314,6 +346,35 @@ def plan_round(db: Session, state: str, batches: int, batch_size: int,
         rng.shuffle(cats)
         cats.sort(key=lambda c: c not in pick["retries"])   # stable: retries first
         chosen = cats[:batch_size]
+        job_ids = [pick["jobs"][c][0] for c in chosen]
+        names = [pick["jobs"][c][1] for c in chosen]
+        taken.update(job_ids)
+        used_cats.update(chosen)
+        # A place with fewer jobs left than a batch holds is topped up from
+        # other places in the state, nearest first (same tehsil, then same
+        # district): a batch is always a full batch while the state has work,
+        # so a place that is nearly done never makes a short day (the user,
+        # 2026-11-05). Fresh categories first; a category already searched
+        # elsewhere in the round only when nothing fresh is left.
+        others = []
+        if len(job_ids) < batch_size:
+            here = (pick["district"], pick["tehsil"] or pick["anchor"])
+            near = sorted((l for l in locations.values() if l is not pick),
+                          key=lambda l: ((l["district"], l["tehsil"] or l["anchor"]) != here,
+                                         l["district"] != pick["district"], rng.random()))
+            for fresh in (True, False):
+                for loc in near:
+                    for c, (job_id, name) in loc["jobs"].items():
+                        if len(job_ids) >= batch_size:
+                            break
+                        if job_id in taken or (fresh and c in used_cats):
+                            continue
+                        job_ids.append(job_id)
+                        names.append(name)
+                        taken.add(job_id)
+                        used_cats.add(c)
+                        if loc["location_id"] not in others:
+                            others.append(loc["location_id"])
         plan.append({
             "batch": number,
             "location_id": pick["location_id"],
@@ -321,14 +382,14 @@ def plan_round(db: Session, state: str, batches: int, batch_size: int,
             "pincode": pick["pincode"],
             "district": pick["district"],
             "tehsil": pick["tehsil"],
-            "job_ids": [pick["jobs"][c][0] for c in chosen],
-            "categories": sorted(pick["jobs"][c][1] for c in chosen),
+            "job_ids": job_ids,
+            "categories": sorted(set(names)),
+            "topped_up_from": [locations[l]["tehsil"] or locations[l]["anchor"] for l in others],
             "status": "PLANNED",
             "blocks": 0,
             "run_id": None, "started_at": None, "completed_at": None,
             "jobs_completed": 0, "businesses_saved": 0,
         })
-        used_cats.update(chosen)
         used_locs.add(pick["location_id"])
         used_tehsils.add((pick["district"], pick["tehsil"] or pick["anchor"]))
         used_districts.add(pick["district"])
@@ -745,6 +806,7 @@ def _loop() -> None:
     db = SessionLocal()
     try:
         adopt_pace(db)
+        adopt_target(db)
         recover_after_restart(db)
     except Exception:
         logger.exception("autopilot event=RECOVERY_FAILED")

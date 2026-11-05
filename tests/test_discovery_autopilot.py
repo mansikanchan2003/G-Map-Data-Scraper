@@ -33,6 +33,7 @@ PLACES = (
     + [("Rajasthan", "RD0", "RT0")]
 )
 CATEGORIES = 146
+T = ap.DEFAULTS["daily_batch_target"]   # batches a day: 15
 
 
 class Clock:
@@ -160,6 +161,43 @@ def test_a_state_with_one_tehsil_still_gets_fresh_categories(db):
     assert len(cats) == len(set(cats))
 
 
+def test_a_nearly_done_place_is_topped_up_to_a_full_batch_from_its_neighbours(db):
+    """A place with 7 jobs left made a batch of 7 (prod, 2026-11-04); now the rest come from nearby."""
+    # Haryana's HT0 has 7 jobs left, every other place is done.
+    db.query(Job).filter(Job.location_id != "L00", Job.location_id.in_([f"L{i:02d}" for i in range(6)]))         .update({"status": "COMPLETED"}, synchronize_session=False)
+    keep = [j.job_id for j in db.query(Job).filter_by(location_id="L00").limit(7)]
+    db.query(Job).filter(Job.location_id == "L00", Job.job_id.notin_(keep))         .update({"status": "COMPLETED"}, synchronize_session=False)
+    # ...and HT3, in the same district, has some left too.
+    db.query(Job).filter(Job.location_id == "L03", Job.category_id >= "c050")         .update({"status": "PENDING"}, synchronize_session=False)
+    db.commit()
+    plan = ap.plan_round(db, "Haryana", 5, 25)
+    # 7 + 96 = 103 jobs: four full batches and the 3 left over, never a batch of 7.
+    assert [len(b["job_ids"]) for b in plan] == [25, 25, 25, 25, 3]
+    assert set(keep) <= {j for b in plan for j in b["job_ids"]}
+    assert any(b["topped_up_from"] for b in plan)
+    assert len({j for b in plan for j in b["job_ids"]}) == sum(len(b["job_ids"]) for b in plan), "no job twice"
+
+
+def test_categories_used_up_in_a_round_still_leave_full_batches(db):
+    """Two places, 20 categories each: once every category is searched once, the rest still run."""
+    db.query(Job).filter(Job.category_id >= "c020").update({"status": "COMPLETED"}, synchronize_session=False)
+    db.commit()
+    plan = ap.plan_round(db, "Haryana", 5, 25)
+    pending = db.query(Job).join(Location).filter(Location.state == "Haryana", Job.status == "PENDING").count()
+    assert pending == 120
+    assert [len(b["job_ids"]) for b in plan] == [25, 25, 25, 25, 20]
+
+
+def test_a_saved_target_of_ten_becomes_fifteen_once_and_stays_on(db):
+    ap._write(db, ap.SETTINGS_KEY, {**ap.DEFAULTS, "enabled": True, "daily_batch_target": 10})
+    assert ap.adopt_target(db) is True
+    s = ap.get_settings(db)
+    assert s["daily_batch_target"] == 15 and s["enabled"] is True
+    ap.save_settings(db, {"daily_batch_target": 12})
+    assert ap.adopt_target(db) is False
+    assert ap.get_settings(db)["daily_batch_target"] == 12
+
+
 # --- a day ----------------------------------------------------------------------
 
 def test_rounds_run_back_to_back_with_a_gap_and_a_new_state(db):
@@ -201,7 +239,7 @@ def test_the_gap_between_rounds_is_respected(db):
     assert db.query(DiscoveryRound).count() == 2
 
 
-def test_ten_batches_a_day_half_an_hour_apart_and_then_it_stops(db):
+def test_the_days_batches_a_quarter_hour_apart_and_then_it_stops(db):
     clock = Clock()
     scraper = FakeScraper(db, clock)
     switch_on(db)
@@ -209,11 +247,11 @@ def test_ten_batches_a_day_half_an_hour_apart_and_then_it_stops(db):
     run_until(db, clock, scraper, lambda: ap.get_state(db)["phase"] == "daily_target_reached")
 
     # The target is checked between rounds, so the day ends on a whole round.
-    assert ap.batches_today(db, clock()) == 10
-    assert len(scraper.batches) == 10
+    assert ap.batches_today(db, clock()) == T
+    assert len(scraper.batches) == T
     # Rotating through the states, never the same one twice running.
     rounds = db.query(DiscoveryRound).order_by(DiscoveryRound.created_at).all()
-    assert len(rounds) == 2
+    assert len(rounds) == T // 5
     assert all(a.state != b.state for a, b in zip(rounds, rounds[1:]))
 
     # One at a time, and never sooner than a quarter of an hour after the last one
@@ -224,7 +262,7 @@ def test_ten_batches_a_day_half_an_hour_apart_and_then_it_stops(db):
         assert gap >= timedelta(minutes=15), f"only {gap} between two batches"
         assert gap < timedelta(minutes=17)
     # Ten 18-minute batches and nine quarter-hour gaps: about five and a quarter hours.
-    assert clock() - start < timedelta(hours=6)
+    assert clock() - start < timedelta(hours=9)
 
     # Nothing more today; the next IST day it carries on.
     done = len(scraper.batches)
@@ -406,7 +444,7 @@ def test_saved_settings_adopt_the_new_pace_once_and_are_switched_off(db):
 
     s = ap.get_settings(db)
     assert s["enabled"] is False
-    assert s["daily_batch_target"] == 10
+    assert s["daily_batch_target"] == ap.DEFAULTS["daily_batch_target"]
     assert s["gap_between_batches_seconds"] == [900, 900]
     assert s["gap_between_rounds_minutes"] == 15
     assert s["batch_size"] == 20, "what the pace does not cover is left alone"
@@ -565,7 +603,7 @@ def test_retries_ride_in_the_ordinary_batches_at_the_same_pace(db):
     switch_on(db, states=["Haryana"])
     run_until(db, clock, scraper, lambda: ap.get_state(db)["phase"] == "daily_target_reached")
 
-    assert len(scraper.batches) == 10, "still ten batches, not ten plus retries"
+    assert len(scraper.batches) == T, "still the day's batches, not those plus retries"
     assert db.query(Job).filter(Job.status == "FAILED").count() == 0
     scraped = {j for b in scraper.batches for j in b["jobs"]}
     # Forty retries in one town, twenty-five to a batch and a town once per
@@ -599,11 +637,11 @@ def test_a_batch_whose_jobs_all_failed_does_not_count(db):
     switch_on(db)
     run_until(db, clock, scraper, lambda: ap.get_state(db)["phase"] == "daily_target_reached")
 
-    assert len(scraper.batches) == 13, "three failed batches, then the day's ten"
-    assert ap.batches_today(db, clock()) == 10
+    assert len(scraper.batches) == T + 3, "three failed batches, then the day's batches"
+    assert ap.batches_today(db, clock()) == T
     assert ap.failed_batches_today(db, clock()) == 3
     status = ap.status(db, clock())["today"]
-    assert status["batches_done"] == 10 and status["batches_failed"] == 3
+    assert status["batches_done"] == T and status["batches_failed"] == 3
     # Still one at a time, a quarter of an hour apart, failed ones included.
     runs = db.query(RunLog).order_by(RunLog.started_at).all()
     assert all(ap._aware(b.started_at) - ap._aware(a.completed_at) >= timedelta(minutes=15)
@@ -618,7 +656,7 @@ def test_a_day_of_nothing_but_failures_stops_itself(db):
     switch_on(db)
     run_until(db, clock, scraper, lambda: ap.get_state(db)["phase"] == "too_many_failures")
 
-    assert len(scraper.batches) == 10, "as many failed batches as the day's target, no more"
+    assert len(scraper.batches) == T, "as many failed batches as the day's target, no more"
     assert ap.batches_today(db, clock()) == 0
     assert "failed completely" in ap.get_state(db)["last_event"]
     done = len(scraper.batches)
