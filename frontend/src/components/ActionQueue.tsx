@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { completeFollowUpTask, fetchActionQueue, type ActionQueue as Queue, type QueueBucket, type QueueItem } from '../api/inbox';
 import { formatDateTime } from '../utils/datetime';
-import { CallPlanCard } from './CallPlan';
+import { CallGrid } from './CallPlan';
 
 /**
  * Every open action item across the leads, in one queue: the bot's nudges,
@@ -88,7 +88,6 @@ const Item: React.FC<{ i: QueueItem; outcomes: string[]; onDone: () => void }> =
       <span>{i.source === 'ticket' ? 'Asked' : 'Due'} {formatDateTime(i.due_at)}</span>
     </div>
     {i.result && <div className="mt-1 text-[11.5px] text-slate-400">{i.result}</div>}
-    {i.call_plan && <div className="mt-2"><CallPlanCard plan={i.call_plan} compact /></div>}
     {i.can_mark_done && <MarkDone id={i.id} outcomes={outcomes} onDone={onDone} />}
     {i.source === 'ticket' && (
       <a href={chat(i.phone)}
@@ -111,8 +110,13 @@ export const ActionQueue: React.FC = () => {
 
   const all = q.owners.reduce((n, o) => n + o.count, 0);
   const chips = [{ key: '', label: 'All', count: all }, ...q.owners];
+  // Calls have a grid of their own above; the columns keep the rest.
+  const calls = BUCKETS.flatMap(b => q[b.key].filter(i => i.source === 'call'));
+  const rest = (b: QueueBucket) => q[b].filter(i => i.source !== 'call');
 
   return (
+    <div className="space-y-5">
+    {(owner === '' || owner === 'human') && <CallGrid items={calls} />}
     <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm select-text">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h3 className="text-[15px] font-semibold text-slate-100 flex items-center gap-2">
@@ -131,19 +135,19 @@ export const ActionQueue: React.FC = () => {
       </div>
       <p className="text-[12.5px] text-slate-400 mt-2">
         Every open step across the leads. Overdue goes by the Dashboard alert's rules: a nudge an hour past due, one waiting
-        for a template a day, a team task open 2 days, a question unanswered a day, a call two hours past its time. A task is
-        marked done with how it ended; after a call, record its disposition in the chat.
+        for a template a day, a team task open 2 days, a question unanswered a day, a call two hours past its time (calls have
+        their own grid above). A task is marked done with how it ended; after a call, record its disposition in the chat.
       </p>
       <div className="grid gap-4 lg:grid-cols-3 mt-4">
         {BUCKETS.map(b => (
           <div key={b.key}>
             <h4 className={`text-[12px] uppercase tracking-wider mb-2 flex items-center gap-1.5 ${b.cls}`}>
               <Icon name={b.icon} className="text-[16px]" />{b.label}
-              <span className="ml-1 px-1.5 rounded-full bg-slate-800 text-slate-300 text-[10.5px] tabular-nums">{q.counts[b.key]}</span>
+              <span className="ml-1 px-1.5 rounded-full bg-slate-800 text-slate-300 text-[10.5px] tabular-nums">{rest(b.key).length}</span>
             </h4>
-            {q[b.key].length ? (
+            {rest(b.key).length ? (
               <ul className="space-y-2">
-                {q[b.key].map(i => <Item key={i.id} i={i} outcomes={q.outcomes} onDone={load} />)}
+                {rest(b.key).map(i => <Item key={i.id} i={i} outcomes={q.outcomes} onDone={load} />)}
               </ul>
             ) : (
               <div className="py-6 flex flex-col items-center gap-1.5 text-center rounded-xl border border-dashed border-slate-800">
@@ -155,5 +159,6 @@ export const ActionQueue: React.FC = () => {
         ))}
       </div>
     </section>
+    </div>
   );
 };

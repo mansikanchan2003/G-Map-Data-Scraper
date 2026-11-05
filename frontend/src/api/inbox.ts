@@ -416,6 +416,18 @@ export const submitAllNudgeTemplates = () =>
 export const submitNudgeTemplates = (purpose: string) =>
   call<{ variant: string; status: string; error?: string }[]>(`/dispositions/nudge-templates/${purpose}/submit`, { method: 'POST' });
 
+/** One candidate behind a count on the Dispositions tab, with what the team needs to act. */
+export interface DispositionLead {
+  phone: string; name: string | null; disposition: string; disposition_key: string; since: string | null; by: string;
+  business_name: string | null; category: string | null; pincode: string | null; district: string | null; state: string | null;
+  branch: { branch_code: string; branch_name: string; ao: string | null; pincode: string; distance_km: number } | null;
+  campaign: string | null; language: string | null; stage: string | null; documents_submitted: boolean;
+  next: { text: string; when: string | null; owner: string } | null;
+}
+export interface DispositionLeads {
+  key: string; label: string; group: string; category: string; action: string | null; count: number; leads: DispositionLead[];
+}
+export const fetchDispositionLeads = (key: string) => call<DispositionLeads>(`/dispositions/${encodeURIComponent(key)}/leads`);
 export const fetchDispositionDashboard = (days = 7) => call<DispositionDashboard>(`/dispositions/dashboard?days=${days}`);
 
 /** Send a photo, video, audio clip or document; anything else goes as a document. */

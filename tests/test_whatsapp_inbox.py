@@ -1817,6 +1817,23 @@ def test_a_nudge_goes_in_the_language_of_their_last_message(db, client):
     assert callback.status == "scheduled" and callback.wants == dz.CALL
 
 
+def test_a_disposition_count_opens_the_leads_behind_it(db, client):
+    # 5 Nov 2026: a card on the Dispositions tab lists its candidates, with what the team needs to act.
+    tap_campaign(db)
+    _record(client, "busy_later", note="Busy in the shop")
+    for key in ("busy", "busy_later"):
+        r = client.get(f"/api/v1/inbox/dispositions/{key}/leads")
+        assert r.status_code == 200, r.text
+        out = r.json()
+        assert out["count"] == 1 and out["group"] == "follow_up"
+        lead = out["leads"][0]
+        assert lead["phone"] == PHONE and lead["disposition"] == "Asked to call later"
+        assert lead["next"]["text"] and lead["next"]["owner"]
+        assert {"category", "district", "state", "pincode", "branch", "campaign"} <= set(lead)
+    assert client.get("/api/v1/inbox/dispositions/rnr/leads").json()["count"] == 0
+    assert client.get("/api/v1/inbox/dispositions/nonsense/leads").status_code == 404
+
+
 def test_gujarati_in_latin_letters_gets_the_gujarati_nudge(db, client):
     # 4 Nov 2026: chose Gujarati, wrote Gujarati in Latin letters with English, and the nudge went in English.
     tap_campaign(db, lang="gu")

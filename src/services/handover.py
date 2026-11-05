@@ -239,3 +239,80 @@ def dashboard(db: Session, days: int = 7) -> dict:
                          "since": inbox.aware(c.handled_since).isoformat() if c.handled_since else None}
                         for c in sorted(handled, key=lambda c: inbox.aware(c.handled_since) or inbox.now())],
     }
+
+
+def leads(db: Session, key: str) -> dict:
+    """
+    The chats behind one count on the Dispositions tab (a category or one of
+    its sub-categories), each with what the team needs to act: who they are,
+    their business and place, the SBI branch nearest them and its AO, the
+    campaign that reached them, and the next action item.
+    """
+    from src.models.inbox import FollowUp
+    from src.services import applications, call_plan, lead_journey
+
+    cat = dz.CATEGORY.get(key)
+    sub = dz.SUBS.get(dz.normalise(key))
+    if cat is None and sub is None:
+        raise KeyError(key)
+    keys = {s.key for s in cat.subs} if cat else {sub.key}
+
+    convs = db.query(WhatsAppConversation).all()
+    rows = [(c, d) for c in convs for d in [current(c)] if d["key"] in keys]
+    phones = [c.phone for c, _ in rows]
+    sources = applications._sources(db, phones)
+    branches = applications._branches(db)
+    now = inbox.now()
+    pending: Dict[str, List[FollowUp]] = {}
+    for f in (db.query(FollowUp).filter(FollowUp.phone.in_(phones), FollowUp.status.in_(("scheduled", "waiting")))
+              .order_by(FollowUp.due_at).all() if phones else []):
+        pending.setdefault(f.phone, []).append(f)
+    window = call_plan.everyone_window(db) if phones else None
+
+    out = []
+    for c, d in rows:
+        data = c.bot_data or {}
+        coverage = data.get("coverage") or {}
+        pin_info = coverage if coverage.get("pincode") else (data.get("typed_pin") or {})
+        geo = pin_info.get("geo") or {}
+        src = sources.get(c.phone) or {}
+        branch = applications._nearest_branch(branches, pin_info.get("coords"))
+        s = dz.SUBS.get(d["key"])
+        # The next action item: one already planned, else the call the call plan proposes, else the sheet's action.
+        nxt = None
+        if c.documents_submitted_at or d["key"] == "int_visit":
+            nxt = {"text": f"With {dz.HANDED_TO}: AutoGMap's part is done", "when": None, "owner": dz.HANDED_TO}
+        elif pending.get(c.phone):
+            f = pending[c.phone][0]
+            it = lead_journey._item(f, now)
+            nxt = {"text": it["text"], "when": inbox.aware(f.due_at).isoformat(), "owner": it["owner_label"]}
+        else:
+            plan = call_plan.for_lead(db, c, now, window)
+            if plan["call"]:
+                nxt = {"text": f"Call karein: {plan['goal']}", "when": plan["call_at"], "owner": lead_journey.owner_label("human")}
+            elif s and s.action:
+                nxt = {"text": s.action, "when": None, "owner": s.owner}
+        out.append({
+            "phone": c.phone,
+            "name": c.profile_name,
+            "disposition": d["label"],
+            "disposition_key": d["key"],
+            "since": d["at"],
+            "by": d["by"],
+            "business_name": src.get("business_name"),
+            "category": src.get("category"),
+            "pincode": pin_info.get("pincode"),
+            "district": geo.get("district") or src.get("district"),
+            "state": geo.get("state") or src.get("state"),
+            "branch": branch,
+            "campaign": src.get("campaign"),
+            "language": call_plan.LANG.get(data.get("lang")),
+            "stage": bot.STEP_LABELS.get(c.bot_step, c.bot_step) if c.bot_step else None,
+            "documents_submitted": c.documents_submitted_at is not None,
+            "next": nxt,
+        })
+    out.sort(key=lambda r: r["since"] or "", reverse=True)
+    label_ = cat.label if cat else sub.label
+    group = (cat or dz.CATEGORY[sub.category]).group
+    return {"key": key, "label": label_, "group": group, "category": (cat or dz.CATEGORY[sub.category]).label,
+            "action": sub.action if sub else None, "count": len(out), "leads": out}

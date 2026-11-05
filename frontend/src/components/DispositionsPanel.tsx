@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { fetchDispositionDashboard, type DispositionDashboard } from '../api/inbox';
 import { formatDateTime } from '../utils/datetime';
+import { DispositionLeadsModal } from './DispositionLeads';
 
 /**
  * Every chat's outcome (disposition) at a glance, on the Dispositions tab:
@@ -11,6 +12,10 @@ import { formatDateTime } from '../utils/datetime';
  *
  * The four groups are status colours (going well, follow up, closed, other),
  * so each always carries its icon and label too: never colour alone.
+ *
+ * A category or a sub-category opens its candidates in a pop-up
+ * (DispositionLeads): who they are, where, their SBI branch and AO, the
+ * campaign that reached them, and the next action item.
  */
 
 type Group = 'positive' | 'follow_up' | 'negative' | 'other';
@@ -128,6 +133,8 @@ export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => 
   const [d, setD] = useState<DispositionDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [focus, setFocus] = useState<Group | 'all'>('all');
+  // The category or sub-category whose candidates are open in the pop-up.
+  const [openKey, setOpenKey] = useState<string | null>(null);
   useEffect(() => {
     setD(null); setError(null);
     fetchDispositionDashboard(days).then(setD).catch(e => setError(e.message));
@@ -248,27 +255,42 @@ export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => 
 
       <Card title="Every disposition" icon="checklist"
         sub={focus === 'all' ? 'The team\'s sheet: eleven categories and their sub-categories' : <button onClick={() => setFocus('all')} className="text-sky-300 hover:underline cursor-pointer">Showing {GROUP[focus].label} · show all</button>}>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {categories.map(c => {
             const g = GROUP[c.group as Group] || GROUP.other;
             const max = Math.max(1, ...c.subs.map(x => x.count));
+            const share = pct(c.count, d.total);
             return (
-              <div key={c.key} className={`rounded-xl border ${g.ring} bg-slate-950/50 p-3.5`}>
-                <div className="flex items-center gap-2.5">
-                  <span className={`h-8 w-8 rounded-lg flex items-center justify-center ${g.tint}`}><Icon name={c.icon} className="text-[17px]" /></span>
-                  <span className="flex-1 text-[13.5px] font-semibold text-slate-100">{c.label}</span>
-                  <span className="text-lg font-semibold tabular-nums text-slate-100">{c.count}</span>
-                </div>
-                <ul className="mt-2.5 space-y-1.5">
+              <div key={c.key}
+                className={`group relative rounded-2xl border ${g.ring} bg-slate-900 overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition`}>
+                <span className="absolute inset-x-0 top-0 h-1" style={{ background: ACCENT[(c.group as Group)] || ACCENT.other }} />
+                {/* The category: opens every candidate in it. */}
+                <button onClick={() => setOpenKey(c.key)} disabled={!c.count}
+                  className={`w-full flex items-center gap-3 px-4 pt-4 pb-3 text-left ${c.count ? 'cursor-pointer' : 'cursor-default'}`}>
+                  <span className={`h-10 w-10 rounded-xl flex items-center justify-center ${g.tint}`}><Icon name={c.icon} className="text-[21px]" /></span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[14px] font-semibold text-slate-100 truncate">{c.label}</span>
+                    <span className={`block text-[11px] ${c.count ? g.text : 'text-slate-500'}`}>
+                      {c.count ? `${share}% of all chats · see candidates` : 'No candidates yet'}
+                    </span>
+                  </span>
+                  <span className="text-[28px] font-bold tabular-nums leading-none text-slate-100">{c.count}</span>
+                  {!!c.count && <Icon name="chevron_right" className="text-[20px] text-slate-500 group-hover:text-slate-300 transition" />}
+                </button>
+                <ul className="px-2.5 pb-3 space-y-0.5">
                   {c.subs.map(x => (
-                    <li key={x.key} className="text-[12.5px]" title={x.action ? `${x.action}${x.owner ? ` · ${x.owner}` : ''}` : x.label}>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={x.count ? 'text-slate-300' : 'text-slate-500'}>{x.label}</span>
-                        <span className={`tabular-nums ${x.count ? 'font-semibold text-slate-100' : 'text-slate-600'}`}>{x.count}</span>
-                      </div>
-                      <div className="h-1 rounded-full bg-slate-800 mt-1 overflow-hidden">
-                        <div className={`h-full rounded-full ${g.bar}`} style={{ width: `${(x.count / max) * 100}%`, opacity: x.count ? 1 : 0 }} />
-                      </div>
+                    <li key={x.key}>
+                      <button onClick={() => setOpenKey(x.key)} disabled={!x.count}
+                        title={x.action ? `${x.action}${x.owner ? ` · ${x.owner}` : ''}` : x.label}
+                        className={`w-full text-left rounded-lg px-2 py-1.5 transition ${x.count ? 'hover:bg-slate-950/70 cursor-pointer' : 'cursor-default'}`}>
+                        <div className="flex items-center justify-between gap-2 text-[12.5px]">
+                          <span className={x.count ? 'text-slate-200' : 'text-slate-500'}>{x.label}</span>
+                          <span className={`min-w-[26px] text-center px-1.5 py-0.5 rounded-full tabular-nums text-[11.5px] ${x.count ? `font-semibold ${g.tint}` : 'text-slate-600'}`}>{x.count}</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-slate-800 mt-1.5 overflow-hidden">
+                          <div className={`h-full rounded-full ${g.bar}`} style={{ width: `${(x.count / max) * 100}%`, opacity: x.count ? 1 : 0 }} />
+                        </div>
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -276,6 +298,7 @@ export const DispositionsPanel: React.FC<{ days?: number }> = ({ days = 7 }) => 
             );
           })}
         </div>
+        {openKey && <DispositionLeadsModal dkey={openKey} onClose={() => setOpenKey(null)} />}
       </Card>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_1.35fr]">

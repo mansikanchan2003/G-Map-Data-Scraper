@@ -653,6 +653,15 @@ def disposition_options():
     return handover.options()
 
 
+@router.get("/dispositions/{key}/leads")
+def disposition_leads(key: str, db: Session = Depends(get_db)):
+    """The chats with this disposition (a category or a sub-category), with what the team needs to act."""
+    try:
+        return handover.leads(db, key)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="No such disposition")
+
+
 @router.get("/dispositions/dashboard")
 def disposition_dashboard(days: int = Query(7, ge=1, le=90), db: Session = Depends(get_db)):
     """Every chat's disposition now, the team's recent ones, and the chats people are handling."""
