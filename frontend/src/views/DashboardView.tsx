@@ -5,7 +5,6 @@ import { DispositionAlertCard } from '../components/DispositionAlertCard';
 import React, { useState } from 'react';
 import { DiscoveryRunner } from '../components/DiscoveryRunner';
 import { AutopilotPanel } from '../components/AutopilotPanel';
-import { CollapsiblePanel } from '../components/CollapsiblePanel';
 import { LeadsPanel } from '../components/LeadsPanel';
 import { ScaleBars } from '../components/ScaleBars';
 import { JobDistributionDonut } from '../components/JobDistributionDonut';
@@ -94,30 +93,83 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const pctCompleted = ((completedJobs / totalCalculated) * 100).toFixed(1);
 
   const isDiscoveryRunning = discoveryStatus?.is_running || runningJobs > 0;
+  const doneJobs = completedJobs + partialJobs;
+  const pctDone = Math.round((doneJobs / totalCalculated) * 100);
+  const R = 46, C = 2 * Math.PI * R;
+  const last = stats?.last_run;
+  const lastTotal = last?.jobs_total ?? 0;
 
   return (
-    <div className="flex-1 p-4 lg:p-6 flex flex-col gap-6 overflow-y-auto select-none bg-slate-950 text-slate-100">
-      {/* View Title & Subtitle */}
-      <section className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-800">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Dashboard</h1>
-            <span className="px-2 py-0.5 rounded text-[10px] font-mono-code bg-sky-950/80 border border-sky-800 text-sky-400 font-bold uppercase">
-              v2.0 Orchestrator
-            </span>
+    <div className="flex-1 p-4 lg:p-6 flex flex-col gap-6 overflow-y-auto select-none bg-slate-950 text-slate-100 [&>*]:shrink-0">
+      {/* The headline, in Eko's deep teal (the same in both themes): what the
+          scraper has found, how far through the work it is, and the buttons
+          used most. */}
+      <section className="relative overflow-hidden rounded-2xl shadow-md text-white"
+        style={{ background: 'linear-gradient(120deg, #0a3543 0%, #16435a 55%, #1d5a6e 100%)' }}>
+        <span className="material-symbols-outlined absolute -right-10 -bottom-16 text-[260px] text-white/5 pointer-events-none select-none">travel_explore</span>
+        <div className="relative p-6 flex flex-wrap items-center gap-6">
+          <div className="relative h-[124px] w-[124px] shrink-0">
+            <svg viewBox="0 0 110 110" className="h-full w-full -rotate-90" aria-hidden="true">
+              <circle cx="55" cy="55" r={R} fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="10" />
+              <circle cx="55" cy="55" r={R} fill="none" stroke="#f9ab10" strokeWidth="10" strokeLinecap="round"
+                strokeDasharray={`${(pctDone / 100) * C} ${C}`} className="transition-all duration-700" />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-[28px] font-bold tabular-nums leading-none">{pctDone}%</span>
+              <span className="text-[11px] text-white/70 mt-0.5">jobs searched</span>
+            </div>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">Overview of autonomous Google Maps discovery operations</p>
+          <div className="flex-1 min-w-[240px]">
+            <div className="text-[11px] uppercase tracking-[0.14em] font-semibold flex flex-wrap items-center gap-2" style={{ color: '#f9ab10' }}>
+              Google Maps discovery
+              <span className={`normal-case tracking-normal inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold ${isDiscoveryRunning ? 'bg-emerald-400/20 text-emerald-200' : 'bg-white/10 text-white/80'}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${isDiscoveryRunning ? 'bg-emerald-300 animate-pulse' : 'bg-white/50'}`} />
+                {isDiscoveryRunning ? `Scraping now · ${runningJobs} running` : 'Idle'}
+              </span>
+            </div>
+            <div className="mt-1 flex items-baseline flex-wrap gap-x-3">
+              <span className="text-4xl sm:text-5xl font-semibold tabular-nums">{totalBusinesses.toLocaleString('en-IN')}</span>
+              <span className="text-sm text-white/75">businesses found · <b className="text-white">{validBusinesses.toLocaleString('en-IN')}</b> valid</span>
+            </div>
+            <p className="text-sm text-white/70 mt-1">
+              {totalLocations.toLocaleString('en-IN')} PINs × {totalCategories.toLocaleString('en-IN')} categories = {totalJobs.toLocaleString('en-IN')} searches to make.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2" data-edit>
+            <button onClick={handleTriggerPipeline} disabled={actionLoading !== null || isDiscoveryRunning}
+              className="h-10 px-4 rounded-lg text-[13px] font-bold text-[#0a3543] inline-flex items-center gap-1.5 shadow-md hover:brightness-110 disabled:opacity-50 cursor-pointer"
+              style={{ background: '#f9ab10' }}>
+              <span className="material-symbols-outlined text-[18px]">play_arrow</span>Run a batch
+            </button>
+            <button onClick={() => setRunnerOpen(true)}
+              className="h-10 px-4 rounded-lg text-[13px] font-semibold bg-white/10 hover:bg-white/20 ring-1 ring-white/20 inline-flex items-center gap-1.5 cursor-pointer">
+              <span className="material-symbols-outlined text-[18px]">travel_explore</span>Choose targets
+            </button>
+            <SubPageButton tab="agent-quality" label="Agent quality" icon="psychology"
+              className="h-10 px-4 text-[13px] rounded-lg bg-violet-500/90 hover:bg-violet-500 text-white" />
+          </div>
         </div>
-
-        {/* Action / Endpoint Indicator */}
-        <div className="flex items-center gap-2">
-          <SubPageButton tab="agent-quality" label="Agent quality" icon="psychology" className="h-8 text-xs bg-violet-600 text-white" />
-          <div className="px-2.5 h-8 flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded text-xs font-mono-code text-slate-400 shadow-sm">
-            <span className="material-symbols-outlined text-[14px] text-emerald-400">cloud_done</span>
-            <span>
-              Endpoint: <strong className="text-slate-200 font-semibold">GET /api/v1/stats</strong>
-            </span>
-          </div>
+        <div className="relative grid grid-cols-2 lg:grid-cols-4 gap-3 px-6 pb-6">
+          {([
+            ['COMPLETED', 'Searched', doneJobs, 'task_alt', '#6ee7b7'],
+            ['PENDING', 'Waiting', pendingJobs, 'hourglass_top', '#7dd3fc'],
+            ['RUNNING', 'Running now', runningJobs, 'autorenew', '#f9ab10'],
+            ['FAILED', 'Failed or blocked', failedJobs + blockedJobs, 'error', '#fda4af'],
+          ] as const).map(([key, label, value, icon, colour]) => (
+            <button key={key} onClick={() => onNavigate('jobs', key)}
+              className="text-left rounded-xl px-4 py-3 bg-white/10 hover:bg-white/15 transition cursor-pointer">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-white/75 text-[12px]">
+                  <span className="material-symbols-outlined text-[16px]" style={{ color: colour }}>{icon}</span>{label}
+                </span>
+                <span className="text-[11.5px] tabular-nums text-white/60">{Math.round((value / totalCalculated) * 100)}%</span>
+              </div>
+              <div className="text-2xl font-semibold tabular-nums mt-1">{value.toLocaleString('en-IN')}</div>
+              <div className="h-1.5 rounded-full bg-white/10 mt-2 overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${(value / totalCalculated) * 100}%`, background: colour }} />
+              </div>
+            </button>
+          ))}
         </div>
       </section>
 
@@ -129,330 +181,172 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Action feedback banner */}
       {actionMsg && (
-        <div className="p-3 bg-sky-950/80 border border-sky-800 rounded text-xs font-mono-code text-sky-300 flex items-center justify-between">
-          <span>{actionMsg}</span>
+        <div className="p-3 rounded-xl bg-sky-950 border border-sky-800 text-[12.5px] text-sky-300 flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2"><span className="material-symbols-outlined text-[18px]">info</span>{actionMsg}</span>
           <button onClick={() => setActionMsg(null)} className="text-sky-400 hover:text-sky-200 font-bold cursor-pointer">✕</button>
         </div>
       )}
 
       {/* Error state */}
       {error && (
-        <div className="p-4 bg-rose-950/70 border border-rose-800 rounded text-rose-200 space-y-2">
+        <div className="p-4 rounded-xl bg-rose-950 border border-rose-800 text-rose-200 space-y-2">
           <div className="flex items-center gap-2 font-semibold text-sm">
             <span className="material-symbols-outlined text-rose-400 text-[18px]">error</span>
-            <span>Unable to load dashboard statistics from backend</span>
+            <span>Could not load the dashboard figures</span>
           </div>
-          <p className="text-xs font-mono-code text-rose-300">
-            {error.isNetworkError
-              ? `Connection to FastAPI failed at ${error.endpoint || '/api/v1/stats'}. Ensure backend server is running.`
-              : error.message}
+          <p className="text-xs text-rose-300">
+            {error.isNetworkError ? 'The server did not answer. Check that the backend is running.' : error.message}
           </p>
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={onRefresh}
-              className="px-3 py-1 bg-slate-900 border border-rose-700 hover:bg-slate-800 text-rose-300 text-xs font-mono-code rounded font-medium transition-colors cursor-pointer"
-            >
-              Retry Request
-            </button>
-          </div>
+          <button onClick={onRefresh}
+            className="px-3 py-1.5 rounded-lg bg-slate-900 border border-rose-700 hover:bg-slate-800 text-rose-300 text-xs font-semibold cursor-pointer">
+            Try again
+          </button>
         </div>
       )}
 
-      {/* Loading Skeleton */}
       {loading && !stats && (
-        <div className="p-12 bg-slate-900 border border-slate-800 rounded text-center space-y-3">
-          <div className="inline-block w-8 h-8 border-3 border-sky-400 border-t-transparent rounded-full animate-spin" />
-          <div className="text-sm font-mono-code text-slate-300 font-medium">Fetching real backend statistics...</div>
-          <div className="text-xs font-mono-code text-slate-500">Querying GET /api/v1/stats</div>
+        <div className="grid gap-4 lg:grid-cols-3 animate-pulse">
+          {[0, 1, 2].map(i => <div key={i} className="h-48 rounded-2xl bg-slate-900 border border-slate-800" />)}
         </div>
       )}
 
-      {/* Operational status beside the matrix it runs over. The chart carries
-          the numbers, so nothing repeats them above it. */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-      <div className="lg:col-span-8 bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-sky-400 text-[18px]">bar_chart</span>
-            <h3 className="text-sm font-semibold text-slate-100">Operational Status Breakdown</h3>
-            {/* Running is the one state the donut cannot hold: it is work in flight,
-                not a settled share of the total. */}
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono-code border border-sky-800 bg-sky-950 text-sky-300 font-semibold uppercase">
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 pulse-glow" />
-              {runningJobs.toLocaleString()} Running
-            </span>
+      {/* Where the jobs stand beside the size of the search. */}
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+        <div className="lg:col-span-8 rounded-2xl border border-slate-800 bg-slate-900 p-5 flex flex-col gap-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-[15px] font-semibold text-slate-100 flex items-center gap-2">
+              <span className="h-8 w-8 rounded-lg bg-sky-950 text-sky-300 flex items-center justify-center"><span className="material-symbols-outlined text-[18px]">donut_large</span></span>
+              Where the jobs stand
+            </h3>
+            <span className="text-[11.5px] text-slate-500">{totalCalculated.toLocaleString('en-IN')} jobs · click a slice to open them</span>
           </div>
-          <span className="text-xs font-mono-code text-slate-400 font-medium">
-            {totalCalculated.toLocaleString()} Total Jobs ({pctCompleted}% Completed)
-          </span>
+          <JobDistributionDonut
+            total={totalCalculated}
+            heroValue={`${pctCompleted}%`}
+            heroLabel="Completed"
+            onSliceClick={(key) => onNavigate('jobs', key)}
+            slices={[
+              { key: 'COMPLETED', label: 'Completed', value: completedJobs, colorVar: '--chart-good' },
+              { key: 'PENDING',   label: 'Pending',   value: pendingJobs,   colorVar: '--chart-muted' },
+              { key: 'PARTIAL',   label: 'Partial',   value: partialJobs,   colorVar: '--chart-warning' },
+              { key: 'FAILED',    label: 'Failed',    value: failedJobs,    colorVar: '--chart-critical' },
+              { key: 'BLOCKED',   label: 'Blocked',   value: blockedJobs,   colorVar: '--chart-blocked' },
+            ]}
+          />
         </div>
 
-        <JobDistributionDonut
-          total={totalCalculated}
-          heroValue={`${pctCompleted}%`}
-          heroLabel="Completed"
-          onSliceClick={(key) => onNavigate('jobs', key)}
-          slices={[
-            { key: 'COMPLETED', label: 'Completed', value: completedJobs, colorVar: '--chart-good' },
-            { key: 'PENDING',   label: 'Pending',   value: pendingJobs,   colorVar: '--chart-muted' },
-            { key: 'PARTIAL',   label: 'Partial',   value: partialJobs,   colorVar: '--chart-warning' },
-            { key: 'FAILED',    label: 'Failed',    value: failedJobs,    colorVar: '--chart-critical' },
-            { key: 'BLOCKED',   label: 'Blocked',   value: blockedJobs,   colorVar: '--chart-blocked' },
-          ]}
-        />
-      </div>
-
-      {/* The headline figures, as bars rather than four tiles of prose. */}
-      <div className="lg:col-span-4 bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-sky-400 text-[18px]">stacked_bar_chart</span>
-          <h3 className="text-sm font-semibold text-slate-100">Scale of the Run</h3>
+        <div className="lg:col-span-4 rounded-2xl border border-slate-800 bg-slate-900 p-5 flex flex-col gap-4 shadow-sm">
+          <h3 className="text-[15px] font-semibold text-slate-100 flex items-center gap-2">
+            <span className="h-8 w-8 rounded-lg bg-violet-950 text-violet-300 flex items-center justify-center"><span className="material-symbols-outlined text-[18px]">grid_view</span></span>
+            Size of the search
+          </h3>
+          <ScaleBars
+            groups={[
+              {
+                title: 'Search grid',
+                bars: [
+                  { key: 'categories', label: 'Categories', value: totalCategories, note: 'kinds of shop' },
+                  { key: 'locations', label: 'Locations', value: totalLocations, note: 'target PINs' },
+                ],
+              },
+              {
+                title: 'Work & output',
+                bars: [
+                  { key: 'jobs', label: 'Jobs allocated', value: totalJobs,
+                    note: `${totalLocations}×${totalCategories}` },
+                  { key: 'businesses', label: 'Businesses found', value: totalBusinesses,
+                    note: `${validBusinesses.toLocaleString()} valid`,
+                    onClick: () => onNavigate('businesses') },
+                ],
+              },
+            ]}
+          />
         </div>
-        <ScaleBars
-          groups={[
-            {
-              title: 'Search grid',
-              bars: [
-                { key: 'categories', label: 'Categories', value: totalCategories, note: 'personas' },
-                { key: 'locations', label: 'Locations', value: totalLocations, note: 'target PINs' },
-              ],
-            },
-            {
-              title: 'Work & output',
-              bars: [
-                { key: 'jobs', label: 'Jobs allocated', value: totalJobs,
-                  note: `${totalLocations}×${totalCategories}` },
-                { key: 'businesses', label: 'Businesses found', value: totalBusinesses,
-                  note: `${validBusinesses.toLocaleString()} valid`,
-                  onClick: () => onNavigate('businesses') },
-              ],
-            },
-          ]}
-        />
-      </div>
       </section>
 
-      {/* Split Layout: Latest Run Card (Left) & Operational Actions (Right) */}
       <AutopilotPanel />
 
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        {/* Left: Latest Orchestration Run Card */}
-        <div className="lg:col-span-7">
-          <CollapsiblePanel
-            icon="alt_route"
-            iconClass="text-emerald-400"
-            title="Latest Orchestration Run"
-            badge={
-              <>
-                <span className="px-2 py-0.5 rounded text-xs font-mono-code border border-emerald-800 bg-emerald-950/60 text-emerald-300 font-semibold">
-                  {isDiscoveryRunning ? 'RUNNING' : (stats?.last_run?.status || 'IDLE')}
-                </span>
-                <span className="hidden sm:inline text-xs font-mono-code text-slate-400 font-medium">
-                  {stats?.last_run?.run_id ? `Run #${stats.last_run.run_id.slice(0, 8)}` : 'Engine Ready'}
-                </span>
-              </>
-            }
-          >
-
-          {/* Real Run Metadata Bento */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div className="p-3 bg-slate-950 rounded border border-slate-800">
-              <div className="text-[10px] font-mono-code text-slate-400 uppercase flex items-center gap-1.5 font-semibold">
-                <span className="material-symbols-outlined text-[14px]">schedule</span>
-                Started At
-              </div>
-              <div className="font-mono-code text-slate-200 mt-1 font-semibold truncate">
-                {stats?.last_run?.started_at ? formatDateTime(stats.last_run.started_at) : 'Ready on standby'}
-              </div>
-            </div>
-
-            <div className="p-3 bg-slate-950 rounded border border-slate-800">
-              <div className="text-[10px] font-mono-code text-slate-400 uppercase flex items-center gap-1.5 font-semibold">
-                <span className="material-symbols-outlined text-[14px]">task_alt</span>
-                Jobs Status (Last Run)
-              </div>
-              <div className="font-mono-code text-slate-200 mt-1 font-semibold flex items-center gap-2">
-                <span className="text-emerald-400" title="Completed">{stats?.last_run?.jobs_completed ?? 0}</span> /
-                <span className="text-rose-400" title="Failed">{stats?.last_run?.jobs_failed ?? 0}</span> /
-                <span className="text-slate-300" title="Total">{stats?.last_run?.jobs_total ?? 0}</span>
-              </div>
-            </div>
-
-            <div className="p-3 bg-slate-950 rounded border border-slate-800">
-              <div className="text-[10px] font-mono-code text-slate-400 uppercase flex items-center gap-1.5 font-semibold">
-                <span className="material-symbols-outlined text-[14px] text-emerald-400">domain_add</span>
-                Business Extraction
-              </div>
-              <div className="font-mono-code mt-1 font-semibold flex gap-2">
-                <span className="text-emerald-400" title="New">{stats?.last_run?.businesses_new ?? 0}</span>
-                <span className="text-sky-400" title="Updated">{stats?.last_run?.businesses_updated ?? 0}</span>
-                <span className="text-slate-400" title="Duplicate">{stats?.last_run?.businesses_duplicate ?? 0}</span>
-              </div>
-            </div>
-
-            <div className="p-3 bg-slate-950 rounded border border-slate-800">
-              <div className="text-[10px] font-mono-code text-slate-400 uppercase flex items-center gap-1.5 font-semibold">
-                <span className="material-symbols-outlined text-[14px] text-amber-400">mail</span>
-                Emails Found
-              </div>
-              <div className="font-mono-code text-amber-400 mt-1 font-semibold">
-                {stats?.last_run?.email_enriched ?? 0}
-              </div>
-            </div>
-
-            <div className="p-3 bg-slate-950 rounded border border-slate-800">
-              <div className="text-[10px] font-mono-code text-slate-400 uppercase flex items-center gap-1.5 font-semibold">
-                <span className="material-symbols-outlined text-[14px] text-sky-400">account_tree</span>
-                Batch Status
-              </div>
-              <div className="font-mono-code text-slate-200 mt-1 font-semibold truncate">
-                {isDiscoveryRunning ? `Active (${discoveryStatus?.jobs_processed ?? 0}/${discoveryStatus?.jobs_total ?? 0} jobs)` : 'Standing by for trigger'}
-              </div>
-            </div>
-          </div>
-
-          {/* Engine Execution Details */}
-          <div className="bg-slate-950 text-slate-200 rounded p-3 font-mono-code text-xs flex flex-col gap-1 border border-slate-800">
-            <div className="flex items-center justify-between pb-1 border-b border-slate-800 text-[10px] uppercase text-slate-400">
-              <span>Engine Status [FastAPI + Playwright]</span>
-              <span className={isDiscoveryRunning ? 'text-sky-400 font-semibold' : 'text-emerald-400 font-semibold'}>
-                {isDiscoveryRunning ? 'BATCH RUNNING' : 'ONLINE'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 pt-1 text-[11px]">
-              <span className="text-slate-500">DISCOVERY</span>
-              <span className="text-sky-400 font-semibold">[PLAYWRIGHT]</span>
-              <span className="text-slate-300">
-                {isDiscoveryRunning
-                  ? `Processing job #${discoveryStatus?.current_job_id ?? 'active'} (${discoveryStatus?.jobs_processed} / ${discoveryStatus?.jobs_total})`
-                  : `Total ${completedJobs.toLocaleString()} jobs completed. ${totalBusinesses.toLocaleString()} businesses persisted.`}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-[11px]">
-              <span className="text-slate-500">DEDUPE</span>
-              <span className="text-emerald-400 font-semibold">[SQLITE]</span>
-              <span className="text-slate-300">Deterministic deduplication active: name + pincode + coordinates.</span>
-            </div>
-          </div>
-          </CollapsiblePanel>
+      {/* The last batch, as tiles. */}
+      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 className="text-[15px] font-semibold text-slate-100 flex items-center gap-2">
+            <span className="h-8 w-8 rounded-lg bg-emerald-950 text-emerald-300 flex items-center justify-center"><span className="material-symbols-outlined text-[18px]">alt_route</span></span>
+            Last batch
+          </h3>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-semibold ${isDiscoveryRunning ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-300'}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${isDiscoveryRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+            {isDiscoveryRunning
+              ? `Running · ${discoveryStatus?.jobs_processed ?? 0}/${discoveryStatus?.jobs_total ?? 0} jobs`
+              : (last?.status ? last.status.charAt(0) + last.status.slice(1).toLowerCase() : 'Nothing run yet')}
+          </span>
         </div>
-
-        {/* Right: Operational Actions & Engine Health */}
-        <div className="lg:col-span-5 flex flex-col gap-4">
-          {/* Engine Health Matrix */}
-          <CollapsiblePanel
-            icon="memory"
-            iconClass="text-sky-400"
-            title="Engine Architecture"
-            badge={
-              <span className="text-[10px] font-mono-code text-emerald-400 font-bold uppercase bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800">
-                HEALTHY
-              </span>
-            }
-          >
-
-            <div className="flex flex-col gap-2 text-xs font-mono-code">
-              <div className="flex items-center justify-between p-2 bg-slate-950 rounded border border-slate-800">
-                <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span className="text-slate-300 font-medium">Discovery Engine:</span>
-                </div>
-                <span className="text-sky-400 font-semibold">
-                  {isDiscoveryRunning ? 'Active Batch' : 'Idle / Ready'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between p-2 bg-slate-950 rounded border border-slate-800">
-                <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span className="text-slate-300 font-medium">Deduplication:</span>
-                </div>
-                <span className="text-emerald-400 font-semibold">Active (Authoritative)</span>
-              </div>
-
-              <div className="flex items-center justify-between p-2 bg-slate-950 rounded border border-slate-800">
-                <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span className="text-slate-300 font-medium">CSV Streaming:</span>
-                </div>
-                <span className="text-emerald-400 font-semibold">GET /export/businesses</span>
-              </div>
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+            <div className="flex items-center gap-1.5 text-[11.5px] text-slate-400"><span className="material-symbols-outlined text-[16px] text-sky-400">schedule</span>Started</div>
+            <div className="text-[14px] font-semibold text-slate-100 mt-1.5">{last?.started_at ? formatDateTime(last.started_at) : '—'}</div>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+            <div className="flex items-center gap-1.5 text-[11.5px] text-slate-400"><span className="material-symbols-outlined text-[16px] text-emerald-400">task_alt</span>Jobs done</div>
+            <div className="text-2xl font-bold tabular-nums text-slate-100 mt-1">
+              {last?.jobs_completed ?? 0}<span className="text-sm font-normal text-slate-500"> / {lastTotal}</span>
+              {!!last?.jobs_failed && <span className="ml-2 text-[12px] font-semibold text-rose-400">{last.jobs_failed} failed</span>}
             </div>
-          </CollapsiblePanel>
+            <div className="h-1.5 rounded-full bg-slate-800 mt-2 overflow-hidden flex">
+              <div className="h-full bg-emerald-500" style={{ width: `${((last?.jobs_completed ?? 0) / Math.max(1, lastTotal)) * 100}%` }} />
+              <div className="h-full bg-rose-500" style={{ width: `${((last?.jobs_failed ?? 0) / Math.max(1, lastTotal)) * 100}%` }} />
+            </div>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+            <div className="flex items-center gap-1.5 text-[11.5px] text-slate-400"><span className="material-symbols-outlined text-[16px] text-emerald-400">storefront</span>New businesses</div>
+            <div className="text-2xl font-bold tabular-nums text-emerald-400 mt-1">+{last?.businesses_new ?? 0}</div>
+            <div className="text-[11.5px] text-slate-500 mt-0.5">{last?.businesses_updated ?? 0} updated · {last?.businesses_duplicate ?? 0} already known</div>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+            <div className="flex items-center gap-1.5 text-[11.5px] text-slate-400"><span className="material-symbols-outlined text-[16px] text-amber-400">mail</span>Emails found</div>
+            <div className="text-2xl font-bold tabular-nums text-amber-400 mt-1">{last?.email_enriched ?? 0}</div>
+            <div className="text-[11.5px] text-slate-500 mt-0.5">from the businesses' websites</div>
+          </div>
         </div>
       </section>
 
       {/* Side by side: the callbacks are read while the controls are used, and
           stacking them pushed one below the fold on a laptop. */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
         <LeadsPanel />
 
-        <div data-edit className="bg-slate-900 border border-slate-800 p-4 rounded flex flex-col gap-3 shadow-sm">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-slate-400 text-[20px]">bolt</span>
-              <h3 className="text-base font-semibold text-slate-100">Operational Controls</h3>
-            </div>
-            <span className="hidden sm:inline text-xs font-mono-code text-slate-400 font-medium">Direct API</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs font-mono-code">
-            <button
-              onClick={handleTriggerPipeline}
-              disabled={actionLoading !== null || isDiscoveryRunning}
-              className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-sky-500 text-slate-100 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
-              title="Run batch of 25 pending discovery jobs"
-            >
-              <span className="material-symbols-outlined text-[16px] text-sky-400">play_circle</span>
-              <span>Run Batch (25)</span>
-            </button>
-
-            <button
-              onClick={() => setRunnerOpen(true)}
-              className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-emerald-500 text-slate-100 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
-              title="Pick locations and categories, or search somewhere new"
-            >
-              <span className="material-symbols-outlined text-[16px] text-emerald-400">travel_explore</span>
-              <span>Choose Targets</span>
-            </button>
-
-            {isDiscoveryRunning ? (
-              <button
-                onClick={handleStopDiscovery}
-                disabled={actionLoading !== null}
-                className="h-9 px-3 bg-rose-950/70 hover:bg-rose-900/80 border border-rose-800 text-rose-300 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
-                title="Gracefully stop active batch"
-              >
-                <span className="material-symbols-outlined text-[16px] text-rose-400">stop_circle</span>
-                <span>Stop Discovery</span>
+        <div data-edit className="rounded-2xl border border-slate-800 bg-slate-900 p-5 flex flex-col gap-4 shadow-sm">
+          <h3 className="text-[15px] font-semibold text-slate-100 flex items-center gap-2">
+            <span className="h-8 w-8 rounded-lg bg-amber-950 text-amber-300 flex items-center justify-center"><span className="material-symbols-outlined text-[18px]">bolt</span></span>
+            Quick actions
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {([
+              { key: 'run', icon: 'play_circle', tint: 'bg-sky-950 text-sky-300', title: 'Run a batch', sub: '25 waiting jobs, now',
+                onClick: handleTriggerPipeline, disabled: actionLoading !== null || isDiscoveryRunning },
+              { key: 'targets', icon: 'travel_explore', tint: 'bg-emerald-950 text-emerald-300', title: 'Choose targets', sub: 'Pick places and categories',
+                onClick: () => setRunnerOpen(true), disabled: false },
+              isDiscoveryRunning
+                ? { key: 'stop', icon: 'stop_circle', tint: 'bg-rose-950 text-rose-300', title: 'Stop scraping', sub: 'Finish the current job and stop',
+                    onClick: handleStopDiscovery, disabled: actionLoading !== null }
+                : { key: 'poll', icon: 'sync', tint: 'bg-amber-950 text-amber-300', title: 'Refresh', sub: 'Fetch the latest figures',
+                    onClick: onRefresh, disabled: false },
+              { key: 'retry', icon: 'restart_alt', tint: 'bg-violet-950 text-violet-300', title: 'Retry failed jobs', sub: `${failedJobs.toLocaleString('en-IN')} failed`,
+                onClick: handleRetryFailed, disabled: actionLoading !== null || failedJobs === 0 },
+              { key: 'jobs', icon: 'manage_search', tint: 'bg-slate-800 text-slate-200', title: 'Jobs Monitor', sub: 'Every job and its status',
+                onClick: () => onNavigate('jobs'), disabled: false },
+            ]).map(a => (
+              <button key={a.key} onClick={a.onClick} disabled={a.disabled}
+                className="group flex items-center gap-3 text-left rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-3 hover:border-slate-700 hover:-translate-y-0.5 hover:shadow-md transition disabled:opacity-50 disabled:hover:translate-y-0 cursor-pointer disabled:cursor-not-allowed">
+                <span className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${a.tint}`}>
+                  <span className="material-symbols-outlined text-[20px]">{a.icon}</span>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-semibold text-slate-100">{a.title}</span>
+                  <span className="block text-[11.5px] text-slate-500 truncate">{a.sub}</span>
+                </span>
+                <span className="material-symbols-outlined text-[18px] text-slate-600 group-hover:text-slate-300 transition">chevron_right</span>
               </button>
-            ) : (
-              <button
-                onClick={onRefresh}
-                className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-amber-500 text-slate-200 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
-                title="Poll latest discovery status"
-              >
-                <span className="material-symbols-outlined text-[16px] text-amber-400">sync</span>
-                <span>Poll Status</span>
-              </button>
-            )}
-
-            <button
-              onClick={handleRetryFailed}
-              disabled={actionLoading !== null || failedJobs === 0}
-              className="h-9 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-sky-500 text-slate-200 rounded font-medium flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50 cursor-pointer"
-              title="Reset all FAILED jobs to PENDING"
-            >
-              <span className="material-symbols-outlined text-[16px] text-sky-400">restart_alt</span>
-              <span>Re-queue Failed</span>
-            </button>
-
-            <button
-              onClick={() => onNavigate('jobs')}
-              className="h-9 px-3 bg-sky-950/40 hover:bg-sky-950/70 border border-sky-800 text-sky-300 rounded font-semibold flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[16px]">manage_search</span>
-              <span>Jobs Monitor</span>
-            </button>
+            ))}
           </div>
         </div>
       </section>
