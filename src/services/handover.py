@@ -60,8 +60,80 @@ def options() -> List[dict]:
     return dz.options()
 
 
-def bot_disposition(conv: WhatsAppConversation) -> str:
+# The call outcomes a WhatsApp chat shows by itself (the user, 2026-11-06): what
+# became of our last message, campaign or nudge, that they never answered.
+#   failed to deliver          -> Number not reachable
+#   delivered, never read      -> Ringing but not picked
+#   read, no reply             -> No answer
+# Only for a chat that is not moving: one still before the bot's questions, or
+# stopped in them. A chat at a clearer step (documents pending, not eligible...)
+# keeps that step's outcome, and anything the team recorded comes first.
+UNANSWERED_FOR = timedelta(hours=24)
+_REACH_STATUS = {"FAILED": "unr_not_reachable", "SENT": "rnr_not_picked", "DELIVERED": "rnr_not_picked",
+                 "READ": "rnr_no_answer"}
+
+
+def reach_keys(db: Session, phones: Optional[List[str]] = None, at: Optional[datetime] = None) -> Dict[str, str]:
+    """{phone: RNR or Unreachable outcome} for chats whose last message from us went unanswered."""
+    from src.models.whatsapp import WhatsAppCampaignRecipient
+    from src.models.inbox import WhatsAppMessage
+
+    at = at or inbox.now()
+    last: Dict[str, tuple] = {}
+
+    def keep(phone, when, status):
+        when = inbox.aware(when)
+        if phone and when and status and (phone not in last or when > last[phone][0]):
+            last[phone] = (when, status.upper())
+
+    q = db.query(WhatsAppMessage.phone, WhatsAppMessage.created_at, WhatsAppMessage.status).filter(
+        WhatsAppMessage.direction == "OUT")
+    r = db.query(WhatsAppCampaignRecipient.phone, WhatsAppCampaignRecipient.sent_at,
+                 WhatsAppCampaignRecipient.failed_at, WhatsAppCampaignRecipient.status).filter(
+        WhatsAppCampaignRecipient.status.in_(("SENT", "DELIVERED", "READ", "FAILED")))
+    if phones is not None:
+        q = q.filter(WhatsAppMessage.phone.in_(phones))
+        r = r.filter(WhatsAppCampaignRecipient.phone.in_(phones))
+    for phone, when, status in q:
+        keep(phone, when, status)
+    for phone, sent, failed, status in r:
+        keep(inbox.normalize_phone(phone), sent or failed, status)
+
+    convs = db.query(WhatsAppConversation.phone, WhatsAppConversation.last_inbound_at)
+    if phones is not None:
+        convs = convs.filter(WhatsAppConversation.phone.in_(phones))
+    out = {}
+    for phone, inbound in convs:
+        if phone not in last:
+            continue
+        when, status = last[phone]
+        inbound = inbox.aware(inbound)
+        if inbound and inbound >= when:
+            continue                      # they wrote after it: answered
+        key = _REACH_STATUS.get(status)
+        if key and (status == "FAILED" or at - when >= UNANSWERED_FOR):
+            out[phone] = key
+    return out
+
+
+def _reach_of(conv: WhatsAppConversation) -> Optional[str]:
+    from sqlalchemy.orm import object_session
+    db = object_session(conv)
+    return reach_keys(db, [conv.phone]).get(conv.phone) if db is not None else None
+
+
+def bot_disposition(conv: WhatsAppConversation, reach: Optional[str] = None) -> str:
     """What the chat's state says, without the team: from the bot's step, or an enquiry."""
+    key = _step_disposition(conv)
+    if (key == "other" and (conv.bot_data or {}).get("campaign")) or key == "int_in_bot_flow":
+        if reach is None:
+            reach = _reach_of(conv)
+        if reach:
+            return reach
+    return key
+
+
+def _step_disposition(conv: WhatsAppConversation) -> str:
     if conv.documents_submitted_at:
         # Documents in: AutoGMap's part is done and Eko Acquisition takes over.
         return "int_visit"
@@ -76,7 +148,7 @@ def bot_disposition(conv: WhatsAppConversation) -> str:
     return "other" if (conv.bot_data or {}).get("campaign") else "enquiry"
 
 
-def current(conv: WhatsAppConversation) -> dict:
+def current(conv: WhatsAppConversation, reach: Optional[Dict[str, str]] = None) -> dict:
     """
     The chat's disposition now: the team's, unless the bot has moved the chat
     on since it was recorded (or the documents came in), then the bot's.
@@ -88,7 +160,7 @@ def current(conv: WhatsAppConversation) -> dict:
         return {"key": key, "label": label(key), "category": dz.category_of(key).key if dz.category_of(key) else None,
                 "note": conv.disposition_note,
                 "by": conv.disposition_by, "at": team_at.isoformat(), "source": "team"}
-    key = bot_disposition(conv)
+    key = bot_disposition(conv, (reach.get(conv.phone) or "") if reach is not None else None)
     return {"key": key, "label": label(key), "category": dz.category_of(key).key, "note": None, "by": "bot",
             "at": (moved or inbox.aware(conv.last_message_at) or inbox.aware(conv.created_at) or inbox.now()).isoformat(),
             "source": "bot"}
@@ -200,7 +272,8 @@ def who(email: Optional[str]) -> str:
 def dashboard(db: Session, days: int = 7) -> dict:
     """Every chat's disposition now, the team's recent ones, and who is handling what."""
     convs = db.query(WhatsAppConversation).all()
-    now = [current(c) for c in convs]
+    reach = reach_keys(db)
+    now = [current(c, reach) for c in convs]
     by_key = Counter(d["key"] for d in now)
     since = inbox.now() - timedelta(days=days)
     recent = (db.query(ChatActivity, WhatsAppConversation)
@@ -258,7 +331,8 @@ def leads(db: Session, key: str) -> dict:
     keys = {s.key for s in cat.subs} if cat else {sub.key}
 
     convs = db.query(WhatsAppConversation).all()
-    rows = [(c, d) for c in convs for d in [current(c)] if d["key"] in keys]
+    reach = reach_keys(db)
+    rows = [(c, d) for c in convs for d in [current(c, reach)] if d["key"] in keys]
     phones = [c.phone for c, _ in rows]
     sources = applications._sources(db, phones)
     branches = applications._branches(db)

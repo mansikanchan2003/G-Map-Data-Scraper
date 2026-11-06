@@ -104,7 +104,9 @@ def store_disposition_daily(db: Session, now: datetime) -> int:
     from src.models.inbox import WhatsAppConversation
     from src.services.handover import current
 
-    counts = Counter(current(c)["key"] for c in db.query(WhatsAppConversation).all())
+    from src.services.handover import reach_keys
+    reach = reach_keys(db)
+    counts = Counter(current(c, reach)["key"] for c in db.query(WhatsAppConversation).all())
     day = _today()
     db.query(DispositionDaily).filter(DispositionDaily.day == day).delete(synchronize_session=False)
     for key, n in counts.items():

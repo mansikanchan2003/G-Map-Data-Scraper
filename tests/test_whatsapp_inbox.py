@@ -4028,3 +4028,52 @@ def test_asking_for_our_kiosk_operators_contacts_is_a_trust_concern(db, client, 
         {"speaker": "agent", "text": "Hum aapko hamare Kiosk Operators se baat karwa sakte hain."},
         {"speaker": "customer", "text": "Haan, kisi operator se baat karwa do, unka number bhejo."}]})
     assert r.json()["outcome"] == "int_trust"
+
+
+# --- Call outcomes read from WhatsApp itself (the user, 2026-11-06) -------------------
+
+def _bot_message(db, status, hours_ago):
+    from datetime import timedelta
+    # Everything said so far happened before it.
+    for m in db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == PHONE).all():
+        m.created_at = inbox.now() - timedelta(hours=hours_ago + 2)
+    db.add(WhatsAppMessage(message_id=uuid.uuid4().hex, phone=PHONE, direction="OUT", kind="text", body="Reminder",
+                           status=status, sent_by="bot", created_at=inbox.now() - timedelta(hours=hours_ago)))
+    c = conv(db)
+    c.last_inbound_at = inbox.now() - timedelta(hours=hours_ago + 1)
+    db.commit()
+
+
+@pytest.mark.parametrize("status,hours,expected", [
+    ("READ", 25, "rnr_no_answer"),            # read our nudge, no reply for a day
+    ("DELIVERED", 25, "rnr_not_picked"),      # never opened it
+    ("FAILED", 1, "unr_not_reachable"),       # it could not be delivered
+    ("READ", 3, "int_in_bot_flow"),           # not a day yet: still in the questions
+])
+def test_a_chat_stopped_in_the_questions_shows_rnr_or_unreachable(db, client, status, hours, expected):
+    from src.services import handover
+    tap_campaign(db)
+    _bot_message(db, status, hours)
+    assert handover.current(conv(db))["key"] == expected
+    cats = {c["key"]: c["count"] for c in client.get("/api/v1/inbox/dispositions/dashboard").json()["categories"]}
+    if expected.startswith("rnr"):
+        assert cats["rnr"] == 1
+    if expected.startswith("unr"):
+        assert cats["unreachable"] == 1
+
+
+def test_a_reply_after_our_message_or_a_clearer_step_keeps_its_outcome(db):
+    from datetime import timedelta
+    from src.services import handover
+    tap_campaign(db)
+    _bot_message(db, "READ", 30)
+    c = conv(db)
+    c.last_inbound_at = inbox.now()                   # they wrote back since
+    db.commit()
+    assert handover.current(conv(db))["key"] == "int_in_bot_flow"
+    # Waiting on documents is clearer than "No answer": that step's outcome stays.
+    c = conv(db)
+    c.bot_step = onboarding_bot.AWAIT_DOCS
+    db.commit()
+    _bot_message(db, "READ", 30)
+    assert handover.current(conv(db))["key"] == "int_docs_pending"
