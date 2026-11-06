@@ -93,12 +93,13 @@ export const setSwitch = (group: 'agents' | 'context', key: string, enabled: boo
     body: JSON.stringify({ enabled }) });
 
 export interface Patch {
-  id: string; kind: 'copy_lesson' | 'rule_phrase' | 'faq_review'; agent: string; title: string; lesson: string;
+  id: string; kind: 'copy_lesson' | 'rule_phrase' | 'faq_review' | 'nudge_timing' | 'nudge_variant' | 'faq_link'; agent: string; title: string; lesson: string;
   before: string; after: string; key?: string; phrase?: string; question?: string;
   evidence: { run_id: string; agent: string; edit_ratio: number | null; by: string | null; at: string | null };
   accepted_by?: string; accepted_at?: string; gate?: { passed: number; total: number } | null;
 }
-export interface Learning { proposals: Patch[]; accepted: Patch[]; log: { what: string; id: string; lesson?: string; by: string; at: string }[] }
+export interface CoachRun { run_id: string; at: string; summary: string; kept: number; dropped: number }
+export interface Learning { proposals: Patch[]; accepted: Patch[]; log: { what: string; id: string; lesson?: string; by: string; at: string }[]; coach_runs?: CoachRun[] }
 export interface GateReport { total: number; passed: number; failures: { id: string; title: string; problems: string[] }[] }
 /** The learning loop: patches proposed from corrections, those in force, and what was done. */
 export const fetchLearning = () => call<Learning>('/learning');

@@ -62,7 +62,9 @@ def due(db: Session, conv: WhatsAppConversation, now: datetime) -> bool:
     # gives only to the second.
     if last.message_id == (conv.bot_data or {}).get("nudge_message_id"):
         return False
-    return now - inbox.aware(last.created_at) >= AFTER
+    # An hour, unless the admin accepted another timing for this question from the bot coach.
+    from src.services import learning_loop
+    return now - inbox.aware(last.created_at) >= learning_loop.nudge_delay(db, conv.bot_step)
 
 
 def nudge(db: Session, conv: WhatsAppConversation, now: datetime) -> bool:
@@ -73,7 +75,12 @@ def nudge(db: Session, conv: WhatsAppConversation, now: datetime) -> bool:
     if not asked:
         return False
     question, options = asked
-    body = f"{bot._t(db, conv, 'nudge')}\n\n{question}"
+    # The opener in turn with its accepted versions (bot_coach), fixed for each person and reminder.
+    from src.services import learning_loop
+    lang = bot._lang(db, conv)
+    key = "hinglish" if lang == "hi" and (conv.bot_data or {}).get("script") == "latin" else lang
+    opener = learning_loop.pick(db, "bot_nudge", key, bot._t(db, conv, "nudge"), (conv.bot_data or {}).get("nudges", 0))
+    body = f"{opener}\n\n{question}"
     msg = inbox.send(db, conv.phone, body, sent_by="bot", **options)
     data = dict(conv.bot_data or {})
     data["nudged_at"] = now.isoformat()

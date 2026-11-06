@@ -4077,3 +4077,67 @@ def test_a_reply_after_our_message_or_a_clearer_step_keeps_its_outcome(db):
     db.commit()
     _bot_message(db, "READ", 30)
     assert handover.current(conv(db))["key"] == "int_docs_pending"
+
+
+# --- The bot coach (Claude proposes, the admin accepts, the bot stays fixed) ---------
+
+def _coach_answer(**parts):
+    import json as _json
+    return _json.dumps({"summary": "People answer within a few hours.", **parts})
+
+
+def test_the_coach_brief_carries_no_names_or_numbers(db):
+    from src.models.inbox import AttentionTicket
+    from src.services import bot_coach
+    tap_campaign(db)
+    db.add(AttentionTicket(phone=PHONE, question="Ravi here, call 9876543210 or ravi@x.com, kitna kamai?",
+                           raised_via="bot"))
+    db.commit()
+    text = bot_coach.brief(db)
+    assert "9876543210" not in text and "ravi@x.com" not in text and "Ravi" not in text
+    assert "[number]" in text and "eko_answers" in text
+
+
+def test_the_coach_proposals_are_checked_before_the_admin_sees_them(db):
+    from src.services import bot_coach, learning_loop
+    from src.services import onboarding_bot as bot
+    out = bot_coach.ingest(db, _coach_answer(
+        nudge_timing=[{"step": bot.AWAIT_PIN, "hours": 3, "why": "Most answer after 2-4 h."},
+                      {"step": bot.AWAIT_PIN, "hours": 30}],
+        nudge_variant=[{"purpose": "bot_nudge", "language": "hinglish", "text": "Koi jaldi nahi ji, jab samay mile tab bas ek jawab bhej dijiye."},
+                       {"purpose": "bot_nudge", "language": "hinglish", "text": "Guaranteed income milegi, abhi judiye!"},
+                       {"purpose": "nonsense", "language": "en", "text": "Hello there, any update for us?"}],
+        faq_link=[{"question": "fees kitni lagti hai apply karne ki", "faq_id": "fees"},
+                  {"question": "kuch bhi", "faq_id": "made_up"}]))
+    assert out["kept"] == 3 and len(out["dropped"]) == 4
+    kinds = sorted(p["kind"] for p in learning_loop.proposals(db) if p["agent"] == "bot_coach")
+    assert kinds == ["faq_link", "nudge_timing", "nudge_variant"]
+
+
+def test_accepted_coach_changes_are_used_word_for_word_and_can_be_undone(db):
+    from src.services import bot_coach, eko_knowledge, faq_learning, learning_loop
+    from src.services import onboarding_bot as bot
+    bot_coach.ingest(db, _coach_answer(
+        nudge_timing=[{"step": bot.AWAIT_PIN, "hours": 3}],
+        nudge_variant=[{"purpose": "bot_nudge", "language": "hinglish", "text": "Koi jaldi nahi ji, jab samay mile tab bas ek jawab bhej dijiye."}],
+        faq_link=[{"question": "fees kitni lagti hai apply karne ki", "faq_id": "fees"}]))
+    for p in learning_loop.proposals(db):
+        learning_loop.accept(db, p["id"], "mansi")
+    assert learning_loop.nudge_delay(db, bot.AWAIT_PIN).total_seconds() == 3 * 3600
+    assert learning_loop.nudge_delay(db, bot.AWAIT_EDUCATION).total_seconds() == 3600
+    base = learning_loop.base_text("bot_nudge", "hinglish")
+    turns = [learning_loop.pick(db, "bot_nudge", "hinglish", base, n) for n in range(4)]
+    assert turns == [base, turns[1], base, turns[1]] and turns[1].startswith("Koi jaldi nahi")
+    assert "fees kitni lagti hai apply karne ki" in faq_learning.taught(db)["fees"]
+    link = next(p for p in learning_loop.state(db)["accepted"] if p["kind"] == "faq_link")
+    learning_loop.undo(db, link["id"], "mansi")
+    assert "fees kitni lagti hai apply karne ki" not in faq_learning.taught(db).get("fees", [])
+    assert learning_loop.state(db)["coach_runs"][0]["kept"] == 3
+
+
+def test_the_coach_switched_off_takes_nothing_in(db):
+    from src.services import agent_controls, bot_coach, learning_loop
+    from src.services import onboarding_bot as bot
+    agent_controls.set_agent(db, "bot_coach", False, "mansi")
+    out = bot_coach.ingest(db, _coach_answer(nudge_timing=[{"step": bot.AWAIT_PIN, "hours": 3}]))
+    assert out["kept"] == 0 and not [p for p in learning_loop.proposals(db) if p["agent"] == "bot_coach"]

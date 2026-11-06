@@ -67,6 +67,13 @@ class WhatsAppNudge(Channel):
         variant = nudge_messages.variant_for(lang, latin)
         body = nudge_messages.text(f.purpose, variant)
         if inbox.window_open(conv):
+            # Free-form: the original and its accepted versions (bot_coach) in turn, by how many
+            # of these reminders this person has had. A template outside the window stays as approved.
+            from src.models.inbox import FollowUp
+            from src.services import learning_loop
+            turn = (db.query(FollowUp).filter(FollowUp.phone == conv.phone, FollowUp.purpose == f.purpose,
+                                              FollowUp.sent_at.isnot(None)).count())
+            body = learning_loop.pick(db, f.purpose, variant, body, turn)
             msg = inbox.send(db, conv.phone, body, sent_by="bot")
         else:
             theirs = variant

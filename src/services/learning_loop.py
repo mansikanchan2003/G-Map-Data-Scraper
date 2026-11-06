@@ -106,6 +106,53 @@ def trying(rules: List[Tuple[str, str]]) -> Iterator[None]:
         _extra_override = saved
 
 
+# --- What the bot coach's accepted changes do (bot_coach.py) ----------------------
+
+def nudge_delay(db: Session, step: Optional[str]) -> timedelta:
+    """How long after the bot's unanswered question its reminder goes: 1 hour, unless a timing was accepted."""
+    for p in _load(db).get("accepted", []):
+        if p["kind"] == "nudge_timing" and p.get("step") == step:
+            return timedelta(hours=p["hours"])
+    return timedelta(hours=1)
+
+
+def accepted_variants(db: Session) -> Dict[str, List[str]]:
+    """{"purpose/language": [accepted versions, oldest first]}."""
+    out: Dict[str, List[str]] = {}
+    for p in reversed(_load(db).get("accepted", [])):
+        if p["kind"] == "nudge_variant":
+            out.setdefault(f"{p['purpose']}/{p['language']}", []).append(p["text"])
+    return out
+
+
+def base_text(purpose: str, lang: str) -> str:
+    """The reminder as written in the code, before any accepted version."""
+    from src.services import bot_messages, nudge_messages
+    if purpose == "bot_nudge":
+        return bot_messages.HINGLISH.get("nudge", "") if lang == "hinglish" else bot_messages.text(lang, "nudge")
+    return nudge_messages.text(purpose, lang)
+
+
+def pick(db: Session, purpose: str, lang: str, base: str, turn: int) -> str:
+    """
+    The reminder to send: the original and its accepted versions taken in turn,
+    by how many reminders this person has had. Fixed: the same person at the
+    same turn always gets the same words.
+    """
+    options = [base] + accepted_variants(db).get(f"{purpose}/{lang}", [])
+    return options[max(0, turn) % len(options)]
+
+
+def add_coach_proposals(db: Session, found: List[dict], run: dict) -> None:
+    """Keeps the coach's checked proposals until the admin decides, and a line for the run."""
+    data = _load(db)
+    coach = data.setdefault("coach", {"pending": [], "runs": []})
+    have = {p["id"] for p in coach["pending"]} | {p["id"] for p in data.get("accepted", [])} | set(data.get("dismissed", {}))
+    coach["pending"] = [p for p in found if p["id"] not in have] + coach["pending"]
+    coach["runs"] = [run] + coach["runs"][:29]
+    _save(db, data)
+
+
 # --- Proposals -------------------------------------------------------------------
 
 def proposals(db: Session) -> List[dict]:
@@ -151,6 +198,9 @@ def proposals(db: Session) -> List[dict]:
                         "lesson": f"Review the FAQ answer to “{r.prompt}”: a person had to reply after the bot.",
                         "title": "A person followed up the bot's FAQ answer", "weight": r.edit_ratio or 0.5,
                         "evidence": evidence}
+    for p in data.get("coach", {}).get("pending", []):
+        if p["id"] not in decided and p["id"] not in out:
+            out[p["id"]] = p
     return sorted(out.values(), key=lambda p: -p["weight"])
 
 
@@ -201,6 +251,9 @@ def accept(db: Session, pid: str, by: str) -> dict:
              "gate": {"passed": gate["passed"], "total": gate["total"]} if gate else None}
     if p["kind"] == "faq_review":
         entry["lesson"] = f"Reviewed: the FAQ answer to “{p['question']}”."
+    if p["kind"] == "faq_link":
+        from src.services import faq_learning
+        faq_learning.teach(db, p["faq_id"], p["question"])
     data["accepted"] = [entry] + data.get("accepted", [])
     data.setdefault("log", []).insert(0, {"what": "accepted", "id": pid, "lesson": entry["lesson"], "by": by, "at": _now()})
     _save(db, data)
@@ -220,13 +273,17 @@ def undo(db: Session, pid: str, by: str) -> None:
     if not gone:
         raise KeyError(pid)
     data["accepted"] = [p for p in data.get("accepted", []) if p["id"] != pid]
+    if gone[0]["kind"] == "faq_link":
+        from src.services import faq_learning
+        faq_learning.forget(db, gone[0]["faq_id"], gone[0]["question"])
     data.setdefault("log", []).insert(0, {"what": "undone", "id": pid, "lesson": gone[0].get("lesson"), "by": by, "at": _now()})
     _save(db, data)
 
 
 def state(db: Session) -> dict:
     data = _load(db)
-    return {"proposals": proposals(db), "accepted": data.get("accepted", []), "log": data.get("log", [])[:20]}
+    return {"proposals": proposals(db), "accepted": data.get("accepted", []), "log": data.get("log", [])[:20],
+            "coach_runs": data.get("coach", {}).get("runs", [])[:5]}
 
 
 # --- Playground ------------------------------------------------------------------

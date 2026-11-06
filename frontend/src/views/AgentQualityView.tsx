@@ -654,6 +654,41 @@ const PATCH_KIND: Record<Patch['kind'], { label: string; icon: string; file: str
   copy_lesson: { label: 'Copywriter lesson', icon: 'edit_note', file: 'template agents · lessons the team accepted', tint: 'bg-sky-950 text-sky-300' },
   rule_phrase: { label: 'Bot rule', icon: 'rule', file: 'bot · dispositions read from replies', tint: 'bg-amber-950 text-amber-300' },
   faq_review: { label: 'FAQ to review', icon: 'quiz', file: "bot · Eko's FAQ (never changed automatically)", tint: 'bg-violet-950 text-violet-300' },
+  nudge_timing: { label: 'Claude · reminder timing', icon: 'schedule', file: 'bot · when the reminder goes', tint: 'bg-orange-950 text-orange-300' },
+  nudge_variant: { label: 'Claude · new message version', icon: 'auto_awesome', file: 'bot · reminders, taken in turn with the original', tint: 'bg-fuchsia-950 text-fuchsia-300' },
+  faq_link: { label: 'Claude · question to answer', icon: 'link', file: "bot · questions taught to Eko's answers", tint: 'bg-teal-950 text-teal-300' },
+};
+
+/** The bot coach's latest run: what Claude saw, and how many of its ideas passed the checks. */
+const CoachStrip: React.FC<{ runs?: Learning['coach_runs'] }> = ({ runs }) => {
+  const r = runs?.[0];
+  return (
+    <div className="relative overflow-hidden rounded-xl p-4 mb-4 text-white"
+      style={{ background: 'linear-gradient(120deg, #3b0764 0%, #6d28d9 55%, #c026d3 100%)' }}>
+      <Icon name="auto_awesome" className="absolute -right-4 -bottom-6 text-[110px] text-white/10 pointer-events-none" />
+      <div className="relative flex flex-wrap items-start gap-3">
+        <span className="h-10 w-10 rounded-xl bg-white/15 ring-1 ring-white/25 flex items-center justify-center shrink-0">
+          <Icon name="psychology" className="text-[22px]" />
+        </span>
+        <div className="flex-1 min-w-[220px]">
+          <div className="text-[10.5px] uppercase tracking-[0.14em] font-semibold text-[#f9ab10]">Bot coach · Claude</div>
+          <div className="text-[14px] font-semibold leading-snug mt-0.5">
+            {r ? (r.summary || 'Claude looked at the chats.') : 'Claude has not run yet. It runs once a day on the server.'}
+          </div>
+          <div className="text-[11.5px] text-white/75 mt-1">
+            Claude only proposes. Nothing reaches a candidate until you accept it below, and every change can be undone.
+          </div>
+        </div>
+        {r && (
+          <div className="flex gap-2 text-center">
+            <div className="rounded-lg bg-white/15 px-3 py-1.5"><div className="text-lg font-bold tabular-nums">{r.kept}</div><div className="text-[10.5px] text-white/75">proposed</div></div>
+            <div className="rounded-lg bg-white/15 px-3 py-1.5"><div className="text-lg font-bold tabular-nums">{r.dropped}</div><div className="text-[10.5px] text-white/75">failed checks</div></div>
+            <div className="rounded-lg bg-white/15 px-3 py-1.5"><div className="text-[12px] font-semibold mt-1">{ago(r.at)}</div><div className="text-[10.5px] text-white/75">last run</div></div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 /** Drift & repair: corrections become proposed patches; the admin accepts them after the golden gate. */
@@ -683,6 +718,7 @@ const LearningCard: React.FC<{ isAdmin: boolean; onChanged: () => void }> = ({ i
           <span className="px-2.5 py-1 rounded-full bg-emerald-950 text-emerald-300 font-semibold">{l.accepted.length} in force</span>
         </div>
       )}>
+      <CoachStrip runs={l.coach_runs} />
       <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
         <div className="space-y-3">
           {l.proposals.length === 0 && (
@@ -700,7 +736,7 @@ const LearningCard: React.FC<{ isAdmin: boolean; onChanged: () => void }> = ({ i
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${k.tint}`}><Icon name={k.icon} className="text-[14px]" />{k.label}</span>
                   <span className="text-[12.5px] font-semibold text-slate-100">{p.title}</span>
                   <span className="flex-1" />
-                  <span className="text-[11px] text-slate-500">{p.evidence.by && p.evidence.by !== 'implicit' ? `by ${p.evidence.by}` : ''}{p.evidence.at ? ` · ${ago(p.evidence.at)}` : ''}</span>
+                  <span className="text-[11px] text-slate-500">{p.evidence.by && p.evidence.by !== 'implicit' ? `${p.agent === 'bot_coach' ? '' : 'by '}${p.evidence.by}` : ''}{p.evidence.at ? ` · ${ago(p.evidence.at)}` : ''}</span>
                 </div>
                 <div className="mt-2.5"><PatchDiff before={p.before} after={p.after} file={k.file} /></div>
                 <div className="text-[12px] text-slate-400 mt-2 flex items-start gap-1.5"><Icon name="lightbulb" className="text-[15px] text-amber-300 mt-[1px]" />{p.lesson}</div>
@@ -716,7 +752,7 @@ const LearningCard: React.FC<{ isAdmin: boolean; onChanged: () => void }> = ({ i
                     <button disabled={!isAdmin || busy === p.id} onClick={() => accept(p)}
                       className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-semibold disabled:opacity-50 cursor-pointer">
                       <Icon name={busy === p.id ? 'progress_activity' : 'merge'} className={`text-[16px] ${busy === p.id ? 'animate-spin' : ''}`} />
-                      {busy === p.id ? (p.kind === 'rule_phrase' ? 'Running the golden set…' : 'Accepting…') : 'Accept prompt patch'}
+                      {busy === p.id ? (p.kind === 'rule_phrase' ? 'Running the golden set…' : 'Accepting…') : (p.agent === 'bot_coach' ? 'Accept' : 'Accept prompt patch')}
                     </button>
                   ) : (
                     <button disabled={!isAdmin || busy === p.id} onClick={() => accept(p)}

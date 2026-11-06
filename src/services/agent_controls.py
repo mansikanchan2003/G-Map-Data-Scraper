@@ -40,8 +40,12 @@ AGENTS: Dict[str, dict] = {
                          "on": "Campaigns send to their recipients",
                          "off": "No campaign sends: running ones stop before their next batch and can be "
                                 "resumed later; new ones cannot be launched or approved"},
+    "bot_coach": {"label": "Bot coach (Claude)",
+                  "on": "Claude reads how the chats went once a day and proposes reminder timings, new versions of "
+                        "reminders and answers for questions; nothing changes until the admin accepts it",
+                  "off": "Claude's daily proposals are not taken in"},
     "bot_nudges": {"label": "Bot: reminders",
-                   "on": "Reminds people who went quiet in the bot's questions, once an hour later",
+                   "on": "Reminds people who went quiet in the bot's questions, an hour later (or the timing accepted)",
                    "off": "No reminders; people answer when they come back"},
     "followups": {"label": "Follow-ups",
                   "on": "Sends the follow-ups dispositions plan (nudges, callbacks, hand-over to Acquisition)",
