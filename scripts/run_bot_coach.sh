@@ -6,10 +6,13 @@
 # the learning loop for the admin to accept. Nothing reaches a candidate
 # until the admin accepts it.
 #
-# Runs as the user whose Claude CLI is signed in (`claude` must work for them),
-# with access to docker. From that user's crontab, e.g. 05:00 IST daily:
-#   0 5 * * * /home/mansi/AUTOGMAP/scripts/run_bot_coach.sh >> $HOME/autogmap_bot_coach.log 2>&1
+# Runs as the user whose Claude CLI is signed in (`claude` must work for them)
+# and who can run docker (root, like the deploy). From that user's crontab,
+# 05:00 IST daily:
+#   0 5 * * * /home/mansi/AUTOGMAP/scripts/run_bot_coach.sh >> /root/autogmap_bot_coach.log 2>&1
 set -e
+# cron starts with a short PATH; Claude Code installs to ~/.local/bin or the npm global bin.
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 cd "$(dirname "$0")/.."
 brief=$(mktemp) answer=$(mktemp)
 trap 'rm -f "$brief" "$answer"' EXIT
