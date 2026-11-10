@@ -366,7 +366,9 @@ def test_the_next_campaign_goes_where_people_answered_with_what_they_should_brin
     _unmessaged(db, 400, "Surat", "Travel agent", start=6000)
     n = gp.plan(db)["next_campaign"]
     assert (n["state"], n["district"], n["category"]) == ("Gujarat", "Rajkot", "Kiosk")
-    assert (n["send_day"], n["send_time"]) == ("Wednesday", "Morning (9–12)")
+    # Campaigns go out every day: the best weekday so far is evidence, not the send date.
+    assert n["best_day"] == "Wednesday" and n["send_time"] == "Morning (9–12)"
+    assert n["send_day"].startswith(("Today", "Tomorrow"))
     # The goal's share for today needs few messages, but never fewer than teach us something.
     assert n["size"] == gp.CAMPAIGN_MIN
     assert n["expect"]["interested"] == round(50 * 12 / 60, 1)
@@ -387,10 +389,37 @@ def test_a_big_goal_is_sent_in_campaigns_that_need_no_second_approval(db, monkey
 def test_a_place_that_answered_comes_before_a_bigger_one_never_tried(db):
     phones = campaign(db, 60, district="Rajkot", category="Kiosk")
     person(db, phones[0], bot.AWAIT_EDUCATION, coverage=SERVED)
-    _unmessaged(db, 40, "Rajkot", "Kiosk", start=5000)
+    _unmessaged(db, 80, "Rajkot", "Kiosk", start=5000)
     _unmessaged(db, 400, "Surat", "Travel agent", start=6000)
     n = gp.plan(db)["next_campaign"]
-    assert n["district"] == "Rajkot" and n["size"] == 40 and n["size_why"] == "Everyone left there (40)."
+    assert n["district"] == "Rajkot" and n["category"] == "Kiosk"
+
+
+def test_a_place_with_too_few_left_gives_way_to_one_with_enough(db):
+    # 10 Nov 2026: the plan proposed a campaign to 1 person, the last one left in Rajkot.
+    phones = campaign(db, 60, district="Rajkot", category="Kiosk")
+    person(db, phones[0], bot.AWAIT_EDUCATION, coverage=SERVED)
+    _unmessaged(db, 1, "Rajkot", "Kiosk", start=5000)
+    _unmessaged(db, 400, "Surat", "Travel agent", start=6000)
+    n = gp.plan(db)["next_campaign"]
+    assert n["district"] == "Surat" and n["category"] == "Travel agent" and n["size"] >= gp.CAMPAIGN_MIN
+
+
+def test_a_kind_of_business_with_too_few_left_widens_to_every_kind_there(db):
+    phones = campaign(db, 60, district="Rajkot", category="Kiosk")
+    person(db, phones[0], bot.AWAIT_EDUCATION, coverage=SERVED)
+    _unmessaged(db, 3, "Rajkot", "Kiosk", start=5000)
+    _unmessaged(db, 30, "Rajkot", "Travel agent", start=6000)
+    _unmessaged(db, 30, "Rajkot", "Pharmacy", start=7000)
+    n = gp.plan(db)["next_campaign"]
+    assert n["district"] == "Rajkot" and n["category"] is None and n["left"] == 63
+
+
+def test_the_send_day_is_today_until_the_time_has_passed_then_tomorrow():
+    morning = datetime(2026, 11, 10, 3, 0, tzinfo=timezone.utc)      # 08:30 IST
+    evening = datetime(2026, 11, 10, 12, 30, tzinfo=timezone.utc)    # 18:00 IST
+    assert gp._next_send("Morning (9–12)", morning)["label"] == "Today, Tue 10 Nov"
+    assert gp._next_send("Morning (9–12)", evening) == {"date": "2026-11-11", "label": "Tomorrow, Wed 11 Nov"}
 
 
 def test_the_next_campaign_is_never_bigger_than_the_people_left(db):

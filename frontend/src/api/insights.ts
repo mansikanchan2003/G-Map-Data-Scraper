@@ -256,7 +256,10 @@ export interface SlotEvidence { name: string; sent: number; success: number; rat
 export interface NextCampaign {
   state: string | null; district: string; category: string | null; where_why: string; left: number;
   size: number; size_why: string; approval_min: number;
-  send_day: string; send_time: string; send_why: string;
+  /** Messages a day the goal needs at today's rate. */
+  for_goal: number;
+  /** "Tomorrow, Wed 11 Nov": campaigns go out every day. */
+  send_day: string; send_date: string; best_day: string | null; send_time: string; send_why: string;
   send_evidence: { day: SlotEvidence | null; time: SlotEvidence | null };
   /** People expected at each step from this campaign, at today's rates. */
   expect: Record<Stage, number>;

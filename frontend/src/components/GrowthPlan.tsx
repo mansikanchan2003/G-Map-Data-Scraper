@@ -184,9 +184,14 @@ const NextCampaignCard: React.FC<{ plan: Plan }> = ({ plan }) => {
   const tiles: Record<string, { value: React.ReactNode; note: React.ReactNode }> = {
     where: {
       value: <>{n.district}{n.state ? <span className="text-slate-400 font-normal">, {n.state}</span> : null}</>,
-      note: <>{n.category ? <><b className="text-slate-300">{n.category}</b> owners. </> : null}{n.where_why}</>,
+      note: <><b className="text-slate-300">{n.category ? `${n.category} owners` : 'Every kind of business there'}</b>. {n.where_why}</>,
     },
-    size: { value: <>{num(n.size)} <span className="text-slate-400 font-normal text-base">people</span></>, note: n.size_why },
+    size: {
+      value: <>{num(n.size)} <span className="text-slate-400 font-normal text-base">{n.size === 1 ? 'person' : 'people'} today</span></>,
+      note: <>{n.size_why}{n.for_goal > n.size
+        ? <> The goal needs about <b className="text-slate-300">{num(n.for_goal)} messages a day</b> at today's rate.</>
+        : null}</>,
+    },
     send: { value: <>{n.send_day}</>, note: <><b className="text-slate-300">{n.send_time}</b>. {n.send_why}</> },
   };
   const steps: { key: string; label: string; value: number }[] = [

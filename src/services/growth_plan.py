@@ -674,6 +674,21 @@ def _district_state(db: Session, district: str) -> Optional[str]:
     return row[0][0] if row else None
 
 
+def _next_send(send_time: str, now: Optional[datetime] = None) -> dict:
+    """
+    The next day to send: today while the best time of day has not passed yet,
+    else tomorrow. Campaigns go out every day (the goal is shared out a day at a
+    time), so the best weekday so far is evidence, not the send date.
+    """
+    now = (now or datetime.now(timezone.utc)).astimezone(IST)
+    m = re.search(r"\((\d+)–(\d+)\)", send_time)
+    ends = int(m.group(2)) if m else 12
+    today = ends > now.hour if ends > 6 else True      # "Night (21–6)" runs past midnight
+    when = now.date() if today else now.date() + timedelta(days=1)
+    return {"date": when.isoformat(),
+            "label": ("Today" if today else "Tomorrow") + when.strftime(", %a %d %b").replace(" 0", " ")}
+
+
 def next_campaign(db: Session, g: dict, book: dict, t: dict, pool: Dict[str, Counter]) -> Optional[dict]:
     """
     The agent's proposal for the next campaign: the place and kind of business
@@ -688,17 +703,21 @@ def next_campaign(db: Session, g: dict, book: dict, t: dict, pool: Dict[str, Cou
     places = [d for d in t["districts"] if d["left"]]
     if not places:
         return None
-    # A place that answered, however few are left there; else the biggest place not tried yet.
-    answered_places = [d for d in places if d["success"]]
-    place = answered_places[0] if answered_places else next(
-        (d for d in places if d["left"] >= CAMPAIGN_MIN), places[0])
+    # A campaign goes to at least CAMPAIGN_MIN people (10 Nov 2026: it once proposed
+    # one person, the last one left in a place that answered). A place that answered
+    # and still has that many comes first; else the biggest place; a place with fewer
+    # only when no place has enough.
+    answered_places = [d for d in places if d["success"] and d["left"] >= CAMPAIGN_MIN]
+    place = (answered_places[0] if answered_places else
+             max(places, key=lambda d: d["left"]))
     district = place["name"]
 
-    # The kind of business: one that answered, with people left there; else the biggest pool there.
+    # The kind of business: one that answered, else the biggest there, if it has
+    # enough people left; otherwise every kind of business in the place.
     answered = [c["name"] for c in t["categories"] if c["success"]]
-    here = {c: n for (d, c), n in pool["pair"].items() if d == district and n}
+    here = {c: n for (d, c), n in pool["pair"].items() if d == district and n >= CAMPAIGN_MIN}
     category = next((c for c in answered if c in here), None) or (max(here, key=here.get) if here else None)
-    left = here.get(category, place["left"]) if category else place["left"]
+    left = here[category] if category else place["left"]
 
     # What one message brings, step by step.
     sent = len(facts)
@@ -726,6 +745,16 @@ def next_campaign(db: Session, g: dict, book: dict, t: dict, pool: Dict[str, Cou
     timing_on = stage if any(f.get(stage) for f in facts) else "responded"
     day = _best_slot(facts, "weekday", timing_on)
     hour = _best_slot(facts, "time_of_day", timing_on)
+    send_time = hour["name"] if hour else DEFAULT_SEND["time_of_day"]
+    send_on = _next_send(send_time)
+    judged = ("Judged on “" + (ci.STAGE_LABELS.get(timing_on) or "replied or tapped").lower()
+              + f"” across {sent:,} messages.")
+    send_why = "One campaign every day, so the goal is shared out over the days left. "
+    if hour:
+        send_why += "This time of day worked best so far. "
+    if day:
+        send_why += f"{day['name']} has answered best so far ({day['success']} of {day['sent']}), not enough to skip the other days. "
+    send_why += judged if (day or hour) else "Not enough campaigns yet to tell which time works; morning until they do."
 
     expect = {key: round(size * rates[key], 1) for key, _ in ci.STAGES}
     return {
@@ -735,18 +764,19 @@ def next_campaign(db: Session, g: dict, book: dict, t: dict, pool: Dict[str, Cou
         "where_why": (f"{place['success']} of {place['sent']} people reached here went on to "
                       f"“{ci.STAGE_LABELS[t['judged_on']].lower()}”; {left:,} not messaged yet."
                       if place["success"] else
-                      f"Not messaged yet: the biggest group of businesses left ({left:,}), so it also teaches us "
+                      f"The biggest group of businesses not messaged yet ({left:,}), so it also teaches us "
                       "whether this place answers."),
         "left": left,
         "size": size,
         "size_why": size_why,
+        "for_goal": for_goal,
         "approval_min": approval,
-        "send_day": day["name"] if day else DEFAULT_SEND["weekday"],
-        "send_time": hour["name"] if hour else DEFAULT_SEND["time_of_day"],
+        "send_day": send_on["label"],
+        "send_date": send_on["date"],
+        "best_day": day["name"] if day else None,
+        "send_time": send_time,
         "send_evidence": {"day": day, "time": hour},
-        "send_why": ("Judged on “" + (ci.STAGE_LABELS.get(timing_on) or "replied or tapped").lower() + "” across "
-                     f"{sent:,} messages." if day or hour else
-                     "Not enough campaigns yet to tell which time works; morning on a weekday until they do."),
+        "send_why": send_why,
         "expect": expect,
         "expect_leads": round(size * per_lead, 2),
         "messages_per_lead": int(round(1 / per_lead)) if per_lead else None,
