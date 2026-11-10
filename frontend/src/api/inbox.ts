@@ -175,7 +175,9 @@ export interface FollowUpBoard {
 export interface NudgeTemplate {
   purpose: string;
   about: string;
-  variants: { variant: string; text: string; meta_name: string; meta_language: string; status: string }[];
+  variants: { variant: string; text: string; meta_name: string; meta_language: string; status: string; category?: string | null }[];
+  /** The utility wording of a nudge (v2), meant to be filed by Meta as Utility. */
+  utility_v2?: boolean;
 }
 
 export interface ThreadMessage {

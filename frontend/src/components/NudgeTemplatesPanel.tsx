@@ -65,6 +65,9 @@ export const NudgeTemplatesPanel: React.FC<{ readOnly?: boolean }> = ({ readOnly
 
   const approved = list.reduce((n, t) => n + t.variants.filter(v => v.status === 'APPROVED').length, 0);
   const all = list.reduce((n, t) => n + t.variants.length, 0);
+  // How Meta filed the approved ones: Utility can go after the 24-hour window without
+  // counting towards the person's marketing limit; Marketing counts, and costs more.
+  const filed = (c: string) => list.reduce((n, t) => n + t.variants.filter(v => v.status === 'APPROVED' && v.category === c).length, 0);
 
   return (
     <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm select-text">
@@ -75,6 +78,8 @@ export const NudgeTemplatesPanel: React.FC<{ readOnly?: boolean }> = ({ readOnly
         </h3>
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-[12px] text-slate-400"><b className="text-slate-100 tabular-nums">{approved}</b> of {all} approved by Meta</span>
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800/60">Utility {filed('UTILITY')}</span>
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-950 text-amber-300 border border-amber-800/60">Marketing {filed('MARKETING')}</span>
           {!readOnly && list.some(t => t.variants.some(v => ['NOT_SUBMITTED', 'REJECTED', 'FAILED'].includes(v.status))) && (
             <button onClick={submitAll} disabled={busy === 'all'}
               className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 text-white text-[12.5px] font-semibold hover:bg-emerald-500 cursor-pointer disabled:opacity-50">
@@ -88,6 +93,11 @@ export const NudgeTemplatesPanel: React.FC<{ readOnly?: boolean }> = ({ readOnly
         already. Once it has shut, only a template Meta has approved can go, so read each one and press <b>Submit to Meta</b>.
         Until then those nudges wait (Follow-ups shows them as “Waiting”).
       </p>
+      <p className="text-[12.5px] text-slate-400 mt-1.5">
+        <b className="text-emerald-300">Utility wording (v2)</b>: Meta filed most nudges as Marketing, which counts towards each
+        person's marketing limit and costs more. The v2 sets say the same as an update on their own application. Once Meta
+        approves a v2 one as Utility, the bot sends it instead of the old one; until then the old one stays in use.
+      </p>
       {error && <div className="mt-2 text-[12px] text-rose-300">{error}</div>}
 
       <ul className="mt-4 space-y-2">
@@ -99,7 +109,16 @@ export const NudgeTemplatesPanel: React.FC<{ readOnly?: boolean }> = ({ readOnly
           return (
             <li key={t.purpose} className="rounded-xl border border-slate-800 bg-slate-950/60">
               <button onClick={() => setOpen(isOpen ? null : t.purpose)} className="w-full flex flex-wrap items-center gap-2 px-3.5 py-2.5 text-left cursor-pointer">
-                <span className="flex-1 min-w-[220px] text-[13px] font-semibold text-slate-200">{t.about}</span>
+                <span className="flex-1 min-w-[220px] text-[13px] font-semibold text-slate-200 flex items-center gap-2">
+                  {t.utility_v2 && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-600 text-white">v2</span>}
+                  {t.about}
+                </span>
+                {(['UTILITY', 'MARKETING'] as const).map(c => {
+                  const n = t.variants.filter(v => v.status === 'APPROVED' && v.category === c).length;
+                  return n ? <span key={c} className={`px-2 py-0.5 rounded-full border text-[10.5px] font-semibold ${c === 'UTILITY'
+                    ? 'bg-emerald-950 text-emerald-300 border-emerald-800/60' : 'bg-amber-950 text-amber-300 border-amber-800/60'}`}>
+                    {c === 'UTILITY' ? 'Utility' : 'Marketing'} {n}</span> : null;
+                })}
                 {Object.entries(counts).map(([s, n]) => (
                   <span key={s} className={`px-2 py-0.5 rounded-full border text-[10.5px] font-semibold ${statusOf(s).cls}`}>{statusOf(s).label} {n}</span>
                 ))}
@@ -123,6 +142,9 @@ export const NudgeTemplatesPanel: React.FC<{ readOnly?: boolean }> = ({ readOnly
                     <div className="text-[11.5px] text-slate-500 space-y-1">
                       <div>Template <code className="text-slate-300">{shown.meta_name}</code> · {shown.meta_language}</div>
                       <div className={`inline-block px-2 py-0.5 rounded-full border text-[10.5px] font-semibold ${statusOf(shown.status).cls}`}>{statusOf(shown.status).label}</div>
+                      {shown.category && <div className={`inline-block ml-1.5 px-2 py-0.5 rounded-full border text-[10.5px] font-semibold ${shown.category === 'UTILITY'
+                        ? 'bg-emerald-950 text-emerald-300 border-emerald-800/60' : 'bg-amber-950 text-amber-300 border-amber-800/60'}`}>
+                        {shown.category === 'UTILITY' ? 'Utility' : shown.category === 'MARKETING' ? 'Marketing' : shown.category}</div>}
                     </div>
                   </div>
                   {!readOnly && canSubmit && (

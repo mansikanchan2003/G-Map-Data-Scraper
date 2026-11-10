@@ -245,3 +245,119 @@ def variant_for(lang: Optional[str], latin_hindi: bool) -> str:
     if lang == "hi" and latin_hindi:
         return HINGLISH
     return lang if lang in TEXT["more_info"] else "en"
+
+
+# --- Utility wording (v2), for after the 24-hour window ------------------------------
+#
+# Meta filed most of the nudges above as MARKETING (checked 2026-11-10: 118 of 168),
+# so they count towards each person's marketing limit (error 131049) and cost more.
+# These say the same thing as an update on the person's own application or request,
+# with nothing to sell, so Meta can file them as UTILITY. They go to Meta as new
+# templates (eko_nudge_<purpose>_v2) when the team presses Submit; the bot uses one
+# only once Meta has approved it as UTILITY, and the old template until then.
+# Offers (lower_investment, other_options) are marketing by nature and have none.
+# Languages: where our leads are; the others keep the old template.
+
+_LANGS_LINE = "English / हिंदी / ગુજરાતી / ਪੰਜਾਬੀ / मराठी / বাংলা / தமிழ் / తెలుగు / ಕನ್ನಡ / മലയാളം / ଓଡ଼ିଆ"
+
+UTILITY_TEXT: Dict[str, Dict[str, str]] = {
+    "more_info": {
+        "en": "Hello from Eko. You asked for more information about your SBI Customer Service Point application. Please send your question here and our team will reply.",
+        HINGLISH: "Eko ki taraf se namaste. Aapne apne SBI Customer Service Point application ke baare mein jaankari maangi thi. Apna sawaal yahin bhejein, hamari team jawab degi.",
+        "hi": "Eko की ओर से नमस्ते। आपने अपने SBI कस्टमर सर्विस पॉइंट आवेदन के बारे में जानकारी माँगी थी। अपना सवाल यहीं भेजें, हमारी टीम जवाब देगी।",
+        "gu": "Eko તરફથી નમસ્તે. તમે તમારી SBI કસ્ટમર સર્વિસ પોઈન્ટ અરજી વિશે માહિતી માંગી હતી. તમારો પ્રશ્ન અહીં મોકલો, અમારી ટીમ જવાબ આપશે.",
+        "pa": "Eko ਵੱਲੋਂ ਸਤ ਸ੍ਰੀ ਅਕਾਲ। ਤੁਸੀਂ ਆਪਣੀ SBI ਕਸਟਮਰ ਸਰਵਿਸ ਪੁਆਇੰਟ ਅਰਜ਼ੀ ਬਾਰੇ ਜਾਣਕਾਰੀ ਮੰਗੀ ਸੀ। ਆਪਣਾ ਸਵਾਲ ਇੱਥੇ ਭੇਜੋ, ਸਾਡੀ ਟੀਮ ਜਵਾਬ ਦੇਵੇਗੀ।",
+        "mr": "Eko कडून नमस्कार. तुम्ही तुमच्या SBI कस्टमर सर्व्हिस पॉइंट अर्जाबद्दल माहिती मागितली होती. तुमचा प्रश्न इथे पाठवा, आमची टीम उत्तर देईल.",
+        "bn": "Eko-র পক্ষ থেকে নমস্কার। আপনি আপনার SBI কাস্টমার সার্ভিস পয়েন্ট আবেদন সম্পর্কে তথ্য চেয়েছিলেন। আপনার প্রশ্ন এখানে পাঠান, আমাদের টিম উত্তর দেবে।",
+    },
+    "callback_confirm": {
+        "en": "Hello from Eko. Your callback request for your SBI Customer Service Point application is noted. We will contact you at the time you chose. To change it, reply here.",
+        HINGLISH: "Eko ki taraf se namaste. Aapke SBI Customer Service Point application ke liye callback ki request note ho gayi hai. Aapke chune samay par hum sampark karenge. Samay badalna ho to yahin reply karein.",
+        "hi": "Eko की ओर से नमस्ते। आपके SBI कस्टमर सर्विस पॉइंट आवेदन के लिए कॉलबैक का अनुरोध नोट कर लिया गया है। आपके चुने समय पर हम संपर्क करेंगे। समय बदलना हो तो यहीं जवाब दें।",
+        "gu": "Eko તરફથી નમસ્તે. તમારી SBI કસ્ટમર સર્વિસ પોઈન્ટ અરજી માટે કૉલબેકની વિનંતી નોંધાઈ ગઈ છે. તમે પસંદ કરેલા સમયે અમે સંપર્ક કરીશું. સમય બદલવો હોય તો અહીં જવાબ આપો.",
+        "pa": "Eko ਵੱਲੋਂ ਸਤ ਸ੍ਰੀ ਅਕਾਲ। ਤੁਹਾਡੀ SBI ਕਸਟਮਰ ਸਰਵਿਸ ਪੁਆਇੰਟ ਅਰਜ਼ੀ ਲਈ ਕਾਲਬੈਕ ਦੀ ਬੇਨਤੀ ਨੋਟ ਹੋ ਗਈ ਹੈ। ਤੁਹਾਡੇ ਚੁਣੇ ਸਮੇਂ ਤੇ ਅਸੀਂ ਸੰਪਰਕ ਕਰਾਂਗੇ। ਸਮਾਂ ਬਦਲਣਾ ਹੋਵੇ ਤਾਂ ਇੱਥੇ ਜਵਾਬ ਦਿਓ।",
+        "mr": "Eko कडून नमस्कार. तुमच्या SBI कस्टमर सर्व्हिस पॉइंट अर्जासाठी कॉलबॅकची विनंती नोंदवली आहे. तुम्ही निवडलेल्या वेळी आम्ही संपर्क करू. वेळ बदलायची असल्यास इथे उत्तर द्या.",
+        "bn": "Eko-র পক্ষ থেকে নমস্কার। আপনার SBI কাস্টমার সার্ভিস পয়েন্ট আবেদনের জন্য কলব্যাকের অনুরোধ নথিভুক্ত হয়েছে। আপনার বেছে নেওয়া সময়ে আমরা যোগাযোগ করব। সময় বদলাতে চাইলে এখানে উত্তর দিন।",
+    },
+    "callback_due": {
+        "en": "Hello from Eko. This is the callback you requested for your SBI Customer Service Point application. Please reply here to continue, or tell us a better time.",
+        HINGLISH: "Eko ki taraf se namaste. Yeh aapke SBI Customer Service Point application ke liye maanga gaya callback hai. Aage badhne ke liye yahin reply karein, ya koi aur samay batayein.",
+        "hi": "Eko की ओर से नमस्ते। यह आपके SBI कस्टमर सर्विस पॉइंट आवेदन के लिए माँगा गया कॉलबैक है। आगे बढ़ने के लिए यहीं जवाब दें, या कोई और समय बताएँ।",
+        "gu": "Eko તરફથી નમસ્તે. આ તમારી SBI કસ્ટમર સર્વિસ પોઈન્ટ અરજી માટે તમે માંગેલો કૉલબેક છે. આગળ વધવા અહીં જવાબ આપો, અથવા બીજો સમય જણાવો.",
+        "pa": "Eko ਵੱਲੋਂ ਸਤ ਸ੍ਰੀ ਅਕਾਲ। ਇਹ ਤੁਹਾਡੀ SBI ਕਸਟਮਰ ਸਰਵਿਸ ਪੁਆਇੰਟ ਅਰਜ਼ੀ ਲਈ ਮੰਗਿਆ ਕਾਲਬੈਕ ਹੈ। ਅੱਗੇ ਵਧਣ ਲਈ ਇੱਥੇ ਜਵਾਬ ਦਿਓ, ਜਾਂ ਕੋਈ ਹੋਰ ਸਮਾਂ ਦੱਸੋ।",
+        "mr": "Eko कडून नमस्कार. हा तुमच्या SBI कस्टमर सर्व्हिस पॉइंट अर्जासाठी मागितलेला कॉलबॅक आहे. पुढे जाण्यासाठी इथे उत्तर द्या, किंवा दुसरी वेळ सांगा.",
+        "bn": "Eko-র পক্ষ থেকে নমস্কার। এটি আপনার SBI কাস্টমার সার্ভিস পয়েন্ট আবেদনের জন্য চাওয়া কলব্যাক। এগোতে এখানে উত্তর দিন, অথবা অন্য সময় জানান।",
+    },
+    "missed_you": {
+        "en": "Hello from Eko. We could not reach you about your SBI Customer Service Point application. Please reply here to continue, or tell us a good time to call.",
+        HINGLISH: "Eko ki taraf se namaste. Aapke SBI Customer Service Point application ke baare mein hum aapse sampark nahi kar paaye. Aage badhne ke liye yahin reply karein, ya call ka sahi samay batayein.",
+        "hi": "Eko की ओर से नमस्ते। आपके SBI कस्टमर सर्विस पॉइंट आवेदन के बारे में हम आपसे संपर्क नहीं कर पाए। आगे बढ़ने के लिए यहीं जवाब दें, या कॉल का सही समय बताएँ।",
+        "gu": "Eko તરફથી નમસ્તે. તમારી SBI કસ્ટમર સર્વિસ પોઈન્ટ અરજી વિશે અમે તમારો સંપર્ક કરી શક્યા નથી. આગળ વધવા અહીં જવાબ આપો, અથવા કૉલ માટે યોગ્ય સમય જણાવો.",
+        "pa": "Eko ਵੱਲੋਂ ਸਤ ਸ੍ਰੀ ਅਕਾਲ। ਤੁਹਾਡੀ SBI ਕਸਟਮਰ ਸਰਵਿਸ ਪੁਆਇੰਟ ਅਰਜ਼ੀ ਬਾਰੇ ਅਸੀਂ ਤੁਹਾਡੇ ਨਾਲ ਸੰਪਰਕ ਨਹੀਂ ਕਰ ਸਕੇ। ਅੱਗੇ ਵਧਣ ਲਈ ਇੱਥੇ ਜਵਾਬ ਦਿਓ, ਜਾਂ ਕਾਲ ਦਾ ਸਹੀ ਸਮਾਂ ਦੱਸੋ।",
+        "mr": "Eko कडून नमस्कार. तुमच्या SBI कस्टमर सर्व्हिस पॉइंट अर्जाबद्दल आम्ही तुमच्याशी संपर्क करू शकलो नाही. पुढे जाण्यासाठी इथे उत्तर द्या, किंवा कॉलसाठी योग्य वेळ सांगा.",
+        "bn": "Eko-র পক্ষ থেকে নমস্কার। আপনার SBI কাস্টমার সার্ভিস পয়েন্ট আবেদন নিয়ে আমরা আপনার সাথে যোগাযোগ করতে পারিনি। এগোতে এখানে উত্তর দিন, অথবা কল করার সঠিক সময় জানান।",
+    },
+    "decision_maker": {
+        "en": "Hello from Eko. This is about an SBI Customer Service Point application made from this number. Please share the applicant's number, or a good time to reach them.",
+        HINGLISH: "Eko ki taraf se namaste. Yeh is number se kiye gaye SBI Customer Service Point application ke baare mein hai. Kripya applicant ka number, ya unse baat karne ka sahi samay batayein.",
+        "hi": "Eko की ओर से नमस्ते। यह इस नंबर से किए गए SBI कस्टमर सर्विस पॉइंट आवेदन के बारे में है। कृपया आवेदक का नंबर, या उनसे बात करने का सही समय बताएँ।",
+        "gu": "Eko તરફથી નમસ્તે. આ આ નંબર પરથી કરેલી SBI કસ્ટમર સર્વિસ પોઈન્ટ અરજી વિશે છે. કૃપા કરીને અરજદારનો નંબર, અથવા તેમની સાથે વાત કરવાનો યોગ્ય સમય જણાવો.",
+        "pa": "Eko ਵੱਲੋਂ ਸਤ ਸ੍ਰੀ ਅਕਾਲ। ਇਹ ਇਸ ਨੰਬਰ ਤੋਂ ਕੀਤੀ SBI ਕਸਟਮਰ ਸਰਵਿਸ ਪੁਆਇੰਟ ਅਰਜ਼ੀ ਬਾਰੇ ਹੈ। ਕਿਰਪਾ ਕਰਕੇ ਅਰਜ਼ੀ ਦੇਣ ਵਾਲੇ ਦਾ ਨੰਬਰ, ਜਾਂ ਉਨ੍ਹਾਂ ਨਾਲ ਗੱਲ ਕਰਨ ਦਾ ਸਹੀ ਸਮਾਂ ਦੱਸੋ।",
+        "mr": "Eko कडून नमस्कार. हे या नंबरवरून केलेल्या SBI कस्टमर सर्व्हिस पॉइंट अर्जाबद्दल आहे. कृपया अर्जदाराचा नंबर, किंवा त्यांच्याशी बोलण्याची योग्य वेळ सांगा.",
+        "bn": "Eko-র পক্ষ থেকে নমস্কার। এটি এই নম্বর থেকে করা SBI কাস্টমার সার্ভিস পয়েন্ট আবেদন সম্পর্কে। অনুগ্রহ করে আবেদনকারীর নম্বর, অথবা তাঁর সাথে কথা বলার সঠিক সময় জানান।",
+    },
+    "checking_in": {
+        "en": "Hello from Eko. You asked us to contact you on this date about your SBI Customer Service Point application. Please reply here to continue, or tell us a new date.",
+        HINGLISH: "Eko ki taraf se namaste. Aapne apne SBI Customer Service Point application ke baare mein aaj sampark karne ko kaha tha. Aage badhne ke liye yahin reply karein, ya nayi tareekh batayein.",
+        "hi": "Eko की ओर से नमस्ते। आपने अपने SBI कस्टमर सर्विस पॉइंट आवेदन के बारे में आज संपर्क करने को कहा था। आगे बढ़ने के लिए यहीं जवाब दें, या नई तारीख बताएँ।",
+        "gu": "Eko તરફથી નમસ્તે. તમે તમારી SBI કસ્ટમર સર્વિસ પોઈન્ટ અરજી વિશે આજે સંપર્ક કરવાનું કહ્યું હતું. આગળ વધવા અહીં જવાબ આપો, અથવા નવી તારીખ જણાવો.",
+        "pa": "Eko ਵੱਲੋਂ ਸਤ ਸ੍ਰੀ ਅਕਾਲ। ਤੁਸੀਂ ਆਪਣੀ SBI ਕਸਟਮਰ ਸਰਵਿਸ ਪੁਆਇੰਟ ਅਰਜ਼ੀ ਬਾਰੇ ਅੱਜ ਸੰਪਰਕ ਕਰਨ ਲਈ ਕਿਹਾ ਸੀ। ਅੱਗੇ ਵਧਣ ਲਈ ਇੱਥੇ ਜਵਾਬ ਦਿਓ, ਜਾਂ ਨਵੀਂ ਤਾਰੀਖ ਦੱਸੋ।",
+        "mr": "Eko कडून नमस्कार. तुम्ही तुमच्या SBI कस्टमर सर्व्हिस पॉइंट अर्जाबद्दल आज संपर्क करायला सांगितले होते. पुढे जाण्यासाठी इथे उत्तर द्या, किंवा नवीन तारीख सांगा.",
+        "bn": "Eko-র পক্ষ থেকে নমস্কার। আপনি আপনার SBI কাস্টমার সার্ভিস পয়েন্ট আবেদন নিয়ে আজ যোগাযোগ করতে বলেছিলেন। এগোতে এখানে উত্তর দিন, অথবা নতুন তারিখ জানান।",
+    },
+    "choose_language": {
+        "en": "Hello from Eko. To continue your SBI Customer Service Point application, please reply with the language you prefer:\n" + _LANGS_LINE,
+        HINGLISH: "Eko ki taraf se namaste. Apna SBI Customer Service Point application aage badhane ke liye, apni pasand ki bhasha ka naam likhkar reply karein:\n" + _LANGS_LINE,
+        "hi": "Eko की ओर से नमस्ते। अपना SBI कस्टमर सर्विस पॉइंट आवेदन आगे बढ़ाने के लिए, अपनी पसंद की भाषा का नाम लिखकर जवाब दें:\n" + _LANGS_LINE,
+        "gu": "Eko તરફથી નમસ્તે. તમારી SBI કસ્ટમર સર્વિસ પોઈન્ટ અરજી આગળ વધારવા, તમારી પસંદની ભાષાનું નામ લખીને જવાબ આપો:\n" + _LANGS_LINE,
+        "pa": "Eko ਵੱਲੋਂ ਸਤ ਸ੍ਰੀ ਅਕਾਲ। ਆਪਣੀ SBI ਕਸਟਮਰ ਸਰਵਿਸ ਪੁਆਇੰਟ ਅਰਜ਼ੀ ਅੱਗੇ ਵਧਾਉਣ ਲਈ, ਆਪਣੀ ਪਸੰਦ ਦੀ ਭਾਸ਼ਾ ਦਾ ਨਾਮ ਲਿਖ ਕੇ ਜਵਾਬ ਦਿਓ:\n" + _LANGS_LINE,
+        "mr": "Eko कडून नमस्कार. तुमचा SBI कस्टमर सर्व्हिस पॉइंट अर्ज पुढे नेण्यासाठी, तुमच्या आवडीच्या भाषेचे नाव लिहून उत्तर द्या:\n" + _LANGS_LINE,
+        "bn": "Eko-র পক্ষ থেকে নমস্কার। আপনার SBI কাস্টমার সার্ভিস পয়েন্ট আবেদন এগিয়ে নিতে, আপনার পছন্দের ভাষার নাম লিখে উত্তর দিন:\n" + _LANGS_LINE,
+    },
+    "closing_polite": {
+        "en": "Hello from Eko. As you asked, we have closed your SBI Customer Service Point enquiry and will not message you about it again.",
+        HINGLISH: "Eko ki taraf se namaste. Aapke kehne par humne aapki SBI Customer Service Point enquiry band kar di hai, aur is baare mein aapko dobara message nahi karenge.",
+        "hi": "Eko की ओर से नमस्ते। आपके कहने पर हमने आपकी SBI कस्टमर सर्विस पॉइंट पूछताछ बंद कर दी है, और इस बारे में आपको दोबारा मैसेज नहीं करेंगे।",
+        "gu": "Eko તરફથી નમસ્તે. તમારા કહેવા મુજબ અમે તમારી SBI કસ્ટમર સર્વિસ પોઈન્ટ પૂછપરછ બંધ કરી છે, અને આ વિશે તમને ફરી મેસેજ નહીં કરીએ.",
+        "pa": "Eko ਵੱਲੋਂ ਸਤ ਸ੍ਰੀ ਅਕਾਲ। ਤੁਹਾਡੇ ਕਹਿਣ ਤੇ ਅਸੀਂ ਤੁਹਾਡੀ SBI ਕਸਟਮਰ ਸਰਵਿਸ ਪੁਆਇੰਟ ਪੁੱਛਗਿੱਛ ਬੰਦ ਕਰ ਦਿੱਤੀ ਹੈ, ਅਤੇ ਇਸ ਬਾਰੇ ਤੁਹਾਨੂੰ ਦੁਬਾਰਾ ਮੈਸੇਜ ਨਹੀਂ ਕਰਾਂਗੇ।",
+        "mr": "Eko कडून नमस्कार. तुमच्या सांगण्यानुसार आम्ही तुमची SBI कस्टमर सर्व्हिस पॉइंट चौकशी बंद केली आहे, आणि याबद्दल तुम्हाला पुन्हा मेसेज करणार नाही.",
+        "bn": "Eko-র পক্ষ থেকে নমস্কার। আপনার কথামতো আমরা আপনার SBI কাস্টমার সার্ভিস পয়েন্ট সংক্রান্ত অনুসন্ধান বন্ধ করেছি, এবং এ বিষয়ে আপনাকে আর মেসেজ করব না।",
+    },
+    "closing_later": {
+        "en": "Hello from Eko. As you asked, we have paused your SBI Customer Service Point application. To restart it at any time, reply here.",
+        HINGLISH: "Eko ki taraf se namaste. Aapke kehne par humne aapka SBI Customer Service Point application rok diya hai. Kabhi bhi dobara shuru karne ke liye yahin reply karein.",
+        "hi": "Eko की ओर से नमस्ते। आपके कहने पर हमने आपका SBI कस्टमर सर्विस पॉइंट आवेदन रोक दिया है। कभी भी दोबारा शुरू करने के लिए यहीं जवाब दें।",
+        "gu": "Eko તરફથી નમસ્તે. તમારા કહેવા મુજબ અમે તમારી SBI કસ્ટમર સર્વિસ પોઈન્ટ અરજી રોકી છે. ક્યારેય પણ ફરી શરૂ કરવા અહીં જવાબ આપો.",
+        "pa": "Eko ਵੱਲੋਂ ਸਤ ਸ੍ਰੀ ਅਕਾਲ। ਤੁਹਾਡੇ ਕਹਿਣ ਤੇ ਅਸੀਂ ਤੁਹਾਡੀ SBI ਕਸਟਮਰ ਸਰਵਿਸ ਪੁਆਇੰਟ ਅਰਜ਼ੀ ਰੋਕ ਦਿੱਤੀ ਹੈ। ਕਦੇ ਵੀ ਦੁਬਾਰਾ ਸ਼ੁਰੂ ਕਰਨ ਲਈ ਇੱਥੇ ਜਵਾਬ ਦਿਓ।",
+        "mr": "Eko कडून नमस्कार. तुमच्या सांगण्यानुसार आम्ही तुमचा SBI कस्टमर सर्व्हिस पॉइंट अर्ज थांबवला आहे. कधीही पुन्हा सुरू करण्यासाठी इथे उत्तर द्या.",
+        "bn": "Eko-র পক্ষ থেকে নমস্কার। আপনার কথামতো আমরা আপনার SBI কাস্টমার সার্ভিস পয়েন্ট আবেদন স্থগিত রেখেছি। যেকোনো সময় আবার শুরু করতে এখানে উত্তর দিন।",
+    },
+    "closing_sorry": {
+        "en": "Hello from Eko. This number was added to our records by mistake. We have removed it and will not message you again.",
+        HINGLISH: "Eko ki taraf se namaste. Yeh number galti se hamare records mein jud gaya tha. Humne ise hata diya hai aur aapko dobara message nahi karenge.",
+        "hi": "Eko की ओर से नमस्ते। यह नंबर गलती से हमारे रिकॉर्ड में जुड़ गया था। हमने इसे हटा दिया है और आपको दोबारा मैसेज नहीं करेंगे।",
+        "gu": "Eko તરફથી નમસ્તે. આ નંબર ભૂલથી અમારા રેકોર્ડમાં ઉમેરાઈ ગયો હતો. અમે તેને દૂર કર્યો છે અને તમને ફરી મેસેજ નહીં કરીએ.",
+        "pa": "Eko ਵੱਲੋਂ ਸਤ ਸ੍ਰੀ ਅਕਾਲ। ਇਹ ਨੰਬਰ ਗਲਤੀ ਨਾਲ ਸਾਡੇ ਰਿਕਾਰਡ ਵਿੱਚ ਜੁੜ ਗਿਆ ਸੀ। ਅਸੀਂ ਇਸਨੂੰ ਹਟਾ ਦਿੱਤਾ ਹੈ ਅਤੇ ਤੁਹਾਨੂੰ ਦੁਬਾਰਾ ਮੈਸੇਜ ਨਹੀਂ ਕਰਾਂਗੇ।",
+        "mr": "Eko कडून नमस्कार. हा नंबर चुकून आमच्या रेकॉर्डमध्ये जोडला गेला होता. आम्ही तो काढून टाकला आहे आणि तुम्हाला पुन्हा मेसेज करणार नाही.",
+        "bn": "Eko-র পক্ষ থেকে নমস্কার। এই নম্বরটি ভুল করে আমাদের রেকর্ডে যুক্ত হয়েছিল। আমরা এটি সরিয়ে দিয়েছি এবং আপনাকে আর মেসেজ করব না।",
+    },
+    "already_with_us": {
+        "en": "Hello from Eko. Our records show you already work with Eko, so we have closed this new application. For any help, reply here.",
+        HINGLISH: "Eko ki taraf se namaste. Hamare records ke anusaar aap pehle se Eko ke saath kaam karte hain, isliye humne yeh naya application band kar diya hai. Kisi madad ke liye yahin reply karein.",
+        "hi": "Eko की ओर से नमस्ते। हमारे रिकॉर्ड के अनुसार आप पहले से Eko के साथ काम करते हैं, इसलिए हमने यह नया आवेदन बंद कर दिया है। किसी भी मदद के लिए यहीं जवाब दें।",
+        "gu": "Eko તરફથી નમસ્તે. અમારા રેકોર્ડ મુજબ તમે પહેલેથી Eko સાથે કામ કરો છો, તેથી અમે આ નવી અરજી બંધ કરી છે. કોઈ પણ મદદ માટે અહીં જવાબ આપો.",
+        "pa": "Eko ਵੱਲੋਂ ਸਤ ਸ੍ਰੀ ਅਕਾਲ। ਸਾਡੇ ਰਿਕਾਰਡ ਮੁਤਾਬਕ ਤੁਸੀਂ ਪਹਿਲਾਂ ਹੀ Eko ਨਾਲ ਕੰਮ ਕਰਦੇ ਹੋ, ਇਸ ਲਈ ਅਸੀਂ ਇਹ ਨਵੀਂ ਅਰਜ਼ੀ ਬੰਦ ਕਰ ਦਿੱਤੀ ਹੈ। ਕਿਸੇ ਵੀ ਮਦਦ ਲਈ ਇੱਥੇ ਜਵਾਬ ਦਿਓ।",
+        "mr": "Eko कडून नमस्कार. आमच्या रेकॉर्डनुसार तुम्ही आधीपासून Eko सोबत काम करता, म्हणून आम्ही हा नवीन अर्ज बंद केला आहे. कोणत्याही मदतीसाठी इथे उत्तर द्या.",
+        "bn": "Eko-র পক্ষ থেকে নমস্কার। আমাদের রেকর্ড অনুযায়ী আপনি আগে থেকেই Eko-র সাথে কাজ করেন, তাই আমরা এই নতুন আবেদনটি বন্ধ করেছি। যেকোনো সাহায্যের জন্য এখানে উত্তর দিন।",
+    },
+}

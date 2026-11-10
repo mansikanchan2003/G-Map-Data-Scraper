@@ -1957,7 +1957,7 @@ def test_a_closing_disposition_cancels_everything_pending(db, client):
 
 def test_nudge_templates_are_listed_for_review_and_kept_out_of_campaigns(db, client):
     from src.models.whatsapp import WhatsAppTemplate
-    listed = client.get("/api/v1/inbox/dispositions/nudge-templates").json()
+    listed = [p for p in client.get("/api/v1/inbox/dispositions/nudge-templates").json() if not p["utility_v2"]]
     assert len(listed) == len(nudge_messages.PURPOSES)
     assert all(len(p["variants"]) == 12 and all(v["status"] == "NOT_SUBMITTED" for v in p["variants"]) for p in listed)
     assert {v["meta_name"] for v in listed[0]["variants"]} == {"eko_nudge_more_info", "eko_nudge_more_info_hinglish"}
@@ -2205,7 +2205,8 @@ def test_submit_all_sends_every_nudge_only_when_pressed(db, client, monkeypatch)
     monkeypatch.setattr(nudge_templates, "submit", lambda db, purpose, by: sent.append((purpose, by)) or [])
     r = client.post("/api/v1/inbox/dispositions/nudge-templates/submit-all")
     assert r.status_code == 200
-    assert [p for p, _ in sent] == list(nudge_messages.PURPOSES) and {b for _, b in sent} == {"admin@eko.co.in"}
+    assert [p for p, _ in sent] == list(nudge_messages.PURPOSES) + [p + "_v2" for p in nudge_messages.UTILITY_TEXT]
+    assert {b for _, b in sent} == {"admin@eko.co.in"}
 
 
 def test_a_nudge_meta_filed_as_marketing_goes_in_as_marketing_in_every_language(db, monkeypatch):
@@ -4141,3 +4142,52 @@ def test_the_coach_switched_off_takes_nothing_in(db):
     agent_controls.set_agent(db, "bot_coach", False, "mansi")
     out = bot_coach.ingest(db, _coach_answer(nudge_timing=[{"step": bot.AWAIT_PIN, "hours": 3}]))
     assert out["kept"] == 0 and not [p for p in learning_loop.proposals(db) if p["agent"] == "bot_coach"]
+
+
+
+# --- Utility wording (v2) of the nudges (the user, 2026-11-10) -------------------------
+
+def test_the_utility_wording_is_its_own_template_and_never_goes_in_as_marketing(db, monkeypatch):
+    from src.services import nudge_templates, whatsapp_service
+    asked = []
+
+    def fake_submit(self, template, category="MARKETING"):
+        asked.append((template.meta_template_name, category))
+        if len(asked) == 2:
+            return {"status": "failed", "error": "Template category doesn't match: The category UTILITY doesn't match "
+                                                 "the one that's already associated with this template, MARKETING."}
+        template.status, template.category = "PENDING", category
+        return {"status": "success"}
+
+    monkeypatch.setattr(whatsapp_service.WhatsAppTemplateSubmissionService, "submit", fake_submit)
+    out = nudge_templates.submit(db, "missed_you_v2", "admin@eko.co.in")
+    assert len(out) == len(nudge_messages.UTILITY_TEXT["missed_you"]) == 7, "only the languages it is written in"
+    assert {c for _, c in asked} == {"UTILITY"}, "never resubmitted as Marketing"
+    assert asked[0][0] == "eko_nudge_missed_you_v2"
+    assert "not Utility" in out[1]["error"]
+
+
+def test_the_bot_sends_the_v2_template_only_once_meta_approved_it_as_utility(db):
+    from src.models.whatsapp import WhatsAppTemplate
+    from src.services import nudge_templates
+    def row(name, meta, category, status="APPROVED"):
+        db.add(WhatsAppTemplate(template_id=uuid.uuid4().hex, name=name, status=status, meta_template_name=meta,
+                                language_code="hi", body=meta, origin="nudge", category=category))
+        db.commit()
+    row("nudge_missed_you_hi", "eko_nudge_missed_you", "MARKETING")
+    assert nudge_templates.approved(db, "missed_you", "hi").meta_template_name == "eko_nudge_missed_you"
+    row("nudge_missed_you_v2_hi", "eko_nudge_missed_you_v2", "MARKETING")
+    assert nudge_templates.approved(db, "missed_you", "hi").meta_template_name == "eko_nudge_missed_you",         "a v2 Meta filed as Marketing is no better"
+    t = db.query(WhatsAppTemplate).filter_by(name="nudge_missed_you_v2_hi").one()
+    t.category = "UTILITY"
+    db.commit()
+    assert nudge_templates.approved(db, "missed_you", "hi").meta_template_name == "eko_nudge_missed_you_v2"
+
+
+def test_the_utility_wording_sells_nothing():
+    from src.services import eko_knowledge
+    for purpose, texts in nudge_messages.UTILITY_TEXT.items():
+        assert purpose in nudge_messages.PURPOSES and purpose not in ("lower_investment", "other_options")
+        for v, text in texts.items():
+            assert not eko_knowledge.vocabulary_problems(text), (purpose, v)
+            assert "{" not in text and len(text) < 1024

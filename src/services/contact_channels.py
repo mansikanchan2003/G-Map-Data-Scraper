@@ -86,7 +86,9 @@ class WhatsAppNudge(Channel):
             if tmpl is None:
                 return Outcome(ok=False, waiting=True, language=theirs,
                                error="Their 24-hour window is shut and this nudge's template is not approved by Meta yet")
-            msg = inbox.send_template(db, conv.phone, tmpl.meta_template_name, tmpl.language_code, body, sent_by="bot")
+            # The thread shows the template's own words: the utility (v2) wording may differ.
+            msg = inbox.send_template(db, conv.phone, tmpl.meta_template_name, tmpl.language_code,
+                                      tmpl.body or body, sent_by="bot")
         if msg.status == "FAILED":
             return Outcome(ok=False, message_id=msg.message_id, language=variant, error=msg.error_reason)
         return Outcome(ok=True, message_id=msg.message_id, language=variant)
