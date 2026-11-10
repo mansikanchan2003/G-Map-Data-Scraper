@@ -1,6 +1,7 @@
 import { ForgotPasswordForm } from '../components/ForgotPasswordForm';
+import { GoogleButton } from '../components/GoogleButton';
 import React, { useState } from 'react';
-import type { AuthUser } from '../api';
+import type { AuthUser, SignupResult } from '../api';
 
 /**
  * The way in, and the way to ask to be let in.
@@ -15,6 +16,8 @@ interface Props {
   onLogin: (email: string, password: string) => Promise<AuthUser>;
   onSignup: (email: string, password: string, fullName?: string,
              role?: 'member' | 'manager' | 'operator') => Promise<{ message: string }>;
+  /** Google's sign-in: signs in an approved account, or sends a request for a new one. */
+  onGoogle?: (credential: string, role?: 'member' | 'manager' | 'operator') => Promise<AuthUser | SignupResult>;
 }
 
 const ALLOWED_DOMAIN = 'eko.co.in';
@@ -24,7 +27,7 @@ const field =
   'placeholder:text-slate-600 focus:border-sky-500 focus:outline-none focus:ring-1 ' +
   'focus:ring-sky-500 transition-colors';
 
-export const LoginView: React.FC<Props> = ({ onLogin, onSignup }) => {
+export const LoginView: React.FC<Props> = ({ onLogin, onSignup, onGoogle }) => {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -53,6 +56,23 @@ export const LoginView: React.FC<Props> = ({ onLogin, onSignup }) => {
       }
     } catch (err: any) {
       setError(err?.message || 'Something went wrong. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const [googleOn, setGoogleOn] = useState(false);
+  const withGoogle = async (credential: string) => {
+    if (!onGoogle) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await onGoogle(credential, mode === 'signup' ? role : undefined);
+      // Signed in: the app takes over. A request: say so, like the form does.
+      if (!('user_id' in res)) { setNotice(res.message); setMode('login'); }
+    } catch (err: any) {
+      setError(err?.message || 'Google sign-in failed. Try again.');
     } finally {
       setBusy(false);
     }
@@ -101,6 +121,25 @@ export const LoginView: React.FC<Props> = ({ onLogin, onSignup }) => {
                 onCancel={() => switchTo('login')}
               />
             </>
+          )}
+
+          {mode !== 'forgot' && onGoogle && (
+            <div className={googleOn ? 'mb-4' : ''}>
+              {googleOn && mode === 'signup' && (
+                <p className="text-[11px] text-slate-500 mb-2 text-center">
+                  Pick the access you need below first, then continue with Google.
+                </p>
+              )}
+              <GoogleButton mode={mode === 'signup' ? 'signup' : 'signin'} onCredential={withGoogle}
+                            onAvailable={setGoogleOn} />
+              {googleOn && (
+                <div className="flex items-center gap-3 mt-4 text-[11px] uppercase tracking-wider text-slate-600">
+                  <span className="h-px flex-1 bg-slate-800" />
+                  or with email
+                  <span className="h-px flex-1 bg-slate-800" />
+                </div>
+              )}
+            </div>
           )}
 
           {mode !== 'forgot' && <form onSubmit={submit} className="flex flex-col gap-3">

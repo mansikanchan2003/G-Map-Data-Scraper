@@ -243,6 +243,97 @@ def login(payload: LoginRequest, response: Response, request: Request, db: Sessi
     return UserResponse.model_validate(user)
 
 
+# --------------------------------------------------------------------------
+# Google: sign in, or ask for access, with an @eko.co.in Google account
+# --------------------------------------------------------------------------
+
+class GoogleRequest(BaseModel):
+    # The ID token Google's sign-in button hands the page.
+    credential: str = Field(..., max_length=4096)
+    # Asked for only when this Google account has no AutoGMap account yet.
+    role: Optional[str] = Field(None, max_length=20)
+
+
+def google_client_id() -> str:
+    """The OAuth client of the Google Cloud project, from GOOGLE_CLIENT_ID. Empty: Google sign-in is off."""
+    return (os.environ.get("GOOGLE_CLIENT_ID") or "").strip()
+
+
+def verify_google(credential: str, client_id: str) -> dict:
+    """The claims of a Google ID token, checked against Google's keys and our client; ValueError if not sound."""
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token
+    return id_token.verify_oauth2_token(credential, google_requests.Request(), client_id)
+
+
+@router.get("/google/config")
+def google_config():
+    """What the sign-in page needs for Google's button; the client id is public by design."""
+    cid = google_client_id()
+    return {"enabled": bool(cid), "client_id": cid or None, "domain": auth.ALLOWED_DOMAIN}
+
+
+@router.post("/google")
+def google_sign_in(payload: GoogleRequest, response: Response, request: Request, background: BackgroundTasks,
+                   db: Session = Depends(get_db)):
+    """
+    Signs in with Google, or asks for access with it. Google proves the person
+    owns the address, so no password is needed; it does not decide who gets in.
+    An address with no account becomes a request, PENDING like any signup,
+    until the admin approves it.
+    """
+    from types import SimpleNamespace
+    from src.services import audit
+
+    cid = google_client_id()
+    if not cid:
+        raise HTTPException(status_code=400, detail="Google sign-in is not set up on this server.")
+    try:
+        claims = verify_google(payload.credential, cid)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Google could not confirm this sign-in. Please try again.")
+    email = auth.normalise_email(claims.get("email") or "")
+    if not claims.get("email_verified") or not auth.email_is_allowed(email):
+        raise HTTPException(status_code=403, detail=f"Use your @{auth.ALLOWED_DOMAIN} Google account.")
+
+    user = db.query(User).filter(User.email == email).first()
+    if user is None:
+        role = (payload.role or "member").strip().lower()
+        if role not in auth.GRANTABLE_ROLES:
+            raise HTTPException(status_code=400, detail=f"Role must be one of: {', '.join(auth.GRANTABLE_ROLES)}.")
+        user = User(user_id=uuid.uuid4().hex, email=email,
+                    full_name=(claims.get("name") or "").strip()[:200] or None,
+                    # No password: this account signs in with Google ("!" is never a match).
+                    password_hash="!", role=role, status="PENDING")
+        db.add(user)
+        db.commit()
+        logger.info(f"auth event=SIGNUP_REQUESTED email={email} via=google")
+        background.add_task(notifier.notify_signup_request, auth.BOOTSTRAP_ADMIN, email, user.full_name,
+                            f"{_public_app_url()}/#approvals")
+        response.status_code = 201
+        return {"status": "PENDING", "email": email,
+                "message": "Request sent. You can sign in with Google once an administrator approves it."}
+
+    refused = None
+    if user.status == "PENDING":
+        refused = HTTPException(status_code=403, detail="Your account is still waiting for approval.")
+    elif user.status == "REJECTED":
+        refused = HTTPException(status_code=403, detail="This account was declined.")
+    elif user.status != "APPROVED":
+        refused = HTTPException(status_code=403, detail="This account is not active.")
+    audit.write(SimpleNamespace(email=email, role=user.role), "POST", "/api/v1/auth/google",
+                refused.status_code if refused else 200, None)
+    if refused:
+        raise refused
+    user.last_login_at = datetime.now(timezone.utc)
+    if not user.full_name and claims.get("name"):
+        user.full_name = claims["name"].strip()[:200]
+    db.commit()
+    _set_session_cookie(response, auth.issue_token(user))
+    logger.info(f"auth event=LOGIN email={email} role={user.role} via=google")
+    return UserResponse.model_validate(user)
+
+
 @router.post("/forgot-password")
 def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """

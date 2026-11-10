@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  fetchMe, login as apiLogin, logout as apiLogout, signup as apiSignup,
-  type AuthUser,
+  fetchMe, googleSignIn as apiGoogle, login as apiLogin, logout as apiLogout, signup as apiSignup,
+  type AuthUser, type SignupResult,
 } from '../api';
 
 /**
@@ -32,6 +32,13 @@ export function useAuth() {
     return me;
   }, []);
 
+  // Google: signed in when the account is approved; a request otherwise.
+  const google = useCallback(async (credential: string, role?: 'member' | 'manager' | 'operator') => {
+    const res = await apiGoogle(credential, role);
+    if ('user_id' in res) setUser(res);
+    return res as AuthUser | SignupResult;
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await apiLogout();
@@ -42,5 +49,5 @@ export function useAuth() {
     }
   }, []);
 
-  return { user, loading, login, logout, signup: apiSignup, refresh };
+  return { user, loading, login, google, logout, signup: apiSignup, refresh };
 }

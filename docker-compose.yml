@@ -130,6 +130,9 @@ services:
       # First password for the seeded admin. Read only while that account
       # has none; it never overwrites one already set.
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      # Google sign-in: the OAuth Web client id from Google Cloud (public, not a secret).
+      # Empty: the Google button is hidden and only email + password works.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}

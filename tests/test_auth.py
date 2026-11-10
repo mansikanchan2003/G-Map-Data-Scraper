@@ -801,3 +801,54 @@ def test_answers_carry_basic_browser_protections(client):
     assert r.headers["X-Content-Type-Options"] == "nosniff"
     assert r.headers["X-Frame-Options"] == "DENY"
     assert r.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+
+
+class TestGoogle:
+    """Google sign-in (10 Nov 2026): Google proves the address; the admin still decides who gets in."""
+
+    @pytest.fixture
+    def google(self, client, monkeypatch):
+        from src.routers import auth as auth_router
+        monkeypatch.setenv("GOOGLE_CLIENT_ID", "cid.apps.googleusercontent.com")
+        claims = {"email": "new.person@eko.co.in", "email_verified": True, "name": "New Person"}
+
+        def verify(credential, client_id):
+            assert client_id == "cid.apps.googleusercontent.com"
+            if credential != "good":
+                raise ValueError("bad token")
+            return dict(claims)
+        monkeypatch.setattr(auth_router, "verify_google", verify)
+        return claims
+
+    def test_off_without_a_client_id(self, client, monkeypatch):
+        monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+        assert client.get("/api/v1/auth/google/config").json()["enabled"] is False
+        assert client.post("/api/v1/auth/google", json={"credential": "good"}).status_code == 400
+
+    def test_a_new_address_becomes_a_request_not_access(self, client, google):
+        assert client.get("/api/v1/auth/google/config").json()["client_id"] == "cid.apps.googleusercontent.com"
+        r = client.post("/api/v1/auth/google", json={"credential": "good", "role": "manager"})
+        assert r.status_code == 201 and r.json()["status"] == "PENDING"
+        assert client.get("/api/v1/auth/me").status_code == 401
+        db = TestingSessionLocal()
+        u = db.query(User).filter(User.email == "new.person@eko.co.in").one()
+        assert (u.status, u.role, u.full_name, u.password_hash) == ("PENDING", "manager", "New Person", "!")
+        db.close()
+        # Waiting for approval, with Google as with a password.
+        again = client.post("/api/v1/auth/google", json={"credential": "good"})
+        assert again.status_code == 403 and "approval" in again.json()["detail"]
+        # No password exists, so the password form never lets it in.
+        assert client.post("/api/v1/auth/login", json={"email": "new.person@eko.co.in", "password": "!"}).status_code == 401
+
+    def test_an_approved_account_signs_in(self, client, google):
+        google["email"] = make_admin("someone@eko.co.in")
+        r = client.post("/api/v1/auth/google", json={"credential": "good"})
+        assert r.status_code == 200 and r.json()["email"] == "someone@eko.co.in"
+        assert client.get("/api/v1/auth/me").json()["email"] == "someone@eko.co.in"
+
+    def test_a_bad_token_another_domain_or_an_unverified_address_is_refused(self, client, google):
+        assert client.post("/api/v1/auth/google", json={"credential": "forged"}).status_code == 401
+        google["email"] = "someone@gmail.com"
+        assert client.post("/api/v1/auth/google", json={"credential": "good"}).status_code == 403
+        google.update(email="someone@eko.co.in", email_verified=False)
+        assert client.post("/api/v1/auth/google", json={"credential": "good"}).status_code == 403

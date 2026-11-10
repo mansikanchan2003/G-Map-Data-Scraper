@@ -551,6 +551,24 @@ export async function login(email: string, password: string): Promise<AuthUser> 
   });
 }
 
+export interface GoogleConfig { enabled: boolean; client_id: string | null; domain: string }
+
+/** Whether this server offers Google sign-in, and its (public) client id. */
+export async function fetchGoogleConfig(): Promise<GoogleConfig> {
+  return request<GoogleConfig>('/api/v1/auth/google/config');
+}
+
+/**
+ * Signs in with the ID token from Google's button. An address with no account
+ * becomes an access request instead (status PENDING), like Request access.
+ */
+export async function googleSignIn(credential: string,
+                                   role?: 'member' | 'manager' | 'operator'): Promise<AuthUser | SignupResult> {
+  return request<AuthUser | SignupResult>('/api/v1/auth/google', {
+    method: 'POST', body: JSON.stringify({ credential, role: role || null }),
+  });
+}
+
 export async function logout(): Promise<void> {
   await request('/api/v1/auth/logout', { method: 'POST' });
 }

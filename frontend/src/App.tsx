@@ -47,7 +47,7 @@ export default function App() {
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
   const [latencyMs, setLatencyMs] = useState<number | undefined>(undefined);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const { user, loading: authLoading, login, logout, signup } = useAuth();
+  const { user, loading: authLoading, login, google, logout, signup } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [changingPassword, setChangingPassword] = useState<boolean>(false);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
@@ -146,7 +146,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginView onLogin={login} onSignup={signup} />;
+    return <LoginView onLogin={login} onSignup={signup} onGoogle={google} />;
   }
 
   // A tab the role may not open — reached by a typed address or a saved
