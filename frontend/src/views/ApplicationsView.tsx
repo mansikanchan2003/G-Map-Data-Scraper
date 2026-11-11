@@ -45,8 +45,10 @@ const STEPS = ['Language', 'PIN', 'Education', 'Investment', 'Documents', 'Uploa
 const STEP_OF: Record<string, number> = {
   CHOOSE_LANG: 0, AWAIT_PIN: 1, NOT_SERVED: 1, AWAIT_EDUCATION: 2, NOT_ELIGIBLE: 2,
   AWAIT_FRANCHISE: 3, AWAIT_INVEST: 3, NOT_INVESTING: 3, AWAIT_DOCS: 4, AWAIT_UPLOAD: 5, SUBMITTED: 6, HANDOVER: 1,
+  // ESAF, offered to those who cannot invest for SBI (11 Nov 2026): it starts at the investment step.
+  ESAF_OFFERED: 3, ESAF_DETAILS: 3, ESAF_INTERESTED: 3, ESAF_DECLINED: 3,
 };
-const STOPPED = new Set(['NOT_SERVED', 'NOT_ELIGIBLE', 'NOT_INVESTING']);
+const STOPPED = new Set(['NOT_SERVED', 'NOT_ELIGIBLE', 'NOT_INVESTING', 'ESAF_DECLINED']);
 
 const yesNo = (v: boolean | null | undefined) => (v === true ? 'Yes' : v === false ? 'No' : '—');
 const csvCell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;

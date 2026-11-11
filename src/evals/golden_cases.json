@@ -397,7 +397,7 @@
   {
    "id": "flow-19",
    "suite": "bot_flow",
-   "title": "No to investing is an investment issue with the BT offer",
+   "title": "No to investing is an investment issue, and ESAF is offered (11 Nov 2026)",
    "steps": [
     {
      "tap_campaign": "en"
@@ -413,9 +413,9 @@
     }
    ],
    "expect": {
-    "bot_step": "NOT_INVESTING",
+    "bot_step": "ESAF_OFFERED",
     "disposition": "ni_investment",
-    "reply_key": "not_investing"
+    "reply_key": "esaf_offer"
    }
   },
   {
@@ -1156,7 +1156,7 @@
     }
    ],
    "expect": {
-    "bot_step": "NOT_INVESTING",
+    "bot_step": "ESAF_OFFERED",
     "disposition": "ni_investment"
    }
   },

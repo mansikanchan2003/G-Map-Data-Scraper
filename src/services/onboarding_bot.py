@@ -82,6 +82,12 @@ WEBINAR_AVAILABILITY = "WEBINAR_AVAILABILITY"
 # Personal guidance since 2026-10-21: the person asks, the bot answers what it
 # knows and leaves the rest to a person, until they say they are interested.
 GUIDANCE_QA = "GUIDANCE_QA"
+# ESAF Small Finance Bank's banking agent, offered to someone who cannot invest
+# ₹3–5 lakh for SBI (11 Nov 2026): offered -> details -> interested or declined.
+ESAF_OFFERED = "ESAF_OFFERED"
+ESAF_DETAILS = "ESAF_DETAILS"
+ESAF_INTERESTED = "ESAF_INTERESTED"
+ESAF_DECLINED = "ESAF_DECLINED"
 
 STEP_LABELS = {
     CHOOSE_LANG: "Choosing a language",
@@ -101,6 +107,10 @@ STEP_LABELS = {
     WEBINAR_CONFIRMED: "Personal guidance confirmed",
     WEBINAR_AVAILABILITY: "Guidance time shared",
     GUIDANCE_QA: "Personal guidance: asking questions",
+    ESAF_OFFERED: "Cannot invest: ESAF offered",
+    ESAF_DETAILS: "ESAF: details sent",
+    ESAF_INTERESTED: "ESAF: interested",
+    ESAF_DECLINED: "ESAF: declined",
 }
 
 # Which flow a language choice leads into.
@@ -1415,8 +1425,9 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
             _say(db, conv, _t(db, conv, "ask_docs", documents=document_list(lang)), buttons=YES_NO("docs", lang))
         elif answer is False:
             _understood(conv)
-            _move(conv, NOT_INVESTING, can_invest=False)
-            said = _say(db, conv, _t(db, conv, "not_investing"))
+            # ESAF's banking agent needs no big investment: offered at once (11 Nov 2026).
+            _move(conv, ESAF_OFFERED, can_invest=False)
+            said = _say(db, conv, _t(db, conv, "esaf_offer"), buttons=YES_NO("esaf", lang))
             # The sheet's "Investment issue": its reply offers the lower-investment
             # option, and the team hears so a person follows it up.
             from src.services import followups, handover
@@ -1464,7 +1475,38 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
         else:
             _fallback(db, conv, _t(db, conv, "not_eligible"))
 
-    elif step in (NOT_INVESTING, HANDOVER, WEBINAR_CONFIRMED, WEBINAR_AVAILABILITY):
+    elif step == ESAF_OFFERED:
+        answer = _answer(msg, "esaf")
+        if answer is True:
+            _understood(conv)
+            _move(conv, ESAF_DETAILS)
+            _say(db, conv, _t(db, conv, "esaf_details"), buttons=YES_NO("esafgo", lang))
+        elif answer is False:
+            _understood(conv)
+            _move(conv, ESAF_DECLINED, esaf=False)
+            _say(db, conv, _t(db, conv, "esaf_no"))
+        else:
+            _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n" + _t(db, conv, "esaf_offer"),
+                      buttons=YES_NO("esaf", lang))
+
+    elif step == ESAF_DETAILS:
+        answer = _answer(msg, "esafgo")
+        if answer is True:
+            _understood(conv)
+            _move(conv, ESAF_INTERESTED, esaf=True)
+            _say(db, conv, _t(db, conv, "esaf_yes"))
+            # The team calls: the ₹1,999 registration, Aceware's shop visit and the agreement.
+            from src.services import handover
+            handover.record(db, conv, "int_esaf", "bot", note="Wants to register as an ESAF banking agent")
+        elif answer is False:
+            _understood(conv)
+            _move(conv, ESAF_DECLINED, esaf=False)
+            _say(db, conv, _t(db, conv, "esaf_no"))
+        else:
+            _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n" + _t(db, conv, "esaf_details"),
+                      buttons=YES_NO("esafgo", lang))
+
+    elif step in (NOT_INVESTING, HANDOVER, WEBINAR_CONFIRMED, WEBINAR_AVAILABILITY, ESAF_INTERESTED, ESAF_DECLINED):
         _fallback(db, conv, _t(db, conv, "acknowledge"))
 
     else:

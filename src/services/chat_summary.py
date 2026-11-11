@@ -50,6 +50,13 @@ STEP_NEXT = {
                        "boliye.", None),
     bot.NOT_INVESTING: ("Inhone kaha invest nahi kar sakte. Samjhaiye ki paise ka ek hissa unke e-wallet mein unka hi "
                         "rehta hai, aur poochiye kya ₹3–5 lakh ho sakta hai.", "invest_explained"),
+    bot.ESAF_OFFERED: ("SBI ke liye invest nahi kar sakte; bot ne ESAF banking agent ka option bataya. Poochiye kya "
+                       "woh iske baare mein jaanna chahenge.", "esaf_offer"),
+    bot.ESAF_DETAILS: ("ESAF ki details bhej di hain (₹1,999 registration, Micro ATM ₹1,300 + GST). Poochiye kya aage "
+                       "badhna hai.", "esaf_details"),
+    bot.ESAF_INTERESTED: ("ESAF banking agent banna chahte hain. Call karke ₹1,999 registration, Aceware ka shop "
+                          "verification aur agreement samjhaiye.", None),
+    bot.ESAF_DECLINED: ("ESAF ke liye bhi mana kiya. Politely thank you boliye.", None),
     bot.HANDOVER: ("Teen baar galat PIN code ke baad bot ne inhe team ko diya. Call kijiye ya PIN dobara maangiye.", "ask_pin"),
     bot.GUIDANCE_QA: ("Personal guidance maangi hai: bot inke sawaalon ke jawab de raha hai. Jo sawaal aapke liye "
                       "chhode hain unka jawab dijiye, aur jab ready hon to Interested tap karne ko kahiye.", None),
@@ -77,6 +84,10 @@ STEP_HINGLISH = {
     bot.WEBINAR_CONFIRMED: "Personal guidance confirm",
     bot.WEBINAR_AVAILABILITY: "Guidance ka time bata diya",
     bot.GUIDANCE_QA: "Personal guidance: sawaal pooch rahe hain",
+    bot.ESAF_OFFERED: "ESAF ka option bataya",
+    bot.ESAF_DETAILS: "ESAF ki details bheji",
+    bot.ESAF_INTERESTED: "ESAF mein interested",
+    bot.ESAF_DECLINED: "ESAF ke liye bhi mana",
 }
 
 

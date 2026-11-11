@@ -117,6 +117,14 @@ CATEGORIES: List[Category] = [
         # lead is kept with the qualified leads for another proposal (BT, HDFC...).
         Sub("int_not_sbi", "Not qualified for SBI branch code", "interested",
             "Journey continues; kept for another proposal (BT, HDFC...)", "Bot"),
+        # Not in the sheet (11 Nov 2026): could not invest for SBI, and said yes to ESAF Small Finance
+        # Bank's banking agent. The team calls to take the ₹1,999 registration, arrange Aceware's
+        # shop verification and the agreement.
+        Sub("int_esaf", "Interested in ESAF", "interested",
+            "Call: ₹1,999 registration, Aceware's shop verification, agent agreement", "Human",
+            (Step("esaf_call", NOW, HUMAN, TASK, cancel_on_reply=False,
+                  task="Call them to register as an ESAF banking agent (₹1,999), then arrange Aceware's visit"),),
+            email=True),
         # The end of AutoGMap's journey: documents are in, and Eko Acquisition
         # takes over. The bot's own outcome once documents are uploaded.
         Sub("int_visit", "Physical visit required", "interested",

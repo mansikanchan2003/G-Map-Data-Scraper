@@ -55,6 +55,9 @@ STEP_OF: Dict[str, tuple] = {
     "not_served": ("not_served", "PIN code is outside our area", "Told them Eko does not serve there yet", "negative"),
     "not_eligible": ("not_eligible", "Did not meet the education requirement", "Told them politely", "negative"),
     "not_investing": ("not_investing", "Cannot invest right now", "Explained the investment and noted it", "negative"),
+    # Since 11 Nov 2026 the cannot-invest reply offers ESAF's banking agent instead.
+    "esaf_offer": ("not_investing", "Cannot invest right now",
+                   "Offered ESAF Small Finance Bank's banking agent (no big investment)", "negative"),
 }
 # Bot messages that are events rather than steps: (what happened, our action).
 EVENT_OF: Dict[str, tuple] = {
@@ -68,6 +71,9 @@ EVENT_OF: Dict[str, tuple] = {
     "already_submitted": ("Wrote again after uploading", "Told them their documents are already with us"),
     "not_served_again": ("Wrote again from outside our area", "Reminded them Eko does not serve there yet"),
     "guidance_more": ("Asked a question", "Answered it"),
+    "esaf_details": ("Wanted to know about ESAF", "Sent ESAF's details: ₹1,999 registration, Micro ATM ₹1,300 + GST"),
+    "esaf_yes": ("Wants to become an ESAF banking agent", "The team will call to complete the registration"),
+    "esaf_no": ("Said no to ESAF too", "Closed politely"),
 }
 # Checked first: these open a message that goes on with a question.
 _LEADING = ("nudge", "resume")

@@ -322,7 +322,10 @@ def test_saying_no_to_investing_ends_politely(db):
     say(db, SERVED_PIN)
     qualify(db)
     tap(db, "invest:no")
-    assert StubMeta.sent[-1][2] == onboarding_bot.NOT_INVESTING_TEXT
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["en"]["esaf_offer"]
+    tap(db, "esaf:no")                                # ESAF is declined too
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["en"]["esaf_no"]
+    assert conv(db).bot_step == onboarding_bot.ESAF_DECLINED
     say(db, "ok thanks")  # answered politely, once
     assert StubMeta.sent[-1][2] == onboarding_bot.ACKNOWLEDGE
     count = len(StubMeta.sent)
@@ -2116,8 +2119,10 @@ def team_mail(monkeypatch):
 def test_only_dispositions_the_sheet_gives_a_person_email_the_team():
     human = {k for k, s in dz.SUBS.items() if dz.needs_team(s)}
     # The sheet's "Ticket + email" column (the user's sheet, 2026-10-23).
+    # int_esaf (11 Nov 2026, not in the sheet): the team calls to register them for ESAF.
     assert human == {"int_more_info", "rej_credit", "rej_eligibility", "inv_denied",
-                     "ndm_not_applicant", "ndm_unavailable", "hold_later", "hold_financial", "hold_after_date"}
+                     "ndm_not_applicant", "ndm_unavailable", "hold_later", "hold_financial", "hold_after_date",
+                     "int_esaf"}
 
 
 def test_a_disposition_for_a_person_raises_a_ticket_and_emails_the_team(db, client, team_mail):
@@ -2246,9 +2251,11 @@ def test_cannot_invest_offers_the_lower_investment_option_and_tells_the_team(db,
     qualify(db)
     tap(db, "invest:no")
     c = conv(db)
-    assert c.bot_step == onboarding_bot.NOT_INVESTING
+    assert c.bot_step == onboarding_bot.ESAF_OFFERED
     body = StubMeta.sent[-1][2]
-    assert body == bot_messages.MESSAGES["en"]["not_investing"] and "lower-investment" in body
+    # Since 11 Nov 2026 the lower-investment option is ESAF's banking agent, offered at once.
+    assert body == bot_messages.MESSAGES["en"]["esaf_offer"] and "ESAF Small Finance Bank" in body
+    assert [b["id"] for b in StubMeta.sent[-1][3]] == ["esaf:yes", "esaf:no"]
     # Recorded as the sheet's "Investment issue": the bot first (no ticket or email since the
     # user's sheet of 23 Oct), and the reply counts as the nudge, so nothing more is sent now.
     assert c.disposition == "ni_investment" and tickets.open_ticket(db, PHONE) is None and team_mail == []
@@ -2770,7 +2777,7 @@ def test_an_answer_to_the_bots_question_is_not_read_as_a_disposition(db):
     qualify(db)
     say(db, "nahi")                                 # a No to "can you invest?"
     c = conv(db)
-    assert c.bot_step == onboarding_bot.NOT_INVESTING and c.disposition == "ni_investment"
+    assert c.bot_step == onboarding_bot.ESAF_OFFERED and c.disposition == "ni_investment"
 
 
 def test_a_question_is_left_for_the_faq_not_read_as_a_disposition(db):
@@ -4191,3 +4198,49 @@ def test_the_utility_wording_sells_nothing():
         for v, text in texts.items():
             assert not eko_knowledge.vocabulary_problems(text), (purpose, v)
             assert "{" not in text and len(text) < 1024
+
+
+# --- ESAF for those who cannot invest for SBI (11 Nov 2026) ------------------------------------
+
+def test_cannot_invest_leads_to_esaf_and_a_yes_reaches_the_team(db, client, team_mail):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)
+    tap(db, "invest:no")
+    assert conv(db).bot_step == onboarding_bot.ESAF_OFFERED
+    tap(db, "esaf:yes")
+    body, buttons = StubMeta.sent[-1][2], StubMeta.sent[-1][3]
+    assert body == bot_messages.MESSAGES["en"]["esaf_details"]
+    assert "₹1,999" in body and "₹1,300 + GST" in body and [b["id"] for b in buttons] == ["esafgo:yes", "esafgo:no"]
+    tap(db, "esafgo:yes")
+    c = conv(db)
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["en"]["esaf_yes"]
+    assert c.bot_step == onboarding_bot.ESAF_INTERESTED and (c.bot_data or {}).get("esaf") is True
+    assert c.disposition == "int_esaf" and c.disposition_by == "bot"
+    task = [f for f in _followups(db) if f.purpose == "esaf_call"]
+    assert len(task) == 1
+    # On the journey, in plain words.
+    j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
+    whats = [s["what"] for s in j["steps"] if s["what"]]
+    assert "Wanted to know about ESAF" in whats and "Wants to become an ESAF banking agent" in whats
+
+
+def test_esaf_is_offered_in_their_language_and_an_unclear_answer_asks_again(db):
+    tap_campaign(db, lang="gu")
+    say(db, SERVED_PIN)
+    qualify(db)
+    tap(db, "invest:no")
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["gu"]["esaf_offer"]
+    say(db, "hmm")
+    assert bot_messages.MESSAGES["gu"]["esaf_offer"] in StubMeta.sent[-1][2]
+    assert [b["id"] for b in StubMeta.sent[-1][3]] == ["esaf:yes", "esaf:no"]
+    assert conv(db).bot_step == onboarding_bot.ESAF_OFFERED
+
+
+def test_esaf_messages_exist_in_every_language_we_campaign_in():
+    for lang in ("en", "hi", "gu", "pa", "mr", "bn"):
+        for key in ("esaf_offer", "esaf_details", "esaf_yes", "esaf_no"):
+            assert key in bot_messages.MESSAGES[lang], (lang, key)
+        assert "₹1,999" in bot_messages.MESSAGES[lang]["esaf_details"]
+    for key in ("esaf_offer", "esaf_details", "esaf_yes", "esaf_no"):
+        assert key in bot_messages.HINGLISH
