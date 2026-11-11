@@ -382,11 +382,20 @@ def restore(db: Session, phone: str) -> None:
         db.commit()
 
 
-def recorder_contacts(db: Session) -> List[Dict]:
+def _place(conv: WhatsAppConversation) -> Optional[str]:
+    """"District, State" from the PIN they gave the bot, when it was placed."""
+    data = conv.bot_data or {}
+    geo = ((data.get("coverage") or {}).get("geo") or (data.get("typed_pin") or {}).get("geo") or {})
+    parts = [str(geo[k]).title() for k in ("district", "state") if geo.get(k)]
+    return ", ".join(parts) or None
+
+
+def recorder_contacts(db: Session, with_place: bool = False) -> List[Dict]:
     """
     The numbers whose calls the team's call-recorder app may keep (11 Nov 2026):
     everyone on the Applications tab (removed ones left out), with their WhatsApp
     name. Nothing else about them: the app only needs to know which calls to keep.
+    with_place adds "District, State" for the team's own Excel copy (not the API).
     """
     removals = {r.phone for r in db.query(ApplicationRemoval.phone)}
     candidates = [c for c in db.query(WhatsAppConversation)
@@ -398,6 +407,8 @@ def recorder_contacts(db: Session) -> List[Dict]:
         if c.phone not in ours:
             continue
         digits = re.sub(r"\D", "", c.phone)
-        out.append({"phone": c.phone, "local": digits[-10:], "name": c.profile_name,
-                    "since": _iso(c.created_at)})
+        row = {"phone": c.phone, "local": digits[-10:], "name": c.profile_name, "since": _iso(c.created_at)}
+        if with_place:
+            row["place"] = _place(c)
+        out.append(row)
     return sorted(out, key=lambda x: x["since"] or "")

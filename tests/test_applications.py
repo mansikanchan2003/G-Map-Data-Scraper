@@ -497,3 +497,18 @@ def test_members_may_not_listen(client, recordings_dir):
     app.dependency_overrides[current_user] = lambda: User(email="m@eko.co.in", role="member", status="APPROVED")
     assert client.get("/api/v1/call-recordings/export").status_code == 403
     assert client.get("/api/v1/call-recordings/summary").status_code == 403
+    assert client.get("/api/v1/call-recordings/numbers.xlsx").status_code == 403
+
+
+def test_the_call_recorder_excel_has_the_apps_columns_and_the_tabs_people(client):
+    import io
+    from openpyxl import load_workbook
+    r = client.get("/api/v1/call-recordings/numbers.xlsx")
+    assert r.status_code == 200 and "spreadsheetml" in r.headers["content-type"]
+    ws = load_workbook(io.BytesIO(r.content)).active
+    rows = list(ws.iter_rows(values_only=True))
+    assert rows[0] == ("Phone", "Name", "Description", "Active")
+    _, apps = _by_phone(client)
+    assert {row[0] for row in rows[1:]} == {p[-10:] for p in apps}
+    assert all(row[3] == "Yes" and row[2] for row in rows[1:])
+    assert ws["A2"].number_format == "@"            # the number stays text, never 9.00E+09

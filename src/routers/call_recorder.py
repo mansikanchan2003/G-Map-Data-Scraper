@@ -123,6 +123,48 @@ def export_recordings(since: Optional[str] = None, db: Session = Depends(get_db)
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
+@team.get("/numbers.xlsx")
+def numbers_excel(db: Session = Depends(get_db), user: User = Depends(_listener)):
+    """
+    The call-recorder app's list as Excel (Phone | Name | Description | Active), for
+    uploading through the app's own admin panel. The API stays the live list; this is
+    its backup copy. Managers and operators only: it holds every applicant's number.
+    """
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+    from src.services import audit
+
+    rows = applications.recorder_contacts(db, with_place=True)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Applicant numbers"
+    ws.append(["Phone", "Name", "Description", "Active"])
+    for r in rows:
+        ws.append([r["local"], r["name"] or "", r.get("place") or "AutoGMap applicant", "Yes"])
+    head = PatternFill("solid", fgColor="0B4A5A")
+    for c in ws[1]:
+        c.font, c.fill, c.alignment = Font(bold=True, color="FFFFFF"), head, Alignment(vertical="center")
+    for row in ws.iter_rows(min_row=2, max_col=1):
+        row[0].number_format = "@"          # keep the leading digits as typed, never 9.87E+09
+    for col, width in zip("ABCD", (16, 28, 30, 10)):
+        ws.column_dimensions[col].width = width
+    ws.freeze_panes = "A2"
+    if rows:
+        t = Table(displayName="ApplicantNumbers", ref=f"A1:D{len(rows) + 1}")
+        t.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
+        ws.add_table(t)
+    buf = BytesIO()
+    wb.save(buf)
+    audit.write(user, "GET", "/api/v1/call-recordings/numbers.xlsx", 200, {"rows": len(rows)})
+    logger.info(f"call_recorder event=NUMBERS_EXCEL by={user.email} rows={len(rows)}")
+    name = f"autogmap_applicant_numbers_{datetime.now(timezone.utc):%Y%m%d}.xlsx"
+    return Response(content=buf.getvalue(),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
 @team.post("/fetch")
 def fetch_now(db: Session = Depends(get_db), _: User = Depends(_listener)):
     """Fetches new recordings from the app's endpoint now, instead of at the next 15-minute round."""

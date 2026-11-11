@@ -565,6 +565,8 @@ const recBase = () => `${getApiBaseUrl()}/api/v1/call-recordings`;
 export const fetchRecordings = (phone: string) => call<CallRecording[]>(`/conversations/${digits(phone)}/recordings`);
 export const recordingAudioUrl = (id: string) => `${recBase()}/${id}/audio`;
 export const recordingsExportUrl = () => `${recBase()}/export`;
+/** The call-recorder app's list as Excel (Phone | Name | Description | Active), for its admin panel. */
+export const recorderNumbersExcelUrl = () => `${recBase()}/numbers.xlsx`;
 export const fetchRecordingsSummary = async (): Promise<RecordingsSummary> => {
   const res = await fetch(`${recBase()}/summary`, { credentials: 'include' });
   const json = await res.json().catch(() => ({}));

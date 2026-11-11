@@ -6,6 +6,7 @@ import {
   restoreApplication, documentUrl, type Application, type ApplicationStats,
 } from '../api/applications';
 import { formatDateTime } from '../utils/datetime';
+import { recorderNumbersExcelUrl } from '../api/inbox';
 import { QualifiedLeadsView } from './QualifiedLeadsView';
 import { LeadJourneyView } from './LeadJourneyView';
 
@@ -297,6 +298,13 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
               className="h-10 px-4 rounded-lg bg-emerald-500 hover:opacity-90 text-white text-sm font-semibold disabled:opacity-40 flex items-center gap-1.5">
               <Icon name="download" className="text-[18px]" /> Export CSV
             </button>
+            {!readOnly && (
+              <a href={recorderNumbersExcelUrl()} download data-edit
+                title="Everyone on this tab as Phone | Name | Description | Active, for the call-recorder app's admin panel. Upload it there; do not email it."
+                className="h-10 px-4 rounded-lg bg-purple-600 hover:opacity-90 text-white text-sm font-semibold flex items-center gap-1.5">
+                <Icon name="perm_phone_msg" className="text-[18px]" /> Call-recorder Excel
+              </a>
+            )}
             <span className="text-xs text-slate-500 ml-1">{shown.length} shown</span>
           </div>
 
