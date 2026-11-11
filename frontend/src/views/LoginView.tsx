@@ -238,6 +238,11 @@ export const LoginView: React.FC<Props> = ({ onLogin, onSignup, onGoogle }) => {
             </p>
           )}
         </div>
+        <p className="text-center text-[11px] text-slate-500 mt-4">
+          <a href={`${import.meta.env.BASE_URL}privacy.html`} className="hover:text-slate-300 underline-offset-2 hover:underline">
+            Privacy Policy
+          </a>
+        </p>
       </div>
     </div>
   );
