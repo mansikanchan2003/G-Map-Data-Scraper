@@ -655,6 +655,13 @@ def conversation_calls(digits: str, db: Session = Depends(get_db)):
     return ai_calls.for_phone(db, _get_conversation(db, digits).phone)
 
 
+@router.get("/conversations/{digits}/recordings")
+def conversation_recordings(digits: str, db: Session = Depends(get_db)):
+    """Recordings of phone calls with this person, from the call-recorder app, newest first."""
+    from src.services import call_recordings
+    return call_recordings.for_phone(db, _get_conversation(db, digits).phone)
+
+
 @router.get("/dispositions")
 def disposition_options():
     return handover.options()

@@ -13,10 +13,13 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, Response, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from src.database import get_db
+from src.models import User
+from src.routers.auth import current_user
 from src.services import applications
 
 logger = logging.getLogger("gmap_scraper.call_recorder")
@@ -45,3 +48,88 @@ def numbers(request: Request, x_api_key: Optional[str] = Header(None), db: Sessi
     contacts = applications.recorder_contacts(db)
     logger.info(f"call_recorder event=NUMBERS count={len(contacts)}")
     return {"as_of": datetime.now(timezone.utc).isoformat(), "count": len(contacts), "numbers": contacts}
+
+
+@router.post("/recordings", status_code=201)
+async def upload_recording(
+    x_api_key: Optional[str] = Header(None),
+    file: UploadFile = File(...),
+    phone: str = Form(..., max_length=40),
+    recording_id: Optional[str] = Form(None, max_length=200),
+    direction: Optional[str] = Form(None, max_length=20),
+    started_at: Optional[str] = Form(None, max_length=40),
+    duration_seconds: Optional[str] = Form(None, max_length=20),
+    device: Optional[str] = Form(None, max_length=100),
+    db: Session = Depends(get_db),
+):
+    """
+    The app uploads one call's recording (multipart form): the audio file, the
+    other person's number, and if it has them the app's id for the recording,
+    direction (in/out), when it started and how long it was. Only calls with
+    people on the Applications tab are kept; others are refused with 422.
+    """
+    from src.services import audit, call_recordings
+    ok = key_ok(x_api_key)
+    audit.write(SimpleNamespace(email="call-recorder-app", role=None), "POST", "/api/v1/call-recorder/recordings",
+                201 if ok else 401, None)
+    if not ok:
+        raise HTTPException(status_code=401, detail="Missing or wrong API key.")
+    data = await file.read(call_recordings.MAX_BYTES + 1)
+    try:
+        rec = call_recordings.save(db, phone=phone, data=data, content_type=file.content_type, filename=file.filename,
+                                   external_id=recording_id, direction=direction, started_at=started_at,
+                                   duration_seconds=duration_seconds, device=device, source="push")
+    except call_recordings.Refused as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"status": "kept", "recording_id": rec.recording_id}
+
+
+# --- For the team, signed in --------------------------------------------------------------------
+
+team = APIRouter(prefix="/api/v1/call-recordings", tags=["Call recorder"])
+LISTENERS = ("admin", "manager", "operator")
+
+
+def _listener(user: User = Depends(current_user)) -> User:
+    if user.role not in LISTENERS:
+        raise HTTPException(status_code=403, detail="Call recordings are for managers and operators.")
+    return user
+
+
+@team.get("/summary")
+def recordings_summary(db: Session = Depends(get_db), _: User = Depends(_listener)):
+    from src.services import call_recordings
+    return call_recordings.summary(db)
+
+
+@team.get("/{recording_id}/audio")
+def recording_audio(recording_id: str, db: Session = Depends(get_db), _: User = Depends(_listener)):
+    from src.models.inbox import CallRecording
+    rec = db.get(CallRecording, recording_id)
+    if not rec or not os.path.exists(rec.stored_path):
+        raise HTTPException(status_code=404, detail="Recording not found.")
+    return FileResponse(rec.stored_path, media_type=rec.content_type or "application/octet-stream")
+
+
+@team.get("/export")
+def export_recordings(since: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(_listener)):
+    """Every recording as one zip, for Sumit's AI calling agent; the CSV inside keeps only the number's last 4 digits."""
+    from src.services import call_recordings
+    when = call_recordings._aware(since) if since else None
+    data = call_recordings.export_zip(db, when)
+    logger.info(f"call_recorder event=EXPORT by={user.email} bytes={len(data)}")
+    name = f"autogmap_call_recordings_{datetime.now(timezone.utc):%Y%m%d}.zip"
+    return Response(content=data, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@team.post("/fetch")
+def fetch_now(db: Session = Depends(get_db), _: User = Depends(_listener)):
+    """Fetches new recordings from the app's endpoint now, instead of at the next 15-minute round."""
+    from src.services import call_recordings
+    if not call_recordings.source_url():
+        raise HTTPException(status_code=400, detail="The app's recordings endpoint is not set (CALL_RECORDINGS_SOURCE_URL).")
+    try:
+        return call_recordings.fetch(db)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"The app's endpoint did not answer properly ({type(e).__name__}).")

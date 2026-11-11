@@ -13,7 +13,7 @@ from .insights import CampaignInsight, InsightSnapshot
 from .agent_runs import AgentRun
 from .reports import ActionItem, DispositionDaily, DispositionMix, GoalDaily, LeadAlert, NumberUsageDaily
 from .studio import StudioImagePrompt, StudioRealPhoto, StudioReferencePoster
-from .inbox import AICall, AttentionTicket, ChatActivity, FollowUp, LeadJourney, LeadJourneyStep, WhatsAppConversation, WhatsAppMessage, OnboardingDocument
+from .inbox import AICall, AttentionTicket, CallRecording, ChatActivity, FollowUp, LeadJourney, LeadJourneyStep, WhatsAppConversation, WhatsAppMessage, OnboardingDocument
 from .application import ApplicationComment, ApplicationRemoval, QualifiedLead
 from .whatsapp import WhatsAppAccount, WhatsAppTemplate, WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppCampaignLog, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppReply, NumberActivity
 
@@ -39,6 +39,7 @@ __all__ = [
     "AttentionTicket",
     "ChatActivity",
     "AICall",
+    "CallRecording",
     "FollowUp",
     "LeadJourney",
     "LeadJourneyStep",

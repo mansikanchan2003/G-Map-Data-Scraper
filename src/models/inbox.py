@@ -302,3 +302,29 @@ class AICall(Base):
     outcome_at = Column(DateTime(timezone=True), nullable=True)
     summary = Column(Text, nullable=True)
     received_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class CallRecording(Base):
+    """
+    A phone call's recording from the team's call-recorder app (Kavya Ma'am's
+    phone, 11 Nov 2026), kept for training Sumit's AI calling agent. Only calls
+    with people on the Applications tab are kept; the audio file is on disk
+    under CALL_RECORDINGS_DIR.
+    """
+    __tablename__ = "call_recordings"
+
+    recording_id = Column(String(32), primary_key=True)
+    phone = Column(String(20), nullable=False, index=True)
+    source = Column(String(30), nullable=False, default="phone_recorder")
+    # The app's own id for the recording: sent twice, kept once.
+    external_id = Column(String(200), nullable=True, unique=True)
+    # "in" (they called us) or "out" (we called them); None when not said.
+    direction = Column(String(10), nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    duration_seconds = Column(Integer, nullable=True)
+    stored_path = Column(String(500), nullable=False)
+    content_type = Column(String(100), nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    # Whose phone recorded it, as the app says.
+    device = Column(String(100), nullable=True)
+    received_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

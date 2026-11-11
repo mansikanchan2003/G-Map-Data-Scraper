@@ -1,4 +1,5 @@
 import { AICallsCard } from '../components/AICalls';
+import { CallRecordingsCard } from '../components/CallRecordings';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ATTENTION_CHANGED, fetchBotSettings, fetchFaqAnswers, teachTheBot, type FaqAnswer, fetchChatSummary, fetchTickets, fetchConversation, fetchConversations, markConversationRead, setAttention, sendInboxMedia,
@@ -1229,6 +1230,7 @@ export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not
                         <SummaryCard phone={selected} version={`${detail.messages.length}-${detail.needs_attention}`}
                           onUseReply={readOnly ? undefined : putReply} compact />
                         <div className="mt-3"><AICallsCard phone={selected} version={`${detail.messages.length}`} /></div>
+                        <div className="mt-3"><CallRecordingsCard phone={selected} version={`${detail.messages.length}`} /></div>
                       </div>
                     )}
                   </div>
@@ -1343,6 +1345,7 @@ export const InboxView: React.FC<{ readOnly?: boolean; scope?: 'autogmap' | 'not
                   <SummaryCard phone={selected} version={`${detail.messages.length}-${detail.needs_attention}`}
                     onUseReply={readOnly ? undefined : putReply} />
                   <div className="mt-4"><AICallsCard phone={selected} version={`${detail.messages.length}`} /></div>
+                  <div className="mt-4"><CallRecordingsCard phone={selected} version={`${detail.messages.length}`} /></div>
                   <div className="my-4 border-t border-slate-800" />
                   <details className="group">
                     <summary className="flex items-center gap-1.5 text-xs font-semibold text-violet-300 cursor-pointer list-none">

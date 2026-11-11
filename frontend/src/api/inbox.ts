@@ -551,3 +551,23 @@ export const takeOffOptOut = (phone: string) =>
 export const erasePerson = (phone: string, reason: string) =>
   call<{ files: number; messages: number; drive_errors: string[] }>(
     `/conversations/${digits(phone)}/erase`, { method: 'POST', body: JSON.stringify({ reason }) });
+
+/** A phone call's recording from the team's call-recorder app (11 Nov 2026). */
+export interface CallRecording {
+  recording_id: string; phone: string; direction: 'in' | 'out' | null;
+  started_at: string | null; duration_seconds: number | null;
+  content_type: string | null; size_bytes: number | null; device: string | null;
+  source: string; received_at: string | null;
+}
+export interface RecordingsSummary { recordings: number; people: number; seconds: number; pull: boolean; last_received_at: string | null }
+
+const recBase = () => `${getApiBaseUrl()}/api/v1/call-recordings`;
+export const fetchRecordings = (phone: string) => call<CallRecording[]>(`/conversations/${digits(phone)}/recordings`);
+export const recordingAudioUrl = (id: string) => `${recBase()}/${id}/audio`;
+export const recordingsExportUrl = () => `${recBase()}/export`;
+export const fetchRecordingsSummary = async (): Promise<RecordingsSummary> => {
+  const res = await fetch(`${recBase()}/summary`, { credentials: 'include' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.detail || `Request failed (${res.status})`);
+  return json as RecordingsSummary;
+};

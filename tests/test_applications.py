@@ -406,3 +406,94 @@ def test_the_call_recorder_list_needs_the_right_key(client, monkeypatch, server_
     monkeypatch.setenv("CALL_RECORDER_API_KEY", server_key)
     headers = {"X-API-Key": sent} if sent is not None else {}
     assert client.get("/api/v1/call-recorder/numbers", headers=headers).status_code == 401
+
+
+# --- Call recordings from the call-recorder app (11 Nov 2026) ----------------------------------
+
+@pytest.fixture
+def recordings_dir(tmp_path, monkeypatch):
+    from src.services import call_recordings
+    monkeypatch.setattr(call_recordings, "RECORDINGS_DIR", str(tmp_path))
+    monkeypatch.setenv("CALL_RECORDER_API_KEY", KEY)
+    return tmp_path
+
+
+def _upload(client, phone, rid="r1", data=b"ID3audio", ctype="audio/mpeg", key=KEY):
+    return client.post("/api/v1/call-recorder/recordings", headers={"X-API-Key": key},
+                       data={"phone": phone, "recording_id": rid, "direction": "incoming",
+                             "started_at": "2026-11-11 10:05:00", "duration_seconds": "95"},
+                       files={"file": ("call.mp3", data, ctype)})
+
+
+def test_an_uploaded_recording_of_an_applicant_is_kept_and_shown(client, recordings_dir):
+    r = _upload(client, "09000000001")          # the phone's own form of +919000000001
+    assert r.status_code == 201
+    again = _upload(client, "+91 90000 00001")   # the same recording sent twice: kept once
+    assert again.json()["recording_id"] == r.json()["recording_id"]
+    rows = client.get("/api/v1/inbox/conversations/919000000001/recordings").json()
+    assert len(rows) == 1 and rows[0]["direction"] == "in" and rows[0]["duration_seconds"] == 95
+    assert rows[0]["started_at"].startswith("2026-11-11T04:35")     # 10:05 India time
+    audio = client.get(f"/api/v1/call-recordings/{rows[0]['recording_id']}/audio")
+    assert audio.status_code == 200 and audio.content == b"ID3audio"
+
+
+def test_a_call_with_someone_not_on_the_applications_tab_is_refused(client, recordings_dir):
+    assert _upload(client, "+919000000008").status_code == 422       # never in the bot
+    assert _upload(client, "+919811111111").status_code == 422       # anyone else
+    assert _upload(client, "+919000000001", ctype="application/pdf", data=b"%PDF").status_code == 422
+    assert _upload(client, "+919000000001", key="wrong" * 6).status_code == 401
+    assert list(recordings_dir.iterdir()) == []
+
+
+def test_new_recordings_are_fetched_from_the_apps_endpoint(client, recordings_dir, monkeypatch):
+    from src.services import call_recordings
+    monkeypatch.setenv("CALL_RECORDINGS_SOURCE_URL", "https://recorder.example/api/recordings")
+    calls = []
+
+    class Resp:
+        def __init__(self, body=None, content=b"", ctype="audio/mp4"):
+            self.body, self.content, self.headers = body, content, {"content-type": ctype}
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return self.body
+
+    class Http:
+        def get(self, url, headers=None, params=None, timeout=None):
+            calls.append(url)
+            if url.endswith("/recordings"):
+                return Resp({"recordings": [
+                    {"id": 1, "number": "+919000000002", "url": "/files/1.m4a", "type": "outgoing", "duration": 30},
+                    {"id": 2, "number": "+919811111111", "url": "/files/2.m4a"},       # not an applicant
+                ]})
+            return Resp(content=b"m4a-bytes")
+
+    db = TestingSessionLocal()
+    out = call_recordings.fetch(db, Http())
+    assert out["kept"] == 1 and out["skipped"] == 1
+    assert "https://recorder.example/files/2.m4a" not in calls            # never downloaded
+    assert call_recordings.fetch(db, Http())["kept"] == 0                  # already have it
+    rows = call_recordings.for_phone(db, "+919000000002")
+    assert len(rows) == 1 and rows[0]["direction"] == "out" and rows[0]["source"] == "pull"
+    db.close()
+
+
+def test_the_zip_for_sumit_has_every_recording_and_only_the_last_digits(client, recordings_dir):
+    import io
+    import zipfile
+    _upload(client, "+919000000001", rid="a")
+    _upload(client, "+919000000002", rid="b")
+    r = client.get("/api/v1/call-recordings/export")
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    names = z.namelist()
+    assert "recordings.csv" in names and len([n for n in names if n.startswith("recordings/")]) == 2
+    csv = z.read("recordings.csv").decode()
+    assert "9000000001" not in csv and ",0001" in csv
+
+
+def test_members_may_not_listen(client, recordings_dir):
+    from src.models import User
+    from src.routers.auth import current_user
+    app.dependency_overrides[current_user] = lambda: User(email="m@eko.co.in", role="member", status="APPROVED")
+    assert client.get("/api/v1/call-recordings/export").status_code == 403
+    assert client.get("/api/v1/call-recordings/summary").status_code == 403

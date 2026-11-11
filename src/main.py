@@ -96,6 +96,10 @@ async def lifespan(app: FastAPI):
     if os.environ.get("FOLLOWUP_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
         from src.services import followups
         followups.start()
+    # Fetches new call recordings from the call-recorder app, when its endpoint is set.
+    if os.environ.get("CALL_RECORDINGS_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
+        from src.services import call_recordings
+        call_recordings.start()
     yield
     # --- Shutdown ---
     try:
@@ -104,6 +108,8 @@ async def lifespan(app: FastAPI):
         photo_queue.stop()
         nudges.stop()
         followups.stop()
+        from src.services import call_recordings
+        call_recordings.stop()
     except Exception:
         pass
     logger.info("Shutdown complete")
@@ -259,6 +265,7 @@ app.include_router(inbox.router)
 app.include_router(ai_calls.router)
 from src.routers import call_recorder  # noqa: E402
 app.include_router(call_recorder.router)
+app.include_router(call_recorder.team)
 app.include_router(partners.router)
 app.include_router(applications.router)
 app.include_router(agents.router)
