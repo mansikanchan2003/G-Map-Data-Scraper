@@ -133,6 +133,8 @@ services:
       # Google sign-in: the OAuth Web client id from Google Cloud (public, not a secret).
       # Empty: the Google button is hidden and only email + password works.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # The call-recorder app's key (X-API-Key on /api/v1/call-recorder/). 24+ characters; empty refuses all.
+      CALL_RECORDER_API_KEY: ${CALL_RECORDER_API_KEY:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}

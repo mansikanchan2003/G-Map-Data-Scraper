@@ -377,3 +377,32 @@ def test_qualified_and_strongly_qualified_leads_are_kept_with_the_nearest_branch
     db.refresh(far)
     assert far.branch_code is None and far.branch_circle is None and far.branch_distance_km is None
     db.close()
+
+
+# --- The call-recorder app's list of numbers (11 Nov 2026) -------------------------------------
+
+KEY = "k" * 32
+
+
+def test_the_call_recorder_app_gets_only_the_applications_numbers(client, monkeypatch):
+    monkeypatch.setenv("CALL_RECORDER_API_KEY", KEY)
+    client.delete("/api/v1/applications/919000000005")     # taken off the tab: not recorded
+    r = client.get("/api/v1/call-recorder/numbers", headers={"X-API-Key": KEY})
+    assert r.status_code == 200
+    body = r.json()
+    _, apps = _by_phone(client)
+    got = {n["phone"]: n for n in body["numbers"]}
+    assert set(got) == set(apps) and body["count"] == len(apps)
+    assert "+919000000005" not in got and "+919000000008" not in got and "+919000000009" not in got
+    assert got["+919000000001"] == {**got["+919000000001"], "local": "9000000001", "name": "Strong & submitted"}
+    # Names and numbers only: nothing else about the person.
+    assert set(got["+919000000001"]) == {"phone", "local", "name", "since"}
+
+
+@pytest.mark.parametrize("server_key, sent", [
+    (KEY, None), (KEY, "wrong"), ("", ""), ("short", "short"),
+])
+def test_the_call_recorder_list_needs_the_right_key(client, monkeypatch, server_key, sent):
+    monkeypatch.setenv("CALL_RECORDER_API_KEY", server_key)
+    headers = {"X-API-Key": sent} if sent is not None else {}
+    assert client.get("/api/v1/call-recorder/numbers", headers=headers).status_code == 401

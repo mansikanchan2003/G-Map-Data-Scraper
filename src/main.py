@@ -162,6 +162,8 @@ PUBLIC_API_PREFIXES = (
     "/r/",
     "/api/v1/whatsapp/webhook",
     "/api/v1/calls/voxomos/webhook",
+    # Its own key (X-API-Key), checked in the route.
+    "/api/v1/call-recorder/",
 )
 
 
@@ -255,6 +257,8 @@ app.include_router(template_studio.router)
 app.include_router(insights.router)
 app.include_router(inbox.router)
 app.include_router(ai_calls.router)
+from src.routers import call_recorder  # noqa: E402
+app.include_router(call_recorder.router)
 app.include_router(partners.router)
 app.include_router(applications.router)
 app.include_router(agents.router)
