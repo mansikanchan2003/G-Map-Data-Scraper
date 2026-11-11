@@ -118,11 +118,11 @@ export const AutopilotPanel: React.FC = () => {
             </button>
           </div>
         </div>
-        <div className="relative grid grid-cols-3 gap-3 mt-4">
+        <div className="relative grid grid-cols-3 gap-2 sm:gap-3 mt-4">
           {([['Jobs today', today.jobs, 'work', '#7dd3fc'], ['New businesses', today.businesses_saved, 'storefront', '#6ee7b7'],
              ['CAPTCHAs', today.captchas, 'gpp_maybe', '#fcd34d']] as const).map(([k, v, icon, colour]) => (
-            <div key={k} className="rounded-xl bg-white/10 px-3.5 py-2.5">
-              <div className="flex items-center gap-1.5 text-[11px] text-white/70">
+            <div key={k} className="rounded-xl bg-white/10 px-2.5 sm:px-3.5 py-2.5 min-w-0">
+              <div className="flex items-center gap-1.5 text-[11px] text-white/70 min-w-0 break-words">
                 <span className="material-symbols-outlined text-[15px]" style={{ color: colour }}>{icon}</span>{k}
               </div>
               <div className="text-xl font-semibold tabular-nums mt-0.5">{(v ?? 0).toLocaleString('en-IN')}</div>

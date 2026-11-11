@@ -19,6 +19,18 @@
   html {
     font-size: 17px;
   }
+  /* Laptops at 125–150% Windows scaling show the page 1280–1439px wide: at
+     17px it looked oversized there (the user, 11 Nov 2026). One step down
+     keeps the proportions and fits more on screen; big monitors keep 17px. */
+  @media (min-width: 1024px) and (max-width: 1439px) {
+    html { font-size: 15px; }
+  }
+  /* Phones: 16px, so cards and tables fit the narrow screen. */
+  @media (max-width: 639px) {
+    html { font-size: 16px; }
+    /* A long email or number wraps instead of pushing out of its card. */
+    main { overflow-wrap: break-word; }
+  }
 
   body {
     font-family: var(--font-sans);

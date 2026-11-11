@@ -32,7 +32,11 @@ export const AttentionAlerts: React.FC = () => {
   const [resolved, setResolved] = useState<Ticket[]>([]);
   const [seen, setSeen] = useState<string[]>(readSeen);
   const [folded, setFolded] = useState(() => {
-    try { return sessionStorage.getItem('attention-folded') === '1'; } catch { return false; }
+    // On a phone the open stack covers the whole page: it starts folded there (a red pill), until tapped.
+    try {
+      const saved = sessionStorage.getItem('attention-folded');
+      return saved === null ? window.innerWidth < 640 : saved === '1';
+    } catch { return window.innerWidth < 640; }
   });
   const [, tick] = useState(0);
   // In the Inbox the list already shows them; the stack folds there so it
@@ -91,7 +95,7 @@ export const AttentionAlerts: React.FC = () => {
     return (<>
       <button onClick={() => { if (inInbox) { window.location.hash = `inbox/${alerts[0].phone.replace(/\D/g, '')}`; } else setFolded(false); }}
         title={inInbox ? 'Open the latest conversation that needs attention' : 'Show the conversations that need attention'}
-        className="fixed top-16 right-3 z-50 inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-full bg-rose-600 text-white text-xs font-semibold shadow-lg cursor-pointer animate-pulse">
+        className="fixed bottom-4 sm:bottom-auto sm:top-16 right-3 z-50 inline-flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-full bg-rose-600 text-white text-xs font-semibold shadow-lg cursor-pointer animate-pulse">
         <span className="material-symbols-outlined text-[18px]">priority_high</span>
         {alerts.length} ticket{alerts.length === 1 ? '' : 's'} raised · need{alerts.length === 1 ? 's' : ''} attention
       </button>

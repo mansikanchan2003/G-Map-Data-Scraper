@@ -1043,8 +1043,8 @@ export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean; isAdmin?
         {/* The headline: implicit acceptance against its target, in the app's deep-teal banner (dark in both themes). */}
         <section className="rounded-2xl overflow-hidden shadow-md text-white"
           style={{ background: 'linear-gradient(120deg, #0a3543 0%, #16435a 55%, #1d5a6e 100%)' }}>
-          <div className="p-6 flex flex-col lg:flex-row gap-6 lg:items-center">
-            <div className="flex items-center gap-6 flex-1 min-w-0">
+          <div className="p-4 sm:p-6 flex flex-col lg:flex-row gap-6 lg:items-center">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 flex-1 min-w-0">
               <Ring value={o?.acceptance_rate ?? null} target={q?.targets.acceptance_rate} color={onTarget ? '#34d399' : '#f9ab10'}>
                 <span className="text-4xl font-semibold tabular-nums">{pct(o?.acceptance_rate)}</span>
                 <span className="text-[11px] text-white/70">kept as it was</span>

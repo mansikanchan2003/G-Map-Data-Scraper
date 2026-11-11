@@ -165,8 +165,8 @@ export const TemplateStudioView: React.FC<{ can?: (t: NavTab) => boolean }> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-950 text-slate-100 p-6 overflow-y-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-950 text-slate-100 p-4 sm:p-6 overflow-y-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <BackToParent tab="whatsapp-studio" can={can} />
           <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Template Studio</h1>

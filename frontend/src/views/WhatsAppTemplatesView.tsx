@@ -511,14 +511,14 @@ export const WhatsAppTemplatesView: React.FC<{ can?: (t: NavTab) => boolean }> =
   };
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-950 text-slate-100 p-6 overflow-y-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-950 text-slate-100 p-4 sm:p-6 overflow-y-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-slate-100 tracking-tight">Message Templates</h1>
           <p className="text-xs text-slate-400 mt-0.5">Manage your WhatsApp message templates</p>
         </div>
         {!isCreating && (
-          <div className="flex items-center gap-2" data-edit>
+          <div className="flex flex-wrap items-center gap-2" data-edit>
           {(!can || can('whatsapp-studio')) && (
             <SubPageButton tab="whatsapp-studio" label="Template Studio" icon="auto_awesome" className="h-8 text-xs bg-violet-600 text-white" />
           )}

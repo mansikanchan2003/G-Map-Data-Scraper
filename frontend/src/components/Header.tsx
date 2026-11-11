@@ -127,14 +127,14 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </button>
 
-        <div className="h-4 w-px bg-slate-800" />
+        <div className="hidden sm:block h-4 w-px bg-slate-800" />
 
         {/* Utility Icon Cluster */}
-        <div className="flex items-center gap-1 pl-1">
+        <div className="flex items-center gap-1 sm:pl-1">
           <button
             onClick={onSyncBackend}
             disabled={isSyncing}
-            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="hidden sm:flex w-8 h-8 items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             title={isSyncing ? 'Syncing with backend...' : 'Refresh telemetry from the backend'}
           >
             <span className={`material-symbols-outlined text-[18px] ${isSyncing ? 'animate-spin' : ''}`}>
@@ -143,7 +143,7 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
           <button
             onClick={onOpenSettings}
-            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded transition-colors cursor-pointer"
+            className="hidden sm:flex w-8 h-8 items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded transition-colors cursor-pointer"
             title="Backend Settings"
           >
             <span className="material-symbols-outlined text-[18px]">tune</span>
