@@ -4,6 +4,7 @@ import {
   fetchGrowthPlan, setRevenueGoal, type Beyond, type BusinessSummary, type CreativeRow, type GrowthPlan as Plan, type GrowthRow,
 } from '../api/insights';
 import { formatDateTime } from '../utils/datetime';
+import { BranchPlanCard } from './BranchPlan';
 
 /**
  * The lead goal at the top of Campaign Insights: leads so far against the
@@ -950,6 +951,7 @@ export const GrowthPlan: React.FC = () => {
     <div className="space-y-5">
       <Goal plan={plan} />
       <NextCampaignCard plan={plan} />
+      <BranchPlanCard plan={plan.branch_plan} />
       {plan.business &&<Business b={plan.business} plan={plan} onSaved={load} />}
       <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
         <NextSteps plan={plan} />

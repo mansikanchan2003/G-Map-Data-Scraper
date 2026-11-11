@@ -282,6 +282,8 @@ def load_facts(db: Session, campaign_ids: Optional[Iterable[str]] = None,
             **_funnel(outcomes.get(r.recipient_id), r.recipient_id in responded),
             "failure_code": r.failure_code,
             "tracked_link": info["_tracked_link"],
+            # Where the business is, for the SBI branch plan (growth_plan.branch_plan); never shown.
+            "_coords": (b.latitude, b.longitude) if b is not None and b.latitude is not None else None,
         })
     return facts
 

@@ -79,7 +79,9 @@ def db(monkeypatch, tmp_path):
         yield session
     finally:
         session.rollback()
-        for model in (WhatsAppMessage, WhatsAppConversation, WhatsAppLinkClick, WhatsAppButtonClick,
+        from src.models.location import Location
+        from src.models.sbi_branch import SbiBranch
+        for model in (SbiBranch, Location, WhatsAppMessage, WhatsAppConversation, WhatsAppLinkClick, WhatsAppButtonClick,
                       WhatsAppCampaignRecipient, WhatsAppCampaign, WhatsAppTemplate, Business, Category, AppSetting):
             session.query(model).delete()
         session.commit()
@@ -446,3 +448,61 @@ def test_calls_are_suggested_for_when_people_write_back(db):
 def test_without_anyone_left_to_message_there_is_no_proposal(db):
     campaign(db, 40)
     assert gp.plan(db)["next_campaign"] is None
+
+
+# --- The SBI branch plan: a campaign a day around our branches (11 Nov 2026) --------------------
+
+def _branch(db, code, name, pin, lat, lon, district):
+    from src.models.location import Location
+    from src.models.sbi_branch import SbiBranch
+    db.add(SbiBranch(branch_code=code, branch_name=name, pincode=pin, district=district, module="AO RAJKOT"))
+    db.add(Location(location_id=f"L{code}", pincode=pin, latitude=lat, longitude=lon, district=district))
+    db.commit()
+
+
+def _near(db, n, lat, lon, category, start):
+    for i in range(start, start + n):
+        bid = uuid.uuid4().hex[:16]
+        db.add(Business(business_id=bid, job_id="J", name="b", phone=_phone(i), category=category,
+                        district="X", state="Gujarat", source_query="q", dedup_key=bid,
+                        latitude=lat + 0.001 * (i % 10), longitude=lon))
+    db.commit()
+
+
+def test_the_branch_plan_puts_a_campaign_a_day_where_people_answered(db):
+    _branch(db, "60086", "VINCHHIYA", "360055", 22.21, 71.37, "Rajkot")
+    _branch(db, "60108", "MULI", "363510", 22.64, 71.46, "Surendranagar")
+    _branch(db, "99999", "FAR AWAY", "110001", 28.63, 77.22, "New Delhi")
+    # 60 messaged near Vinchhiya, 12 of them started applying.
+    phones = campaign(db, 60, district="Rajkot")
+    for b in db.query(Business).filter(Business.phone.in_(phones)):
+        b.latitude, b.longitude = 22.22, 71.37
+    db.commit()
+    for p in phones[:12]:
+        person(db, p, bot.AWAIT_EDUCATION, coverage=SERVED)
+    campaign(db, 60, district="Surat", start=8000)       # elsewhere, nobody answered
+    _near(db, 120, 22.21, 71.37, "Kiosk", 5000)          # left near Vinchhiya
+    _near(db, 300, 22.64, 71.46, "Travel agent", 6000)   # left near Muli, never tried
+    _near(db, 40, 25.0, 75.0, "Kiosk", 7000)             # near no branch of ours
+
+    p = gp.plan(db)["branch_plan"]
+    first = p["days"][0]
+    assert first["slots"][0]["branch_name"] == "Vinchhiya"        # it answered
+    assert first["label"].startswith(("Today", "Tomorrow"))
+    assert first["people"] == p["daily"] >= gp.CAMPAIGN_MIN
+    assert first["slots"][0]["kinds"][0]["category"] == "Kiosk"
+    by = {b["branch_name"]: b for b in p["branches"]}
+    assert by["Vinchhiya"]["sent"] == 60 and by["Vinchhiya"]["left"] == 120 and by["Vinchhiya"]["tried"]
+    assert by["Muli"]["left"] == 300 and not by["Muli"]["tried"]
+    assert by["Far Away"]["left"] == 0
+    assert p["left_near_branches"] == 420                           # the 40 far away are not counted
+    # Never more people than are left, over the week.
+    assert p["week_people"] <= 420 and all(d["people"] <= p["daily"] for d in p["days"])
+    # Expected people at each step follow the blended rates, step by step.
+    e = first["expect"]
+    assert e["engaged"] >= e["interested"] >= e["qualified"] >= e["lead"] >= 0
+
+
+def test_without_branches_there_is_no_branch_plan(db):
+    campaign(db, 10)
+    assert gp.plan(db)["branch_plan"] is None

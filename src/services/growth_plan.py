@@ -786,6 +786,163 @@ def next_campaign(db: Session, g: dict, book: dict, t: dict, pool: Dict[str, Cou
     }
 
 
+# --- The SBI branch plan: where to campaign each day, around our branches ------------------
+# (the user, 11 Nov 2026). Each business belongs to its nearest SBI branch within
+# applications.BRANCH_MAX_KM (50 km). A branch's own results are blended with the
+# overall rate, weighted as if the overall rate had BRANCH_PRIOR messages behind it,
+# so a branch with ten messages and one lead is not promised one lead in ten.
+BRANCH_PRIOR = 100
+BRANCH_PLAN_DAYS = 7
+
+
+def _blend(k: int, n: int, overall: float) -> float:
+    return (k + BRANCH_PRIOR * overall) / (n + BRANCH_PRIOR)
+
+
+def branch_plan(db: Session, g: dict, book: dict) -> Optional[dict]:
+    """
+    One campaign a day for the next week, around our SBI branches: which
+    branch's area, how many people, which kinds of business, and what each
+    should bring at each step. Branches that answered come first; a day with
+    too few people left near one branch tops up from the next.
+    """
+    from src.models.sbi_branch import SbiBranch
+    from src.services import applications, campaign_approval
+
+    branches = applications._branches(db)
+    if not branches:
+        return None
+    rows = {b.branch_code: b for b in db.query(SbiBranch).all()}
+
+    def nearest(coords):
+        hit = applications._nearest_branch(branches, list(coords)) if coords else None
+        return hit["branch_code"] if hit else None
+
+    # What campaigns brought so far, branch by branch.
+    facts = book["_facts"]
+    sent = len(facts)
+    stages = [k for k, _ in ci.STAGES]
+    overall = {k: _rate(sum(f.get(k, 0) for f in facts), sent) for k in stages}
+    done: Dict[str, Counter] = {}
+    for f in facts:
+        code = nearest(f.get("_coords"))
+        if code:
+            c = done.setdefault(code, Counter())
+            c["sent"] += 1
+            for k in stages:
+                c[k] += f.get(k, 0)
+
+    # Who is left to message near each branch: as _untapped, by coordinates.
+    messaged = {_last10(p) for (p,) in db.query(WhatsAppCampaignRecipient.phone)}
+    left: Dict[str, Counter] = {}
+    seen = set()
+    q = (db.query(Business.phone, Business.category, Business.latitude, Business.longitude)
+         .filter(Business.is_valid.is_(True), CONTACTABLE, NOT_PARTNER, Business.phone.isnot(None),
+                 Business.latitude.isnot(None)))
+    for phone, category, lat, lon in q:
+        d = _last10(phone)
+        if len(d) != 10 or d[0] not in "6789" or d in messaged or d in seen:
+            continue
+        seen.add(d)
+        code = nearest((lat, lon))
+        if code:
+            left.setdefault(code, Counter())[category or "Unknown"] += 1
+
+    summary = []
+    for b in branches:
+        code = b["branch_code"]
+        row = rows.get(code)
+        c = done.get(code, Counter())
+        rates = {k: _blend(c[k], c["sent"], overall[k]) for k in stages}
+        summary.append({
+            "branch_code": code, "branch_name": (b["branch_name"] or "").title(), "pincode": b["pincode"],
+            "ao": b.get("ao"), "district": (row.district or "").title() if row else None,
+            "left": sum(left.get(code, Counter()).values()), "sent": c["sent"],
+            "results": {k: c[k] for k in stages}, "rates": rates,
+            "tried": c["sent"] > 0,
+        })
+    # Judged as Insights judges (the furthest step with results so far), then leads, then
+    # the most people left: with few leads yet, a branch whose people started applying
+    # must not fall behind one never tried.
+    summary.sort(key=lambda s: (-s["rates"][book["judged_on"]], -s["rates"]["lead"], -s["left"]))
+
+    # How many a day: the goal's share at today's rate, between the fewest that
+    # teaches something and the most one campaign sends without a second approval.
+    per_lead = overall["lead"]
+    days_left = max(g["days_left"], 1)
+    should_get = g["still_needed"] / days_left if g["still_needed"] else 0
+    approval = campaign_approval.approval_min()
+    cap = min(approval - 1 if approval > CAMPAIGN_MIN else CAMPAIGN_MAX, CAMPAIGN_MAX)
+    for_goal = math.ceil(should_get / per_lead) if should_get and per_lead else CAMPAIGN_MIN
+    daily = min(max(for_goal, CAMPAIGN_MIN), cap)
+
+    hour = _best_slot(facts, "time_of_day", book["judged_on"] if any(f.get(book["judged_on"]) for f in facts)
+                      else "responded")
+    send_time = hour["name"] if hour else DEFAULT_SEND["time_of_day"]
+    start = date.fromisoformat(_next_send(send_time)["date"])
+
+    pool = {s["branch_code"]: Counter(left.get(s["branch_code"], Counter())) for s in summary}
+    by_code = {s["branch_code"]: s for s in summary}
+    order = [s["branch_code"] for s in summary]
+    days = []
+    for i in range(BRANCH_PLAN_DAYS):
+        need, slots = daily, []
+        # The best branch with anyone left leads the day; the next ones top it up.
+        for code in list(order):
+            if need <= 0:
+                break
+            have = sum(pool[code].values())
+            if not have or any(s["branch_code"] == code for s in slots):
+                continue
+            take = min(need, have)
+            kinds, got = [], 0
+            for cat, n in pool[code].most_common():
+                if got >= take:
+                    break
+                use = min(n, take - got)
+                kinds.append({"category": cat, "people": use})
+                pool[code][cat] -= use
+                got += use
+            pool[code] += Counter()       # drop the emptied kinds
+            s = by_code[code]
+            slots.append({"branch_code": code, "branch_name": s["branch_name"], "pincode": s["pincode"],
+                          "district": s["district"], "ao": s["ao"], "people": take, "kinds": kinds[:4],
+                          "expect": {k: round(take * s["rates"][k], 2) for k in stages}})
+            need -= take
+            if len(slots) == 3:
+                break
+        if not slots:
+            break
+        day = start + timedelta(days=i)
+        people = sum(s["people"] for s in slots)
+        days.append({
+            "date": day.isoformat(),
+            "label": ("Today" if day == datetime.now(timezone.utc).astimezone(IST).date() else
+                      "Tomorrow" if day == datetime.now(timezone.utc).astimezone(IST).date() + timedelta(days=1)
+                      else day.strftime("%A")) + day.strftime(", %d %b").replace(" 0", " "),
+            "slots": slots, "people": people,
+            "expect": {k: round(sum(s["expect"][k] for s in slots), 2) for k in stages},
+        })
+
+    week_people = sum(d["people"] for d in days)
+    return {
+        "days": days,
+        "branches": summary,
+        "send_time": send_time,
+        "daily": daily,
+        "for_goal": for_goal,
+        "cap": cap,
+        "left_near_branches": sum(s["left"] for s in summary),
+        "week_people": week_people,
+        "week_expect": {k: round(sum(d["expect"][k] for d in days), 2) for k in stages},
+        "overall_rates": overall,
+        "messages_sent": sent,
+        "max_km": applications.BRANCH_MAX_KM,
+        "judged_on": book["judged_on"],
+        "judged_on_label": ci.STAGE_LABELS[book["judged_on"]],
+    }
+
+
 def plan(db: Session) -> dict:
     """The whole plan: goal, funnel, warm people, targets, creative lessons and next steps."""
     facts = ci.load_facts(db)
@@ -816,6 +973,7 @@ def plan(db: Session) -> dict:
         "creative": c,
         "beyond": out,
         "next_campaign": next_campaign(db, g, book, t, pool),
+        "branch_plan": branch_plan(db, g, book),
         "next_steps": next_steps(g, f, warm, t, c, book, out),
     }
 

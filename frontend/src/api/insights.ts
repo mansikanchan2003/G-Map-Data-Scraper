@@ -236,6 +236,8 @@ export interface GrowthPlan {
   };
   /** The agent's proposal for the next campaign; null when nobody is left to message. */
   next_campaign?: NextCampaign | null;
+  /** A campaign a day for the next week around our SBI branches (11 Nov 2026). */
+  branch_plan?: BranchPlan | null;
   /** icon: a Material Symbols name. */
   next_steps: { title: string; detail: string; why: string; impact: 'high' | 'medium' | 'low'; icon?: string }[];
   /** What happens after AutoGMap, from Kiosk KAI (the form and TARA); null without the app's Kiosk KAI key. */
@@ -356,3 +358,21 @@ export const askKai = (question: string) =>
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question }),
   });
 export const fetchAsked = (id: string) => call<AskState>(`/ask/${id}`);
+
+/** One branch's share of a day's campaign. */
+export interface BranchSlot {
+  branch_code: string; branch_name: string; pincode: string; district: string | null; ao: string | null;
+  people: number; kinds: { category: string; people: number }[]; expect: Record<Stage, number>;
+}
+export interface BranchDay { date: string; label: string; slots: BranchSlot[]; people: number; expect: Record<Stage, number> }
+export interface BranchRow {
+  branch_code: string; branch_name: string; pincode: string; ao: string | null; district: string | null;
+  left: number; sent: number; results: Record<Stage, number>; rates: Record<Stage, number>; tried: boolean;
+}
+export interface BranchPlan {
+  days: BranchDay[]; branches: BranchRow[]; send_time: string; daily: number; for_goal: number; cap: number;
+  left_near_branches: number; week_people: number; week_expect: Record<Stage, number>;
+  overall_rates: Record<Stage, number>; messages_sent: number; max_km: number;
+  /** The step branches are ranked by, as Insights judges campaigns. */
+  judged_on: Stage; judged_on_label: string;
+}
