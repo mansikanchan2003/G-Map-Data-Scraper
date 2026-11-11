@@ -396,7 +396,8 @@ def test_the_call_recorder_app_gets_only_the_applications_numbers(client, monkey
     assert "+919000000005" not in got and "+919000000008" not in got and "+919000000009" not in got
     assert got["+919000000001"] == {**got["+919000000001"], "local": "9000000001", "name": "Strong & submitted"}
     # Names and numbers only: nothing else about the person.
-    assert set(got["+919000000001"]) == {"phone", "local", "name", "since"}
+    assert set(got["+919000000001"]) == {"phone", "local", "name", "since", "test"}
+    assert not any(n["test"] for n in body["numbers"])
 
 
 @pytest.mark.parametrize("server_key, sent", [
@@ -512,3 +513,25 @@ def test_the_call_recorder_excel_has_the_apps_columns_and_the_tabs_people(client
     assert {row[0] for row in rows[1:]} == {p[-10:] for p in apps}
     assert all(row[3] == "Yes" and row[2] for row in rows[1:])
     assert ws["A2"].number_format == "@"            # the number stays text, never 9.00E+09
+
+
+def test_the_teams_test_phones_are_listed_and_their_recordings_kept_apart(client, recordings_dir, monkeypatch):
+    import io
+    import zipfile
+    # A team phone, and an applicant's number listed as a test too (the applicant wins).
+    monkeypatch.setenv("CALL_RECORDER_TEST_NUMBERS", "+91 98111 22233, 09000000001, 12")
+    body = client.get("/api/v1/call-recorder/numbers", headers={"X-API-Key": KEY}).json()
+    tests = [n for n in body["numbers"] if n["test"]]
+    assert tests == [{"phone": "+919811122233", "local": "9811122233", "name": "Test number", "since": None, "test": True}]
+    assert _upload(client, "9811122233", rid="t1").status_code == 201
+    assert _upload(client, "+919000000001", rid="real").status_code == 201
+    summary = client.get("/api/v1/call-recordings/summary").json()
+    assert summary["recordings"] == 1 and summary["tests"] == 1
+    z = zipfile.ZipFile(io.BytesIO(client.get("/api/v1/call-recordings/export").content))
+    assert len([n for n in z.namelist() if n.startswith("recordings/")]) == 1     # Sumit gets no tests
+    # Not in the Excel copy either; and once the setting is cleared, the test phone is refused.
+    from openpyxl import load_workbook
+    ws = load_workbook(io.BytesIO(client.get("/api/v1/call-recordings/numbers.xlsx").content)).active
+    assert "9811122233" not in [r[0] for r in ws.iter_rows(values_only=True)]
+    monkeypatch.setenv("CALL_RECORDER_TEST_NUMBERS", "")
+    assert _upload(client, "9811122233", rid="t2").status_code == 422

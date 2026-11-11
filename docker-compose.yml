@@ -135,6 +135,8 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       # The call-recorder app's key (X-API-Key on /api/v1/call-recorder/). 24+ characters; empty refuses all.
       CALL_RECORDER_API_KEY: ${CALL_RECORDER_API_KEY:-}
+      # The team's own phones for testing the app (comma-separated); empty after testing.
+      CALL_RECORDER_TEST_NUMBERS: ${CALL_RECORDER_TEST_NUMBERS:-}
       # The call-recorder app's own list of recordings, fetched every 15 minutes (empty: off;
       # the app can upload instead). Its key goes as X-API-Key and as a Bearer token.
       CALL_RECORDINGS_SOURCE_URL: ${CALL_RECORDINGS_SOURCE_URL:-}

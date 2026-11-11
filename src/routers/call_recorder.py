@@ -136,7 +136,7 @@ def numbers_excel(db: Session = Depends(get_db), user: User = Depends(_listener)
     from openpyxl.worksheet.table import Table, TableStyleInfo
     from src.services import audit
 
-    rows = applications.recorder_contacts(db, with_place=True)
+    rows = applications.recorder_contacts(db, with_place=True, with_tests=False)
     wb = Workbook()
     ws = wb.active
     ws.title = "Applicant numbers"

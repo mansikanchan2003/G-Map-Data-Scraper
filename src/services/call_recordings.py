@@ -46,6 +46,10 @@ EXTS = {v: k for k, v in AUDIO_TYPES.items()}
 IST = ZoneInfo("Asia/Kolkata")
 
 
+# The source of a recording with one of the team's test phones (CALL_RECORDER_TEST_NUMBERS).
+TEST = "test"
+
+
 class Refused(ValueError):
     """A recording that is not kept, and why."""
 
@@ -116,6 +120,10 @@ def save(db: Session, *, phone: str, data: bytes, content_type: Optional[str] = 
     who = match(db, phone, phones)
     if not who:
         raise Refused("This number is not on the Applications tab, so its call is not kept.")
+    # A call with one of the team's test phones: kept, marked as a test, never in Sumit's zip.
+    if who[-10:] in applications.test_locals() and who not in {
+            c["phone"] for c in applications.recorder_contacts(db, with_tests=False)}:
+        source = TEST
     if not data:
         raise Refused("The recording is empty.")
     if len(data) > MAX_BYTES:
@@ -157,8 +165,9 @@ def for_phone(db: Session, phone: str) -> List[dict]:
 
 
 def summary(db: Session) -> dict:
-    rows = db.query(CallRecording).all()
-    return {"recordings": len(rows), "people": len({r.phone for r in rows}),
+    every = db.query(CallRecording).all()
+    rows = [r for r in every if r.source != TEST]
+    return {"recordings": len(rows), "tests": len(every) - len(rows), "people": len({r.phone for r in rows}),
             "seconds": sum(r.duration_seconds or 0 for r in rows),
             "pull": bool(source_url()), "last_received_at": max(
                 (inbox.aware(r.received_at).isoformat() for r in rows if r.received_at), default=None)}
@@ -167,7 +176,7 @@ def summary(db: Session) -> dict:
 def export_zip(db: Session, since: Optional[datetime] = None) -> bytes:
     """Every recording (or those received since a time) as one zip for Sumit, with a CSV of what each is.
     The CSV names each call by the last 4 digits of the number only."""
-    q = db.query(CallRecording)
+    q = db.query(CallRecording).filter(CallRecording.source != TEST)
     if since:
         q = q.filter(CallRecording.received_at >= since)
     buf = io.BytesIO()

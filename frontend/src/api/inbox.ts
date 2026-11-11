@@ -559,7 +559,7 @@ export interface CallRecording {
   content_type: string | null; size_bytes: number | null; device: string | null;
   source: string; received_at: string | null;
 }
-export interface RecordingsSummary { recordings: number; people: number; seconds: number; pull: boolean; last_received_at: string | null }
+export interface RecordingsSummary { recordings: number; tests?: number; people: number; seconds: number; pull: boolean; last_received_at: string | null }
 
 const recBase = () => `${getApiBaseUrl()}/api/v1/call-recordings`;
 export const fetchRecordings = (phone: string) => call<CallRecording[]>(`/conversations/${digits(phone)}/recordings`);

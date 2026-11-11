@@ -12,6 +12,7 @@ Qualification, as the team defined it:
 - Not qualified: the PIN is outside our area, education is below 12th, or
   they cannot invest. Someone part-way through is none of these yet.
 """
+import os
 import re
 import time
 import uuid
@@ -36,6 +37,7 @@ ONBOARDING_STEPS = {
     bot.AWAIT_PIN, bot.AWAIT_EDUCATION, bot.AWAIT_FRANCHISE, bot.NOT_ELIGIBLE,
     bot.AWAIT_INVEST, bot.AWAIT_DOCS, bot.AWAIT_UPLOAD, bot.SUBMITTED,
     bot.NOT_SERVED, bot.NOT_INVESTING,
+    bot.ESAF_OFFERED, bot.ESAF_DETAILS, bot.ESAF_INTERESTED, bot.ESAF_DECLINED,
 }
 QUALIFICATION = {"12": "12th / Diploma", "grad": "Graduate / Post-Grad", "other": "Below 12th"}
 DOC_LABELS = bot.DOCUMENT_LABELS
@@ -390,12 +392,26 @@ def _place(conv: WhatsAppConversation) -> Optional[str]:
     return ", ".join(parts) or None
 
 
-def recorder_contacts(db: Session, with_place: bool = False) -> List[Dict]:
+def test_locals() -> List[str]:
+    """
+    The team's own phones the call-recorder app may test with (CALL_RECORDER_TEST_NUMBERS,
+    comma-separated, any +91/0 form), as their last 10 digits. Empty after testing.
+    """
+    out = []
+    for raw in (os.environ.get("CALL_RECORDER_TEST_NUMBERS") or "").split(","):
+        digits = re.sub(r"\D", "", raw)
+        if len(digits) >= 10 and digits[-10:] not in out:
+            out.append(digits[-10:])
+    return out
+
+
+def recorder_contacts(db: Session, with_place: bool = False, with_tests: bool = True) -> List[Dict]:
     """
     The numbers whose calls the team's call-recorder app may keep (11 Nov 2026):
     everyone on the Applications tab (removed ones left out), with their WhatsApp
     name. Nothing else about them: the app only needs to know which calls to keep.
     with_place adds "District, State" for the team's own Excel copy (not the API).
+    The team's test numbers come last, marked "test": true (with_tests=False leaves them out).
     """
     removals = {r.phone for r in db.query(ApplicationRemoval.phone)}
     candidates = [c for c in db.query(WhatsAppConversation)
@@ -407,8 +423,14 @@ def recorder_contacts(db: Session, with_place: bool = False) -> List[Dict]:
         if c.phone not in ours:
             continue
         digits = re.sub(r"\D", "", c.phone)
-        row = {"phone": c.phone, "local": digits[-10:], "name": c.profile_name, "since": _iso(c.created_at)}
+        row = {"phone": c.phone, "local": digits[-10:], "name": c.profile_name, "since": _iso(c.created_at),
+               "test": False}
         if with_place:
             row["place"] = _place(c)
         out.append(row)
-    return sorted(out, key=lambda x: x["since"] or "")
+    out.sort(key=lambda x: x["since"] or "")
+    if with_tests:
+        real = {r["local"] for r in out}
+        out += [{"phone": "+91" + n, "local": n, "name": "Test number", "since": None, "test": True}
+                for n in test_locals() if n not in real]
+    return out
