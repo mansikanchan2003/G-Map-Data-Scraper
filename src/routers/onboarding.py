@@ -158,7 +158,9 @@ def upload_page(token: str, db: Session = Depends(get_db)):
     number = business_number()
     config = {
         "state": "invalid" if conv is None else ("submitted" if conv.documents_submitted_at else "open"),
-        "documents": onboarding_bot.DOCUMENTS,
+        "documents": onboarding_bot.documents_for(conv),
+        # ESAF's banking agent or SBI's CSP: the page's consent names the right bank.
+        "esaf": onboarding_bot.is_esaf(conv),
         "uploaded": uploaded,
         "accepted": ACCEPTED_LABEL,
         "maxBytes": MAX_BYTES,
@@ -198,7 +200,7 @@ async def upload_file(
         raise HTTPException(status_code=404, detail="This link has expired. Please ask us for a new one on WhatsApp.")
     if conv.documents_submitted_at:
         raise HTTPException(status_code=409, detail="Your documents have already been submitted.")
-    if doc_type not in {d["key"] for d in onboarding_bot.DOCUMENTS}:
+    if doc_type not in {d["key"] for d in onboarding_bot.documents_for(conv)}:
         raise HTTPException(status_code=400, detail="Unknown document")
 
     data = await file.read(MAX_BYTES + 1)
@@ -366,7 +368,7 @@ def submit(token: str, background: BackgroundTasks, db: Session = Depends(get_db
         d.doc_type for d in db.query(OnboardingDocument).filter(OnboardingDocument.phone == conv.phone).all())
     # Only the required documents hold up a submission; the rest are sent
     # if the person has them.
-    missing = [d["label"] for d in onboarding_bot.REQUIRED_DOCUMENTS if d["key"] not in have]
+    missing = [d["label"] for d in onboarding_bot.required_for(conv) if d["key"] not in have]
     if missing:
         raise HTTPException(status_code=400, detail="Please upload: " + ", ".join(missing))
 
@@ -380,7 +382,7 @@ def submit(token: str, background: BackgroundTasks, db: Session = Depends(get_db
     background.add_task(notifier.notify_documents_submitted, auth_service.BOOTSTRAP_ADMIN, {
         "name": conv.profile_name, "phone": conv.phone,
         "pincode": ((conv.bot_data or {}).get("coverage") or {}).get("pincode"),
-        "documents": [d["label"] for d in onboarding_bot.DOCUMENTS if d["key"] in have],
+        "documents": [d["label"] for d in onboarding_bot.documents_for(conv) if d["key"] in have],
     })
     return {"status": "submitted"}
 
@@ -498,14 +500,15 @@ if (CFG.state === 'invalid') {
   // A row is done by an upload, or by the same document from DigiLocker.
   const filled = key => !!uploaded[key] || got.has(key);
   app.innerHTML = `<h1>Upload your documents</h1>
-    <p class="lead">The first three are required. Please add the others too if you have them, then tap Submit.</p>
+    <p class="lead">${CFG.documents.every(d => d.required) ? 'All of these are required. Please add each one, then tap Submit.' : `The first ${CFG.documents.filter(d => d.required).length} are required. Please add the others too if you have them, then tap Submit.`}</p>
     <div class="banner top" id="dlmsg" role="status"></div>
     <div class="dl" id="dlcard" hidden></div>
     <span class="accepted">Accepted formats: ${esc(CFG.accepted)}</span>
     <div id="docs"></div>
     <div class="banner" id="msg" role="alert"></div>
-    <p class="consent">🔒 By submitting, you agree that Eko uses these documents to process your application for an
-      SBI CSP, and shares them with SBI for it. <a href="privacy" target="_blank" rel="noopener">How we use your
+    <p class="consent">🔒 By submitting, you agree that Eko uses these documents to process your application ${CFG.esaf
+      ? 'to become a banking agent of ESAF Small Finance Bank, and shares them with ESAF and its partner Aceware Fintech for it.'
+      : 'for an SBI CSP, and shares them with SBI for it.'} <a href="privacy" target="_blank" rel="noopener">How we use your
       information</a></p>
     <button class="btn btn-primary" id="submit" disabled>Submit documents</button>`;
 

@@ -48,7 +48,10 @@ export interface Application {
   strongly_qualified: boolean;
   not_qualified: boolean;
   not_qualified_reasons: string[];
-  verdict: 'Strongly qualified' | 'Not qualified' | 'PIN qualified' | 'In progress';
+  verdict: 'Strongly qualified' | 'Not qualified' | 'PIN qualified' | 'In progress'
+    | 'Strongly qualified · ESAF' | 'PIN qualified · ESAF' | string;
+  /** Cannot invest for SBI but said yes to ESAF's banking agent (12 Nov 2026). */
+  esaf?: boolean;
   documents: ApplicationDocument[];
   documents_count: number;
   documents_total: number;

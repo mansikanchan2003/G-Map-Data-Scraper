@@ -535,3 +535,18 @@ def test_the_teams_test_phones_are_listed_and_their_recordings_kept_apart(client
     assert "9811122233" not in [r[0] for r in ws.iter_rows(values_only=True)]
     monkeypatch.setenv("CALL_RECORDER_TEST_NUMBERS", "")
     assert _upload(client, "9811122233", rid="t2").status_code == 422
+
+
+def test_cannot_invest_but_yes_to_esaf_is_still_qualified_and_marked_for_esaf():
+    from src.services import applications
+    base = {"coverage": SERVED, "education": "12", "can_invest": False}
+    no = applications.qualify(WhatsAppConversation(phone="+919000000099", bot_step=bot.NOT_INVESTING, bot_data=base))
+    assert no["verdict"] == "Not qualified" and not no["esaf"]
+    yes = applications.qualify(WhatsAppConversation(phone="+919000000099", bot_step=bot.AWAIT_DOCS,
+                                                    bot_data={**base, "esaf": True}))
+    assert yes["strongly_qualified"] and not yes["not_qualified"] and yes["esaf"]
+    assert yes["verdict"] == "Strongly qualified · ESAF"
+    # Below 12th is still below 12th, ESAF or not.
+    low = applications.qualify(WhatsAppConversation(phone="+919000000099", bot_step=bot.AWAIT_DOCS,
+                                                    bot_data={**base, "education": "other", "esaf": True}))
+    assert low["verdict"] == "Not qualified" and low["not_qualified_reasons"] == ["Below 12th"]

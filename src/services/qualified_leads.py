@@ -60,6 +60,8 @@ def why(conv: WhatsAppConversation, q: dict) -> List[str]:
         out.append("Education not answered yet")
     if data.get("can_invest") is True:
         out.append("Can invest ₹3–5 lakh")
+    elif data.get("esaf") is True:
+        out.append("For ESAF: cannot invest ₹3–5 lakh for SBI, said yes to ESAF's banking agent")
     elif data.get("can_invest") is None:
         out.append("Investment not answered yet")
     return out

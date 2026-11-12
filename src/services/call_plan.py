@@ -213,7 +213,7 @@ def _missing_docs(db: Session, conv: WhatsAppConversation) -> List[str]:
     from src.services import onboarding_bot as bot
     keys = [k for (k,) in db.query(OnboardingDocument.doc_type).filter(OnboardingDocument.phone == conv.phone)]
     done = bot.rows_done(keys)
-    return [d["label"] for d in bot.DOCUMENTS if d["required"] and d["key"] not in done]
+    return [d["label"] for d in bot.required_for(conv) if d["key"] not in done]
 
 
 # --- The plan -------------------------------------------------------------------------------------

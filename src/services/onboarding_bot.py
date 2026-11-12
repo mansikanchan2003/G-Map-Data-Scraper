@@ -138,6 +138,31 @@ DOCUMENTS = [
      "hint": None, "required": False},
 ]
 REQUIRED_DOCUMENTS = [d for d in DOCUMENTS if d["required"]]
+# ESAF Small Finance Bank's banking agent (12 Nov 2026), from Aceware's onboarding list. Field
+# verification, the agreement and the Rs 1,999 receipt are done with the team, not uploaded.
+# Aadhaar and PAN keep their keys, so DigiLocker fills them here too.
+ESAF_DOCUMENTS = [
+    {"key": "aadhaar", "label": "Aadhaar Card (Self Attested)", "hint": "Front and back, in one file", "required": True},
+    {"key": "pan", "label": "PAN Card (Self Attested)", "hint": None, "required": True},
+    {"key": "esaf_bank", "label": "Bank proof in your name: passbook, cheque or statement (Self Attested)",
+     "hint": None, "required": True},
+    {"key": "esaf_shop_photo", "label": "Your photo at your shop", "hint": "Turn on location on the camera, if you can",
+     "required": True},
+    {"key": "esaf_edu", "label": "Education Certificate, 12th or above (Self Attested)", "hint": None, "required": True},
+]
+
+
+def is_esaf(conv) -> bool:
+    """Someone who said yes to ESAF's banking agent: their documents are ESAF's, not SBI's."""
+    return bool(conv is not None and (conv.bot_data or {}).get("esaf") is True)
+
+
+def documents_for(conv) -> list:
+    return ESAF_DOCUMENTS if is_esaf(conv) else DOCUMENTS
+
+
+def required_for(conv) -> list:
+    return [d for d in documents_for(conv) if d["required"]]
 # Documents fetched from DigiLocker on the upload page (eko_digilocker): each
 # filed as its own record that counts for its row, so the person uploads only
 # what DigiLocker did not give (the team's call, 30 Oct 2026).
@@ -147,7 +172,7 @@ DIGILOCKER_DOCS = [
     {"row": "voter_dl", "key": "dl_digilocker", "eko": "DRIVING_LICENSE", "label": "Driving Licence — from DigiLocker"},
 ]
 DIGILOCKER_AADHAAR = DIGILOCKER_DOCS[0]
-DOCUMENT_LABELS = {d["key"]: d["label"] for d in DOCUMENTS + DIGILOCKER_DOCS}
+DOCUMENT_LABELS = {d["key"]: d["label"] for d in ESAF_DOCUMENTS + DOCUMENTS + DIGILOCKER_DOCS}
 
 
 def rows_done(keys) -> set:
@@ -241,10 +266,11 @@ def YES_NO(prefix: str, lang: str = "en") -> list:
     ]
 
 
-def document_list(lang: str = "en") -> str:
+def document_list(lang: str = "en", docs: Optional[list] = None) -> str:
     """The documents as the chat lists them: the required ones first, then the rest."""
-    required = [d for d in DOCUMENTS if d["required"]]
-    optional = [d for d in DOCUMENTS if not d["required"]]
+    docs = DOCUMENTS if docs is None else docs
+    required = [d for d in docs if d["required"]]
+    optional = [d for d in docs if not d["required"]]
     lines = [f"*{bot_messages.text(lang, 'docs_required')}*"]
     lines += [f"{i}. {d['label']}" for i, d in enumerate(required, start=1)]
     if optional:
@@ -903,6 +929,20 @@ def _ask_invest(db, conv, lang):
     _say(db, conv, _t(db, conv, "ask_invest"), buttons=YES_NO("invest", lang))
 
 
+def _ask_esaf_documents(db, conv, lang, record: bool = True):
+    """
+    Yes to ESAF: the documents ESAF needs and "Do you have them?" (the SBI flow's own
+    question and buttons, so a yes sends the upload link and a no is reminded later),
+    and the team is told to call about the Rs 1,999 registration (12 Nov 2026).
+    """
+    _move(conv, AWAIT_DOCS, esaf=True)
+    _say(db, conv, _t(db, conv, "ask_docs", documents=document_list(lang, ESAF_DOCUMENTS)),
+         buttons=YES_NO("docs", lang))
+    if record:
+        from src.services import handover
+        handover.record(db, conv, "int_esaf", "bot", note="Wants to register as an ESAF banking agent")
+
+
 def _start(db, conv, msg, flow: str):
     """A campaign button was tapped: start that flow, asking the language if not known."""
     # Tapping Interested again is asking to hear from us: off the do-not-message list.
@@ -1422,7 +1462,7 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
         if answer is True:
             _understood(conv)
             _move(conv, AWAIT_DOCS, can_invest=True)
-            _say(db, conv, _t(db, conv, "ask_docs", documents=document_list(lang)), buttons=YES_NO("docs", lang))
+            _say(db, conv, _t(db, conv, "ask_docs", documents=document_list(lang, documents_for(conv))), buttons=YES_NO("docs", lang))
         elif answer is False:
             _understood(conv)
             # ESAF's banking agent needs no big investment: offered at once (11 Nov 2026).
@@ -1449,7 +1489,7 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
             _say(db, conv, _t(db, conv, "docs_later"))
         elif step == AWAIT_DOCS:
             _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n"
-                      + _t(db, conv, "ask_docs", documents=document_list(lang)), buttons=YES_NO("docs", lang))
+                      + _t(db, conv, "ask_docs", documents=document_list(lang, documents_for(conv))), buttons=YES_NO("docs", lang))
         else:
             _fallback(db, conv, _t(db, conv, "remind_upload"),
                       link={"text": _t(db, conv, "link_button"), "url": upload_url(conv)})
@@ -1493,11 +1533,7 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
         answer = _answer(msg, "esafgo")
         if answer is True:
             _understood(conv)
-            _move(conv, ESAF_INTERESTED, esaf=True)
-            _say(db, conv, _t(db, conv, "esaf_yes"))
-            # The team calls: the ₹1,999 registration, Aceware's shop visit and the agreement.
-            from src.services import handover
-            handover.record(db, conv, "int_esaf", "bot", note="Wants to register as an ESAF banking agent")
+            _ask_esaf_documents(db, conv, lang)
         elif answer is False:
             _understood(conv)
             _move(conv, ESAF_DECLINED, esaf=False)
@@ -1506,7 +1542,12 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
             _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n" + _t(db, conv, "esaf_details"),
                       buttons=YES_NO("esafgo", lang))
 
-    elif step in (NOT_INVESTING, HANDOVER, WEBINAR_CONFIRMED, WEBINAR_AVAILABILITY, ESAF_INTERESTED, ESAF_DECLINED):
+    elif step == ESAF_INTERESTED:
+        # Said yes to ESAF before the documents question existed (11-12 Nov 2026): their next
+        # message gets it, so they are not left with nothing to do.
+        _ask_esaf_documents(db, conv, lang, record=False)
+
+    elif step in (NOT_INVESTING, HANDOVER, WEBINAR_CONFIRMED, WEBINAR_AVAILABILITY, ESAF_DECLINED):
         _fallback(db, conv, _t(db, conv, "acknowledge"))
 
     else:
@@ -1552,7 +1593,7 @@ def pending_question(db: Session, conv: WhatsAppConversation):
     if step == AWAIT_INVEST:
         return _t(db, conv, "ask_invest"), {"buttons": YES_NO("invest", lang)}
     if step == AWAIT_DOCS:
-        return _t(db, conv, "ask_docs", documents=document_list(lang)), {"buttons": YES_NO("docs", lang)}
+        return _t(db, conv, "ask_docs", documents=document_list(lang, documents_for(conv))), {"buttons": YES_NO("docs", lang)}
     if step == AWAIT_UPLOAD and conv.upload_token:
         return _t(db, conv, "remind_upload"), {"link": {"text": _t(db, conv, "link_button"), "url": upload_url(conv)}}
     if step in (GUIDANCE_QA, AWAIT_WEBINAR, AWAIT_AVAILABILITY):
@@ -1566,8 +1607,13 @@ def documents_submitted(db: Session, conv: WhatsAppConversation) -> WhatsAppMess
 
     conv.documents_submitted_at = inbox.now()
     _move(conv, SUBMITTED)
-    # AutoGMap's part is done: the lead goes to Eko Acquisition (Physical visit required).
-    followups.hand_over(db, conv, "bot")
+    if is_esaf(conv):
+        # ESAF's banking agent: the team takes the Rs 1,999 registration and arranges Aceware's visit.
+        from src.services import handover
+        handover.record(db, conv, "int_esaf", "bot", note="ESAF documents submitted")
+    else:
+        # AutoGMap's part is done: the lead goes to Eko Acquisition (Physical visit required).
+        followups.hand_over(db, conv, "bot")
     return _say(db, conv, _t(db, conv, "thanks"))
 
 

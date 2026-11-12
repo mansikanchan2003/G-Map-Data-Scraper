@@ -25,7 +25,7 @@ const FILTERS: { key: Filter; label: string; hint: string; icon: string; tint: s
     tint: 'bg-sky-950 text-sky-300', ring: 'ring-sky-500', pick: () => true },
   { key: 'pin', label: 'PIN qualified', hint: 'PIN within our area', icon: 'location_on',
     tint: 'bg-sky-950 text-sky-300', ring: 'ring-sky-500', pick: a => a.pin_qualified },
-  { key: 'strong', label: 'Strongly qualified', hint: 'Area + 12th or above + can invest ₹5 lakh', icon: 'verified',
+  { key: 'strong', label: 'Strongly qualified', hint: 'Area + 12th or above + can invest ₹5 lakh, or said yes to ESAF', icon: 'verified',
     tint: 'bg-emerald-950 text-emerald-300', ring: 'ring-emerald-500', pick: a => a.strongly_qualified },
   { key: 'not', label: 'Not qualified', hint: 'Outside area, below 12th or cannot invest', icon: 'block',
     tint: 'bg-rose-950 text-rose-300', ring: 'ring-rose-500', pick: a => a.not_qualified },
@@ -35,6 +35,9 @@ const FILTERS: { key: Filter; label: string; hint: string; icon: string; tint: s
 
 const VERDICT_STYLE: Record<string, string> = {
   'Strongly qualified': 'bg-emerald-950 border-emerald-800/60 text-emerald-300',
+  // For ESAF's banking agent: qualified, in ESAF's violet so the team sees the track at a glance.
+  'Strongly qualified · ESAF': 'bg-violet-950 border-violet-700/60 text-violet-300',
+  'PIN qualified · ESAF': 'bg-violet-950 border-violet-800/60 text-violet-300',
   'PIN qualified': 'bg-sky-950 border-sky-800/60 text-sky-300',
   'Not qualified': 'bg-rose-950 border-rose-800/60 text-rose-300',
   'In progress': 'bg-slate-950 border-slate-800 text-slate-400',
@@ -362,6 +365,11 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                           title={a.not_qualified_reasons.join(', ') || undefined}>{a.verdict}</span>
                         <div className="text-xs text-slate-400 mt-1 whitespace-nowrap">{a.qualification || 'Education not given'}</div>
                         {a.not_qualified && <div className="text-[11px] text-rose-300 mt-0.5">{a.not_qualified_reasons.join(', ')}</div>}
+                        {a.esaf && !a.not_qualified && (
+                          <div className="text-[11px] text-violet-300 mt-0.5 inline-flex items-center gap-1">
+                            <Icon name="account_balance" className="text-[13px]" />For ESAF · can't invest ₹3–5 lakh for SBI
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-3">
                         <div className="text-xs text-slate-200 font-medium">{a.stage}</div>

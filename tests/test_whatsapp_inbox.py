@@ -4214,15 +4214,48 @@ def test_cannot_invest_leads_to_esaf_and_a_yes_reaches_the_team(db, client, team
     assert "₹1,999" in body and "₹1,300 + GST" in body and [b["id"] for b in buttons] == ["esafgo:yes", "esafgo:no"]
     tap(db, "esafgo:yes")
     c = conv(db)
-    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["en"]["esaf_yes"]
-    assert c.bot_step == onboarding_bot.ESAF_INTERESTED and (c.bot_data or {}).get("esaf") is True
+    # 12 Nov 2026: then ESAF's documents and "Do you have them?", as in the SBI flow.
+    body, buttons = StubMeta.sent[-1][2], StubMeta.sent[-1][3]
+    assert "Bank proof in your name" in body and "Your photo at your shop" in body and "CIBIL" not in body
+    assert [b["id"] for b in buttons] == ["docs:yes", "docs:no"]
+    assert c.bot_step == onboarding_bot.AWAIT_DOCS and (c.bot_data or {}).get("esaf") is True
     assert c.disposition == "int_esaf" and c.disposition_by == "bot"
     task = [f for f in _followups(db) if f.purpose == "esaf_call"]
     assert len(task) == 1
+    # Yes: the upload link, to a page that asks for ESAF's documents only.
+    tap(db, "docs:yes")
+    assert StubMeta.sent[-1][0] == "link"
+    token = conv(db).upload_token
+    page = client.get(f"/onboard/{token}").text
+    assert "esaf_shop_photo" in page and "cibil" not in page and '"esaf": true' in page
+    files = f"/onboard/{token}/files"
+    assert client.post(files, data={"doc_type": "cibil"}, files={"file": ("c.pdf", PDF)}).status_code == 400
+    for d in onboarding_bot.ESAF_DOCUMENTS[:-1]:
+        assert client.post(files, data={"doc_type": d["key"]}, files={"file": ("a.pdf", PDF)}).status_code == 200
+    assert client.post(f"/onboard/{token}/submit").status_code == 400          # the education certificate is missing
+    client.post(files, data={"doc_type": "esaf_edu"}, files={"file": ("e.pdf", PDF)})
+    assert client.post(f"/onboard/{token}/submit").json() == {"status": "submitted"}
+    c = conv(db)
+    # Submitted: stays with our team for ESAF, not handed to SBI's Eko Acquisition.
+    assert c.bot_step == onboarding_bot.SUBMITTED and c.disposition == "int_esaf"
+    assert StubMeta.sent[-1][2] == onboarding_bot.THANKS
     # On the journey, in plain words.
     j = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/journey").json()
     whats = [s["what"] for s in j["steps"] if s["what"]]
-    assert "Wanted to know about ESAF" in whats and "Wants to become an ESAF banking agent" in whats
+    assert "Wanted to know about ESAF" in whats
+
+
+def test_someone_who_said_yes_to_esaf_before_the_documents_step_gets_it_on_their_next_message(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)
+    tap(db, "invest:no")
+    c = conv(db)
+    c.bot_step, c.bot_data = onboarding_bot.ESAF_INTERESTED, {**(c.bot_data or {}), "esaf": True}
+    db.commit()
+    say(db, "ok")
+    assert conv(db).bot_step == onboarding_bot.AWAIT_DOCS
+    assert "Bank proof in your name" in StubMeta.sent[-1][2]
 
 
 def test_esaf_is_offered_in_their_language_and_an_unclear_answer_asks_again(db):

@@ -79,14 +79,18 @@ def qualify(conv: WhatsAppConversation) -> Dict:
     served = _served(conv)
     education = data.get("education")
     can_invest = data.get("can_invest")
+    # Said yes to ESAF's banking agent, which needs no big investment: the investment no
+    # longer rules them out, and they are marked as for ESAF (the user, 12 Nov 2026).
+    esaf = data.get("esaf") is True
     reasons = []
     if served is False:
         reasons.append(NOT_SBI)
     if education == "other":
         reasons.append("Below 12th")
-    if can_invest is False:
+    if can_invest is False and not esaf:
         reasons.append("Cannot invest ₹3–5 lakh")
-    strong = bool(served) and education in ("12", "grad") and can_invest is True
+    strong = bool(served) and education in ("12", "grad") and (can_invest is True or esaf)
+    tag = " · ESAF" if esaf else ""
     return {
         "pin_qualified": served is True,
         "strongly_qualified": strong,
@@ -94,8 +98,9 @@ def qualify(conv: WhatsAppConversation) -> Dict:
         "not_qualified_reasons": reasons,
         # Outside the branch area alone: still going, for another proposal.
         "other_proposal": served is False and education != "other",
-        "verdict": "Strongly qualified" if strong else (NOT_SBI if reasons == [NOT_SBI] else "Not qualified" if reasons
-                   else ("PIN qualified" if served else "In progress")),
+        "verdict": "Strongly qualified" + tag if strong else (NOT_SBI if reasons == [NOT_SBI] else "Not qualified" if reasons
+                   else ("PIN qualified" + tag if served else "In progress")),
+        "esaf": esaf,
     }
 
 
@@ -315,9 +320,9 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
             "documents": [{"document_id": d.document_id, "type": d.doc_type,
                            "label": DOC_LABELS.get(d.doc_type, d.doc_type), "name": d.original_name,
                            "drive_url": d.drive_url, "uploaded_at": _iso(d.uploaded_at)} for d in mine],
-            "documents_count": len(have & {d["key"] for d in bot.DOCUMENTS}),
-            "documents_total": len(bot.DOCUMENTS),
-            "required_documents_done": all(k in have for k in REQUIRED_KEYS),
+            "documents_count": len(have & {d["key"] for d in bot.documents_for(conv)}),
+            "documents_total": len(bot.documents_for(conv)),
+            "required_documents_done": all(d["key"] in have for d in bot.required_for(conv)),
             "drive_folder_url": conv.drive_folder_url,
             "submitted": conv.documents_submitted_at is not None,
             "submitted_at": _iso(conv.documents_submitted_at),
