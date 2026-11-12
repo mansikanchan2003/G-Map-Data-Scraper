@@ -3,8 +3,10 @@ For the team's call-recorder app (Kavya Ma'am's phone, 11 Nov 2026): which
 numbers' call recordings to keep. Only the people on the Applications tab, so
 no other call is recorded.
 
-The app sends the key in the X-API-Key header; the key is CALL_RECORDER_API_KEY
-on the server. With none set, every request is refused.
+The app sends the key in the X-API-Key header, or as "Authorization: Bearer <key>"
+(12 Nov 2026: the app's first calls were all refused); the key is CALL_RECORDER_API_KEY
+on the server. With none set, every request is refused. A refusal is audited with
+why (no key, or a wrong one, and in which header), never with the key itself.
 """
 import hmac
 import logging
@@ -13,7 +15,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -27,24 +29,52 @@ logger = logging.getLogger("gmap_scraper.call_recorder")
 router = APIRouter(prefix="/api/v1/call-recorder", tags=["Call recorder"])
 
 
+def _clean(value: Optional[str]) -> str:
+    """A key as sent, without the spaces, line breaks or quotes it is often pasted with."""
+    return (value or "").strip().strip('"').strip("'").strip()
+
+
 def key_ok(given: Optional[str]) -> bool:
     expected = (os.environ.get("CALL_RECORDER_API_KEY") or "").strip()
-    return len(expected) >= 24 and hmac.compare_digest(expected, (given or "").strip())
+    return len(expected) >= 24 and hmac.compare_digest(expected, _clean(given))
+
+
+def check_key(request: Request) -> tuple:
+    """
+    (allowed, why): the key from X-API-Key, else from "Authorization: Bearer <key>".
+    `why` says what was wrong, for the audit log, and names no part of the key.
+    """
+    if not (os.environ.get("CALL_RECORDER_API_KEY") or "").strip():
+        return False, "no key set on the server"
+    header = request.headers.get("x-api-key")
+    auth = request.headers.get("authorization") or ""
+    bearer = auth[7:] if auth[:7].lower() == "bearer " else None
+    if header is None and bearer is None:
+        return False, ("Authorization header is not 'Bearer <key>'" if auth else "no key sent")
+    for name, value in (("X-API-Key", header), ("Bearer", bearer)):
+        if value is not None and key_ok(value):
+            return True, None
+    sent = " and ".join(n for n, v in (("X-API-Key", header), ("Bearer", bearer)) if v is not None)
+    return False, f"wrong key in {sent}"
+
+
+def _audit(method: str, path: str, status: int, why: Optional[str]) -> None:
+    from src.services import audit
+    audit.write(SimpleNamespace(email="call-recorder-app", role=None), method, path, status,
+                {"refused": why} if why else None)
 
 
 @router.get("/numbers")
-def numbers(request: Request, x_api_key: Optional[str] = Header(None), db: Session = Depends(get_db)):
+def numbers(request: Request, db: Session = Depends(get_db)):
     """
     Everyone on the Applications tab: phone (+91…), the last 10 digits, their
     WhatsApp name, and when they first wrote. New applications appear here as
     they come in, so the app should fetch again regularly (every 15 minutes is plenty).
     """
-    from src.services import audit
-    ok = key_ok(x_api_key)
-    audit.write(SimpleNamespace(email="call-recorder-app", role=None), "GET", "/api/v1/call-recorder/numbers",
-                200 if ok else 401, None)
+    ok, why = check_key(request)
+    _audit("GET", "/api/v1/call-recorder/numbers", 200 if ok else 401, why)
     if not ok:
-        raise HTTPException(status_code=401, detail="Missing or wrong API key.")
+        raise HTTPException(status_code=401, detail=f"Missing or wrong API key ({why}).")
     contacts = applications.recorder_contacts(db)
     logger.info(f"call_recorder event=NUMBERS count={len(contacts)}")
     return {"as_of": datetime.now(timezone.utc).isoformat(), "count": len(contacts), "numbers": contacts}
@@ -52,7 +82,7 @@ def numbers(request: Request, x_api_key: Optional[str] = Header(None), db: Sessi
 
 @router.post("/recordings", status_code=201)
 async def upload_recording(
-    x_api_key: Optional[str] = Header(None),
+    request: Request,
     file: UploadFile = File(...),
     phone: str = Form(..., max_length=40),
     recording_id: Optional[str] = Form(None, max_length=200),
@@ -68,12 +98,11 @@ async def upload_recording(
     direction (in/out), when it started and how long it was. Only calls with
     people on the Applications tab are kept; others are refused with 422.
     """
-    from src.services import audit, call_recordings
-    ok = key_ok(x_api_key)
-    audit.write(SimpleNamespace(email="call-recorder-app", role=None), "POST", "/api/v1/call-recorder/recordings",
-                201 if ok else 401, None)
+    from src.services import call_recordings
+    ok, why = check_key(request)
+    _audit("POST", "/api/v1/call-recorder/recordings", 201 if ok else 401, why)
     if not ok:
-        raise HTTPException(status_code=401, detail="Missing or wrong API key.")
+        raise HTTPException(status_code=401, detail=f"Missing or wrong API key ({why}).")
     data = await file.read(call_recordings.MAX_BYTES + 1)
     try:
         rec = call_recordings.save(db, phone=phone, data=data, content_type=file.content_type, filename=file.filename,

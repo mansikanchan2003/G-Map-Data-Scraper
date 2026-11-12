@@ -550,3 +550,24 @@ def test_cannot_invest_but_yes_to_esaf_is_still_qualified_and_marked_for_esaf():
     low = applications.qualify(WhatsAppConversation(phone="+919000000099", bot_step=bot.AWAIT_DOCS,
                                                     bot_data={**base, "education": "other", "esaf": True}))
     assert low["verdict"] == "Not qualified" and low["not_qualified_reasons"] == ["Below 12th"]
+
+
+def test_the_call_recorder_key_also_works_as_a_bearer_token_and_refusals_say_why(client, monkeypatch):
+    from src.routers import call_recorder
+    monkeypatch.setenv("CALL_RECORDER_API_KEY", KEY)
+    seen = []
+    monkeypatch.setattr(call_recorder, "_audit", lambda m, p, status, why: seen.append((status, why)))
+    url = "/api/v1/call-recorder/numbers"
+    assert client.get(url, headers={"Authorization": f"Bearer {KEY}"}).status_code == 200
+    assert client.get(url, headers={"Authorization": f"bearer {KEY}"}).status_code == 200
+    # Pasted with quotes or a trailing line break, it still works.
+    assert client.get(url, headers={"X-API-Key": f'"{KEY}"'}).status_code == 200
+    assert client.get(url, headers={"Authorization": f"Bearer {KEY} "}).status_code == 200
+    r = client.get(url)
+    assert r.status_code == 401 and "no key sent" in r.json()["detail"]
+    r = client.get(url, headers={"Authorization": "Bearer nope"})
+    assert r.status_code == 401 and "wrong key in Bearer" in r.json()["detail"]
+    r = client.get(url, headers={"Authorization": KEY})
+    assert r.status_code == 401 and "not 'Bearer <key>'" in r.json()["detail"]
+    assert all(KEY not in (why or "") for _, why in seen)       # the key never reaches the audit log
+    assert seen[-1] == (401, "Authorization header is not 'Bearer <key>'")
