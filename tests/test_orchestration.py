@@ -25,7 +25,20 @@ def override_get_db():
     finally:
         db.close()
 
-app.dependency_overrides[get_db] = override_get_db
+@pytest.fixture(autouse=True)
+def _this_suites_db():
+    """
+    Points the app at this suite's database for each of its tests, and puts back
+    whatever was there after. Set once at import instead, the override belonged to
+    whichever test module pytest imported last, for the whole run.
+    """
+    before = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = override_get_db
+    yield
+    if before is None:
+        app.dependency_overrides.pop(get_db, None)
+    else:
+        app.dependency_overrides[get_db] = before
 
 @pytest.fixture(autouse=True)
 def setup_db():

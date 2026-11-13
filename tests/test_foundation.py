@@ -8,7 +8,8 @@ from src.database import Base, get_db
 from src.models import Location, Category, Job, Business, RunLog
 
 # Use a test SQLite database file
-SQLALCHEMY_DATABASE_URL = "sqlite:///test.db"
+# Its own file: other suites drop and recreate the tables in test.db.
+SQLALCHEMY_DATABASE_URL = "sqlite:///test_foundation.db"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
@@ -25,7 +26,21 @@ def override_get_db():
     finally:
         db.close()
 
-app.dependency_overrides[get_db] = override_get_db
+
+@pytest.fixture(autouse=True)
+def _this_suites_db():
+    """
+    Points the app at this suite's database for each of its tests, and puts back
+    whatever was there after. Set once at import instead, the override belonged to
+    whichever test module pytest imported last, for the whole run.
+    """
+    before = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = override_get_db
+    yield
+    if before is None:
+        app.dependency_overrides.pop(get_db, None)
+    else:
+        app.dependency_overrides[get_db] = before
 
 client = TestClient(app)
 
