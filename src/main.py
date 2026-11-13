@@ -10,6 +10,7 @@ from src.config import settings
 from contextlib import asynccontextmanager
 import logging
 import os
+import re
 
 logger = logging.getLogger("gmap_scraper")
 
@@ -209,7 +210,15 @@ async def require_session(request, call_next):
         # An account kept to part of the Inbox (Amit's: the chats not from
         # AutoGMap) may reply and work in the Inbox, and change nothing else:
         # no campaigns, templates or settings, whatever it calls.
+        # The one exception (13 Nov 2026): a manager or operator kept to AutoGMap's own chats
+        # (Kavya's account) may approve or reject a large campaign, as the second person
+        # the maker-checker asks for. Launching one stays outside what such an account can do.
+        approving = (request.state.inbox_scope == "autogmap"
+                     and getattr(user, "role", None) in ("manager", "operator")
+                     and request.method == "POST"
+                     and re.fullmatch(r"/api/v1/whatsapp/campaigns/[^/]+/(approve|reject)", path) is not None)
         if (request.state.inbox_scope and request.method not in ("GET", "HEAD", "OPTIONS")
+                and not approving
                 and not path.startswith(("/api/v1/inbox/", "/api/v1/auth/"))):
             if who:
                 audit.write(who, request.method, path, 403, {"refused": "inbox-only account"})

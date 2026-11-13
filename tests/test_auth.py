@@ -736,6 +736,27 @@ class TestInboxScope:
         assert client.post("/api/v1/discovery/trigger", json={}).status_code == 403
         # Inside the Inbox it may act (here: no such chat, not "forbidden").
         assert client.post("/api/v1/inbox/conversations/919000000099/messages", json={"message": "hi"}).status_code == 404
+        # Kept to other teams' chats, it may not approve a large campaign either.
+        r = client.post("/api/v1/whatsapp/campaigns/c1/approve", json={})
+        assert r.status_code == 403 and "Inbox" in r.json()["detail"]
+
+    def test_a_manager_kept_to_autogmap_chats_may_approve_a_large_campaign_but_not_launch_one(self, client):
+        # Kavya's account (13 Nov 2026): manager, Inbox kept to AutoGMap's chats.
+        client.post("/api/v1/auth/signup", json={"email": "kavya.shukla@eko.co.in", "password": GOOD_PASSWORD})
+        admin = make_admin()
+        client.post("/api/v1/auth/login", json={"email": admin, "password": GOOD_PASSWORD})
+        uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+        client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "manager"})
+        client.put(f"/api/v1/auth/users/{uid}/inbox-scope", json={"scope": "autogmap"})
+        client.post("/api/v1/auth/logout")
+        client.post("/api/v1/auth/login", json={"email": "kavya.shukla@eko.co.in", "password": GOOD_PASSWORD})
+        # Approve and reject reach the campaign (none here: 404), not the Inbox-only refusal.
+        assert client.post("/api/v1/whatsapp/campaigns/c1/approve", json={}).status_code == 404
+        assert client.post("/api/v1/whatsapp/campaigns/c1/reject", json={"reason": "not now"}).status_code == 404
+        # Anything else outside the Inbox is still refused.
+        r = client.post("/api/v1/whatsapp/campaigns", json={})
+        assert r.status_code == 403 and "Inbox" in r.json()["detail"]
+        assert client.put("/api/v1/whatsapp/insights/revenue-goal", json={"inr": 1}).status_code == 403
 
 
 
