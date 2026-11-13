@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from src.database import get_db
 from src.models import Business
-from src.models.business import CONTACTABLE, NOT_PARTNER
+from src.models.business import CONTACTABLE, HIRING_FOR, NOT_PARTNER
 from typing import Optional
 from datetime import datetime, timezone
 import csv
@@ -91,9 +91,18 @@ def export_businesses(
     page_size: int = Query(500, ge=1, le=1000),
     is_valid: Optional[bool] = None,
     format: str = Query("csv", pattern="^(csv|json|excel)$"),
+    # The Business Data tab's filters (13 Nov 2026): the download holds what they show.
+    hiring_for: Optional[str] = None,
+    state: Optional[str] = None,
+    search: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    query = db.query(Business).filter(CONTACTABLE, NOT_PARTNER)
+    from src.models.business import hiring_types
+    from src.routers.businesses import filtered
+    query = filtered(db.query(Business).filter(CONTACTABLE, NOT_PARTNER), hiring_for, state, search)
+    label = {k: v for k, (_, v) in HIRING_FOR.items()}
+    found_for = lambda biz: ", ".join(label[t] for t in hiring_types(biz))   # noqa: E731
+    stem = "businesses_export" + (f"_{hiring_for.lower()}" if hiring_for else "")
     
     if is_valid is not None:
         query = query.filter(Business.is_valid == is_valid)
@@ -111,7 +120,7 @@ def export_businesses(
             output.write('\ufeff')
             writer = csv.writer(output)
             
-            headers = ["name", "address", "phone", "email", "website", "category", "district", "state", "verified"]
+            headers = ["name", "address", "phone", "email", "website", "category", "district", "state", "verified", "type"]
             writer.writerow(headers)
             yield output.getvalue()
             output.seek(0)
@@ -127,7 +136,8 @@ def export_businesses(
                     biz.category,
                     biz.district,
                     biz.state,
-                    biz.is_valid
+                    biz.is_valid,
+                    found_for(biz),
                 ])
                 yield output.getvalue()
                 output.seek(0)
@@ -136,7 +146,7 @@ def export_businesses(
         return StreamingResponse(
             iter_csv(),
             media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename=businesses_export.csv"}
+            headers={"Content-Disposition": f"attachment; filename={stem}.csv"}
         )
 
     # --- Excel (XLSX) Export Path ---
@@ -148,7 +158,7 @@ def export_businesses(
         wb = openpyxl.Workbook(write_only=True)
         ws = wb.create_sheet("Businesses")
         
-        headers = ["name", "address", "phone", "email", "website", "category", "district", "state", "verified"]
+        headers = ["name", "address", "phone", "email", "website", "category", "district", "state", "verified", "type"]
         ws.append(headers)
         
         for biz in query.yield_per(1000):
@@ -161,7 +171,8 @@ def export_businesses(
                 biz.category,
                 biz.district,
                 biz.state,
-                biz.is_valid
+                biz.is_valid,
+                found_for(biz),
             ]
             
             # Format phone number as string explicitly
@@ -180,7 +191,7 @@ def export_businesses(
             
         return FileResponse(
             path=tmp_path,
-            filename="businesses_export.xlsx",
+            filename=f"{stem}.xlsx",
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             background=BackgroundTask(os.remove, tmp_path)
         )
@@ -202,6 +213,7 @@ def export_businesses(
             "district": biz.district,
             "state": biz.state,
             "verified": biz.is_valid,
+            "type": hiring_types(biz),
         })
     
     return {

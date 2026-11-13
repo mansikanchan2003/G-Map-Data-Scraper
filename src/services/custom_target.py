@@ -127,7 +127,8 @@ def ensure_location(
     return {"location": location, "reused": False}
 
 
-def generate_jobs_for(db: Session, locations: List[Location], categories: List[Category]) -> Dict:
+def generate_jobs_for(db: Session, locations: List[Location], categories: List[Category],
+                      hiring_for: str = "CSP") -> Dict:
     """
     Create the missing (location × category) jobs.
 
@@ -138,7 +139,7 @@ def generate_jobs_for(db: Session, locations: List[Location], categories: List[C
 
     for loc in locations:
         for cat in categories:
-            job_id = generate_job_id(loc.location_id, cat.category_id)
+            job_id = generate_job_id(loc.location_id, cat.category_id, hiring_for)
 
             if db.query(Job).filter(Job.job_id == job_id).first():
                 existing += 1
@@ -149,6 +150,7 @@ def generate_jobs_for(db: Session, locations: List[Location], categories: List[C
                 location_id=loc.location_id,
                 category_id=cat.category_id,
                 status="PENDING",
+                hiring_for=hiring_for,
                 # The same query the engine runs and generate_jobs stores, so a
                 # custom job reads like any other: "<category> near <PIN>".
                 search_query=build_search_url(cat.category_name, loc.pincode,

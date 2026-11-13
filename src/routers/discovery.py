@@ -36,6 +36,8 @@ class BatchRequest(BaseModel):
     # An exact list of jobs, which is how the autopilot runs the batch it
     # planned. Combined with the other filters like any of them.
     job_ids: Optional[List[str]] = None
+    # Whose jobs: CSP (the default, and all the autopilot ever runs), DC or STATE_HEAD.
+    hiring_for: str = Field("CSP", pattern="^(CSP|DC|STATE_HEAD)$")
     # Up to this many extra seconds, chosen at random, after each job. A fixed
     # gap between searches is a machine's rhythm; a varying one is not.
     delay_jitter_seconds: float = Field(0.0, ge=0.0, le=120.0)
@@ -78,6 +80,8 @@ class CustomRunRequest(BaseModel):
     batch_size: int = Field(25, ge=1, le=500)
     delay_between_jobs_seconds: float = Field(5.0, ge=0.0, le=60.0)
     run_now: bool = True
+    # Who the search hires for: CSP, DC (District Coordinator) or STATE_HEAD (13 Nov 2026).
+    hiring_for: str = Field("CSP", pattern="^(CSP|DC|STATE_HEAD)$")
 
 
 @router.post("/custom-run")
@@ -129,7 +133,7 @@ def custom_discovery_run(
         )
 
     db.commit()
-    generated = generate_jobs_for(db, locations, categories)
+    generated = generate_jobs_for(db, locations, categories, payload.hiring_for)
 
     response = {
         "status": "ready",
@@ -140,6 +144,7 @@ def custom_discovery_run(
             for l in locations
         ],
         "categories": [c.category_name for c in categories],
+        "hiring_for": payload.hiring_for,
         "errors": errors,
         **generated,
     }
@@ -149,6 +154,7 @@ def custom_discovery_run(
             batch_size=payload.batch_size,
             delay_between_jobs_seconds=payload.delay_between_jobs_seconds,
             trigger_source="custom_run",
+            hiring_for=payload.hiring_for,
             anchor_names=[l.anchor_name for l in locations],
             categories=[c.category_name for c in categories],
         )
@@ -169,7 +175,7 @@ def custom_discovery_run(
 
 
 @router.get("/targets", response_model=DiscoveryTargets)
-def discovery_targets(state: Optional[str] = None, db: Session = Depends(get_db)):
+def discovery_targets(state: Optional[str] = None, hiring_for: str = "CSP", db: Session = Depends(get_db)):
     """
     What a discovery batch can be pointed at, with how much work is left.
 
@@ -185,7 +191,7 @@ def discovery_targets(state: Optional[str] = None, db: Session = Depends(get_db)
             func.count(Job.job_id).filter(Job.status == "PENDING").label("pending"),
             func.count(Job.job_id).filter(Job.status.in_(("COMPLETED", "PARTIAL"))).label("done"),
         )
-        .join(Job, Job.location_id == Location.location_id)
+        .join(Job, (Job.location_id == Location.location_id) & (Job.hiring_for == hiring_for))
         .group_by(Location.anchor_name, Location.pincode, Location.district, Location.state)
     )
     if state:
@@ -207,7 +213,7 @@ def discovery_targets(state: Optional[str] = None, db: Session = Depends(get_db)
             func.count(Job.job_id).filter(Job.status == "PENDING").label("pending"),
             func.count(Job.job_id).filter(Job.status.in_(("COMPLETED", "PARTIAL"))).label("done"),
         )
-        .join(Job, Job.category_id == Category.category_id)
+        .join(Job, (Job.category_id == Category.category_id) & (Job.hiring_for == hiring_for))
         .group_by(Category.category_name)
     )
     if state:
@@ -241,6 +247,10 @@ def apply_target_filters(query, payload: "BatchRequest"):
 
     def clean(values):
         return [v.strip().lower() for v in (values or []) if v and v.strip()]
+
+    # Only the hiring type asked for: a plain batch (the queue, n8n) never runs
+    # a DC or State Head search, which are run by hand.
+    query = query.filter(Job.hiring_for == (getattr(payload, "hiring_for", None) or "CSP"))
 
     states = clean(payload.states)
     pincodes = clean(payload.pincodes)

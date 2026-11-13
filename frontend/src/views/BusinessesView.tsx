@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import type { BusinessItem, PaginatedResponse, ApiError } from '../types/api';
-import { fetchBusinesses, fetchBusinessStates, triggerCsvStream, triggerExcelStream,
-         fetchLiveSheet, syncLiveSheet, type LiveSheetInfo } from '../api';
+import { fetchBusinesses, fetchBusinessStates, fetchBusinessTypes, triggerCsvStream, triggerExcelStream,
+         fetchLiveSheet, syncLiveSheet, type LiveSheetInfo, type HiringFor } from '../api';
+
+/** The label each business carries for who it was found for (13 Nov 2026). */
+const TYPE_STYLE: Record<HiringFor, { label: string; short: string; chip: string; on: string; icon: string }> = {
+  CSP: { label: 'CSP', short: 'CSP', icon: 'storefront',
+         chip: 'bg-sky-950/60 border-sky-800 text-sky-300', on: 'bg-sky-600 border-sky-500 text-white' },
+  DC: { label: 'District Coordinator', short: 'DC', icon: 'hub',
+        chip: 'bg-purple-950/60 border-purple-800 text-purple-300', on: 'bg-purple-600 border-purple-500 text-white' },
+  STATE_HEAD: { label: 'State Head', short: 'State Head', icon: 'workspace_premium',
+                chip: 'bg-amber-950/60 border-amber-800 text-amber-300', on: 'bg-amber-500 border-amber-400 text-white' },
+};
 import { DownloadMenu } from '../components/DownloadMenu';
 import { AudienceSelector } from '../components/AudienceSelector';
 
@@ -26,6 +36,10 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
   // Filters
   const [search, setSearch] = useState<string>(initialSearch);
   const [selectedState, setSelectedState] = useState<string>('All');
+  // Who the businesses were found for; '' shows every type.
+  const [hiringFor, setHiringFor] = useState<HiringFor | ''>('');
+  const [typeCounts, setTypeCounts] = useState<{ type: HiringFor; label: string; count: number }[]>([]);
+  useEffect(() => { fetchBusinessTypes().then(setTypeCounts).catch(() => setTypeCounts([])); }, []);
   // The states that have businesses, read from the data, not a fixed list.
   const [states, setStates] = useState<{ state: string; count: number }[]>([]);
   useEffect(() => { fetchBusinessStates().then(setStates).catch(() => setStates([])); }, []);
@@ -34,7 +48,7 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
   // Each keystroke starts a load; only the latest one may fill the table, so
   // a slower answer for "Kio" cannot overwrite the one for "Kiosk".
   const latest = React.useRef(0);
-  const loadData = async (targetPage = page, searchTerm = search, st = selectedState) => {
+  const loadData = async (targetPage = page, searchTerm = search, st = selectedState, hf = hiringFor) => {
     const ticket = ++latest.current;
     setLoading(true);
     setError(null);
@@ -44,6 +58,7 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
         page_size: pageSize,
         search: searchTerm.trim() || undefined,
         state: st !== 'All' ? st : undefined,
+        hiring_for: hf || undefined,
       });
       if (ticket !== latest.current) return;
       setBusinesses(res.items);
@@ -59,14 +74,21 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
 
   // Waits for a pause in typing before searching.
   useEffect(() => {
-    const t = setTimeout(() => loadData(1, search, selectedState), 300);
+    const t = setTimeout(() => loadData(1, search, selectedState, hiringFor), 300);
     return () => clearTimeout(t);
-  }, [search, selectedState]);
+  }, [search, selectedState, hiringFor]);
+
+  // A download holds exactly what the filters show.
+  const exportFilters = {
+    hiring_for: hiringFor || undefined,
+    state: selectedState !== 'All' ? selectedState : undefined,
+    search: search.trim() || undefined,
+  };
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= totalPages && newPage !== page) {
       setPage(newPage);
-      loadData(newPage, search, selectedState);
+      loadData(newPage, search, selectedState, hiringFor);
     }
   };
 
@@ -136,8 +158,8 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
             </button>
 
             <DownloadMenu
-              onCsv={() => triggerCsvStream()}
-              onExcel={() => triggerExcelStream()}
+              onCsv={() => triggerCsvStream(exportFilters)}
+              onExcel={() => triggerExcelStream(exportFilters)}
               sheetUrl={liveSheet?.url ?? null}
               onSheetSync={handleSheetSync}
               sheetBusy={googleSheetsLoading}
@@ -157,8 +179,8 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
         </div>
 
         {/* Filter and Search Bar */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pt-1">
-          <div className="flex items-center gap-2 flex-1 max-w-2xl">
+        <div className="flex flex-col lg:flex-row lg:flex-wrap items-stretch lg:items-center justify-between gap-3 pt-1">
+          <div className="flex items-center gap-2 flex-1 min-w-0 lg:min-w-[440px] max-w-2xl">
             <div className="relative flex-1">
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-[16px] material-symbols-outlined">
                 search
@@ -182,6 +204,34 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
                 <option key={s.state} value={s.state}>{s.state} ({s.count.toLocaleString('en-IN')})</option>
               ))}
             </select>
+          </div>
+
+          {/* Type: who the businesses were found for */}
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Type">
+            <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mr-0.5">Type</span>
+            <button type="button" onClick={() => setHiringFor('')}
+              className={`h-8 px-3 rounded-full border text-xs font-semibold transition-colors ${
+                hiringFor === '' ? 'bg-slate-200 border-slate-200 text-slate-900' : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-500'}`}>
+              All
+            </button>
+            {(Object.keys(TYPE_STYLE) as HiringFor[]).map(k => {
+              const st = TYPE_STYLE[k];
+              const n = typeCounts.find(t => t.type === k)?.count;
+              const on = hiringFor === k;
+              return (
+                <button key={k} type="button" onClick={() => setHiringFor(k)} title={`Show only businesses found for ${st.label}`}
+                  className={`h-8 pl-2 pr-3 rounded-full border text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                    on ? st.on : `${st.chip} hover:brightness-125`}`}>
+                  <span className="material-symbols-outlined text-[15px]">{st.icon}</span>
+                  {st.label}
+                  {n !== undefined && (
+                    <span className={`ml-0.5 rounded-full px-1.5 text-[10px] ${on ? 'bg-white/25' : 'bg-slate-900/70'}`}>
+                      {n.toLocaleString('en-IN')}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           <div className="flex items-center gap-2 self-end lg:self-auto px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs font-mono-code text-slate-400">
@@ -294,6 +344,12 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
                       <span className="truncate max-w-[220px]" title={biz.name}>
                         {biz.name}
                       </span>
+                      {(biz.hiring_for?.length ? biz.hiring_for : ['CSP' as HiringFor]).map(k => (
+                        <span key={k} title={`Found for ${TYPE_STYLE[k].label}`}
+                          className={`shrink-0 rounded px-1.5 py-px text-[9px] font-bold uppercase tracking-wide border ${TYPE_STYLE[k].chip}`}>
+                          {TYPE_STYLE[k].short}
+                        </span>
+                      ))}
                       {biz.verified && (
                         <span
                           className="material-symbols-outlined text-[15px] text-emerald-400 shrink-0"

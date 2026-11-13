@@ -246,7 +246,7 @@ def pending_by_state(db: Session) -> Dict[str, int]:
     rows = (
         db.query(Location.state, func.count(Job.job_id))
         .join(Job, Job.location_id == Location.location_id)
-        .filter(Job.status == "PENDING", Location.state.isnot(None))
+        .filter(Job.status == "PENDING", Job.hiring_for == "CSP", Location.state.isnot(None))
         .group_by(Location.state)
         .all()
     )
@@ -299,7 +299,7 @@ def plan_round(db: Session, state: str, batches: int, batch_size: int,
                  Job.last_attempt_at)
         .join(Location, Location.location_id == Job.location_id)
         .join(Category, Category.category_id == Job.category_id)
-        .filter(Job.status == "PENDING", func.lower(Location.state) == state.lower())
+        .filter(Job.status == "PENDING", Job.hiring_for == "CSP", func.lower(Location.state) == state.lower())
         .all()
     )
 

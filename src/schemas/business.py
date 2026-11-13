@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, computed_field
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 
 class BusinessBase(BaseModel):
@@ -55,6 +55,8 @@ class BusinessPublicResponse(BaseModel):
     district: Optional[str] = None
     state: Optional[str] = None
     verified: bool
+    # Who it was found for: ["CSP"], ["DC"], ["STATE_HEAD"], or more than one.
+    hiring_for: List[str] = ["CSP"]
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -70,4 +72,10 @@ class BusinessPublicResponse(BaseModel):
             district=biz.district,
             state=biz.state,
             verified=biz.is_valid,
+            hiring_for=_types(biz),
         )
+
+
+def _types(biz) -> List[str]:
+    from src.models.business import hiring_types
+    return hiring_types(biz) or ["CSP"]

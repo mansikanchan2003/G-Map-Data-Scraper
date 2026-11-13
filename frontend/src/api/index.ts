@@ -204,6 +204,7 @@ export interface BusinessFilterParams {
   district?: string;
   pincode?: string;
   is_valid?: boolean;
+  hiring_for?: 'CSP' | 'DC' | 'STATE_HEAD';
 }
 
 export async function fetchBusinesses(params: BusinessFilterParams = {}): Promise<PaginatedResponse<BusinessItem>> {
@@ -220,6 +221,7 @@ export async function fetchBusinesses(params: BusinessFilterParams = {}): Promis
   if (params.district && params.district !== 'All') query.set('district', params.district);
   if (params.pincode?.trim()) query.set('pincode', params.pincode.trim());
   if (params.is_valid !== undefined) query.set('is_valid', String(params.is_valid));
+  if (params.hiring_for) query.set('hiring_for', params.hiring_for);
 
   return request<PaginatedResponse<BusinessItem>>(`/api/v1/businesses?${query.toString()}`);
 }
@@ -232,12 +234,29 @@ export const fetchBusinessStates = () =>
  * Triggers native streaming download of all businesses directly from FastAPI.
  * Zero browser memory allocation or client-side CSV parsing.
  */
-export function triggerCsvStream(): void {
+/** The Business Data tab's filters, so a download holds exactly what they show. */
+export interface ExportFilters { hiring_for?: HiringFor; state?: string; search?: string }
+const exportQuery = (f: ExportFilters = {}) => {
+  const p = new URLSearchParams();
+  if (f.hiring_for) p.set('hiring_for', f.hiring_for);
+  if (f.state) p.set('state', f.state);
+  if (f.search?.trim()) p.set('search', f.search.trim());
+  const s = p.toString();
+  return s ? `&${s}` : '';
+};
+const exportName = (f: ExportFilters, ext: string) =>
+  `businesses_${f.hiring_for ? f.hiring_for.toLowerCase() + '_' : ''}${new Date().toISOString().slice(0, 10)}.${ext}`;
+
+/** How many businesses were found for each hiring type. */
+export const fetchBusinessTypes = () =>
+  request<{ type: HiringFor; label: string; count: number }[]>('/api/v1/businesses/types');
+
+export function triggerCsvStream(filters: ExportFilters = {}): void {
   const baseUrl = getApiBaseUrl();
-  const url = `${baseUrl}/api/v1/export/businesses?format=csv`;
+  const url = `${baseUrl}/api/v1/export/businesses?format=csv${exportQuery(filters)}`;
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.setAttribute('download', `businesses_export_${new Date().toISOString().slice(0, 10)}.csv`);
+  anchor.setAttribute('download', exportName(filters, 'csv'));
   anchor.target = '_blank';
   document.body.appendChild(anchor);
   anchor.click();
@@ -247,12 +266,12 @@ export function triggerCsvStream(): void {
 /**
  * Triggers native streaming download of all businesses in Excel (XLSX) format.
  */
-export function triggerExcelStream(): void {
+export function triggerExcelStream(filters: ExportFilters = {}): void {
   const baseUrl = getApiBaseUrl();
-  const url = `${baseUrl}/api/v1/export/businesses?format=excel`;
+  const url = `${baseUrl}/api/v1/export/businesses?format=excel${exportQuery(filters)}`;
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.setAttribute('download', `businesses_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  anchor.setAttribute('download', exportName(filters, 'xlsx'));
   anchor.target = '_blank';
   document.body.appendChild(anchor);
   anchor.click();
@@ -453,8 +472,14 @@ export interface DiscoveryTargets {
   categories: DiscoveryTarget[];
 }
 
-export const fetchDiscoveryTargets = async (state?: string): Promise<DiscoveryTargets> => {
-  const qs = state ? `?state=${encodeURIComponent(state)}` : '';
+/** Who a search hires for (13 Nov 2026): CSPs (the autopilot's), District Coordinators or State Heads. */
+export type HiringFor = 'CSP' | 'DC' | 'STATE_HEAD';
+export const HIRING_LABEL: Record<HiringFor, string> = { CSP: 'CSP', DC: 'District Coordinator', STATE_HEAD: 'State Head' };
+
+export const fetchDiscoveryTargets = async (state?: string, hiringFor: HiringFor = 'CSP'): Promise<DiscoveryTargets> => {
+  const p = new URLSearchParams({ hiring_for: hiringFor });
+  if (state) p.set('state', state);
+  const qs = `?${p.toString()}`;
   return request<DiscoveryTargets>(`/api/v1/discovery/targets${qs}`);
 };
 
@@ -465,6 +490,7 @@ export const runTargetedDiscovery = async (body: {
   states?: string[];
   batch_size: number;
   delay_between_jobs_seconds: number;
+  hiring_for?: HiringFor;
 }): Promise<any> => {
   return request('/api/v1/discovery/batch', {
     method: 'POST',
@@ -479,6 +505,7 @@ export const runCustomDiscovery = async (body: {
   batch_size: number;
   delay_between_jobs_seconds: number;
   run_now: boolean;
+  hiring_for?: HiringFor;
 }): Promise<any> => {
   return request('/api/v1/discovery/custom-run', {
     method: 'POST',

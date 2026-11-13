@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 from src.models import Location, Category, Job, Business
+from src.models.business import HIRING_FOR
 from src.config import settings
 from src.services.discovery_engine import GoogleMapsDiscoveryEngine, build_search_url
 from src.services.normalizer import normalize_business_record
@@ -11,9 +12,17 @@ from src.services.geo_validator import validate_geo_distance
 from src.services.deduplicator import generate_dedup_key, generate_business_id
 from src.utils.logging import logger
 
-def generate_job_id(location_id: str, category_id: str) -> str:
-    s = f"{location_id}{category_id}".encode('utf-8')
-    return hashlib.sha256(s).hexdigest()[:16]
+def generate_job_id(location_id: str, category_id: str, hiring_for: str = "CSP") -> str:
+    # A CSP job keeps the id it always had; a DC or State Head search of the same
+    # place and category is a job of its own.
+    s = f"{location_id}{category_id}" + ("" if hiring_for == "CSP" else f"|{hiring_for}")
+    return hashlib.sha256(s.encode('utf-8')).hexdigest()[:16]
+
+
+def _hiring_flags(hiring_for: Optional[str]) -> Dict[str, bool]:
+    """A new business's for_csp / for_dc / for_state_head, from the job that found it."""
+    mine = HIRING_FOR.get(hiring_for or "CSP", HIRING_FOR["CSP"])[0]
+    return {col: col == mine for col, _ in HIRING_FOR.values()}
 
 def generate_jobs(db: Session) -> dict:
     logger.info("Starting job generation...")
@@ -278,6 +287,13 @@ def execute_single_job(
                         existing_biz.validation_errors = json.dumps(geo_notes) if geo_notes else None
                         updated_field = True
 
+                    # Found again by a search for someone else (a DC search finding
+                    # a CSP's shop): it now counts for both.
+                    flag = HIRING_FOR.get(job.hiring_for or "CSP", HIRING_FOR["CSP"])[0]
+                    if not getattr(existing_biz, flag, False):
+                        setattr(existing_biz, flag, True)
+                        updated_field = True
+
                     if updated_field:
                         updated_count_biz += 1
                     else:
@@ -315,7 +331,8 @@ def execute_single_job(
                         source_query=job.search_query,
                         dedup_key=dedup_key,
                         is_valid=is_valid,
-                        validation_errors=json.dumps(geo_notes) if geo_notes else None
+                        validation_errors=json.dumps(geo_notes) if geo_notes else None,
+                        **_hiring_flags(job.hiring_for),
                     )
                     db.add(new_biz)
                     saved_count += 1

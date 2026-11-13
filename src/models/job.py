@@ -9,6 +9,10 @@ class Job(Base):
     location_id = Column(String(12), ForeignKey("locations.location_id"), nullable=False)
     category_id = Column(String(12), ForeignKey("categories.category_id"), nullable=False)
     status = Column(String(20), nullable=False, default="PENDING", index=True)
+    # Who the search is hiring for: CSP (the autopilot's, and every job before
+    # 13 Nov 2026), DC (District Coordinator) or STATE_HEAD. Only CSP jobs run
+    # on their own; the others are run by hand from Run discovery.
+    hiring_for = Column(String(20), nullable=False, default="CSP", server_default="CSP", index=True)
     search_query = Column(Text, nullable=False)
     attempt_count = Column(Integer, nullable=False, default=0)
     max_retries = Column(Integer, nullable=False, default=3)

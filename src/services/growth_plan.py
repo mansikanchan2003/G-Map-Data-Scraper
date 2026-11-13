@@ -25,7 +25,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from src.models import Business
-from src.models.business import CONTACTABLE, NOT_PARTNER
+from src.models.business import CONTACTABLE, FOR_CSP, NOT_PARTNER
 from src.models.inbox import WhatsAppConversation, WhatsAppMessage
 from src.models.location import Location
 from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
@@ -260,7 +260,7 @@ def _untapped(db: Session) -> Dict[str, Counter]:
     messaged = {_last10(p) for (p,) in db.query(WhatsAppCampaignRecipient.phone)}
     by_district, by_category, by_pair = Counter(), Counter(), Counter()
     rows = (db.query(Business.phone, Business.district, Business.state, Business.category)
-            .filter(Business.is_valid.is_(True), CONTACTABLE, NOT_PARTNER, Business.phone.isnot(None)))
+            .filter(Business.is_valid.is_(True), CONTACTABLE, NOT_PARTNER, FOR_CSP, Business.phone.isnot(None)))
     seen = set()
     for phone, district, state, category in rows:
         d = _last10(phone)
@@ -837,7 +837,7 @@ def branch_plan(db: Session, g: dict, book: dict) -> Optional[dict]:
     left: Dict[str, Counter] = {}
     seen = set()
     q = (db.query(Business.phone, Business.category, Business.latitude, Business.longitude)
-         .filter(Business.is_valid.is_(True), CONTACTABLE, NOT_PARTNER, Business.phone.isnot(None),
+         .filter(Business.is_valid.is_(True), CONTACTABLE, NOT_PARTNER, FOR_CSP, Business.phone.isnot(None),
                  Business.latitude.isnot(None)))
     for phone, category, lat, lon in q:
         d = _last10(phone)

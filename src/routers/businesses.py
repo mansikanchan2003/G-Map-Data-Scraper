@@ -3,13 +3,37 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from src.database import get_db
 from src.models import Business, Job, Location
-from src.models.business import CONTACTABLE, NOT_PARTNER
+from src.models.business import CONTACTABLE, HIRING_FOR, NOT_PARTNER, hiring_flag
 from src.schemas.common import Pagination
 from src.schemas.business import BusinessPublicResponse
 from typing import Optional
 from datetime import datetime
 
 router = APIRouter(prefix="/api/v1/businesses", tags=["Businesses"])
+
+def filtered(query, hiring_for: Optional[str] = None, state: Optional[str] = None, search: Optional[str] = None):
+    """
+    The Business Data tab's filters, shared with its export so a download holds
+    exactly the rows the filters show: who it was found for, the state, and words.
+    """
+    if hiring_for:
+        if hiring_for not in HIRING_FOR:
+            raise HTTPException(status_code=400, detail=f"Type must be one of: {', '.join(HIRING_FOR)}.")
+        query = query.filter(hiring_flag(hiring_for).is_(True))
+    if state:
+        query = query.filter(Business.state.ilike(state.strip()))
+    if search:
+        # Every word must appear somewhere: the name, the kind of business, the
+        # place or the phone. "Kiosk Agra" finds kiosks in Agra.
+        for word in search.split():
+            term = f"%{word}%"
+            query = query.filter(or_(
+                Business.name.ilike(term), Business.category.ilike(term), Business.address.ilike(term),
+                Business.district.ilike(term), Business.tehsil.ilike(term), Business.state.ilike(term),
+                Business.phone.ilike(term),
+            ))
+    return query
+
 
 @router.get("", response_model=Pagination[BusinessPublicResponse])
 def get_businesses(
@@ -21,6 +45,7 @@ def get_businesses(
     pincode: Optional[str] = None,
     is_valid: Optional[bool] = None,
     search: Optional[str] = None,
+    hiring_for: Optional[str] = None,
     since: Optional[datetime] = None,
     sort_by: str = Query("discovered_at", pattern="^(discovered_at|name|distance_km)$"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
@@ -34,22 +59,11 @@ def get_businesses(
         query = query.filter(Business.category == category)
     if district:
         query = query.filter(Business.district == district)
-    if state:
-        query = query.filter(Business.state.ilike(state.strip()))
+    query = filtered(query, hiring_for, state, search)
     if is_valid is not None:
         query = query.filter(Business.is_valid == is_valid)
     if since:
         query = query.filter(Business.discovered_at >= since)
-    if search:
-        # Every word must appear somewhere: the name, the kind of business, the
-        # place or the phone. "Kiosk Agra" finds kiosks in Agra.
-        for word in search.split():
-            term = f"%{word}%"
-            query = query.filter(or_(
-                Business.name.ilike(term), Business.category.ilike(term), Business.address.ilike(term),
-                Business.district.ilike(term), Business.tehsil.ilike(term), Business.state.ilike(term),
-                Business.phone.ilike(term),
-            ))
     if pincode:
         # Join with jobs and locations to filter by pincode
         query = query.join(Job, Business.job_id == Job.job_id)\
@@ -76,6 +90,14 @@ def get_businesses(
         "has_next": page < total_pages,
         "has_prev": page > 1
     }
+
+@router.get("/types")
+def business_types(db: Session = Depends(get_db)):
+    """How many businesses were found for each hiring type, for the Type filter."""
+    base = db.query(Business).filter(CONTACTABLE, NOT_PARTNER)
+    return [{"type": key, "label": label, "count": base.filter(hiring_flag(key).is_(True)).count()}
+            for key, (_, label) in HIRING_FOR.items()]
+
 
 @router.get("/states")
 def business_states(db: Session = Depends(get_db)):

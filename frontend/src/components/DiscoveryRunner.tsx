@@ -4,7 +4,18 @@ import {
   runTargetedDiscovery,
   runCustomDiscovery,
   type DiscoveryTargets,
+  type HiringFor,
 } from '../api';
+
+/** Who the search hires for. CSP is what the autopilot runs; the other two only ever run from here. */
+const HIRING: { key: HiringFor; label: string; note: string; icon: string; on: string; dot: string }[] = [
+  { key: 'CSP', label: 'CSP', note: 'Customer Service Point owners', icon: 'storefront',
+    on: 'bg-sky-950/60 border-sky-500 text-sky-300 ring-1 ring-sky-500/40', dot: 'bg-sky-500' },
+  { key: 'DC', label: 'District Coordinator', note: 'One person to lead a district', icon: 'hub',
+    on: 'bg-purple-950/60 border-purple-500 text-purple-300 ring-1 ring-purple-500/40', dot: 'bg-purple-500' },
+  { key: 'STATE_HEAD', label: 'State Head', note: 'One person to lead a state', icon: 'workspace_premium',
+    on: 'bg-amber-950/60 border-amber-500 text-amber-300 ring-1 ring-amber-500/40', dot: 'bg-amber-500' },
+];
 
 interface Props {
   isOpen: boolean;
@@ -24,6 +35,7 @@ type Mode = 'queued' | 'custom';
  */
 export const DiscoveryRunner: React.FC<Props> = ({ isOpen, onClose, onStarted }) => {
   const [mode, setMode] = useState<Mode>('queued');
+  const [hiringFor, setHiringFor] = useState<HiringFor>('CSP');
   const [targets, setTargets] = useState<DiscoveryTargets | null>(null);
   const [state, setState] = useState('');
   const [locations, setLocations] = useState<string[]>([]);
@@ -41,8 +53,8 @@ export const DiscoveryRunner: React.FC<Props> = ({ isOpen, onClose, onStarted })
 
   useEffect(() => {
     if (!isOpen) return;
-    fetchDiscoveryTargets(state || undefined).then(setTargets).catch(() => setTargets(null));
-  }, [isOpen, state]);
+    fetchDiscoveryTargets(state || undefined, hiringFor).then(setTargets).catch(() => setTargets(null));
+  }, [isOpen, state, hiringFor]);
 
   if (!isOpen) return null;
 
@@ -80,6 +92,7 @@ export const DiscoveryRunner: React.FC<Props> = ({ isOpen, onClose, onStarted })
           states: !locations.length && state ? [state] : undefined,
           batch_size: batchSize,
           delay_between_jobs_seconds: delay,
+          hiring_for: hiringFor,
         });
         setResult(res.message || `Started ${res.jobs_queued} job(s).`);
         if (res.status === 'started') onStarted();
@@ -96,6 +109,7 @@ export const DiscoveryRunner: React.FC<Props> = ({ isOpen, onClose, onStarted })
           batch_size: batchSize,
           delay_between_jobs_seconds: delay,
           run_now: true,
+          hiring_for: hiringFor,
         });
         const failed = (res.errors || []).map((e: any) => `${e.place}: ${e.error}`).join(' · ');
         setResult(
@@ -139,8 +153,39 @@ export const DiscoveryRunner: React.FC<Props> = ({ isOpen, onClose, onStarted })
           </button>
         </div>
 
+        {/* Who the search hires for */}
+        <div className="px-6 pt-5">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Hiring for</div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {HIRING.map(h => {
+              const on = hiringFor === h.key;
+              return (
+                <button key={h.key} type="button"
+                  onClick={() => { setHiringFor(h.key); setLocations([]); setCategories([]); }}
+                  className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                    on ? h.on : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-600'}`}>
+                  <span className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center ${on ? `${h.dot} text-white` : 'bg-slate-900 text-slate-500'}`}>
+                    <span className="material-symbols-outlined text-[19px]">{h.icon}</span>
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold leading-tight">{h.label}</span>
+                    <span className="block text-[11px] opacity-75 leading-tight mt-0.5">{h.note}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {hiringFor !== 'CSP' && (
+            <p className="mt-2 text-[11px] text-slate-400">
+              Runs only when you start it here; the autopilot never runs it. Everything it finds is labelled
+              <b className="text-slate-200"> {HIRING.find(h => h.key === hiringFor)!.label}</b> in Business Data, and
+              CSP campaigns never message it.
+            </p>
+          )}
+        </div>
+
         {/* Mode */}
-        <div className="px-6 pt-5 flex gap-2">
+        <div className="px-6 pt-4 flex gap-2">
           <button
             onClick={() => setMode('queued')}
             className={`px-4 py-2 text-sm font-semibold rounded border ${

@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Float, Boolean, DateTime, ForeignKey, Text, and_, func, or_
+from sqlalchemy import false as sa_false, true as sa_true
 from sqlalchemy.orm import relationship
 from src.database import Base
 
@@ -30,6 +31,11 @@ class Business(Base):
     source_query = Column(Text, nullable=False)
     dedup_key = Column(String(200), nullable=False, unique=True)
     is_valid = Column(Boolean, nullable=False, default=True, index=True)
+    # Who this business was found for (13 Nov 2026). A business found by both a
+    # CSP and a DC search carries both. Everything found before is CSP.
+    for_csp = Column(Boolean, nullable=False, default=True, server_default=sa_true(), index=True)
+    for_dc = Column(Boolean, nullable=False, default=False, server_default=sa_false(), index=True)
+    for_state_head = Column(Boolean, nullable=False, default=False, server_default=sa_false(), index=True)
     validation_errors = Column(Text, nullable=True)
     discovered_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -64,3 +70,26 @@ def _partner_names():
 
 IS_PARTNER = Business.category.in_(_partner_names())
 NOT_PARTNER = ~IS_PARTNER
+
+
+# Who a search is hiring for (13 Nov 2026): the value on a job, the flag on a business,
+# and the label the team sees. CSP is the autopilot's; DC and State Head are run by hand.
+HIRING_FOR = {
+    "CSP": ("for_csp", "CSP"),
+    "DC": ("for_dc", "District Coordinator"),
+    "STATE_HEAD": ("for_state_head", "State Head"),
+}
+
+
+def hiring_flag(hiring_for: str):
+    """The business column for a hiring type ("CSP", "DC", "STATE_HEAD")."""
+    return getattr(Business, HIRING_FOR[hiring_for][0])
+
+
+def hiring_types(biz) -> list:
+    """The hiring types a business was found for, in order: ["CSP", "DC", ...]."""
+    return [k for k, (col, _) in HIRING_FOR.items() if getattr(biz, col, False)]
+
+
+# Only businesses found for CSPs get the CSP campaigns and CSP-only screens.
+FOR_CSP = Business.for_csp.is_(True)

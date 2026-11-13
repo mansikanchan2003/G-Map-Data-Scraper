@@ -59,6 +59,8 @@ export interface BusinessItem {
   category: string;
   district?: string | null;
   state?: string | null;
+  /** Who it was found for: ['CSP'], ['DC'], ['STATE_HEAD'], or more than one. */
+  hiring_for?: ('CSP' | 'DC' | 'STATE_HEAD')[];
   latitude?: number | null;
   longitude?: number | null;
   distance_km?: number | null;
