@@ -2468,20 +2468,19 @@ def test_the_bots_dispositions_come_before_the_teams_with_their_actions(db, clie
 
 def test_kavya_is_emailed_only_when_a_chat_goes_to_a_person(monkeypatch):
     # Escalations and a person's action go to the admin and Kavya; the news that
-    # someone tapped Interested, asked for guidance or uploaded documents, to the admin alone.
+    # someone tapped Interested or asked for guidance, to the admin alone.
     from src.services import notifier
     sent = []
     monkeypatch.setattr(notifier, "_send", lambda to, subject, body: sent.append((subject, to)) or True)
     monkeypatch.setattr(notifier, "NOTIFY_ALSO", "kavya.shukla@eko.co.in")
     notifier.notify_button_click("mansi@eko.co.in", {"name": "Ravi", "phone": "+919000000001", "button_text": "Interested"})
     notifier.notify_webinar("mansi@eko.co.in", {"name": "Ravi", "phone": "+919000000001", "answer": "yes"})
-    notifier.notify_documents_submitted("mansi@eko.co.in", {"name": "Ravi", "phone": "+919000000001", "documents": []})
     notifier.notify_attention("mansi@eko.co.in", {"person": {"name": "Ravi", "phone": "+919000000001"},
                                                   "attention": {"reason": "asked a question"}}, "text", "url")
     notifier.notify_team("mansi@eko.co.in", "AutoGMap: Investment issue — Ravi", "body")
     to = [t for _, t in sent]
-    assert to[:3] == ["mansi@eko.co.in"] * 3
-    assert all("kavya.shukla@eko.co.in" in t for t in to[3:]) and len(to) == 5
+    assert to[:2] == ["mansi@eko.co.in"] * 2
+    assert all("kavya.shukla@eko.co.in" in t for t in to[2:]) and len(to) == 4
 
 
 def test_a_trust_concern_is_answered_with_the_website_and_goes_to_a_person_to_call(db, emailed):
@@ -4277,3 +4276,71 @@ def test_esaf_messages_exist_in_every_language_we_campaign_in():
         assert "₹1,999" in bot_messages.MESSAGES[lang]["esaf_details"]
     for key in ("esaf_offer", "esaf_details", "esaf_yes", "esaf_no"):
         assert key in bot_messages.HINGLISH
+
+
+# --- Documents sent in the chat (15 Nov 2026) ----------------------------------------------------
+
+@pytest.mark.parametrize("text, hint, key", [
+    ("GOVERNMENT OF INDIA\nRavi Kumar\nDOB: 01/01/1990\n2345 6789 0123\nMera Aadhaar, Meri Pehchaan", "", "aadhaar"),
+    ("INCOME TAX DEPARTMENT  GOVT. OF INDIA\nPermanent Account Number\nABCDE1234F", "", "pan"),
+    ("ELECTION COMMISSION OF INDIA\nELECTOR PHOTO IDENTITY CARD", "", "voter_dl"),
+    ("State Bank of India\nIFSC: SBIN0000123\nPassbook", "", "bank"),
+    ("Gujarat Secondary and Higher Secondary Education Board\nHigher Secondary Certificate", "", "edu_12"),
+    ("Saurashtra University\nBachelor of Commerce", "", "edu_higher"),
+    ("", "", "photo"),
+    ("a long page of words that names no document we know of at all, a shop bill perhaps", "", None),
+    ("scan", "aadhar card.pdf", "aadhaar"),
+])
+def test_a_document_is_recognised_from_its_words(text, hint, key):
+    from src.services import chat_documents
+    assert chat_documents.classify(text, hint, is_image=True) == key
+
+
+def _chat_file(db, tmp_path, name="a.jpg"):
+    """A photo the person sent, already downloaded, as fetch_media leaves it."""
+    path = tmp_path / name
+    path.write_bytes(b"\xff\xd8\xff" + b"0" * 100)
+    msg = inbound(db, "image", image={"id": f"media-{name}", "mime_type": "image/jpeg"})
+    msg.payload = {**(msg.payload or {}), "stored": str(path), "mime_type": "image/jpeg"}
+    db.commit()
+    return msg
+
+
+def test_documents_sent_in_the_chat_are_filed_by_name_and_once_all_are_in_they_are_thanked(db, tmp_path, monkeypatch):
+    import os
+    from src.services import chat_documents, documents_report
+    reported = []
+    monkeypatch.setattr(documents_report, "send", lambda phone, url: reported.append(phone) or True)
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    asked = len(StubMeta.sent)
+    texts = {"aadhaar.jpg": "GOVERNMENT OF INDIA 2345 6789 0123 Aadhaar",
+             "pan.jpg": "INCOME TAX DEPARTMENT ABCDE1234F", "photo.jpg": ""}
+    m1 = _chat_file(db, tmp_path, "aadhaar.jpg")
+    assert len(StubMeta.sent) == asked                       # the bot does not answer a file with its next question
+    read = lambda path, mime: texts[os.path.basename(path)]   # noqa: E731
+    assert chat_documents.process(db, m1, read=read) == "aadhaar"
+    docs = {d.doc_type: d for d in db.query(OnboardingDocument).all()}
+    assert docs["aadhaar"].original_name == "Aadhaar Card.jpg"
+    # The same document again: the first stays.
+    again = _chat_file(db, tmp_path, "aadhaar.jpg")
+    assert chat_documents.process(db, again, read=read) is None and db.query(OnboardingDocument).count() == 1
+    assert conv(db).documents_submitted_at is None
+    for name in ("pan.jpg", "photo.jpg"):
+        chat_documents.process(db, _chat_file(db, tmp_path, name), read=read)
+    c = conv(db)
+    # Every required document is in: thanked once, the bot's questions stop, the team is told.
+    assert c.documents_submitted_at is not None and c.bot_step == onboarding_bot.SUBMITTED
+    assert StubMeta.sent[-1][2] == onboarding_bot.THANKS
+    assert reported == [PHONE]
+    assert {d.doc_type for d in db.query(OnboardingDocument).all()} == {"aadhaar", "pan", "photo"}
+
+
+def test_a_file_that_is_no_document_is_left_for_a_person(db, tmp_path):
+    from src.services import chat_documents
+    tap_campaign(db)
+    msg = _chat_file(db, tmp_path, "bill.jpg")
+    assert chat_documents.process(db, msg, read=lambda p, m: "Invoice total amount payable thank you for shopping") is None
+    c = conv(db)
+    assert c.needs_attention and "could not recognise" in c.attention_reason
+    assert db.query(OnboardingDocument).count() == 0

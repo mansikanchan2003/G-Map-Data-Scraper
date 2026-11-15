@@ -71,6 +71,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
+# Reading documents people send in the chat (services/chat_documents), on this
+# server only: OCR in English and Hindi, and the tools to read a PDF's first page.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-hin \
+    poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
 # ---------------------------------------------------------------------------
 # Create non-root user
 # ---------------------------------------------------------------------------

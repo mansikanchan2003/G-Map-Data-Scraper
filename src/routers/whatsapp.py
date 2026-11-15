@@ -1312,6 +1312,9 @@ async def receive_webhook(request: Request, background: BackgroundTasks,
             # them; the id in the webhook is all it sends.
             background.add_task(inbox.fetch_media_in_background, received)
             background.add_task(onboarding_bot.run, received)
+            # Documents sent in the chat: read on our server, filed under their own name (15 Nov 2026).
+            from src.services import chat_documents
+            background.add_task(chat_documents.process_in_background, received)
 
     except Exception as e:
         logger.error(f"Error processing webhook payload: {str(e)}")

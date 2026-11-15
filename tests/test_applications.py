@@ -571,3 +571,49 @@ def test_the_call_recorder_key_also_works_as_a_bearer_token_and_refusals_say_why
     assert r.status_code == 401 and "not 'Bearer <key>'" in r.json()["detail"]
     assert all(KEY not in (why or "") for _, why in seen)       # the key never reaches the audit log
     assert seen[-1] == (401, "Authorization header is not 'Bearer <key>'")
+
+
+# --- The documents-submitted email to the admin and Kavya (15 Nov 2026) ------------------------
+
+def test_the_documents_email_says_how_far_our_nearest_branch_is_and_to_pitch_esaf(client, monkeypatch):
+    from src.services import documents_report, notifier
+    _add_branches()
+    db = TestingSessionLocal()
+    c = db.get(WhatsAppConversation, "+919000000002")
+    # 26.9 km from Vinchhiya: outside our 20 km SBI area, as the applicant of 15 Nov.
+    c.bot_data = {"coverage": {"pincode": "360025", "place": "Sardhar, Rajkot, Gujarat", "served": False,
+                               "coords": [22.14, 71.12]}, "education": "grad", "can_invest": True}
+    db.commit()
+    subject, body = documents_report.email(documents_report.build(db, c), "https://indev.eko.in/autogmap")
+    assert "Not in our SBI area" in subject
+    assert "Vinchhiya, code 60086, PIN 360055" in body and "outside our 20 km area" in body
+    assert "Not qualified for our SBI branch codes: PIN 360025 (Sardhar, Rajkot, Gujarat)" in body
+    assert "pitch ESAF" in body and "1 documents on the upload form" in body
+    assert "#inbox/919000000002" in body
+    # Its one document is a PAN: no Aadhaar yet; one from DigiLocker reads as verified.
+    assert "Aadhaar       Not given yet" in body
+    c.bot_data = {**c.bot_data, "digilocker": {"got": {"aadhaar": "2026-11-15"}}}
+    db.commit()
+    assert "Verified through DigiLocker" in documents_report.email(documents_report.build(db, c), "https://x")[1]
+    sent = []
+    monkeypatch.setattr(notifier, "_send", lambda to, s, b: sent.append(to) or True)
+    monkeypatch.setattr(notifier, "NOTIFY_ALSO", "kavya.shukla@eko.co.in")
+    assert documents_report.send("+919000000002", "https://indev.eko.in/autogmap", TestingSessionLocal)
+    assert "kavya.shukla@eko.co.in" in sent[0] and "mansi" in sent[0]
+    db.close()
+
+
+def test_the_documents_email_hands_a_qualified_applicant_to_acquisition_and_an_esaf_one_to_the_team(client):
+    from src.services import documents_report
+    _add_branches()
+    db = TestingSessionLocal()
+    c = db.get(WhatsAppConversation, "+919000000001")
+    c.bot_data = {**(c.bot_data or {}), "coverage": {**SERVED, "coords": [22.42, 71.19]}}
+    db.commit()
+    body = documents_report.email(documents_report.build(db, c), "https://x")[1]
+    assert "Strongly qualified for SBI: Chotila (code 60104), 0 km away" in body and "Eko Acquisition" in body
+    c.bot_data = {**c.bot_data, "can_invest": False, "esaf": True}
+    db.commit()
+    subject, body = documents_report.email(documents_report.build(db, c), "https://x")
+    assert "ESAF" in subject and "₹1,999 registration" in body and "Aceware" in body
+    db.close()

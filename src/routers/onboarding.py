@@ -379,11 +379,10 @@ def submit(token: str, background: BackgroundTasks, db: Session = Depends(get_db
         logger.warning(f"onboarding event=THANKS_NOT_SENT phone=...{conv.phone[-4:]} reason={msg.error_reason}")
 
     background.add_task(drive_uploads.save_in_background, conv.phone)
-    background.add_task(notifier.notify_documents_submitted, auth_service.BOOTSTRAP_ADMIN, {
-        "name": conv.profile_name, "phone": conv.phone,
-        "pincode": ((conv.bot_data or {}).get("coverage") or {}).get("pincode"),
-        "documents": [d["label"] for d in onboarding_bot.documents_for(conv) if d["key"] in have],
-    })
+    # To the admin and every manager (Kavya), with the PIN against our SBI branches and the
+    # next step (15 Nov 2026), so the call is not left to one inbox.
+    from src.services import documents_report
+    background.add_task(documents_report.send, conv.phone, onboarding_bot.public_base_url())
     return {"status": "submitted"}
 
 

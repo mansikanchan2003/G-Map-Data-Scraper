@@ -1227,6 +1227,12 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
         email_attention(db, conv)
         return
 
+    # A photo or a PDF is usually a document, sent in the chat instead of on the upload
+    # page: chat_documents reads and files it, and thanks them once everything is in.
+    # The bot does not answer it with its next question (15 Nov 2026).
+    if msg.kind in ("image", "document"):
+        return
+
     # A voice note is answered as what it says, in the language it was said in.
     if msg.kind == "audio" and message_text(msg):
         spoken = (msg.payload or {}).get("language")

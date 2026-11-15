@@ -17,8 +17,9 @@ logger = logging.getLogger("gmap_scraper.notifier")
 # Who else gets the emails that hand a chat to a person, besides the admin:
 # the bot escalating (a question it cannot answer, a voice note, a request for
 # a person) and a disposition whose action is a person's. Not the news that
-# someone tapped Interested, asked for personal guidance or uploaded their
-# documents: those go to the admin alone (the user, 2026-10-22). Comma-separated.
+# someone tapped Interested or asked for personal guidance: those go to the admin
+# alone (the user, 2026-10-22). Uploaded documents go to both, with the next step
+# (documents_report, 15 Nov 2026). Comma-separated.
 NOTIFY_ALSO = os.environ.get("NOTIFY_ALSO", "kavya.shukla@eko.co.in")
 
 
@@ -157,33 +158,6 @@ def notify_button_click(admin_email: str, lead: dict) -> bool:
         f"{body}\n\n"
         f"Reply on WhatsApp: https://wa.me/{phone}\n",
     )
-
-
-def notify_documents_submitted(admin_email: str, details: dict) -> bool:
-    """
-    Tell the admin someone finished the onboarding upload.
-
-    The bot has told them a team member will reach out, so somebody has to
-    know to do it. The files themselves are in the inbox, not attached:
-    identity documents do not belong in a mailbox.
-    """
-    phone = (details.get("phone") or "").lstrip("+")
-    who = details.get("name") or details.get("phone") or "Someone"
-    lines = [
-        f"{who} has uploaded their onboarding documents through WhatsApp.",
-        "",
-        f"Phone        {details.get('phone')}",
-    ]
-    if details.get("pincode"):
-        lines.append(f"PIN code     {details['pincode']}")
-    lines += ["", "Documents:"] + [f"  - {d}" for d in details.get("documents") or []]
-    lines += [
-        "",
-        "Open them in AutoGMap under Inbox, and reach out as promised.",
-        f"WhatsApp: https://wa.me/{phone}",
-    ]
-    # News, not a hand-over: the admin alone.
-    return _send(admin_email, f"AutoGMap: {who} submitted onboarding documents", "\n".join(lines) + "\n")
 
 
 def notify_webinar(admin_email: str, details: dict) -> bool:
