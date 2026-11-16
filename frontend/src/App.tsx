@@ -75,6 +75,11 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);
 
+  // Signed in with no page in the address: the person's own first tab (Kavya: Applications).
+  useEffect(() => {
+    if (user?.home_tab && !window.location.hash.replace('#', '')) setActiveTab(user.home_tab as NavTab);
+  }, [user?.email, user?.home_tab]);
+
   const handleTabChange = (tab: NavTab, filter = 'All') => {
     setActiveTab(tab);
     // On a phone the drawer covers the page it just navigated to.
@@ -151,7 +156,7 @@ export default function App() {
 
   // A tab the role may not open — reached by a typed address or a saved
   // link — falls back to the dashboard rather than showing a page of errors.
-  const shownTab: NavTab = canOpen(user.role, activeTab, user.allowed_tabs) ? activeTab : homeTab(user.role, user.allowed_tabs);
+  const shownTab: NavTab = canOpen(user.role, activeTab, user.allowed_tabs) ? activeTab : homeTab(user.role, user.allowed_tabs, user.home_tab);
   const can = (tab: NavTab) => canOpen(user.role, tab, user.allowed_tabs);
   const readOnly = isReadOnly(user.role);
 
@@ -237,7 +242,7 @@ export default function App() {
 
           {shownTab === 'whatsapp-inbox' && <InboxView readOnly={readOnly} scope={user.inbox_scope} isAdmin={user.role === 'admin'} />}
 
-          {shownTab === 'applications' && <ApplicationsView readOnly={readOnly} can={can} />}
+          {shownTab === 'applications' && <ApplicationsView readOnly={readOnly} can={can} simple={!!user.simple_view} />}
           {shownTab === 'dispositions' && <DispositionsView readOnly={readOnly} can={can} />}
           {shownTab === 'agent-quality' && <AgentQualityView can={can} isAdmin={user.role === 'admin'} canAudit={user.role === 'admin' || user.role === 'manager'} />}
           {shownTab === 'partners' && <PartnersView />}

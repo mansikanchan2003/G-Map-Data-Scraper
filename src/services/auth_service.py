@@ -51,6 +51,24 @@ READ_ONLY_SAFE_POSTS = (
 )
 
 
+# How the app opens for a particular person (16 Nov 2026): the tab they land on after
+# signing in, and the simple Applications page for someone without a technical
+# background. Kavya's only, as the user asked; USER_UI_PREFS (JSON, by email)
+# replaces it when set.
+DEFAULT_UI_PREFS = {"kavya.shukla@eko.co.in": {"home_tab": "applications", "simple_view": True}}
+
+
+def ui_prefs(user: "User") -> dict:
+    import json
+    raw = os.environ.get("USER_UI_PREFS")
+    try:
+        prefs = json.loads(raw) if raw else DEFAULT_UI_PREFS
+    except ValueError:
+        prefs = DEFAULT_UI_PREFS
+    mine = {k.lower(): v for k, v in prefs.items()}.get((getattr(user, "email", "") or "").lower()) or {}
+    return {"home_tab": mine.get("home_tab"), "simple_view": bool(mine.get("simple_view"))}
+
+
 def may_make_request(user: "User", method: str, path: str) -> bool:
     """Whether this user's role allows the request at all."""
     if user.role not in READ_ONLY_ROLES:

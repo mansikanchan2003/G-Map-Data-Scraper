@@ -30,8 +30,9 @@ export const canOpen = (role: string | null | undefined, tab: NavTab, allowed?: 
 };
 
 /** The tab an account lands on: the dashboard, or the first it is allowed. */
-export const homeTab = (role: string | null | undefined, allowed?: string[] | null): NavTab =>
-  canOpen(role, 'dashboard', allowed) ? 'dashboard' : ((allowed?.[0] as NavTab) || 'dashboard');
+export const homeTab = (role: string | null | undefined, allowed?: string[] | null, preferred?: string | null): NavTab =>
+  preferred && canOpen(role, preferred as NavTab, allowed) ? (preferred as NavTab)
+    : canOpen(role, 'dashboard', allowed) ? 'dashboard' : ((allowed?.[0] as NavTab) || 'dashboard');
 
 export const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin', manager: 'Manager', operator: 'Operator', member: 'Member · view only',

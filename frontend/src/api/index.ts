@@ -531,6 +531,10 @@ export interface AuthUser {
   allowed_tabs?: string[] | null;
   /** Which chats its Inbox shows: null for all, 'autogmap' or 'not_autogmap'. */
   inbox_scope?: 'autogmap' | 'not_autogmap' | null;
+  /** The tab this person lands on after signing in (16 Nov 2026). */
+  home_tab?: string | null;
+  /** The simple Applications page, for a teammate without a technical background. */
+  simple_view?: boolean;
 }
 
 export interface SignupResult {

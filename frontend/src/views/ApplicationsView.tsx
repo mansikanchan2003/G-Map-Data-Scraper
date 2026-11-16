@@ -33,6 +33,47 @@ const FILTERS: { key: Filter; label: string; hint: string; icon: string; tint: s
     tint: 'bg-amber-950 text-amber-300', ring: 'ring-amber-400', pick: a => a.submitted },
 ];
 
+// The simple view (16 Nov 2026, Kavya's account: auth_service.ui_prefs): every part of the page
+// stays, in plainer words, with the next step on each row and buttons that say what they do.
+const PLAIN: Record<Filter, { label: string; hint: string }> = {
+  all: { label: 'Everyone', hint: 'Everyone who started applying on WhatsApp' },
+  pin: { label: 'In our SBI area', hint: 'Their PIN code is near one of our SBI branches' },
+  strong: { label: 'Fully qualified', hint: 'In our area, 12th or above, and can invest (or chose ESAF)' },
+  not: { label: 'Not eligible for SBI', hint: 'Outside our area, below 12th, or cannot invest' },
+  submitted: { label: 'Documents received', hint: 'Sent all their documents' },
+};
+const PLAIN_FUNNEL: Record<string, string> = {
+  Applied: 'Started applying', 'PIN qualified': 'In our SBI area', 'Strongly qualified': 'Fully qualified', Submitted: 'Sent documents',
+};
+
+/** What to do next with this person, in plain words, and how urgent (a colour). */
+export function nextStep(a: Application): { text: string; tone: 'emerald' | 'violet' | 'amber' | 'sky' | 'slate' } {
+  const reasons = a.not_qualified_reasons || [];
+  const outside = reasons.length > 0 && reasons.every(r => r.startsWith('Not qualified for SBI'));
+  if (reasons.includes('Below 12th')) return { text: 'Below 12th: not eligible. Nothing to do.', tone: 'slate' };
+  if (a.bot_step === 'ESAF_DECLINED') return { text: 'Said no to SBI and ESAF. Nothing to do.', tone: 'slate' };
+  if (a.submitted && a.esaf) return { text: 'Documents in. Call for the ESAF registration (₹1,999) and shop visit.', tone: 'emerald' };
+  if (a.submitted && outside) return { text: 'Documents in, but outside our SBI area. Call and offer ESAF.', tone: 'emerald' };
+  if (a.submitted) return { text: 'Documents in. Check them and hand over for the branch visit.', tone: 'emerald' };
+  if (a.esaf) return { text: 'Wants ESAF. Call about the ₹1,999 registration and documents.', tone: 'violet' };
+  if (a.bot_step === 'AWAIT_UPLOAD' || a.bot_step === 'AWAIT_DOCS') return { text: 'Call and help them upload their documents.', tone: 'amber' };
+  if (a.can_invest === false || ['NOT_INVESTING', 'ESAF_OFFERED', 'ESAF_DETAILS'].includes(a.bot_step || ''))
+    return { text: 'Cannot invest ₹3–5 lakh. Call and offer ESAF.', tone: 'sky' };
+  if (outside) return { text: 'Outside our SBI area. Call and offer ESAF.', tone: 'sky' };
+  if ((a.bot_step || '').startsWith('WEBINAR') || a.bot_step === 'GUIDANCE_QA') return { text: 'Wants guidance. Call and answer their questions.', tone: 'sky' };
+  return { text: 'The bot is talking to them. No action yet.', tone: 'slate' };
+}
+const PLAIN_VERDICT: Record<string, string> = {
+  'Strongly qualified': 'Fully qualified', 'Strongly qualified · ESAF': 'Fully qualified · ESAF',
+  'PIN qualified': 'In our SBI area', 'PIN qualified · ESAF': 'In our SBI area · ESAF',
+  'Not qualified for SBI branch code': 'Outside our SBI area', 'Not qualified': 'Not eligible', 'In progress': 'Still answering',
+};
+const NEXT_TONE = {
+  emerald: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300', violet: 'bg-violet-500/10 border-violet-500/30 text-violet-300',
+  amber: 'bg-amber-500/10 border-amber-500/30 text-amber-300', sky: 'bg-sky-500/10 border-sky-500/30 text-sky-300',
+  slate: 'bg-slate-500/10 border-slate-700 text-slate-400',
+};
+
 const VERDICT_STYLE: Record<string, string> = {
   'Strongly qualified': 'bg-emerald-950 border-emerald-800/60 text-emerald-300',
   // For ESAF's banking agent: qualified, in ESAF's violet so the team sees the track at a glance.
@@ -92,7 +133,7 @@ const Progress: React.FC<{ a: Application }> = ({ a }) => {
   );
 };
 
-export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) => boolean }> = ({ readOnly, can }) => {
+export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) => boolean; simple?: boolean }> = ({ readOnly, can, simple }) => {
   const [items, setItems] = useState<Application[]>([]);
   const [stats, setStats] = useState<ApplicationStats | null>(null);
   const [showRemoved, setShowRemoved] = useState(false);
@@ -200,7 +241,9 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
       <div className="px-6 pt-6 pb-2 max-w-[1500px] mx-auto flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-100">{showRemoved ? 'Removed applications' : 'Applications'}</h1>
-          <p className="text-sm text-slate-500 mt-1">People who started SBI Customer Service Point onboarding through the WhatsApp bot.</p>
+          <p className="text-sm text-slate-500 mt-1">{simple
+            ? 'Everyone who started applying on WhatsApp, and what to do next with each person.'
+            : 'People who started SBI Customer Service Point onboarding through the WhatsApp bot.'}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => { window.location.hash = 'applications/qualified'; }}
@@ -228,6 +271,20 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
 
       <div className="px-6 py-4 max-w-[1500px] mx-auto space-y-5">
         {error && <div className="p-3 rounded-lg border border-rose-800/60 bg-rose-950 text-rose-300 text-sm">{error}</div>}
+        {simple && !showRemoved && (
+          <div className="rounded-xl border border-sky-800/50 bg-sky-950 p-4 grid gap-3 sm:grid-cols-3 text-[13px] text-slate-200">
+            {[
+              ['touch_app', 'Tap a box below', 'to see only those people (for example, Documents received).'],
+              ['assignment', 'Read "Next step"', 'on each row: it tells you what to do with that person.'],
+              ['call', 'Use the buttons', 'on the right: Call, Chat, Details (documents and notes), Remove.'],
+            ].map(([icon, b, rest]) => (
+              <div key={b} className="flex items-start gap-2.5">
+                <span className="h-8 w-8 shrink-0 rounded-lg bg-sky-500/20 text-sky-300 flex items-center justify-center"><Icon name={icon} className="text-[18px]" /></span>
+                <span><b className="text-slate-100">{b}</b> {rest}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {!showRemoved && <LeadsBlock leads={leads} onOpen={openRow} />}
 
@@ -243,8 +300,8 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                     <span className={`h-9 w-9 rounded-lg flex items-center justify-center ${f.tint}`}><Icon name={f.icon} className="text-[20px]" /></span>
                     <span className="text-2xl font-bold text-slate-100 tabular-nums">{count(f.key) ?? '—'}</span>
                   </div>
-                  <div className="text-sm font-semibold text-slate-100 mt-3">{f.label}</div>
-                  <div className="text-[11.5px] text-slate-500 mt-0.5 leading-snug">{f.hint}</div>
+                  <div className="text-sm font-semibold text-slate-100 mt-3">{simple ? PLAIN[f.key].label : f.label}</div>
+                  <div className="text-[11.5px] text-slate-500 mt-0.5 leading-snug">{simple ? PLAIN[f.key].hint : f.hint}</div>
                 </button>
               ))}
             </div>
@@ -253,7 +310,7 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
             <section className="rounded-xl border border-slate-800 bg-slate-900 shadow-sm p-5">
               <div className="flex items-center gap-2 mb-4">
                 <Icon name="filter_alt" className="text-[20px] text-sky-300" />
-                <h2 className="text-[15px] font-semibold text-slate-100">How far applicants get</h2>
+                <h2 className="text-[15px] font-semibold text-slate-100">{simple ? 'How many reach each step' : 'How far applicants get'}</h2>
               </div>
               <ol className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 {funnel.map((step, i) => {
@@ -263,11 +320,11 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                     <li key={step.label} className="relative">
                       <div className={`rounded-lg border p-4 h-full ${last ? 'border-amber-800/60 bg-amber-950' : 'border-slate-800 bg-slate-950/60'}`}>
                         <div className={`flex items-center gap-1.5 text-xs font-semibold ${last ? 'text-amber-300' : 'text-slate-400'}`}>
-                          <Icon name={step.icon} className="text-[16px]" />{step.label}
+                          <Icon name={step.icon} className="text-[16px]" />{simple ? PLAIN_FUNNEL[step.label] || step.label : step.label}
                         </div>
                         <div className="flex items-baseline gap-2 mt-1.5">
                           <span className="text-2xl font-bold text-slate-100 tabular-nums">{step.value}</span>
-                          <span className="text-xs text-slate-500">{share}% of applied</span>
+                          <span className="text-xs text-slate-500">{simple ? `${share} in every 100` : `${share}% of applied`}</span>
                         </div>
                         <div className="h-1.5 rounded-full bg-slate-800 mt-2.5 overflow-hidden">
                           <div className={`h-full rounded-full ${last ? 'bg-amber-400' : 'bg-sky-500'}`} style={{ width: `${share}%` }} />
@@ -291,12 +348,12 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
           <div className="p-4 flex flex-wrap items-center gap-2 border-b border-slate-800">
             <div className="relative flex-1 min-w-[220px]">
               <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-slate-500" />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, phone, PIN, area, category or campaign"
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder={simple ? 'Search by name, phone or PIN code' : 'Search name, phone, PIN, area, category or campaign'}
                 className="w-full h-10 pl-10 pr-3 rounded-lg border border-slate-800 bg-slate-950 text-sm text-slate-200 outline-none focus:border-sky-500" />
             </div>
             <select value={stage} onChange={e => setStage(e.target.value)}
               className="h-10 px-3 rounded-lg border border-slate-800 bg-slate-950 text-sm text-slate-200">
-              <option value="">All stages</option>
+              <option value="">{simple ? 'Any step' : 'All stages'}</option>
               {stages.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             <button onClick={exportCsv} disabled={!shown.length}
@@ -317,12 +374,13 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
             <table className="w-full text-sm select-text">
               <thead className="bg-slate-950 text-[11px] uppercase tracking-wider text-slate-500">
                 <tr>
-                  {['Applicant', 'Business & place', 'Qualification', 'Progress', 'Comments', ''].map(h => (
+                  {(simple ? ['Applicant', 'Next step', 'Place & business', 'Eligible?', 'Progress', 'Notes']
+                    : ['Applicant', 'Business & place', 'Qualification', 'Progress', 'Comments', '']).map(h => (
                     <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="[&>tr]:border-b-2 [&>tr]:border-slate-700">
                 {loading && !items.length ? (
                   <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-500">Loading applications…</td></tr>
                 ) : !shown.length ? (
@@ -344,6 +402,22 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                           </div>
                         </div>
                       </td>
+                      {simple && (() => {
+                        const n = nextStep(a);
+                        return (
+                          <td className="px-3 py-3 min-w-[200px] max-w-[260px]">
+                            <div className={`rounded-lg border px-2.5 py-2 text-[12.5px] leading-snug font-medium ${NEXT_TONE[n.tone]}`}>{n.text}</div>
+                            <div className="grid grid-cols-2 gap-1.5 mt-2">
+                              <a href={`tel:+${a.phone.replace(/\D/g, '')}`} className="h-8 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[12.5px] font-semibold flex items-center justify-center gap-1"><Icon name="call" className="text-[16px]" />Call</a>
+                              <a href={`#inbox/${a.phone.replace(/\D/g, '')}`} className="h-8 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-[12.5px] font-semibold flex items-center justify-center gap-1"><Icon name="chat" className="text-[16px]" />Chat</a>
+                              <button onClick={() => setOpen(open === a.phone ? null : a.phone)} className="h-8 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-[12.5px] font-semibold flex items-center justify-center gap-1"><Icon name={open === a.phone ? 'expand_less' : 'expand_more'} className="text-[16px]" />{open === a.phone ? 'Hide' : 'Details'}</button>
+                              {!readOnly && (showRemoved
+                                ? <button onClick={() => restore(a)} className="h-8 rounded-lg border border-emerald-800 text-emerald-300 text-[12.5px] font-semibold flex items-center justify-center gap-1"><Icon name="restore_from_trash" className="text-[16px]" />Restore</button>
+                                : <button onClick={() => remove(a)} className="h-8 rounded-lg border border-slate-700 text-slate-400 hover:text-rose-300 text-[12.5px] font-semibold flex items-center justify-center gap-1"><Icon name="delete" className="text-[16px]" />Remove</button>)}
+                            </div>
+                          </td>
+                        );
+                      })()}
                       <td className="px-3 py-3">
                         {a.category
                           ? <span className="inline-block px-2 py-0.5 rounded-full bg-purple-950 border border-purple-800/60 text-purple-300 text-[11px] font-semibold whitespace-nowrap">{a.category}</span>
@@ -362,9 +436,9 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                       </td>
                       <td className="px-3 py-3">
                         <span className={`inline-block px-2 py-0.5 rounded-full border text-[11px] font-semibold whitespace-nowrap ${VERDICT_STYLE[a.verdict]}`}
-                          title={a.not_qualified_reasons.join(', ') || undefined}>{a.verdict}</span>
+                          title={a.not_qualified_reasons.join(', ') || undefined}>{simple ? PLAIN_VERDICT[a.verdict] || a.verdict : a.verdict}</span>
                         <div className="text-xs text-slate-400 mt-1 whitespace-nowrap">{a.qualification || 'Education not given'}</div>
-                        {a.not_qualified && <div className="text-[11px] text-rose-300 mt-0.5">{a.not_qualified_reasons.join(', ')}</div>}
+                        {a.not_qualified && !(simple && a.not_qualified_reasons.every(r => r.startsWith('Not qualified for SBI'))) && <div className="text-[11px] text-rose-300 mt-0.5">{a.not_qualified_reasons.join(', ')}</div>}
                         {a.esaf && !a.not_qualified && (
                           <div className="text-[11px] text-violet-300 mt-0.5 inline-flex items-center gap-1">
                             <Icon name="account_balance" className="text-[13px]" />For ESAF · can't invest ₹3–5 lakh for SBI
@@ -397,15 +471,16 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                               </span>
                             </button>
                           );
-                        })() : <span className="text-slate-500">No comments</span>}
+                        })() : <span className="text-slate-500">{simple ? 'No notes yet' : 'No comments'}</span>}
                         {!readOnly && !showRemoved && (
                           <button onClick={() => openComments(a.phone)}
                             className="mt-1.5 text-[11.5px] font-semibold text-emerald-300 hover:underline flex items-center gap-0.5">
-                            <Icon name="add_comment" className="text-[15px]" /> Add comment
+                            <Icon name="add_comment" className="text-[15px]" /> {simple ? 'Add a note' : 'Add comment'}
                           </button>
                         )}
                       </td>
-                      <td className="px-3 py-3">
+                      {!simple && <td className="px-3 py-3">
+                        {!simple && (
                         <div className="flex items-center justify-end gap-1.5">
                           <IconButton icon={open === a.phone ? 'expand_less' : 'expand_more'} title={open === a.phone ? 'Hide details' : 'Details'}
                             onClick={() => setOpen(open === a.phone ? null : a.phone)} />
@@ -416,7 +491,8 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                             <IconButton icon="delete" title="Remove from Applications (the chat and documents are kept)" onClick={() => remove(a)} tone="text-slate-400 hover:text-rose-300" />
                           ))}
                         </div>
-                      </td>
+                        )}
+                      </td>}
                     </tr>
                     {open === a.phone && (
                       <tr><td colSpan={6} className="px-4 pb-5 pt-1 bg-slate-950/60">

@@ -72,6 +72,9 @@ class UserResponse(BaseModel):
     allowed_tabs: Optional[List[str]] = None
     # Which chats its Inbox shows: None (all), "autogmap" or "not_autogmap".
     inbox_scope: Optional[str] = None
+    # The tab this person lands on, and the simple Applications page (auth_service.ui_prefs).
+    home_tab: Optional[str] = None
+    simple_view: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -98,6 +101,11 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if not user:
         raise HTTPException(status_code=401, detail="Session expired or account no longer active")
     return user
+
+
+def as_response(user: User) -> "UserResponse":
+    """The signed-in user, with how the app opens for them."""
+    return UserResponse.model_validate(user).model_copy(update=auth.ui_prefs(user))
 
 
 def current_admin(user: User = Depends(current_user)) -> User:
@@ -240,7 +248,7 @@ def login(payload: LoginRequest, response: Response, request: Request, db: Sessi
 
     _set_session_cookie(response, auth.issue_token(user))
     logger.info(f"auth event=LOGIN email={email} role={user.role}")
-    return UserResponse.model_validate(user)
+    return as_response(user)
 
 
 # --------------------------------------------------------------------------
@@ -331,7 +339,7 @@ def google_sign_in(payload: GoogleRequest, response: Response, request: Request,
     db.commit()
     _set_session_cookie(response, auth.issue_token(user))
     logger.info(f"auth event=LOGIN email={email} role={user.role} via=google")
-    return UserResponse.model_validate(user)
+    return as_response(user)
 
 
 @router.post("/forgot-password")
@@ -433,7 +441,7 @@ def logout(response: Response):
 
 @router.get("/me", response_model=UserResponse)
 def me(user: User = Depends(current_user)):
-    return user
+    return as_response(user)
 
 
 @router.get("/users", response_model=List[UserResponse])

@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 
 export type Theme = 'dark' | 'light';
 
-const STORAGE_KEY = 'gmap-dashboard-theme';
+// Light is the default for everyone (the user, 16 Nov 2026); only a theme the
+// person picks with the Dark / Light switch is remembered. The old key saved
+// the theme on every visit, so it held "dark" for people who never chose it:
+// it is not read any more.
+const STORAGE_KEY = 'gmap-theme-choice';
+const DEFAULT_THEME: Theme = 'light';
 
 const readStoredTheme = (): Theme => {
   try {
@@ -11,9 +16,15 @@ const readStoredTheme = (): Theme => {
   } catch {
     // Storage can throw in private mode or when site data is blocked.
   }
-  // The dashboard has always been dark, so that stays the default rather than
-  // following the OS and surprising existing users.
-  return 'dark';
+  return DEFAULT_THEME;
+};
+
+const remember = (theme: Theme) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, theme);
+  } catch {
+    // Remembering is a convenience; the theme still applies for this session.
+  }
 };
 
 const applyTheme = (theme: Theme) => {
@@ -25,16 +36,18 @@ export const useTheme = () => {
 
   useEffect(() => {
     applyTheme(theme);
-    try {
-      localStorage.setItem(STORAGE_KEY, theme);
-    } catch {
-      // Persisting is a convenience; the theme still applies for this session.
-    }
   }, [theme]);
 
-  const setTheme = useCallback((next: Theme) => setThemeState(next), []);
+  const setTheme = useCallback((next: Theme) => {
+    remember(next);
+    setThemeState(next);
+  }, []);
   const toggleTheme = useCallback(
-    () => setThemeState(prev => (prev === 'dark' ? 'light' : 'dark')),
+    () => setThemeState(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      remember(next);
+      return next;
+    }),
     []
   );
 

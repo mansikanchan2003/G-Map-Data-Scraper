@@ -873,3 +873,24 @@ class TestGoogle:
         assert client.post("/api/v1/auth/google", json={"credential": "good"}).status_code == 403
         google.update(email="someone@eko.co.in", email_verified=False)
         assert client.post("/api/v1/auth/google", json={"credential": "good"}).status_code == 403
+
+
+class TestHowTheAppOpens:
+    """Kavya lands on Applications, in its simple view; nobody else's app changes (16 Nov 2026)."""
+
+    def test_only_kavya_gets_her_home_tab_and_the_simple_view(self, client):
+        for email in ("kavya.shukla@eko.co.in", "someone.else@eko.co.in"):
+            client.post("/api/v1/auth/signup", json={"email": email, "password": GOOD_PASSWORD})
+        admin = make_admin()
+        client.post("/api/v1/auth/login", json={"email": admin, "password": GOOD_PASSWORD})
+        me = client.get("/api/v1/auth/me").json()
+        assert me["home_tab"] is None and me["simple_view"] is False          # the admin: unchanged
+        for u in client.get("/api/v1/auth/users?status=PENDING").json():
+            client.post(f"/api/v1/auth/users/{u['user_id']}/approve", json={"role": "manager"})
+        client.post("/api/v1/auth/logout")
+        r = client.post("/api/v1/auth/login", json={"email": "kavya.shukla@eko.co.in", "password": GOOD_PASSWORD})
+        assert r.json()["home_tab"] == "applications" and r.json()["simple_view"] is True
+        assert client.get("/api/v1/auth/me").json()["simple_view"] is True
+        client.post("/api/v1/auth/logout")
+        r = client.post("/api/v1/auth/login", json={"email": "someone.else@eko.co.in", "password": GOOD_PASSWORD})
+        assert r.json()["home_tab"] is None and r.json()["simple_view"] is False
