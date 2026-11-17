@@ -58,6 +58,8 @@ export interface BusinessItem {
   google_maps_url?: string | null;
   category: string;
   district?: string | null;
+  /** From the Maps address, else the PIN of the place searched. */
+  pincode?: string | null;
   state?: string | null;
   /** Who it was found for: ['CSP'], ['DC'], ['STATE_HEAD'], or more than one. */
   hiring_for?: ('CSP' | 'DC' | 'STATE_HEAD')[];

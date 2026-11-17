@@ -79,10 +79,12 @@ def get_businesses(
         
     total = query.count()
     items = query.offset((page - 1) * page_size).limit(page_size).all()
+    from src.services import business_pin
+    by_job = business_pin.searched(db, [b.job_id for b in items])
     total_pages = (total + page_size - 1) // page_size
     
     return {
-        "items": [BusinessPublicResponse.from_orm_business(b) for b in items],
+        "items": [BusinessPublicResponse.from_orm_business(b, business_pin.pin_for(b, by_job)) for b in items],
         "total": total,
         "page": page,
         "page_size": page_size,

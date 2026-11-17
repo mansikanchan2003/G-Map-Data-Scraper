@@ -70,7 +70,7 @@ def test_export_endpoint_csv(client):
     assert res.status_code == 200
     assert res.headers["content-type"] == "text/csv; charset=utf-8"
     csv_content = res.text
-    assert "email,website,category,district,state,verified" in csv_content
+    assert "email,website,category,district,pincode,state,verified" in csv_content
 
 def test_businesses_endpoint_pagination(client):
     res = client.get("/api/v1/businesses")

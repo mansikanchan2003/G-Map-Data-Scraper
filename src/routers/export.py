@@ -110,6 +110,9 @@ def export_businesses(
         query = query.filter(Business.discovered_at >= since)
         
     query = query.order_by(Business.discovered_at.desc())
+    # The searched place's PIN for each job, read once rather than per row.
+    from src.services import business_pin
+    by_job = business_pin.searched(db)
     query = query.execution_options(stream_results=True)
     
     # --- CSV Export Path ---
@@ -120,7 +123,7 @@ def export_businesses(
             output.write('\ufeff')
             writer = csv.writer(output)
             
-            headers = ["name", "address", "phone", "email", "website", "category", "district", "state", "verified", "type"]
+            headers = ["name", "address", "phone", "email", "website", "category", "district", "pincode", "state", "verified", "type"]
             writer.writerow(headers)
             yield output.getvalue()
             output.seek(0)
@@ -135,6 +138,7 @@ def export_businesses(
                     biz.website,
                     biz.category,
                     biz.district,
+                    business_pin.pin_for(biz, by_job),
                     biz.state,
                     biz.is_valid,
                     found_for(biz),
@@ -158,7 +162,7 @@ def export_businesses(
         wb = openpyxl.Workbook(write_only=True)
         ws = wb.create_sheet("Businesses")
         
-        headers = ["name", "address", "phone", "email", "website", "category", "district", "state", "verified", "type"]
+        headers = ["name", "address", "phone", "email", "website", "category", "district", "pincode", "state", "verified", "type"]
         ws.append(headers)
         
         for biz in query.yield_per(1000):
@@ -170,6 +174,7 @@ def export_businesses(
                 biz.website,
                 biz.category,
                 biz.district,
+                business_pin.pin_for(biz, by_job),
                 biz.state,
                 biz.is_valid,
                 found_for(biz),
@@ -211,6 +216,7 @@ def export_businesses(
             "website": biz.website,
             "category": biz.category,
             "district": biz.district,
+            "pincode": business_pin.pin_for(biz, by_job),
             "state": biz.state,
             "verified": biz.is_valid,
             "type": hiring_types(biz),

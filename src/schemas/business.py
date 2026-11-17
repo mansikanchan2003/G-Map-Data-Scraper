@@ -53,6 +53,8 @@ class BusinessPublicResponse(BaseModel):
     website: Optional[str] = None
     category: str
     district: Optional[str] = None
+    # From the Maps address, else the searched place's PIN (services/business_pin, 17 Nov 2026).
+    pincode: Optional[str] = None
     state: Optional[str] = None
     verified: bool
     # Who it was found for: ["CSP"], ["DC"], ["STATE_HEAD"], or more than one.
@@ -61,7 +63,7 @@ class BusinessPublicResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
-    def from_orm_business(cls, biz: object) -> "BusinessPublicResponse":
+    def from_orm_business(cls, biz: object, pincode: Optional[str] = None) -> "BusinessPublicResponse":
         return cls(
             name=biz.name,
             address=biz.address,
@@ -70,6 +72,7 @@ class BusinessPublicResponse(BaseModel):
             website=biz.website,
             category=biz.category,
             district=biz.district,
+            pincode=pincode,
             state=biz.state,
             verified=biz.is_valid,
             hiring_for=_types(biz),

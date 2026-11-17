@@ -309,6 +309,9 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
               <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold border-r border-slate-800 min-w-[120px]">
                 District
               </th>
+              <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold border-r border-slate-800 min-w-[90px]">
+                PIN code
+              </th>
               <th className="px-3 text-[10px] font-mono-code uppercase tracking-wider text-slate-400 font-bold min-w-[110px]">
                 State
               </th>
@@ -317,7 +320,7 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
           <tbody className="divide-y divide-slate-800 text-xs font-mono-code">
             {loading ? (
               <tr>
-                <td colSpan={9} className="py-16 text-center text-slate-400 bg-slate-950">
+                <td colSpan={10} className="py-16 text-center text-slate-400 bg-slate-950">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <span className="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
                     <span>Loading businesses (page {page} of {totalPages})...</span>
@@ -326,7 +329,7 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
               </tr>
             ) : businesses.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-16 text-center text-slate-400 bg-slate-950">
+                <td colSpan={10} className="py-16 text-center text-slate-400 bg-slate-950">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <span className="material-symbols-outlined text-[32px] text-slate-500">inventory_2</span>
                     <span className="font-semibold text-slate-300">No businesses discovered yet.</span>
@@ -393,6 +396,9 @@ export const BusinessesView: React.FC<BusinessesViewProps> = ({
                   </td>
                   <td className="px-3 border-r border-slate-800 text-slate-300 font-sans truncate max-w-[120px]">
                     {biz.district || '—'}
+                  </td>
+                  <td className="px-3 border-r border-slate-800 text-slate-300 tabular-nums">
+                    {biz.pincode || '—'}
                   </td>
                   <td className="px-3 text-slate-300 font-sans truncate max-w-[110px]">
                     {biz.state || '—'}

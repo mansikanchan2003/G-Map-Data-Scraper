@@ -156,3 +156,20 @@ def test_a_campaign_audience_can_be_picked_by_kind_of_business(db, client):
     assert [c["name"] for c in contacts] == ["Shop kiosk"]
     _, every = _build(db, AudienceFilters(), True)
     assert sorted(c["name"] for c in every) == ["Shop csp", "Shop kiosk"]
+
+
+def test_business_data_shows_a_pin_code(db, client):
+    """17 Nov 2026: the PIN in the Maps address, else the searched place's PIN."""
+    from src.services.business_pin import from_address
+    assert from_address("Shop 4, Jagat Circle, Kalaburagi, Karnataka 585102") == "585102"
+    assert from_address("8RMP+7FR, opp. Bus Stand, Rajkot") is None
+    assert from_address("Plot 12, 3rd floor, 380 015 Ahmedabad") == "380015"
+    _three(db)
+    db.query(Business).filter(Business.business_id == "csp").update({"address": "Main Rd, Rajkot, Gujarat 360005"})
+    db.commit()
+    rows = {r["name"]: r["pincode"] for r in client.get("/api/v1/businesses").json()["items"]}
+    assert rows["Shop csp"] == "360005"          # from its address
+    assert rows["Shop dc"] == "360001"           # the searched place's PIN
+    out = client.get("/api/v1/export/businesses", params={"format": "csv", "hiring_for": "CSP"}).content.decode("utf-8-sig")
+    head, first = list(csv.reader(io.StringIO(out)))[:2]
+    assert first[head.index("pincode")] == "360005"
