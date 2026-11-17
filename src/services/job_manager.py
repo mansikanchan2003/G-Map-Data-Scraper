@@ -138,7 +138,9 @@ def execute_single_job(
             "query": job.search_query,
             "count": 0,
             "results": [],
-            "error": "Job is no longer PENDING or could not be claimed safely."
+            "error": "Job is no longer PENDING or could not be claimed safely.",
+            # Another batch took it first (17 Nov 2026): not a failure, the other batch runs it.
+            "job_status": "SKIPPED",
         }
     db.commit()
     db.refresh(job)

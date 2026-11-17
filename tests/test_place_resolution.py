@@ -116,3 +116,33 @@ class TestEnsureLocationGeography:
         assert location.state is None
         assert location.district is None
         assert location.tehsil is None
+
+
+class TestTypedPlaceGeography:
+    """17 Nov 2026: "Udupi, Karnataka" typed in Somewhere new names its district and state."""
+
+    @pytest.mark.parametrize("typed, state, district", [
+        ("Vaishali Nagar, Jaipur, Rajasthan", "Rajasthan", "Jaipur"),
+        ("Udupi, Karnataka", "Karnataka", "Udupi"),
+        ("Hubballi-Dharwad, karnataka", "Karnataka", "Hubballi-Dharwad"),
+        ("Rajkot, Gujarat 360001", "Gujarat", "Rajkot"),
+        ("Rajkot", None, None),
+        ("Raja Park, Jaipur", None, None),          # no state named: nothing guessed
+    ])
+    def test_state_and_district_read_from_the_line(self, typed, state, district):
+        from src.services.custom_target import place_parts
+        assert place_parts(typed) == {"state": state, "district": district}
+
+    def test_a_typed_place_is_saved_with_them(self, db_session):
+        from src.services.custom_target import ensure_location
+        loc = ensure_location(db_session, "Mangaluru, Karnataka", latitude=12.9, longitude=74.8)["location"]
+        assert (loc.state, loc.district) == ("Karnataka", "Mangaluru")
+
+    def test_a_place_saved_before_without_them_gets_them(self, db_session):
+        from src.models import Location
+        from src.services.custom_target import ensure_location
+        db_session.add(Location(location_id="old-udupi", pincode="NOT FOUND", latitude=13.3, longitude=74.7,
+                                radius_km=10, anchor_name="Udupi, Karnataka", source_dataset="user_defined"))
+        db_session.flush()
+        result = ensure_location(db_session, "Udupi, Karnataka")
+        assert result["reused"] and (result["location"].state, result["location"].district) == ("Karnataka", "Udupi")

@@ -23,6 +23,49 @@ logger = logging.getLogger("gmap_scraper.custom_target")
 CUSTOM_DATASET = "user_defined"
 
 
+# India's states and union territories, to read a typed "Udupi, Karnataka" (17 Nov 2026).
+STATES = [
+    "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana",
+    "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+    "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana",
+    "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Andaman and Nicobar Islands", "Chandigarh",
+    "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep",
+    "Puducherry",
+]
+_STATE_ALIASES = {"orissa": "Odisha", "pondicherry": "Puducherry", "nct of delhi": "Delhi", "new delhi": "Delhi",
+                  "j&k": "Jammu and Kashmir", "uttaranchal": "Uttarakhand"}
+
+
+def state_name(text: Optional[str]) -> Optional[str]:
+    """The state a piece of text names ("karnataka", "Karnataka 575001"), or None."""
+    t = " ".join((text or "").replace(".", " ").split()).lower()
+    t = "".join(ch for ch in t if not ch.isdigit()).strip(" ,-")
+    if not t:
+        return None
+    if t in _STATE_ALIASES:
+        return _STATE_ALIASES[t]
+    return next((s for s in STATES if s.lower() == t), None)
+
+
+def place_parts(place: str) -> Dict[str, Optional[str]]:
+    """
+    State and district read from a typed place, as people write them: the last
+    part names the state, the one before it the district or city.
+
+    "Vaishali Nagar, Jaipur, Rajasthan" -> Rajasthan, Jaipur
+    "Udupi, Karnataka"                  -> Karnataka, Udupi
+    "Rajkot"                            -> nothing (Maps may still name the state)
+    """
+    parts = [p.strip() for p in (place or "").split(",") if p.strip()]
+    if len(parts) < 2:
+        return {"state": None, "district": None}
+    state = state_name(parts[-1])
+    if not state:
+        return {"state": None, "district": None}
+    district = "".join(ch for ch in parts[-2] if not ch.isdigit()).strip(" -") or None
+    return {"state": state, "district": district}
+
+
 def _short_id(*parts: str) -> str:
     return hashlib.sha256("".join(str(p) for p in parts).encode("utf-8")).hexdigest()[:12]
 
@@ -79,7 +122,15 @@ def ensure_location(
     existing = db.query(Location).filter(
         (Location.pincode == place) | (Location.anchor_name.ilike(place))
     ).first()
+    typed = place_parts(place)
+    state = state or typed["state"]
+    district = district or typed["district"]
     if existing:
+        # A place saved before without its state or district gets them now.
+        if state and not existing.state:
+            existing.state = state
+        if district and not existing.district:
+            existing.district = district
         return {"location": existing, "reused": True}
 
     resolved_pincode = None

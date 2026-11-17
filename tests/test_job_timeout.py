@@ -181,3 +181,10 @@ def test_a_browser_the_job_closed_itself_is_not_an_error(db, monkeypatch):
 
     discovery._run_job_with_timeout(JOB_ID, db, "run-test")
     assert killed == [0]
+
+
+def test_a_job_another_batch_took_is_skipped_not_failed(db):
+    """17 Nov 2026: three batches over the same jobs showed 20 of 50 as failed."""
+    from src.services import job_manager
+    res = job_manager.execute_single_job(JOB_ID, db)       # the fixture's job is already RUNNING
+    assert res["job_status"] == "SKIPPED"

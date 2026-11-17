@@ -447,6 +447,7 @@ def _run_batch(payload: "BatchRequest", db: Session):
     attempted = 0
     completed = 0
     failed = 0
+    skipped = 0
     blocked = 0
     discovered = 0
     saved = 0
@@ -478,9 +479,14 @@ def _run_batch(payload: "BatchRequest", db: Session):
                 break
 
             res = _run_job_with_timeout(job.job_id, db, run_id)
+            status = res.get("job_status")
+            if status == "SKIPPED":
+                # Another batch running at the same time took this job first; it is
+                # neither this batch's work nor a failure (16 of 50 showed as failed, 17 Nov 2026).
+                skipped += 1
+                continue
             attempted += 1
 
-            status = res.get("job_status")
             if status in ("COMPLETED", "PARTIAL"):
                 completed += 1
             elif status == "BLOCKED":
