@@ -506,6 +506,14 @@ def _run_batch(payload: "BatchRequest", db: Session):
             run_log.jobs_attempted = attempted
             run_log.jobs_completed = completed
             run_log.jobs_failed = failed
+            # What the batch has found so far, too: the Dashboard showed "+0 new"
+            # until the end of a running batch (17 Nov 2026).
+            run_log.businesses_discovered = discovered
+            run_log.businesses_new = saved
+            run_log.businesses_updated = updated_businesses
+            run_log.businesses_duplicate = duplicate_businesses
+            run_log.email_found = emails_found_total
+            run_log.email_enriched = emails_found_total + emails_not_found_total + emails_failed_total
             db.commit()
 
             if blocked > 0:
