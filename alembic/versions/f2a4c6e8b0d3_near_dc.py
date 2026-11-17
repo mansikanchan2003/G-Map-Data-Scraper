@@ -1,6 +1,6 @@
 """CSPs near DCs: businesses found at the SBI-allocated CSP centres in the DCs' districts (17 Nov 2026)
 
-Revision ID: a1c3e5f7b9d2
+Revision ID: f2a4c6e8b0d3
 Revises: e4b6d8f0a2c5
 """
 from typing import Sequence, Union
@@ -8,7 +8,7 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = 'a1c3e5f7b9d2'
+revision: str = 'f2a4c6e8b0d3'
 down_revision: Union[str, None] = 'e4b6d8f0a2c5'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
