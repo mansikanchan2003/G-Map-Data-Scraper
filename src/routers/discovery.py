@@ -37,7 +37,7 @@ class BatchRequest(BaseModel):
     # planned. Combined with the other filters like any of them.
     job_ids: Optional[List[str]] = None
     # Whose jobs: CSP (the default, and all the autopilot ever runs), DC or STATE_HEAD.
-    hiring_for: str = Field("CSP", pattern="^(CSP|DC|STATE_HEAD)$")
+    hiring_for: str = Field("CSP", pattern="^(CSP|CSP_NEAR_DC|DC|STATE_HEAD)$")
     # Up to this many extra seconds, chosen at random, after each job. A fixed
     # gap between searches is a machine's rhythm; a varying one is not.
     delay_jitter_seconds: float = Field(0.0, ge=0.0, le=120.0)
@@ -81,7 +81,7 @@ class CustomRunRequest(BaseModel):
     delay_between_jobs_seconds: float = Field(5.0, ge=0.0, le=60.0)
     run_now: bool = True
     # Who the search hires for: CSP, DC (District Coordinator) or STATE_HEAD (13 Nov 2026).
-    hiring_for: str = Field("CSP", pattern="^(CSP|DC|STATE_HEAD)$")
+    hiring_for: str = Field("CSP", pattern="^(CSP|CSP_NEAR_DC|DC|STATE_HEAD)$")
 
 
 @router.post("/custom-run")

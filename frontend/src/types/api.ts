@@ -62,7 +62,7 @@ export interface BusinessItem {
   pincode?: string | null;
   state?: string | null;
   /** Who it was found for: ['CSP'], ['DC'], ['STATE_HEAD'], or more than one. */
-  hiring_for?: ('CSP' | 'DC' | 'STATE_HEAD')[];
+  hiring_for?: ('CSP' | 'CSP_NEAR_DC' | 'DC' | 'STATE_HEAD')[];
   latitude?: number | null;
   longitude?: number | null;
   distance_km?: number | null;

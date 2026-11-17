@@ -36,6 +36,9 @@ export interface Application {
   /** The SBI branch nearest their PIN: its code, name, AO and how far away. */
   sbi_branch: { branch_code: string; branch_name: string; ao: string | null;
                 pincode: string; distance_km: number } | null;
+  /** "CSPs near DCs" (17 Nov 2026): reached as one, or their PIN is near an SBI-allocated CSP centre in a DC's district. */
+  near_dc?: boolean;
+  csp_centre?: { name: string; code: string | null; distance_km: number } | null;
   /** The persona: the business's Google Maps category, from the campaign that reached them. */
   category: string | null;
   qualification: string | null;

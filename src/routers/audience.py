@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from src.database import get_db
 from src.models import Business, Job, Location, SbiBranch
-from src.models.business import FOR_CSP, NOT_PARTNER
+from src.models.business import HIRING_FOR, NOT_PARTNER, audience_flag
 from src.models.whatsapp import WhatsAppCampaignRecipient
 from src.services.whatsapp_normalizer import WhatsAppNormalizer
 
@@ -48,6 +48,9 @@ class AudienceFilters(BaseModel):
     branches: List[str] = Field(default_factory=list)
     # Kinds of business (Google Maps categories, 17 Nov 2026); none picked is every kind.
     categories: List[str] = Field(default_factory=list)
+    # Who to message (17 Nov 2026): CSP, CSP_NEAR_DC, DC or STATE_HEAD. Only businesses
+    # carrying that label are used; "CSP" leaves out the CSPs near DCs.
+    hiring_for: str = Field("CSP", pattern="^(CSP|CSP_NEAR_DC|DC|STATE_HEAD)$")
     # One of each, as the picker sent before it took several. Still read, so
     # a page loaded before the change keeps working.
     state: Optional[str] = ALL
@@ -193,6 +196,7 @@ def audience_options(
     districts: List[str] = Query(default=[], description='Picked districts as "state|district"'),
     state: Optional[str] = ALL,
     district: Optional[str] = ALL,
+    hiring_for: str = "CSP",
     db: Session = Depends(get_db),
 ):
     """
@@ -213,8 +217,10 @@ def audience_options(
     if _picked(district):
         picked_districts.add((_picked(state), district))
 
+    who = audience_flag(hiring_for if hiring_for in HIRING_FOR else "CSP")
+
     def counts(columns, where):
-        q = db.query(*columns, func.count(Business.business_id)).filter(columns[-1].isnot(None), NOT_PARTNER, FOR_CSP)
+        q = db.query(*columns, func.count(Business.business_id)).filter(columns[-1].isnot(None), NOT_PARTNER, who)
         if where is not None:
             q = q.filter(where)
         return q.group_by(*columns).order_by(func.count(Business.business_id).desc()).all()
@@ -228,7 +234,7 @@ def audience_options(
         db.query(Location.pincode, func.count(Business.business_id))
         .join(Job, Job.location_id == Location.location_id)
         .join(Business, Business.job_id == Job.job_id)
-        .filter(Location.pincode.in_(db.query(SbiBranch.pincode)), NOT_PARTNER, FOR_CSP)
+        .filter(Location.pincode.in_(db.query(SbiBranch.pincode)), NOT_PARTNER, who)
         .group_by(Location.pincode).all()
     )
     branches = sorted(
@@ -250,8 +256,8 @@ def audience_options(
 
 
 def _build(db: Session, f: AudienceFilters, with_contacts: bool):
-    # CSP campaigns go only to businesses found for CSPs, never to a DC or State Head search's.
-    base = _branch_filtered(_geo_filtered(db.query(Business).filter(NOT_PARTNER, FOR_CSP), f), db, f)
+    # Only the chosen type's businesses (CSP by default, which leaves out the CSPs near DCs).
+    base = _branch_filtered(_geo_filtered(db.query(Business).filter(NOT_PARTNER, audience_flag(f.hiring_for)), f), db, f)
     picked = [c for c in f.categories if c]
     if picked:
         base = base.filter(Business.category.in_(picked))

@@ -36,6 +36,9 @@ class Business(Base):
     for_csp = Column(Boolean, nullable=False, default=True, server_default=sa_true(), index=True)
     for_dc = Column(Boolean, nullable=False, default=False, server_default=sa_false(), index=True)
     for_state_head = Column(Boolean, nullable=False, default=False, server_default=sa_false(), index=True)
+    # A CSP prospect in a District Coordinator's area: found by a search at one of the
+    # SBI-allocated CSP centres in the DCs' districts (17 Nov 2026). "CSPs near DCs".
+    near_dc = Column(Boolean, nullable=False, default=False, server_default=sa_false(), index=True)
     validation_errors = Column(Text, nullable=True)
     discovered_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -76,6 +79,8 @@ NOT_PARTNER = ~IS_PARTNER
 # and the label the team sees. CSP is the autopilot's; DC and State Head are run by hand.
 HIRING_FOR = {
     "CSP": ("for_csp", "CSP"),
+    # CSP searches at the SBI-allocated CSP centres in the DCs' districts (17 Nov 2026).
+    "CSP_NEAR_DC": ("near_dc", "CSPs near DCs"),
     "DC": ("for_dc", "District Coordinator"),
     "STATE_HEAD": ("for_state_head", "State Head"),
 }
@@ -93,3 +98,14 @@ def hiring_types(biz) -> list:
 
 # Only businesses found for CSPs get the CSP campaigns and CSP-only screens.
 FOR_CSP = Business.for_csp.is_(True)
+
+
+def audience_flag(hiring_for: str = "CSP"):
+    """
+    Who a campaign may reach for a chosen type: only businesses carrying that label.
+    "CSP" leaves out the CSPs near DCs, which are chosen on their own (17 Nov 2026).
+    """
+    if hiring_for not in HIRING_FOR:
+        hiring_for = "CSP"
+    flag = hiring_flag(hiring_for).is_(True)
+    return and_(flag, Business.near_dc.is_(False)) if hiring_for == "CSP" else flag

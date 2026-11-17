@@ -454,6 +454,8 @@ export interface AudienceFilters {
   branches?: string[];
   /** Kinds of business (Google Maps categories); none means every kind. */
   categories?: string[];
+  /** Who to message; only businesses with that label (17 Nov 2026). CSP leaves out the CSPs near DCs. */
+  hiring_for?: AudienceType;
   limit?: number | null;
   include_already_contacted: boolean;
 }
@@ -473,11 +475,14 @@ export interface AudiencePreview extends AudienceSummary {
   contacts: { name: string; phone: string; business_id: string }[];
 }
 
+export type AudienceType = 'CSP' | 'CSP_NEAR_DC' | 'DC' | 'STATE_HEAD';
+
 export const fetchAudienceOptions = async (
   states: string[] = [],
-  districts: AudiencePlace[] = []
+  districts: AudiencePlace[] = [],
+  hiringFor: AudienceType = 'CSP'
 ): Promise<AudienceOptions> => {
-  const params = new URLSearchParams();
+  const params = new URLSearchParams({ hiring_for: hiringFor });
   states.forEach(s => params.append('states', s));
   districts.forEach(d => params.append('districts', `${d.state ?? ''}|${d.district ?? ''}`));
   const res = await fetch(`${API_BASE}/audience/options?${params}`, { credentials: 'include' });

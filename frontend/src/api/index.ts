@@ -218,7 +218,7 @@ export interface BusinessFilterParams {
   district?: string;
   pincode?: string;
   is_valid?: boolean;
-  hiring_for?: 'CSP' | 'DC' | 'STATE_HEAD';
+  hiring_for?: HiringFor;
 }
 
 export async function fetchBusinesses(params: BusinessFilterParams = {}): Promise<PaginatedResponse<BusinessItem>> {
@@ -487,8 +487,9 @@ export interface DiscoveryTargets {
 }
 
 /** Who a search hires for (13 Nov 2026): CSPs (the autopilot's), District Coordinators or State Heads. */
-export type HiringFor = 'CSP' | 'DC' | 'STATE_HEAD';
-export const HIRING_LABEL: Record<HiringFor, string> = { CSP: 'CSP', DC: 'District Coordinator', STATE_HEAD: 'State Head' };
+/** CSP_NEAR_DC (17 Nov 2026): CSP prospects at the SBI-allocated CSP centres in the DCs' districts. */
+export type HiringFor = 'CSP' | 'CSP_NEAR_DC' | 'DC' | 'STATE_HEAD';
+export const HIRING_LABEL: Record<HiringFor, string> = { CSP: 'CSP', CSP_NEAR_DC: 'CSPs near DCs', DC: 'District Coordinator', STATE_HEAD: 'State Head' };
 
 export const fetchDiscoveryTargets = async (state?: string, hiringFor: HiringFor = 'CSP'): Promise<DiscoveryTargets> => {
   const p = new URLSearchParams({ hiring_for: hiringFor });

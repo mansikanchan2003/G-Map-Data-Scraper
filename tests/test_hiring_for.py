@@ -118,7 +118,7 @@ def test_business_data_filters_by_type_and_counts_each(db, client):
     assert rows[0]["hiring_for"] == ["DC"]
     assert client.get("/api/v1/businesses", params={"hiring_for": "NOPE"}).status_code == 400
     counts = {t["type"]: t["count"] for t in client.get("/api/v1/businesses/types").json()}
-    assert counts == {"CSP": 1, "DC": 1, "STATE_HEAD": 1}
+    assert counts == {"CSP": 1, "CSP_NEAR_DC": 0, "DC": 1, "STATE_HEAD": 1}
 
 
 def test_the_export_holds_only_what_the_filter_shows(db, client):
@@ -173,3 +173,33 @@ def test_business_data_shows_a_pin_code(db, client):
     out = client.get("/api/v1/export/businesses", params={"format": "csv", "hiring_for": "CSP"}).content.decode("utf-8-sig")
     head, first = list(csv.reader(io.StringIO(out)))[:2]
     assert first[head.index("pincode")] == "360005"
+
+
+def test_csps_near_dcs_are_an_audience_of_their_own(db, client):
+    """17 Nov 2026: Who to message: CSPs, CSPs near DCs, DCs or State Heads; each only its own label."""
+    from src.routers.audience import AudienceFilters, _build
+    from src.services.job_manager import _hiring_flags
+    _three(db)
+    _business(db, "near", "+919855555555", **_hiring_flags("CSP_NEAR_DC"))
+    db.commit()
+    names = lambda who: sorted(c["name"] for c in _build(db, AudienceFilters(hiring_for=who), True)[1])  # noqa: E731
+    assert names("CSP") == ["Shop csp"]                 # the CSPs near DCs are not in the CSP audience
+    assert names("CSP_NEAR_DC") == ["Shop near"]
+    assert names("DC") == ["Shop dc"]
+    assert names("STATE_HEAD") == ["Shop head"]
+    states = client.get("/api/v1/whatsapp/audience/options", params={"hiring_for": "CSP_NEAR_DC"}).json()["states"]
+    assert [(s["value"], s["businesses"]) for s in states] == [("Gujarat", 1)]
+    # Business Data lists the type with its own count, and filters by it.
+    counts = {t["type"]: t["count"] for t in client.get("/api/v1/businesses/types").json()}
+    assert counts["CSP_NEAR_DC"] == 1
+    rows = client.get("/api/v1/businesses", params={"hiring_for": "CSP_NEAR_DC"}).json()["items"]
+    assert [r["name"] for r in rows] == ["Shop near"] and rows[0]["hiring_for"] == ["CSP_NEAR_DC"]
+
+
+def test_a_lead_near_an_sbi_csp_centre_is_labelled():
+    from src.services.applications import _near_centre
+    centres = [{"name": "Baragarh (CISBI 340526)", "code": "CISBI 340526", "coords": (30.53, 77.18)}]
+    hit = _near_centre(centres, [30.50, 77.15])
+    assert hit and hit["code"] == "CISBI 340526" and hit["distance_km"] < 10
+    assert _near_centre(centres, [30.90, 74.60]) is None        # Firozpur, far away
+    assert _near_centre([], [30.50, 77.15]) is None

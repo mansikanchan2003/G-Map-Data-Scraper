@@ -102,6 +102,14 @@ const initials = (name: string | null, phone: string) =>
   (name || '').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase() || phone.slice(-2);
 const place = (a: Application) => [a.tehsil, a.district, a.state].filter(Boolean).join(', ');
 // "SBI Chotila (60104) · AO Ahmedabad · 12 km"
+/** "CSPs near DCs": an SBI-allocated CSP centre in a District Coordinator's district (17 Nov 2026). */
+const NearDc: React.FC<{ a: Application }> = ({ a }) => (
+  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-500/15 border border-teal-500/40 text-teal-300 text-[11px] font-semibold whitespace-nowrap"
+    title={a.csp_centre ? `SBI CSP centre ${a.csp_centre.name}${a.csp_centre.code ? ` (${a.csp_centre.code})` : ''}, ${a.csp_centre.distance_km} km away` : 'Reached as one of the CSPs near DCs'}>
+    <Icon name="share_location" className="text-[13px]" />CSPs near DCs
+  </span>
+);
+
 const branch = (a: Application) => a.sbi_branch && [
   `SBI ${a.sbi_branch.branch_name} (${a.sbi_branch.branch_code})`, a.sbi_branch.ao,
   a.sbi_branch.distance_km ? `${a.sbi_branch.distance_km} km` : 'same PIN',
@@ -433,6 +441,9 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                             <span className="truncate">{branch(a)}</span>
                           </div>
                         )}
+                        {a.near_dc && (
+                          <div className="mt-1"><NearDc a={a} /></div>
+                        )}
                       </td>
                       <td className="px-3 py-3">
                         <span className={`inline-block px-2 py-0.5 rounded-full border text-[11px] font-semibold whitespace-nowrap ${VERDICT_STYLE[a.verdict]}`}
@@ -550,6 +561,7 @@ const LeadsBlock: React.FC<{ leads: Application[]; onOpen: (phone: string) => vo
                 <span className="truncate">{branch(a)}</span>
               </div>
             )}
+            {a.near_dc && <div className="mt-1.5"><NearDc a={a} /></div>}
             <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px]">
               <span className="px-2 py-0.5 rounded-full bg-slate-950 border border-slate-800 text-slate-300">{a.qualification || 'Education —'}</span>
               <span className="px-2 py-0.5 rounded-full bg-slate-950 border border-slate-800 text-slate-300">Docs {a.documents_count}/{a.documents_total}{a.required_documents_done ? ' ✓' : ''}</span>

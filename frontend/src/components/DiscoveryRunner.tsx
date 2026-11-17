@@ -11,6 +11,8 @@ import {
 const HIRING: { key: HiringFor; label: string; note: string; icon: string; on: string; dot: string }[] = [
   { key: 'CSP', label: 'CSP', note: 'Customer Service Point owners', icon: 'storefront',
     on: 'bg-sky-950/60 border-sky-500 text-sky-300 ring-1 ring-sky-500/40', dot: 'bg-sky-500' },
+  { key: 'CSP_NEAR_DC', label: 'CSPs near DCs', note: 'CSP owners in a DC area', icon: 'share_location',
+    on: 'bg-teal-950/60 border-teal-500 text-teal-300 ring-1 ring-teal-500/40', dot: 'bg-teal-500' },
   { key: 'DC', label: 'District Coordinator', note: 'One person to lead a district', icon: 'hub',
     on: 'bg-purple-950/60 border-purple-500 text-purple-300 ring-1 ring-purple-500/40', dot: 'bg-purple-500' },
   { key: 'STATE_HEAD', label: 'State Head', note: 'One person to lead a state', icon: 'workspace_premium',
@@ -188,7 +190,7 @@ export const DiscoveryRunner: React.FC<Props> = ({ isOpen, onClose, onStarted })
         {/* Who the search hires for */}
         <div className="px-6 pt-5">
           <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Hiring for</div>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {HIRING.map(h => {
               const on = hiringFor === h.key;
               return (

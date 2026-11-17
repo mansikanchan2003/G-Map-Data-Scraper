@@ -7,6 +7,8 @@ import { fetchBusinesses, fetchBusinessStates, fetchBusinessTypes, triggerCsvStr
 const TYPE_STYLE: Record<HiringFor, { label: string; short: string; chip: string; on: string; icon: string }> = {
   CSP: { label: 'CSP', short: 'CSP', icon: 'storefront',
          chip: 'bg-sky-950/60 border-sky-800 text-sky-300', on: 'bg-sky-600 border-sky-500 text-white' },
+  CSP_NEAR_DC: { label: 'CSPs near DCs', short: 'CSP near DC', icon: 'share_location',
+                 chip: 'bg-teal-950/60 border-teal-800 text-teal-300', on: 'bg-teal-600 border-teal-500 text-white' },
   DC: { label: 'District Coordinator', short: 'DC', icon: 'hub',
         chip: 'bg-purple-950/60 border-purple-800 text-purple-300', on: 'bg-purple-600 border-purple-500 text-white' },
   STATE_HEAD: { label: 'State Head', short: 'State Head', icon: 'workspace_premium',

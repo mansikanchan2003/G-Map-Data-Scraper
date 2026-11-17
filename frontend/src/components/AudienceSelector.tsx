@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   fetchAudienceOptions,
+  type AudienceType,
   fetchAudienceSummary,
   fetchAudiencePreview,
   stashAudience,
@@ -11,6 +12,18 @@ import {
   type AudiencePlace,
 } from '../api/whatsapp';
 import { GeoMultiSelect, type GeoChoice } from './GeoMultiSelect';
+
+/** Who a campaign goes to (17 Nov 2026): each label is its own audience. */
+const WHO: { key: AudienceType; label: string; note: string; icon: string; on: string }[] = [
+  { key: 'CSP', label: 'CSPs', note: 'Shops found for CSP', icon: 'storefront',
+    on: 'border-sky-500 bg-sky-500/10 text-sky-300 ring-1 ring-sky-500/40' },
+  { key: 'CSP_NEAR_DC', label: 'CSPs near DCs', note: "At SBI CSP centres in DCs' districts", icon: 'share_location',
+    on: 'border-teal-500 bg-teal-500/10 text-teal-300 ring-1 ring-teal-500/40' },
+  { key: 'DC', label: 'DCs', note: 'District Coordinator searches', icon: 'hub',
+    on: 'border-purple-500 bg-purple-500/10 text-purple-300 ring-1 ring-purple-500/40' },
+  { key: 'STATE_HEAD', label: 'State Heads', note: 'State Head searches', icon: 'workspace_premium',
+    on: 'border-amber-500 bg-amber-500/10 text-amber-300 ring-1 ring-amber-500/40' },
+];
 
 interface Props {
   isOpen: boolean;
@@ -45,6 +58,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
   const [tehsils, setTehsils] = useState<string[]>([]);
   const [branches, setBranches] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [hiringFor, setHiringFor] = useState<AudienceType>('CSP');
   const [includeContacted, setIncludeContacted] = useState(false);
   const [limitEnabled, setLimitEnabled] = useState(false);
   const [limit, setLimit] = useState<number>(100);
@@ -59,6 +73,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
     tehsils: tehsils.map(k => toPlace(k, 'tehsil')),
     branches,
     categories,
+    hiring_for: hiringFor,
     limit: limitEnabled ? limit : null,
     include_already_contacted: includeContacted,
   };
@@ -68,9 +83,12 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
   // dropped rather than left working out of sight.
   useEffect(() => {
     if (!isOpen) return;
-    fetchAudienceOptions(states, districts.map(k => toPlace(k, 'district')))
+    fetchAudienceOptions(states, districts.map(k => toPlace(k, 'district')), hiringFor)
       .then(opts => {
         setOptions(opts);
+        // A state this type has nobody in is dropped (CSPs near DCs are in Haryana and Punjab only).
+        const offeredStates = new Set(opts.states.map(o => o.value));
+        setStates(ss => ss.filter(s => offeredStates.has(s)));
         const offeredDistricts = new Set(opts.districts.map(o => [o.state, o.value].join(SEP)));
         const offeredTehsils = new Set(opts.tehsils.map(o => [o.state, o.district, o.value].join(SEP)));
         setDistricts(ds => ds.filter(k => offeredDistricts.has(k)));
@@ -80,7 +98,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
         setCategories(cs => cs.filter(c => offeredKinds.has(c)));
       })
       .catch(() => setOptions(null));
-  }, [isOpen, states.join(), districts.join()]);
+  }, [isOpen, states.join(), districts.join(), hiringFor]);
 
   const refreshSummary = useCallback(async () => {
     setLoading(true);
@@ -91,7 +109,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
     } finally {
       setLoading(false);
     }
-  }, [states.join(), districts.join(), tehsils.join(), branches.join(), categories.join(), includeContacted, limitEnabled, limit]);
+  }, [states.join(), districts.join(), tehsils.join(), branches.join(), categories.join(), hiringFor, includeContacted, limitEnabled, limit]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -187,6 +205,22 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
         </div>
 
         <div className="p-6 space-y-5">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1.5">Who to message</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {WHO.map(w => (
+                <button key={w.key} type="button" onClick={() => setHiringFor(w.key)}
+                  className={`text-left rounded-lg border px-3 py-2 transition-colors ${hiringFor === w.key ? w.on : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`}>
+                  <span className="flex items-center gap-1.5 text-sm font-semibold">
+                    <span className="material-symbols-outlined text-[17px]">{w.icon}</span>{w.label}
+                  </span>
+                  <span className="block text-[11px] opacity-75 mt-0.5 leading-snug">{w.note}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1.5">Only businesses with this label are used.</p>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <GeoMultiSelect label="State" plural="states" choices={stateChoices}
               selected={states} onChange={changeStates} />

@@ -125,8 +125,30 @@ def _sources(db: Session, phones: List[str]) -> Dict[str, Dict]:
         category = (b.category if b else None) or sheet.get("category") or sheet.get("persona")
         out[r.phone] = {"campaign": c.name, "business_name": (b.name if b else None) or r.name,
                         "category": category, "district": b.district if b else None,
-                        "state": b.state if b else None}
+                        "state": b.state if b else None,
+                        "near_dc": bool(b and getattr(b, "near_dc", False))}
     return out
+
+
+# The SBI-allocated CSP centres in the DCs' districts (17 Nov 2026), saved as locations of
+# their own; a lead whose PIN lies within this distance of one is a "CSP near DC".
+CSP_CENTRE_DATASET = "sbi_csp_centre"
+CSP_CENTRE_KM = 10
+
+
+def _csp_centres(db: Session) -> List[Dict]:
+    return [{"name": (l.anchor_name or "").split(",")[0], "code": l.pin_basis, "coords": (l.latitude, l.longitude)}
+            for l in db.query(Location).filter(Location.source_dataset == CSP_CENTRE_DATASET,
+                                               Location.latitude.isnot(None))]
+
+
+def _near_centre(centres: List[Dict], coords: Optional[List[float]]) -> Optional[Dict]:
+    """The CSP centre within CSP_CENTRE_KM of a PIN, nearest first; None if none is."""
+    if not coords or not centres:
+        return None
+    km, best = min(((haversine_distance(coords[0], coords[1], *c["coords"]), c) for c in centres),
+                   key=lambda pair: pair[0])
+    return {"name": best["name"], "code": best["code"], "distance_km": round(km, 1)} if km <= CSP_CENTRE_KM else None
 
 
 # PINs looked up per page load, at most, and for how long: India Post can be
@@ -276,6 +298,7 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
         comments.setdefault(c.phone, []).append(c)
     sources = _sources(db, phones)
     branches = _branches(db)
+    centres = _csp_centres(db)
     # When the lead came in: their first message or button tap to us.
     first_in = dict(db.query(WhatsAppMessage.phone, func.min(WhatsAppMessage.created_at))
                     .filter(WhatsAppMessage.phone.in_(phones), WhatsAppMessage.direction == "IN")
@@ -309,6 +332,11 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
             "distance_km": coverage.get("distance_km"),
             # The SBI branch nearest their PIN: its code, name, AO and how far.
             "sbi_branch": _nearest_branch(branches, pin_info.get("coords") if current else None),
+            # "CSPs near DCs" (17 Nov 2026): the campaign reached them as one, or their PIN
+            # is within CSP_CENTRE_KM of an SBI-allocated CSP centre in a DC's district.
+            "csp_centre": _near_centre(centres, pin_info.get("coords") if current else None),
+            "near_dc": bool((sources.get(conv.phone) or {}).get("near_dc"))
+                       or _near_centre(centres, pin_info.get("coords") if current else None) is not None,
             "category": (sources.get(conv.phone) or {}).get("category"),
             "qualification": QUALIFICATION.get(data.get("education")),
             "franchise_background": data.get("franchise"),
