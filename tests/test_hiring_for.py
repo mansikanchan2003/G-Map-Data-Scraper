@@ -141,3 +141,18 @@ def test_csp_campaigns_never_reach_a_dc_or_state_head_search(db):
     _three(db)
     _, contacts = _build(db, AudienceFilters(), True)
     assert [c["name"] for c in contacts] == ["Shop csp"]
+
+
+def test_a_campaign_audience_can_be_picked_by_kind_of_business(db, client):
+    """17 Nov 2026: the audience picker offers the kinds of business, with counts."""
+    from src.routers.audience import AudienceFilters, _build
+    _three(db)
+    db.add(Business(business_id="kiosk", job_id="j", name="Shop kiosk", phone="+919844444444", category="Kiosk",
+                    district="Rajkot", state="Gujarat", source_query="q", dedup_key="kiosk"))
+    db.commit()
+    kinds = {o["value"]: o["businesses"] for o in client.get("/api/v1/whatsapp/audience/options").json()["categories"]}
+    assert kinds == {"Insurance agency": 1, "Kiosk": 1}          # the DC and State Head shops are not counted
+    _, contacts = _build(db, AudienceFilters(categories=["Kiosk"]), True)
+    assert [c["name"] for c in contacts] == ["Shop kiosk"]
+    _, every = _build(db, AudienceFilters(), True)
+    assert sorted(c["name"] for c in every) == ["Shop csp", "Shop kiosk"]

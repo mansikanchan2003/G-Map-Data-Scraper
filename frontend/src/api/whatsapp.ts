@@ -434,6 +434,8 @@ export interface AudienceOptions {
   districts: GeoOption[];
   tehsils: GeoOption[];
   branches?: BranchOption[];
+  /** Kinds of business in the picked places, with how many of each. */
+  categories?: GeoOption[];
 }
 
 /** A district or tehsil, named with the levels above it. */
@@ -450,6 +452,8 @@ export interface AudienceFilters {
   tehsils: AudiencePlace[];
   /** SBI branch codes: only businesses scraped at those branches' PIN codes. */
   branches?: string[];
+  /** Kinds of business (Google Maps categories); none means every kind. */
+  categories?: string[];
   limit?: number | null;
   include_already_contacted: boolean;
 }

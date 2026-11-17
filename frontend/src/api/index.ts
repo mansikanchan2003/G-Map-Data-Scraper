@@ -49,6 +49,16 @@ export function resetApiBaseUrl(): void {
   }
 }
 
+/** One of FastAPI's request-check errors, in plain words ("places: at most 50, not 73"). */
+const plainValidationError = (e: any): string => {
+  const field = (e?.loc || []).filter((p: any) => p !== 'body').join(' → ') || 'request';
+  if (e?.type === 'too_long') {
+    const m = /at most (\d+) items.*?not (\d+)/.exec(e.msg || '');
+    if (m) return `Too many ${field}: up to ${m[1]} at a time, this had ${m[2]}.`;
+  }
+  return `${field}: ${e?.msg || 'not accepted'}`;
+};
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const baseUrl = getApiBaseUrl();
   const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
@@ -74,20 +84,24 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
     if (!response.ok) {
       let errorDetail = `HTTP ${response.status}: ${response.statusText}`;
+      // The body can be read only once (17 Nov 2026: reading it again after a
+      // failed json() hid every refusal's reason behind "body stream already read").
+      const errorText = await response.text().catch(() => '');
       try {
-        const errorJson = await response.json();
-        if (errorJson.detail) {
-          errorDetail = typeof errorJson.detail === 'string' 
-            ? errorJson.detail 
-            : JSON.stringify(errorJson.detail);
+        const errorJson = JSON.parse(errorText);
+        if (Array.isArray(errorJson.detail)) {
+          errorDetail = errorJson.detail.map(plainValidationError).join(' · ');
+        } else if (errorJson.detail) {
+          errorDetail = typeof errorJson.detail === 'string'
+            ? errorJson.detail
+            : (errorJson.detail.message || JSON.stringify(errorJson.detail));
         } else if (errorJson.error?.message) {
           errorDetail = errorJson.error.message;
         } else if (errorJson.message) {
           errorDetail = errorJson.message;
         }
       } catch {
-        const errorText = await response.text();
-        if (errorText) errorDetail = errorText;
+        if (errorText && errorText.length < 300) errorDetail = errorText;
       }
 
       const apiErr: ApiError = {

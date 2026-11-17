@@ -46,6 +46,8 @@ class AudienceFilters(BaseModel):
     # SBI branch codes. Only businesses scraped at those branches' PIN codes;
     # combined with the places above, both must hold.
     branches: List[str] = Field(default_factory=list)
+    # Kinds of business (Google Maps categories, 17 Nov 2026); none picked is every kind.
+    categories: List[str] = Field(default_factory=list)
     # One of each, as the picker sent before it took several. Still read, so
     # a page loaded before the change keeps working.
     state: Optional[str] = ALL
@@ -81,6 +83,8 @@ class AudienceOptions(BaseModel):
     districts: List[GeoOption]
     tehsils: List[GeoOption]
     branches: List[BranchOption] = []
+    # Kinds of business in the picked places, most first.
+    categories: List[GeoOption] = []
 
 
 class AudienceSummary(BaseModel):
@@ -236,6 +240,7 @@ def audience_options(
 
     return AudienceOptions(
         branches=branches,
+        categories=[GeoOption(value=v, businesses=c) for v, c in counts([Business.category], in_districts) if v],
         states=[GeoOption(value=v, businesses=c) for v, c in counts([Business.state], None) if v],
         districts=[GeoOption(value=d, businesses=c, state=s)
                    for s, d, c in counts([Business.state, Business.district], in_states) if d],
@@ -247,6 +252,9 @@ def audience_options(
 def _build(db: Session, f: AudienceFilters, with_contacts: bool):
     # CSP campaigns go only to businesses found for CSPs, never to a DC or State Head search's.
     base = _branch_filtered(_geo_filtered(db.query(Business).filter(NOT_PARTNER, FOR_CSP), f), db, f)
+    picked = [c for c in f.categories if c]
+    if picked:
+        base = base.filter(Business.category.in_(picked))
 
     total = base.count()
     with_phone_q = base.filter(Business.phone.isnot(None), Business.phone != "")

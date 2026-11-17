@@ -44,6 +44,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
   const [districts, setDistricts] = useState<string[]>([]);
   const [tehsils, setTehsils] = useState<string[]>([]);
   const [branches, setBranches] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [includeContacted, setIncludeContacted] = useState(false);
   const [limitEnabled, setLimitEnabled] = useState(false);
   const [limit, setLimit] = useState<number>(100);
@@ -57,6 +58,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
     districts: districts.map(k => toPlace(k, 'district')),
     tehsils: tehsils.map(k => toPlace(k, 'tehsil')),
     branches,
+    categories,
     limit: limitEnabled ? limit : null,
     include_already_contacted: includeContacted,
   };
@@ -73,6 +75,9 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
         const offeredTehsils = new Set(opts.tehsils.map(o => [o.state, o.district, o.value].join(SEP)));
         setDistricts(ds => ds.filter(k => offeredDistricts.has(k)));
         setTehsils(ts => ts.filter(k => offeredTehsils.has(k)));
+        // A kind of business not found in the places now picked is dropped too.
+        const offeredKinds = new Set((opts.categories || []).map(o => o.value));
+        setCategories(cs => cs.filter(c => offeredKinds.has(c)));
       })
       .catch(() => setOptions(null));
   }, [isOpen, states.join(), districts.join()]);
@@ -86,7 +91,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
     } finally {
       setLoading(false);
     }
-  }, [states.join(), districts.join(), tehsils.join(), branches.join(), includeContacted, limitEnabled, limit]);
+  }, [states.join(), districts.join(), tehsils.join(), branches.join(), categories.join(), includeContacted, limitEnabled, limit]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -111,6 +116,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
     key: b.value, label: `${b.name} (${b.value})`,
     sub: [b.pincode, b.district].filter(Boolean).join(' · '), count: b.businesses,
   }));
+  const categoryChoices: GeoChoice[] = (options?.categories || []).map(o => ({ key: o.value, label: o.value, count: o.businesses }));
   const branchName = (code: string) => options?.branches?.find(b => b.value === code)?.name || code;
 
   const nameOf = (key: string) => key.split(SEP).pop() as string;
@@ -119,6 +125,7 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
     branches.length
       ? `SBI ${branches.length <= 2 ? branches.map(branchName).join(', ') : `${branchName(branches[0])} +${branches.length - 1}`}`
       : null,
+    categories.length ? (categories.length <= 2 ? categories.join(', ') : `${categories[0]} +${categories.length - 1}`) : null,
     tehsils.length ? list(tehsils) : null,
     districts.length ? list(districts) : null,
     states.length ? list(states) : 'All states',
@@ -199,6 +206,17 @@ export const AudienceSelector: React.FC<Props> = ({ isOpen, onClose, onCampaign,
               <p className="text-[11px] text-slate-500 mt-1">
                 Tick branches to reach only the businesses scraped at their PIN codes. With none ticked,
                 businesses are not limited to SBI branches.
+              </p>
+            </div>
+          )}
+
+          {(options?.categories?.length ?? 0) > 0 && (
+            <div>
+              <GeoMultiSelect label="Business types" plural="business types" choices={categoryChoices}
+                selected={categories} onChange={setCategories} emptyLabel="Every kind of business" />
+              <p className="text-[11px] text-slate-500 mt-1">
+                Tick the kinds of business to reach (for example Kiosk, Hardware store). Counts are for the places picked above.
+                With none ticked, every kind is reached.
               </p>
             </div>
           )}

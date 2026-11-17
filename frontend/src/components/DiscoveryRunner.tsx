@@ -33,6 +33,23 @@ type Mode = 'queued' | 'custom';
  * place through Google Maps, because a job cannot be built without
  * coordinates.
  */
+
+/** Places, and categories, the server takes in one custom run. */
+const MAX_CUSTOM = 50;
+
+/** How many places or categories the box holds, against the 50 a run takes. */
+const Count: React.FC<{ n: number; what: 'place' | 'category' }> = ({ n, what }) => {
+  if (!n) return null;
+  const over = n > MAX_CUSTOM;
+  const word = what === 'place' ? (n === 1 ? 'place' : 'places') : (n === 1 ? 'category' : 'categories');
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${
+      over ? 'bg-rose-500/10 border-rose-500/40 text-rose-500' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'}`}>
+      {n} {word} · up to {MAX_CUSTOM} a run{over ? ` (remove ${n - MAX_CUSTOM})` : ''}
+    </span>
+  );
+};
+
 export const DiscoveryRunner: React.FC<Props> = ({ isOpen, onClose, onStarted }) => {
   const [mode, setMode] = useState<Mode>('queued');
   const [hiringFor, setHiringFor] = useState<HiringFor>('CSP');
@@ -80,6 +97,16 @@ export const DiscoveryRunner: React.FC<Props> = ({ isOpen, onClose, onStarted })
 
   const parseList = (text: string) =>
     text.split(/[,\n]/).map(v => v.trim()).filter(Boolean);
+  const unique = (list: string[]) =>
+    list.filter((v, i) => list.findIndex(o => o.toLowerCase() === v.toLowerCase()) === i);
+  // A place is one line: "Raja Park, Jaipur, Rajasthan" is one place, not three (17 Nov 2026).
+  // Commas separate places only when everything is on one line ("Rohtak, Hisar").
+  const parsePlaces = (text: string) => {
+    const lines = text.split('\n').map(v => v.trim()).filter(Boolean);
+    return unique(lines.length > 1 ? lines : parseList(text));
+  };
+  const placeCount = parsePlaces(customPlaces).length;
+  const categoryCount = unique(parseList(customCategories)).length;
 
   const handleRun = async () => {
     setBusy(true);
@@ -97,10 +124,15 @@ export const DiscoveryRunner: React.FC<Props> = ({ isOpen, onClose, onStarted })
         setResult(res.message || `Started ${res.jobs_queued} job(s).`);
         if (res.status === 'started') onStarted();
       } else {
-        const places = parseList(customPlaces).map(place => ({ place }));
-        const cats = parseList(customCategories);
+        const places = parsePlaces(customPlaces).map(place => ({ place }));
+        const cats = unique(parseList(customCategories));
         if (!places.length || !cats.length) {
           setResult('Enter at least one place and one category.');
+          return;
+        }
+        // The server takes up to 50 of each per run (each place is looked up on Maps while it waits).
+        if (places.length > MAX_CUSTOM || cats.length > MAX_CUSTOM) {
+          setResult(`Up to ${MAX_CUSTOM} places and ${MAX_CUSTOM} categories at a time. This has ${places.length} place(s) and ${cats.length} categor${cats.length === 1 ? 'y' : 'ies'}; run the first ${MAX_CUSTOM}, then the rest.`);
           return;
         }
         const res = await runCustomDiscovery({
@@ -280,9 +312,10 @@ export const DiscoveryRunner: React.FC<Props> = ({ isOpen, onClose, onStarted })
                   className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded px-3 py-2 text-sm text-slate-200 outline-none"
                 />
                 <p className="text-[11px] text-slate-500">
-                  One per line, or comma separated. Each is looked up on Google Maps to find its
-                  coordinates, so give enough detail to identify it.
+                  One place per line (a line may hold commas: "Raja Park, Jaipur, Rajasthan" is one place). Each is
+                  looked up on Google Maps to find its coordinates, so give enough detail to identify it.
                 </p>
+                <Count n={placeCount} what="place" />
               </div>
 
               <div className="space-y-2">
@@ -295,9 +328,10 @@ export const DiscoveryRunner: React.FC<Props> = ({ isOpen, onClose, onStarted })
                   className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded px-3 py-2 text-sm text-slate-200 outline-none"
                 />
                 <p className="text-[11px] text-slate-500">
-                  Anything Google Maps understands as a business type. New ones are added to your
-                  category list; existing ones are reused.
+                  Anything Google Maps understands as a business type, one per line or comma separated. New ones
+                  are added to your category list; existing ones are reused.
                 </p>
+                <Count n={categoryCount} what="category" />
               </div>
             </>
           )}
@@ -306,14 +340,14 @@ export const DiscoveryRunner: React.FC<Props> = ({ isOpen, onClose, onStarted })
             <div className="flex flex-col gap-1">
               <label className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Jobs this run</label>
               <input type="number" min={1} max={500} value={batchSize}
-                     onChange={e => setBatchSize(Math.max(1, Number(e.target.value) || 1))}
+                     onChange={e => setBatchSize(Math.min(500, Math.max(1, Number(e.target.value) || 1)))}
                      className="w-24 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 outline-none" />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Gap between jobs</label>
               <div className="flex items-center gap-2">
                 <input type="number" min={0} max={60} value={delay}
-                       onChange={e => setDelay(Math.max(0, Number(e.target.value) || 0))}
+                       onChange={e => setDelay(Math.min(60, Math.max(0, Number(e.target.value) || 0)))}
                        className="w-20 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 outline-none" />
                 <span className="text-xs text-slate-500">seconds</span>
               </div>
