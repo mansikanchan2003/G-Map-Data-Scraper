@@ -506,3 +506,20 @@ def test_the_branch_plan_puts_a_campaign_a_day_where_people_answered(db):
 def test_without_branches_there_is_no_branch_plan(db):
     campaign(db, 10)
     assert gp.plan(db)["branch_plan"] is None
+
+
+def test_each_branch_in_the_plan_has_its_send_time_two_campaigns_a_day_and_no_sunday(db, monkeypatch):
+    from datetime import date as _date
+    _branch(db, "60104", "CHOTILA", "363520", 22.42, 71.19, "Surendranagar")
+    campaign(db, 60, district="Surat", start=8000)
+    _near(db, 900, 22.42, 71.19, "Kiosk", 5000)
+    real_goal = gp.goal
+    monkeypatch.setattr(gp, "goal", lambda *a, **k: {**real_goal(*a, **k), "still_needed": 7, "days_left": 1})
+    p = gp.plan(db)["branch_plan"]
+    assert p["send_times"] == ["10:30 AM", "12:30 PM"]          # the goal needs more than one campaign a day
+    for d in p["days"]:
+        assert _date.fromisoformat(d["date"]).weekday() != 6     # Sunday off
+        assert all(s["time"] in ("10:30 AM", "12:30 PM") for s in d["slots"])
+        assert all(c["people"] <= p["daily"] for c in d["campaigns"])
+    full = [d for d in p["days"] if len(d["campaigns"]) == 2]
+    assert full and [c["time"] for c in full[0]["campaigns"]] == ["10:30 AM", "12:30 PM"]

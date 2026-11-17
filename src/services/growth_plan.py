@@ -795,6 +795,19 @@ BRANCH_PRIOR = 100
 BRANCH_PLAN_DAYS = 7
 
 
+# The day's campaign times, IST, as the daily campaign plan (12 Nov 2026) set them.
+SEND_TIMES = [("10:30 AM", (10, 30)), ("12:30 PM", (12, 30))]
+
+
+def _branch_day(day: date, today: date, slots: list, stages: list) -> dict:
+    label = ("Today" if day == today else "Tomorrow" if day == today + timedelta(days=1) else day.strftime("%A"))
+    return {"date": day.isoformat(), "label": label + day.strftime(", %d %b").replace(" 0", " "),
+            "slots": slots, "people": sum(s["people"] for s in slots),
+            "campaigns": [{"time": at, "people": sum(s["people"] for s in slots if s["time"] == at)}
+                          for at in dict.fromkeys(s["time"] for s in slots)],
+            "expect": {k: round(sum(s["expect"][k] for s in slots), 2) for k in stages}}
+
+
 def _blend(k: int, n: int, overall: float) -> float:
     return (k + BRANCH_PRIOR * overall) / (n + BRANCH_PRIOR)
 
@@ -879,15 +892,20 @@ def branch_plan(db: Session, g: dict, book: dict) -> Optional[dict]:
     hour = _best_slot(facts, "time_of_day", book["judged_on"] if any(f.get(book["judged_on"]) for f in facts)
                       else "responded")
     send_time = hour["name"] if hour else DEFAULT_SEND["time_of_day"]
-    start = date.fromisoformat(_next_send(send_time)["date"])
+    # Up to two campaigns a day, each with its send time (the daily plan of 12 Nov 2026):
+    # 10:30 AM, read before lunch when most people reply; 12:30 PM, the slot tested on
+    # 12 Nov. The second only when the goal needs more than one campaign's worth. No
+    # campaign on Sunday. A slot already past today starts the plan at the next one.
+    times = SEND_TIMES if for_goal > cap else SEND_TIMES[:1]
+    now_ist = datetime.now(timezone.utc).astimezone(IST)
 
     pool = {s["branch_code"]: Counter(left.get(s["branch_code"], Counter())) for s in summary}
     by_code = {s["branch_code"]: s for s in summary}
     order = [s["branch_code"] for s in summary]
-    days = []
-    for i in range(BRANCH_PLAN_DAYS):
+
+    def campaign(at: str) -> list:
+        """One campaign of up to `daily` people: the best branch with anyone left, topped up by the next."""
         need, slots = daily, []
-        # The best branch with anyone left leads the day; the next ones top it up.
         for code in list(order):
             if need <= 0:
                 break
@@ -907,28 +925,34 @@ def branch_plan(db: Session, g: dict, book: dict) -> Optional[dict]:
             s = by_code[code]
             slots.append({"branch_code": code, "branch_name": s["branch_name"], "pincode": s["pincode"],
                           "district": s["district"], "ao": s["ao"], "people": take, "kinds": kinds[:4],
-                          "expect": {k: round(take * s["rates"][k], 2) for k in stages}})
+                          "time": at, "expect": {k: round(take * s["rates"][k], 2) for k in stages}})
             need -= take
             if len(slots) == 3:
                 break
-        if not slots:
-            break
-        day = start + timedelta(days=i)
-        people = sum(s["people"] for s in slots)
-        days.append({
-            "date": day.isoformat(),
-            "label": ("Today" if day == datetime.now(timezone.utc).astimezone(IST).date() else
-                      "Tomorrow" if day == datetime.now(timezone.utc).astimezone(IST).date() + timedelta(days=1)
-                      else day.strftime("%A")) + day.strftime(", %d %b").replace(" 0", " "),
-            "slots": slots, "people": people,
-            "expect": {k: round(sum(s["expect"][k] for s in slots), 2) for k in stages},
-        })
+        return slots
 
+    days = []
+    day = now_ist.date()
+    while len(days) < BRANCH_PLAN_DAYS and any(pool[c] for c in order):
+        if day.weekday() != 6:                                   # Sunday off
+            slots = []
+            for at, (hh, mm) in times:
+                if day == now_ist.date() and (now_ist.hour, now_ist.minute) >= (hh, mm):
+                    continue                                     # already past today
+                slots += campaign(at)
+            if slots:
+                days.append(_branch_day(day, now_ist.date(), slots, stages))
+        day += timedelta(days=1)
+        if day > now_ist.date() + timedelta(days=BRANCH_PLAN_DAYS * 2):
+            break
     week_people = sum(d["people"] for d in days)
     return {
         "days": days,
         "branches": summary,
         "send_time": send_time,
+        # Each campaign's send time, in the day's order.
+        "send_times": [at for at, _ in times],
+        # People per campaign; per day it is this times len(send_times).
         "daily": daily,
         "for_goal": for_goal,
         "cap": cap,

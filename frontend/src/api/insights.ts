@@ -363,14 +363,19 @@ export const fetchAsked = (id: string) => call<AskState>(`/ask/${id}`);
 export interface BranchSlot {
   branch_code: string; branch_name: string; pincode: string; district: string | null; ao: string | null;
   people: number; kinds: { category: string; people: number }[]; expect: Record<Stage, number>;
+  /** When to send this branch's campaign, IST ("10:30 AM"). */
+  time?: string;
 }
-export interface BranchDay { date: string; label: string; slots: BranchSlot[]; people: number; expect: Record<Stage, number> }
+export interface BranchDay { date: string; label: string; slots: BranchSlot[]; people: number; expect: Record<Stage, number>;
+  campaigns?: { time: string; people: number }[] }
 export interface BranchRow {
   branch_code: string; branch_name: string; pincode: string; ao: string | null; district: string | null;
   left: number; sent: number; results: Record<Stage, number>; rates: Record<Stage, number>; tried: boolean;
 }
 export interface BranchPlan {
   days: BranchDay[]; branches: BranchRow[]; send_time: string; daily: number; for_goal: number; cap: number;
+  /** The day's campaign times, IST: up to two campaigns of `daily` people each. */
+  send_times?: string[];
   left_near_branches: number; week_people: number; week_expect: Record<Stage, number>;
   overall_rates: Record<Stage, number>; messages_sent: number; max_km: number;
   /** The step branches are ranked by, as Insights judges campaigns. */

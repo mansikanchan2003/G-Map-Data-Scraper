@@ -41,9 +41,17 @@ const DayCard: React.FC<{ d: BranchDay; first: boolean; daily: number }> = ({ d,
           <Icon name="group" className="text-[14px]" />{num(d.people)}
         </span>
       </div>
-      <div className="mt-2.5 space-y-2 flex-1">
-        {d.slots.map(s => (
-          <div key={s.branch_code} className="min-w-0">
+      <div className="mt-2.5 space-y-3 flex-1">
+        {(d.campaigns?.length ? d.campaigns : [{ time: '', people: d.people }]).map(c => (
+          <div key={c.time || 'all'} className="space-y-2">
+            {c.time && (
+              <div className="flex items-center justify-between gap-2 rounded-lg bg-sky-500/10 border border-sky-500/30 px-2 py-1">
+                <span className="inline-flex items-center gap-1 text-[12px] font-bold text-sky-300"><Icon name="schedule" className="text-[15px]" />{c.time}</span>
+                <span className="text-[11px] text-slate-400 tabular-nums">{num(c.people)} people</span>
+              </div>
+            )}
+        {d.slots.filter(s => !c.time || s.time === c.time).map(s => (
+          <div key={`${c.time}-${s.branch_code}`} className="min-w-0">
             <div className="flex items-baseline gap-1.5 min-w-0">
               <Icon name="account_balance" className="text-[15px] text-sky-400 self-center" />
               <span className="text-[13.5px] font-semibold text-slate-100 truncate">{s.branch_name}</span>
@@ -59,6 +67,8 @@ const DayCard: React.FC<{ d: BranchDay; first: boolean; daily: number }> = ({ d,
                 </span>
               ))}
             </div>
+          </div>
+        ))}
           </div>
         ))}
       </div>
@@ -96,16 +106,19 @@ export const BranchPlanCard: React.FC<{ plan: Plan | null | undefined }> = ({ pl
             </span>
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-[0.14em] font-semibold" style={{ color: '#f9ab10' }}>SBI branch plan · next 7 days</div>
-              <h3 className="text-xl font-semibold leading-tight mt-0.5">One campaign a day, around our branches</h3>
+              <h3 className="text-xl font-semibold leading-tight mt-0.5">
+                {(p.send_times?.length || 1) > 1 ? `${p.send_times!.length} campaigns a day, around our branches` : 'One campaign a day, around our branches'}
+              </h3>
               <p className="text-[12.5px] text-white/75 mt-1 max-w-2xl">
                 Each shop counts for its nearest SBI branch within {p.max_km} km. Branches whose people answered come
-                first; a day with too few people left near one branch tops up from the next. Send at <b className="text-white">{p.send_time}</b>.
+                first; a campaign with too few people left near one branch tops up from the next. Send at{' '}
+                <b className="text-white">{p.send_times?.length ? p.send_times.join(' and ') : p.send_time}</b>; no campaign on Sunday.
               </p>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2 shrink-0 lg:w-[420px]">
             {[
-              { k: 'Each day', v: num(p.daily), sub: 'people', icon: 'send' },
+              { k: 'Each day', v: num(p.daily * (p.send_times?.length || 1)), sub: (p.send_times?.length || 1) > 1 ? `${p.send_times!.length} campaigns of ${num(p.daily)}` : 'people', icon: 'send' },
               { k: 'This week', v: num(p.week_people), sub: `of ${num(p.left_near_branches)} left`, icon: 'groups' },
               { k: 'Leads expected', v: tenth(leads), sub: 'this week', icon: 'workspace_premium' },
             ].map(t => (
