@@ -147,7 +147,65 @@ def save(db: Session, *, phone: str, data: bytes, content_type: Optional[str] = 
     db.add(rec)
     db.commit()
     logger.info(f"call_recordings event=SAVED id={rid} source={source} bytes={len(data)}")
+    if source != TEST:
+        transcribe_in_background(rid)
     return rec
+
+
+# Calls are written out on this server with Whisper, as voice notes are (transcribe.py):
+# the audio never leaves it. TRANSCRIBE_CALLS=0 turns it off (the tests do).
+def _transcribing() -> bool:
+    return os.environ.get("TRANSCRIBE_CALLS", "1") != "0"
+
+
+def read_call(db: Session, rec: CallRecording, transcribe_fn=None) -> Optional[str]:
+    """
+    Writes the call out and acts on it: a candidate who chose the other programme on the call
+    ("mujhe ESAF karna hai" while in the SBI flow, or the other way round) gets that
+    disposition. Returns the disposition recorded, or None.
+    """
+    from src.models.inbox import WhatsAppConversation
+    from src.services import call_programme
+    if transcribe_fn is None:
+        from src.services import transcribe
+        transcribe_fn = transcribe.transcribe
+    try:
+        heard = transcribe_fn(rec.stored_path, fallback_language="hi")
+        rec.transcript = (heard.get("text") or "").strip() or None
+        rec.transcript_error = None if rec.transcript else "Nothing could be made out"
+    except Exception as exc:
+        logger.exception(f"call_recordings event=TRANSCRIBE_FAILED id={rec.recording_id}")
+        rec.transcript_error = str(exc)[:300]
+        db.commit()
+        return None
+    conv = db.get(WhatsAppConversation, rec.phone)
+    # No speakers in a recording, and the caller explains both programmes: only the
+    # candidate's own first-person words count ("mujhe ESAF karna hai").
+    found = call_programme.chosen([rec.transcript or ""], first_person=True)
+    key = call_programme.apply(db, conv, found, "call_recording", "Call from our team")
+    if key:
+        rec.outcome_note = f"Chose {call_programme.LABEL[found[0]]} on the call: “{found[1][:200]}”"[:300]
+    db.commit()
+    return key
+
+
+def transcribe_in_background(recording_id: str) -> None:
+    if not _transcribing():
+        return
+
+    def work():
+        from src.database import SessionLocal
+        db = SessionLocal()
+        try:
+            rec = db.get(CallRecording, recording_id)
+            if rec is not None and rec.transcript is None:
+                read_call(db, rec)
+        except Exception:
+            logger.exception(f"call_recordings event=READ_FAILED id={recording_id}")
+        finally:
+            db.close()
+
+    threading.Thread(target=work, daemon=True, name=f"call-read-{recording_id[:8]}").start()
 
 
 def as_dict(r: CallRecording) -> dict:
@@ -155,7 +213,8 @@ def as_dict(r: CallRecording) -> dict:
     return {"recording_id": r.recording_id, "phone": r.phone, "direction": r.direction,
             "started_at": iso(r.started_at), "duration_seconds": r.duration_seconds,
             "content_type": r.content_type, "size_bytes": r.size_bytes, "device": r.device,
-            "source": r.source, "received_at": iso(r.received_at)}
+            "source": r.source, "received_at": iso(r.received_at),
+            "transcript": r.transcript, "transcript_error": r.transcript_error, "outcome_note": r.outcome_note}
 
 
 def for_phone(db: Session, phone: str) -> List[dict]:

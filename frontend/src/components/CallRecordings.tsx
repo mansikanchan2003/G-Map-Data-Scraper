@@ -76,6 +76,22 @@ export const CallRecordingsCard: React.FC<{ phone: string; version?: string }> =
                 {r.duration_seconds != null && <span className="ml-auto text-slate-300 font-semibold tabular-nums">{length(r.duration_seconds)}</span>}
               </div>
               <audio controls preload="none" src={recordingAudioUrl(r.recording_id)} className="mt-2 w-full h-9" />
+              {r.outcome_note && (
+                <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1.5 text-[12px] text-violet-200">
+                  <Icon name="swap_horiz" className="text-[16px] shrink-0 mt-px" />
+                  <span><b>Disposition changed.</b> {r.outcome_note}</span>
+                </div>
+              )}
+              {r.transcript ? (
+                <details className="mt-2 group">
+                  <summary className="cursor-pointer select-none text-[11px] font-semibold text-slate-400 hover:text-slate-200 inline-flex items-center gap-1">
+                    <Icon name="notes" className="text-[14px]" /> Call ki baatein (likhit)
+                  </summary>
+                  <p className="mt-1.5 text-[12px] leading-relaxed text-slate-300 whitespace-pre-wrap">{r.transcript}</p>
+                </details>
+              ) : r.transcript_error ? (
+                <div className="mt-1.5 text-[11px] text-slate-500">Could not write it out: {r.transcript_error}</div>
+              ) : null}
             </li>
           );
         })}

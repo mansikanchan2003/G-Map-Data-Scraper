@@ -1620,6 +1620,12 @@ def documents_submitted(db: Session, conv: WhatsAppConversation) -> WhatsAppMess
     else:
         # AutoGMap's part is done: the lead goes to Eko Acquisition (Physical visit required).
         followups.hand_over(db, conv, "bot")
+    # A ticket for the team too (18 Nov 2026): documents to check and a call to make, kept
+    # open until someone presses "Question resolved".
+    from src.services import tickets
+    programme = "ESAF" if is_esaf(conv) else "SBI"
+    flag(conv, f"Documents uploaded ({programme}). Check them, then follow the next step in the documents email.")
+    tickets.raise_or_update(db, conv)
     return _say(db, conv, _t(db, conv, "thanks"))
 
 

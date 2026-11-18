@@ -177,6 +177,32 @@ def _log(db: Session, conv: WhatsAppConversation, kind: str, by: str, value: str
     return row
 
 
+# The two programmes a person can be in, and the disposition that says so (18 Nov 2026).
+# Recording either one, by the bot, a call or a person, moves the chat to that programme:
+# its documents, the upload page and the qualification follow.
+PROGRAMME_DISPOSITIONS = {"int_esaf": "esaf", "int_sbi": "sbi"}
+
+
+def programme(conv: WhatsAppConversation) -> str:
+    """"esaf" or "sbi": the programme the chat is in now (SBI unless they chose ESAF)."""
+    return "esaf" if bot.is_esaf(conv) else "sbi"
+
+
+def _set_programme(conv: WhatsAppConversation, wanted: str) -> None:
+    from sqlalchemy.orm.attributes import flag_modified
+    data = dict(conv.bot_data or {})
+    if wanted == "esaf":
+        data["esaf"] = True
+    else:
+        if data.get("esaf") is True and data.get("can_invest") is False:
+            # They had said they could not invest; choosing SBI means the team confirms it again.
+            data["can_invest"] = None
+        data.pop("esaf", None)
+    if data != (conv.bot_data or {}):
+        conv.bot_data = data
+        flag_modified(conv, "bot_data")
+
+
 def record(db: Session, conv: WhatsAppConversation, key: str, by: str, note: Optional[str] = None,
            at: Optional[datetime] = None, attempt: int = 1, run_now: bool = True, ticket: bool = True,
            tell: bool = True) -> dict:
@@ -191,10 +217,12 @@ def record(db: Session, conv: WhatsAppConversation, key: str, by: str, note: Opt
     key = dz.normalise(key)
     if key not in DISPOSITIONS:
         raise ValueError(f"Unknown disposition: {key}")
-    if by not in ("bot", "ai_call"):
+    if by not in ("bot", "ai_call", "call_recording"):
         # A person's disposition judges the bot's reading of their reply (agent_telemetry).
         from src.services import agent_telemetry
         agent_telemetry.disposition_overridden(db, conv.phone, key, by)
+    if key in PROGRAMME_DISPOSITIONS:
+        _set_programme(conv, PROGRAMME_DISPOSITIONS[key])
     conv.disposition, conv.disposition_by, conv.disposition_at = key, by, inbox.now()
     conv.disposition_note = (note or "").strip()[:500] or None
     _log(db, conv, "disposition", by, key, note)

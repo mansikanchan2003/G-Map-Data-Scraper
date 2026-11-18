@@ -125,6 +125,14 @@ CATEGORIES: List[Category] = [
             (Step("esaf_call", NOW, HUMAN, TASK, cancel_on_reply=False,
                   task="Call them to register as an ESAF banking agent (₹1,999), then arrange Aceware's visit"),),
             email=True),
+        # Not in the sheet (18 Nov 2026): ESAF's counterpart. Someone who chose SBI's CSP on a call
+        # (often after being in the ESAF flow). The team confirms the ₹3–5 lakh, then sends SBI's
+        # documents and the upload link.
+        Sub("int_sbi", "Interested in SBI", "interested",
+            "Call: confirm the ₹3–5 lakh for SBI, then send SBI's documents and the upload link", "Human",
+            (Step("sbi_call", NOW, HUMAN, TASK, cancel_on_reply=False,
+                  task="Call them: SBI's CSP needs ₹3–5 lakh in their own e-wallet; if yes, send SBI's documents and the upload link"),),
+            email=True),
         # The end of AutoGMap's journey: documents are in, and Eko Acquisition
         # takes over. The bot's own outcome once documents are uploaded.
         Sub("int_visit", "Physical visit required", "interested",

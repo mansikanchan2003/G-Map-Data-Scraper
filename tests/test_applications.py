@@ -617,3 +617,19 @@ def test_the_documents_email_hands_a_qualified_applicant_to_acquisition_and_an_e
     subject, body = documents_report.email(documents_report.build(db, c), "https://x")
     assert "ESAF" in subject and "₹1,999 registration" in body and "Aceware" in body
     db.close()
+
+
+def test_a_recorded_call_where_they_chose_esaf_moves_them(client, recordings_dir):
+    """18 Nov 2026: Kavya Ma'am's call, written out on our server, changes the disposition."""
+    from src.models.inbox import CallRecording, WhatsAppConversation
+    from src.services import call_recordings, onboarding_bot
+    rid = _upload(client, "09000000001").json()["recording_id"]
+    db = TestingSessionLocal()
+    rec = db.get(CallRecording, rid)
+    said = {"text": "Namaste, main Kavya bol rahi hoon. SBI ke liye 3 lakh lagta hai. "
+                    "Itna nahi ho payega. Mujhe ESAF karna hai."}
+    assert call_recordings.read_call(db, rec, transcribe_fn=lambda path, fallback_language=None: said) == "int_esaf"
+    conv = db.get(WhatsAppConversation, rec.phone)
+    assert conv.disposition == "int_esaf" and conv.disposition_by == "call_recording" and onboarding_bot.is_esaf(conv)
+    assert "ESAF" in rec.outcome_note and rec.transcript.startswith("Namaste")
+    db.close()

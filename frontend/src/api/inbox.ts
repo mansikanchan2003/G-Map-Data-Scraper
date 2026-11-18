@@ -558,6 +558,8 @@ export interface CallRecording {
   started_at: string | null; duration_seconds: number | null;
   content_type: string | null; size_bytes: number | null; device: string | null;
   source: string; received_at: string | null;
+  /** What was said, written out on our server (18 Nov 2026), and what the call changed. */
+  transcript?: string | null; transcript_error?: string | null; outcome_note?: string | null;
 }
 export interface RecordingsSummary { recordings: number; tests?: number; people: number; seconds: number; pull: boolean; last_received_at: string | null }
 

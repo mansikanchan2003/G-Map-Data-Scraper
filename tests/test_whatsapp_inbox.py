@@ -2119,10 +2119,11 @@ def team_mail(monkeypatch):
 def test_only_dispositions_the_sheet_gives_a_person_email_the_team():
     human = {k for k, s in dz.SUBS.items() if dz.needs_team(s)}
     # The sheet's "Ticket + email" column (the user's sheet, 2026-10-23).
-    # int_esaf (11 Nov 2026, not in the sheet): the team calls to register them for ESAF.
+    # int_esaf (11 Nov 2026, not in the sheet): the team calls to register them for ESAF;
+    # int_sbi (18 Nov 2026), its counterpart: the team confirms the investment for SBI.
     assert human == {"int_more_info", "rej_credit", "rej_eligibility", "inv_denied",
                      "ndm_not_applicant", "ndm_unavailable", "hold_later", "hold_financial", "hold_after_date",
-                     "int_esaf"}
+                     "int_esaf", "int_sbi"}
 
 
 def test_a_disposition_for_a_person_raises_a_ticket_and_emails_the_team(db, client, team_mail):
@@ -4344,3 +4345,69 @@ def test_a_file_that_is_no_document_is_left_for_a_person(db, tmp_path):
     c = conv(db)
     assert c.needs_attention and "could not recognise" in c.attention_reason
     assert db.query(OnboardingDocument).count() == 0
+
+
+# --- 18 Nov 2026: a ticket for uploaded documents; a call that changes the programme --------
+
+def test_uploaded_documents_raise_a_ticket(db, client):
+    from src.services import tickets
+    tap_campaign(db)
+    c = conv(db)
+    onboarding_bot.documents_submitted(db, c)
+    db.commit()
+    t = tickets.open_ticket(db, PHONE)
+    assert t is not None and t.raised_via == "bot" and "Documents uploaded (SBI)" in t.question
+    assert conv(db).needs_attention
+
+
+def test_a_call_moves_them_between_sbi_and_esaf(db, client, monkeypatch):
+    from src.services import handover
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    assert handover.programme(conv(db)) == "sbi"
+    asked = {"call_id": "vx-p1", "phone": "919000000001", "status": "answered",
+             "transcript": "Agent: ESAF ke baare mein jaanna chahenge?\nUser: ESAF kya hai?"}
+    assert _post_call(client, monkeypatch, asked).json()["outcome"] != "int_esaf", "a question is not a choice"
+    chose = {"call_id": "vx-p2", "phone": "919000000001", "status": "answered",
+             "transcript": "Agent: SBI ke liye 3 se 5 lakh lagte hain.\n"
+                           "User: Itna nahi hai. Mujhe ESAF karna hai."}
+    r = _post_call(client, monkeypatch, chose)
+    assert r.json()["outcome"] == "int_esaf"
+    c = conv(db)
+    assert c.disposition == "int_esaf" and c.disposition_by == "ai_call" and onboarding_bot.is_esaf(c)
+    assert [d["key"] for d in onboarding_bot.documents_for(c)] == [d["key"] for d in onboarding_bot.ESAF_DOCUMENTS]
+    back = {"call_id": "vx-p3", "phone": "919000000001", "status": "answered",
+            "transcript": "User: Paise ka intezaam ho gaya, SBI wala hi karunga."}
+    assert _post_call(client, monkeypatch, back).json()["outcome"] == "int_sbi"
+    c = conv(db)
+    assert c.disposition == "int_sbi" and not onboarding_bot.is_esaf(c)
+    # Saying the programme they are already in changes nothing of its own.
+    same = {"call_id": "vx-p4", "phone": "919000000001", "status": "answered",
+            "transcript": "User: Haan SBI hi karna hai."}
+    assert _post_call(client, monkeypatch, same).json()["outcome"] != "int_sbi" or conv(db).disposition == "int_sbi"
+
+
+def test_a_person_choosing_esaf_or_sbi_moves_the_programme_too(db, client):
+    from src.services import handover
+    tap_campaign(db)
+    c = conv(db)
+    handover.record(db, c, "int_esaf", "kavya.shukla@eko.co.in")
+    assert onboarding_bot.is_esaf(c)
+    c.bot_data = {**c.bot_data, "can_invest": False}
+    handover.record(db, c, "int_sbi", "kavya.shukla@eko.co.in")
+    assert not onboarding_bot.is_esaf(c) and c.bot_data.get("can_invest") is None
+
+
+@pytest.mark.parametrize("words, first_person, want", [
+    ("Mujhe ESAF karna hai", False, "esaf"),
+    ("SBI nahi, ESAF theek hai", False, "esaf"),
+    ("ESAF nahi chahiye, SBI wala hi lunga", False, "sbi"),
+    ("I want to go with SBI", False, "sbi"),
+    ("ESAF kya hai?", False, None),
+    ("SBI aur ESAF dono ke baare mein batao", False, None),
+    ("Aap ESAF mein interested hain", True, None),     # the caller, in a recording: not first person
+    ("Haan mujhe ESAF chahiye", True, "esaf"),
+])
+def test_the_programme_rules(words, first_person, want):
+    from src.services import call_programme
+    assert call_programme.statement(words, first_person) == want

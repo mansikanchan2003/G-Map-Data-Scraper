@@ -328,3 +328,8 @@ class CallRecording(Base):
     # Whose phone recorded it, as the app says.
     device = Column(String(100), nullable=True)
     received_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    # What was said, written out on our server (18 Nov 2026), and what the call changed:
+    # choosing the other programme (SBI or ESAF) on the call changes the chat's disposition.
+    transcript = Column(Text, nullable=True)
+    transcript_error = Column(String(300), nullable=True)
+    outcome_note = Column(String(300), nullable=True)

@@ -171,6 +171,14 @@ def receive(db: Session, payload: dict, now: Optional[datetime] = None) -> AICal
     # What the call showed, shown on its card even when the chat keeps another outcome.
     shown = key
     conv = db.get(WhatsAppConversation, phone)
+    # Chose the other programme on the call (18 Nov 2026): in the SBI flow but wants ESAF, or
+    # the other way round. That is the call's outcome, whatever else was said, documents or not.
+    from src.services import call_programme
+    found = call_programme.chosen(t["text"] for t in call.turns if t["speaker"] == "candidate")
+    switched = call_programme.apply(db, conv, found, BY, "AI call")
+    if switched:
+        shown, key = switched, None
+        reason = f"Chose {call_programme.LABEL[found[0]]} on the call: “{found[1][:160]}”"
     if key and conv is not None:
         if conv.documents_submitted_at and key != "int_visit":
             # Documents are in: the chat belongs to Eko Acquisition now.

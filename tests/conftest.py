@@ -46,3 +46,9 @@ def signed_in_by_default(request, monkeypatch):
     # too late. The lookup is consulted for every request regardless, which is
     # what makes patching it sufficient.
     yield
+
+
+@pytest.fixture(autouse=True)
+def no_call_transcription(monkeypatch):
+    """Call recordings are not written out with Whisper in tests (call_recordings.transcribe_in_background)."""
+    monkeypatch.setenv("TRANSCRIBE_CALLS", "0")
