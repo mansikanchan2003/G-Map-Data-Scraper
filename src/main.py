@@ -25,6 +25,11 @@ async def lifespan(app: FastAPI):
     )
     init_db()
 
+    # Kills the scraper's browsers before they fill the container's memory
+    # and stall the whole app (see browser_processes).
+    from src.utils import browser_processes
+    browser_processes.start_memory_guard()
+
     # Someone has to be able to read the approvals queue before anyone can be
     # approved, so the first admin is seeded rather than requested.
     try:

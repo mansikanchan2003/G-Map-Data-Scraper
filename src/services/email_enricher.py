@@ -7,6 +7,30 @@ from src.utils.logging import logger
 
 EMAIL_REGEX = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
 
+# Links Google Maps gives as a "website" that are not the business's own site:
+# heavy pages that never carry its email (a Maps profile page among them
+# filled the server's memory on 19 Nov 2026), so they are not opened.
+NOT_A_WEBSITE = ("goo.gl", "g.page", "g.co", "facebook.com", "fb.com", "instagram.com", "youtube.com",
+                 "youtu.be", "linkedin.com", "twitter.com", "x.com", "wa.me", "whatsapp.com",
+                 "justdial.com", "indiamart.com", "sulekha.com")
+GOOGLE_HOST = re.compile(r"(^|\.)google\.[a-z.]+$")
+
+# Only the page's text is read, so nothing heavier is fetched.
+SKIPPED_RESOURCES = {"image", "media", "font", "stylesheet"}
+
+# Chromium settings that keep each page's memory small.
+BROWSER_ARGS = ['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage', '--disable-gpu',
+                '--disable-extensions', '--renderer-process-limit=2', '--js-flags=--max-old-space-size=192']
+
+
+def is_own_website(url: str) -> bool:
+    """False for a social, directory or Google link, which is not the business's own site."""
+    host = urlparse(url if url.startswith("http") else "https://" + url).netloc.lower().split(":")[0]
+    if not host or GOOGLE_HOST.search(host):
+        return False
+    return not any(host == d or host.endswith("." + d) for d in NOT_A_WEBSITE)
+
+
 class EmailEnricher:
     def __init__(
         self,
@@ -19,7 +43,7 @@ class EmailEnricher:
     ):
         self.max_pages_per_site = max_pages_per_site if max_pages_per_site is not None else int(os.getenv("EMAIL_MAX_PAGES_PER_SITE", "4"))
         self.navigation_timeout_ms = navigation_timeout_ms if navigation_timeout_ms is not None else int(os.getenv("EMAIL_NAVIGATION_TIMEOUT_MS", "15000"))
-        self.max_concurrency = max_concurrency if max_concurrency is not None else int(os.getenv("EMAIL_MAX_CONCURRENCY", "5"))
+        self.max_concurrency = max_concurrency if max_concurrency is not None else int(os.getenv("EMAIL_MAX_CONCURRENCY", "2"))
         self.enrichment_enabled = enrichment_enabled if enrichment_enabled is not None else str(os.getenv("EMAIL_ENRICHMENT_ENABLED", "true")).lower() == "true"
         self.business_timeout_seconds = business_timeout_seconds if business_timeout_seconds is not None else int(os.getenv("EMAIL_ENRICHMENT_TIMEOUT_SECONDS", "30"))
         self.batch_timeout_seconds = batch_timeout_seconds if batch_timeout_seconds is not None else int(os.getenv("EMAIL_ENRICHMENT_BATCH_TIMEOUT_SECONDS", "120"))
@@ -114,13 +138,20 @@ class EmailEnricher:
         before = browser_processes.snapshot()
         async with async_playwright() as p:
             try:
-                browser = await p.chromium.launch(headless=True, args=['--disable-blink-features=AutomationControlled'])
+                browser = await p.chromium.launch(headless=True, args=BROWSER_ARGS)
             finally:
                 browser_processes.claim_new(before)
             context = await browser.new_context(
                 viewport={"width": 1280, "height": 800},
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             )
+
+            async def _light(route):
+                if route.request.resource_type in SKIPPED_RESOURCES:
+                    await route.abort()
+                else:
+                    await route.continue_()
+            await context.route("**/*", _light)
 
             tasks = [asyncio.create_task(self._process_business_with_timeout(context, biz, semaphore)) for biz in businesses]
             done, pending = await asyncio.wait(tasks, timeout=self.batch_timeout_seconds)
@@ -187,6 +218,13 @@ class EmailEnricher:
             }
 
         website = website.strip()
+        if not is_own_website(website):
+            return {
+                "business_id": business_id,
+                "email": None,
+                "email_source_url": None,
+                "email_enrichment_status": "no_website"
+            }
         if not website.startswith('http'):
             website = 'https://' + website
 

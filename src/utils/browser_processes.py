@@ -103,3 +103,77 @@ def kill_for_thread(ident: int) -> int:
     if killed:
         logger.warning(f"browser_processes event=LEFTOVER_BROWSERS_KILLED count={killed} thread={ident}")
     return killed
+
+
+def kill_all() -> int:
+    """Kills every browser any job launched that is still running."""
+    with _lock:
+        idents = list(_owned)
+    return sum(kill_for_thread(ident) for ident in idents)
+
+
+# --- Memory guard --------------------------------------------------------------
+#
+# On 19 Nov 2026 five website pages opened to look for emails (one of them a
+# Google Maps profile, not a website) grew until the container hit its memory
+# limit. Nothing was killed: the kernel just kept swapping pages in and out,
+# and every timer in the app, the job and email timeouts included, fired four
+# hours late. The site did not load all that time. A timeout cannot rescue a
+# process that is starving, so this watches memory itself and kills the
+# scraper's browsers well before the limit, which frees it at once.
+
+GUARD_SHARE = 0.8           # kill browsers above this share of the limit
+GUARD_INTERVAL_SECONDS = 5
+
+_guard_started = False
+
+
+def _cgroup_memory() -> Tuple[int, int]:
+    """(used, limit) in bytes for this container, or (0, 0) where unknown."""
+    for used_path, limit_path in (("/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory.max"),
+                                  ("/sys/fs/cgroup/memory/memory.usage_in_bytes",
+                                   "/sys/fs/cgroup/memory/memory.limit_in_bytes")):
+        try:
+            with open(used_path) as f:
+                used = int(f.read().strip())
+            with open(limit_path) as f:
+                raw = f.read().strip()
+            limit = 0 if raw == "max" else int(raw)
+            # cgroup v1 reports "no limit" as a huge number.
+            if limit and limit < (1 << 50):
+                return used, limit
+        except (OSError, ValueError):
+            continue
+    return 0, 0
+
+
+def check_memory(used: int, limit: int, share: float = GUARD_SHARE) -> int:
+    """Kills the browsers when used is above share of limit; returns how many."""
+    if not limit or used < share * limit:
+        return 0
+    killed = kill_all()
+    logger.error(
+        f"browser_processes event=MEMORY_GUARD used_mb={used >> 20} limit_mb={limit >> 20} "
+        f"killed={killed}")
+    return killed
+
+
+def start_memory_guard() -> bool:
+    """Starts the guard thread once; False where the container's memory cannot be read."""
+    global _guard_started
+    if _guard_started or psutil is None or not _cgroup_memory()[1]:
+        return False
+    _guard_started = True
+
+    def watch():
+        import time
+        while True:
+            time.sleep(GUARD_INTERVAL_SECONDS)
+            try:
+                check_memory(*_cgroup_memory())
+            except Exception:  # pragma: no cover - the guard must never die
+                logger.exception("browser_processes event=MEMORY_GUARD_FAILED")
+
+    threading.Thread(target=watch, daemon=True, name="memory-guard").start()
+    logger.info("browser_processes event=MEMORY_GUARD_STARTED")
+    return True

@@ -144,3 +144,36 @@ def test_pending_tasks_are_awaited_before_teardown():
     assert cancel_at < unwind_at < close_at, (
         "pending tasks must be awaited after cancel() and before the browser is closed"
     )
+
+
+def test_links_that_are_not_the_business_site_are_not_opened():
+    from src.services.email_enricher import is_own_website
+    for url in ("https://www.google.com/maps/contrib/103539389435275382164?hl=en-IN", "maps.google.co.in/x",
+                "https://www.facebook.com/shop", "instagram.com/shop", "https://wa.me/919999999999",
+                "https://business.site.google.com", "https://g.page/shop", "https://m.justdial.com/x"):
+        assert not is_own_website(url), url
+    for url in ("https://www.letsdigitalstart.com", "itxitpro.com", "http://www.techstrives.com",
+                "https://googleplus-fans.in", "https://boxed.com"):
+        assert is_own_website(url), url
+
+    result = asyncio.run(EmailEnricher()._enrich_single_website(
+        None, {"business_id": "b1", "name": "Shop", "website": "https://www.google.com/maps/contrib/1"}))
+    assert result["email_enrichment_status"] == "no_website"
+
+
+def test_the_memory_guard_kills_browsers_only_near_the_limit(monkeypatch):
+    from src.utils import browser_processes as bp
+    killed = []
+    monkeypatch.setattr(bp, "kill_all", lambda: killed.append(1) or 3)
+    gb = 1 << 30
+    assert bp.check_memory(3 * gb, 4 * gb) == 0 and not killed
+    assert bp.check_memory(0, 0) == 0 and not killed           # limit unknown: never kills
+    assert bp.check_memory(int(3.3 * gb), 4 * gb) == 3 and killed
+
+
+def test_kill_all_covers_every_job_thread(monkeypatch):
+    from src.utils import browser_processes as bp
+    seen = []
+    monkeypatch.setattr(bp, "_owned", {11: set(), 22: set()})
+    monkeypatch.setattr(bp, "kill_for_thread", lambda ident: seen.append(ident) or 1)
+    assert bp.kill_all() == 2 and sorted(seen) == [11, 22]

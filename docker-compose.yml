@@ -83,7 +83,7 @@ services:
 
       # Email enrichment is the remaining ~22%; it is best-effort, so its
       # budgets are kept tight rather than letting slow sites dominate a job.
-      EMAIL_MAX_CONCURRENCY: ${EMAIL_MAX_CONCURRENCY:-8}
+      EMAIL_MAX_CONCURRENCY: ${EMAIL_MAX_CONCURRENCY:-2}
       EMAIL_ENRICHMENT_TIMEOUT_SECONDS: ${EMAIL_ENRICHMENT_TIMEOUT_SECONDS:-15}
       EMAIL_ENRICHMENT_BATCH_TIMEOUT_SECONDS: ${EMAIL_ENRICHMENT_BATCH_TIMEOUT_SECONDS:-60}
 
