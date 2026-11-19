@@ -256,9 +256,9 @@ def _fill_geography(db: Session, convs: List[WhatsAppConversation], typed: Dict[
         db.commit()
 
 
-def _interest(conv) -> Optional[Dict]:
-    from src.services import claude_answers
-    return claude_answers.interest_of(conv)
+def _interest(db, conv) -> Optional[Dict]:
+    from src.services import interest_rules
+    return interest_rules.of(db, conv)
 
 
 def _branches(db: Session) -> List[Dict]:
@@ -399,8 +399,8 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
             # Which programme the lead is for (19 Nov 2026): "sbi" ("For SBI") unless they chose ESAF.
             "programme": "esaf" if (q.get("esaf") or conv.disposition == "int_esaf") else "sbi",
             "disposition": conv.disposition,
-            # Claude CLI's read of their interest after our nudges went unanswered (19 Nov 2026).
-            "interest": _interest(conv),
+            # How interested they are: by rules from what they did (interest_rules, 20 Nov 2026).
+            "interest": _interest(db, conv),
             "submitted": conv.documents_submitted_at is not None,
             "submitted_at": _iso(conv.documents_submitted_at),
             "started_at": _iso(conv.created_at),

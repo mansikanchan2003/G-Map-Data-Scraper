@@ -455,9 +455,9 @@ def _ready_replies_on(db: Session) -> bool:
     return agent_controls.is_on(db, "inbox_ready_reply")
 
 
-def _interest(conv):
-    from src.services import claude_answers
-    return claude_answers.interest_of(conv)
+def _interest(db, conv):
+    from src.services import interest_rules
+    return interest_rules.of(db, conv)
 
 
 def summarise(db: Session, conv: WhatsAppConversation) -> dict:
@@ -551,8 +551,8 @@ def summarise(db: Session, conv: WhatsAppConversation) -> dict:
         "headline": headline,
         "in_short": short,
         "disposition": disposition,
-        # Claude CLI's read of their interest after our nudges went unanswered (19 Nov 2026).
-        "interest": _interest(conv),
+        # How interested they are: by rules from what they did (interest_rules, 20 Nov 2026).
+        "interest": _interest(db, conv),
         "handled_by": conv.handled_by if conv.bot_paused else None,
         "direct": direct is not None,
         "timeline": events[-TIMELINE_LIMIT:],

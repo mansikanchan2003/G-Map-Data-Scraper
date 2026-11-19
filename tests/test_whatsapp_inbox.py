@@ -4807,3 +4807,57 @@ def test_each_person_gets_the_email_in_their_language_with_the_design(monkeypatc
     assert "District Coordinator उनसे मिलने" in text(by["biswajit@eko.co.in"]) and "नाम" in html(by["biswajit@eko.co.in"])
     assert "chahte hain" in text(by["kavya.shukla@eko.co.in"]) and "Naam" in html(by["kavya.shukla@eko.co.in"])
     assert "Saturday, 11 AM" in html(by["biswajit@eko.co.in"]) and "AUTOGMAP" in html(by["biswajit@eko.co.in"])
+
+
+# --- After the 24-hour window, only the interested hear from us (20 Nov 2026) ------------
+
+def _after_window_followup(db, purpose="missed_you"):
+    from src.models.inbox import FollowUp
+    from src.services import dispositions as dz
+    f = FollowUp(followup_id=uuid.uuid4().hex, phone=PHONE, disposition="rnr_no_answer", purpose=purpose,
+                 owner=dz.BOT, wants=dz.NUDGE, due_at=inbox.now(), status="scheduled", attempt=1,
+                 expects_reply=True, cancel_on_reply=False, created_by="bot", created_at=inbox.now())
+    db.add(f)
+    c = conv(db)
+    c.last_inbound_at = inbox.now() - timedelta(hours=30)
+    db.commit()
+    return f
+
+
+def test_rules_rate_interest_without_claude(db):
+    from src.services import interest_rules
+    tap_campaign(db)
+    assert interest_rules.rate(db, conv(db))["level"] == "low"          # only tapped Interested
+    say(db, SERVED_PIN)
+    tap(db, "edu:12")
+    assert interest_rules.rate(db, conv(db))["level"] == "medium"       # PIN and education given
+    c = conv(db)
+    c.bot_data = {**c.bot_data, "can_invest": True}
+    assert interest_rules.rate(db, c)["level"] == "high"
+    c.bot_data = {**c.bot_data, "can_invest": False}
+    assert interest_rules.rate(db, c)["level"] == "low"
+
+
+def test_after_the_window_a_low_interest_person_gets_no_reminder(db):
+    from src.services import followups
+    tap_campaign(db)                                  # only tapped Interested: low
+    f = _after_window_followup(db)
+    followups.tick(db)
+    db.refresh(f)
+    assert f.status == "cancelled" and "rated low" in f.note
+
+
+def test_after_the_window_a_medium_interest_person_still_gets_it(db):
+    from src.services import followups
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    tap(db, "edu:12")                                 # medium
+    f = _after_window_followup(db)
+    assert followups.held_back(db, conv(db), f, inbox.now()) is None
+
+
+def test_the_dc_visit_offer_goes_after_the_window_whatever_the_rating(db):
+    from src.services import followups
+    tap_campaign(db)
+    f = _after_window_followup(db, purpose="dc_visit")
+    assert followups.held_back(db, conv(db), f, inbox.now()) is None

@@ -265,11 +265,37 @@ def team_names_plain() -> str:
     return lead_journey.team_names()
 
 
+# They asked for these, or it is the District Coordinator's visit: these go whatever the rating.
+ALWAYS_AFTER_WINDOW = ("dc_visit", "callback_confirm", "callback_due", "checking_in")
+
+
+def held_back(db: Session, conv: WhatsAppConversation, f: FollowUp, now: datetime) -> Optional[str]:
+    """
+    Why this message must not go, or None (Mansi, 20 Nov 2026): once their 24-hour window has
+    closed, only people rated High or Medium interest (interest_rules) still hear from us.
+    """
+    from src.services import interest_rules
+    if f.wants not in (dz.NUDGE, dz.CALL) or f.purpose in ALWAYS_AFTER_WINDOW:
+        return None
+    last_in = inbox.aware(conv.last_inbound_at)
+    if last_in and now < last_in + inbox.REPLY_WINDOW:
+        return None
+    r = interest_rules.of(db, conv)
+    if r and r["level"] in interest_rules.INTERESTED:
+        return None
+    level = (r or {}).get("level", "unrated").replace("_", " ")
+    return f"After the 24-hour window, only High or Medium interest: rated {level}"
+
+
 def _send(db: Session, conv: WhatsAppConversation, f: FollowUp, now: datetime) -> None:
     from src.services import opt_out
     # Only what reaches the person stops; the team's own tasks and emails go on.
     if f.wants not in (dz.TASK, dz.API, dz.ESCALATE) and opt_out.blocks_followups(opt_out.entry(db, conv.phone)):
         f.status, f.note, f.done_at = "cancelled", "Asked not to be messaged", now
+        return
+    why = held_back(db, conv, f, now)
+    if why:
+        f.status, f.note, f.done_at = "cancelled", why, now
         return
     if f.wants == dz.API:
         _send_to_acquisition(db, conv, f, now)
