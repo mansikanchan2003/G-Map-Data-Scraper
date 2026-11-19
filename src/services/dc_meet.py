@@ -23,19 +23,19 @@ logger = logging.getLogger("gmap_scraper.dc_meet")
 
 ASK = {
     "en": "Thank you for your interest 🙏 Your nearest District Coordinator is {dc}{where}. Please tell us which day you are available: our DC will visit you that day and explain Eko and how you can open an SBI Customer Service Point with Eko.",
-    "hi": "आपकी रुचि के लिए धन्यवाद 🙏 आपके नज़दीकी डिस्ट्रिक्ट कोऑर्डिनेटर {dc}{where} हैं। कृपया बताइए आप किस दिन उपलब्ध हैं: हमारे DC उसी दिन आपके यहाँ आकर आपको Eko के बारे में और Eko के साथ आप SBI का CSP कैसे खोल सकते हैं, सब बताएँगे।",
+    "hi": "आपकी रुचि के लिए धन्यवाद 🙏 आपके नज़दीकी District Coordinator {dc}{where} हैं। कृपया बताइए आप किस दिन उपलब्ध हैं: हमारे DC उसी दिन आपके यहाँ आकर आपको Eko के बारे में और Eko के साथ आप SBI का CSP कैसे खोल सकते हैं, सब बताएँगे।",
     "hinglish": "Aapki ruchi ke liye dhanyavaad 🙏 Aapke nazdeeki District Coordinator {dc}{where} hain. Kripya bataiye aap kis din available hain: hamare DC usi din aapke yahan aakar aapko Eko ke baare mein aur Eko ke saath aap SBI ka CSP kaise khol sakte hain, sab batayenge.",
     "pa": "ਤੁਹਾਡੀ ਦਿਲਚਸਪੀ ਲਈ ਧੰਨਵਾਦ 🙏 ਤੁਹਾਡੇ ਨੇੜਲੇ ਡਿਸਟ੍ਰਿਕਟ ਕੋਆਰਡੀਨੇਟਰ {dc}{where} ਹਨ। ਕਿਰਪਾ ਕਰਕੇ ਦੱਸੋ ਤੁਸੀਂ ਕਿਸ ਦਿਨ ਉਪਲਬਧ ਹੋ: ਸਾਡੇ DC ਉਸੇ ਦਿਨ ਤੁਹਾਡੇ ਕੋਲ ਆ ਕੇ ਤੁਹਾਨੂੰ Eko ਬਾਰੇ ਅਤੇ Eko ਨਾਲ ਤੁਸੀਂ SBI ਦਾ CSP ਕਿਵੇਂ ਖੋਲ੍ਹ ਸਕਦੇ ਹੋ, ਸਭ ਦੱਸਣਗੇ।",
     "gu": "તમારી રુચિ માટે આભાર 🙏 તમારા નજીકના ડિસ્ટ્રિક્ટ કોઓર્ડિનેટર {dc}{where} છે. કૃપા કરીને જણાવો તમે કયા દિવસે ઉપલબ્ધ છો: અમારા DC એ જ દિવસે તમારે ત્યાં આવીને તમને Eko વિશે અને Eko સાથે તમે SBI નું CSP કેવી રીતે ખોલી શકો, બધું સમજાવશે.",
 }
 ASK_NO_NAME = {
-    "en": "our District Coordinator for your area", "hi": "आपके क्षेत्र के हमारे डिस्ट्रिक्ट कोऑर्डिनेटर",
+    "en": "our District Coordinator for your area", "hi": "आपके क्षेत्र के हमारे District Coordinator",
     "hinglish": "aapke area ke hamare District Coordinator", "pa": "ਤੁਹਾਡੇ ਇਲਾਕੇ ਦੇ ਸਾਡੇ ਡਿਸਟ੍ਰਿਕਟ ਕੋਆਰਡੀਨੇਟਰ",
     "gu": "તમારા વિસ્તારના અમારા ડિસ્ટ્રિક્ટ કોઓર્ડિનેટર",
 }
 THANKS = {
     "en": "Thank you 🙏 Our District Coordinator will visit you as per your availability. Have a wonderful day!",
-    "hi": "धन्यवाद 🙏 आपकी उपलब्धता के हिसाब से हमारे डिस्ट्रिक्ट कोऑर्डिनेटर आपके यहाँ आएँगे। आपका दिन मंगलमय हो!",
+    "hi": "धन्यवाद 🙏 आपकी उपलब्धता के हिसाब से हमारे District Coordinator आपके यहाँ आएँगे। आपका दिन मंगलमय हो!",
     "hinglish": "Dhanyavaad 🙏 Aapki availability ke hisaab se hamare District Coordinator aapke yahan visit karenge. Aapka din mangalmay ho!",
     "pa": "ਧੰਨਵਾਦ 🙏 ਤੁਹਾਡੀ ਉਪਲਬਧਤਾ ਅਨੁਸਾਰ ਸਾਡੇ ਡਿਸਟ੍ਰਿਕਟ ਕੋਆਰਡੀਨੇਟਰ ਤੁਹਾਡੇ ਕੋਲ ਆਉਣਗੇ। ਤੁਹਾਡਾ ਦਿਨ ਸ਼ੁਭ ਹੋਵੇ!",
     "gu": "આભાર 🙏 તમારી અનુકૂળતા પ્રમાણે અમારા ડિસ્ટ્રિક્ટ કોઓર્ડિનેટર તમારે ત્યાં આવશે. તમારો દિવસ શુભ રહે!",

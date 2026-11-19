@@ -49,11 +49,11 @@ _NO = re.compile(r"\b(no|nahi|nhi|nahin|not now|mat|baad mein|later)\b|नही
 
 THANKS = {
     "en": "Thank you 🙏 Our team will call you to fix a time for the District Coordinator's visit.",
-    "hi": "धन्यवाद 🙏 हमारी टीम डिस्ट्रिक्ट कोऑर्डिनेटर की मुलाक़ात का समय तय करने के लिए आपको कॉल करेगी।",
+    "hi": "धन्यवाद 🙏 हमारी टीम District Coordinator की मुलाक़ात का समय तय करने के लिए आपको कॉल करेगी।",
     "hinglish": "Dhanyavaad 🙏 Hamari team District Coordinator ki mulaqaat ka time tay karne ke liye aapko call karegi.",
     "gu": "આભાર 🙏 ડિસ્ટ્રિક્ટ કોઓર્ડિનેટરની મુલાકાતનો સમય નક્કી કરવા અમારી ટીમ તમને કૉલ કરશે.",
     "pa": "ਧੰਨਵਾਦ 🙏 ਡਿਸਟ੍ਰਿਕਟ ਕੋਆਰਡੀਨੇਟਰ ਦੀ ਮੁਲਾਕਾਤ ਦਾ ਸਮਾਂ ਤੈਅ ਕਰਨ ਲਈ ਸਾਡੀ ਟੀਮ ਤੁਹਾਨੂੰ ਕਾਲ ਕਰੇਗੀ।",
-    "mr": "धन्यवाद 🙏 डिस्ट्रिक्ट कोऑर्डिनेटरच्या भेटीची वेळ ठरवण्यासाठी आमची टीम तुम्हाला कॉल करेल.",
+    "mr": "धन्यवाद 🙏 District Coordinatorच्या भेटीची वेळ ठरवण्यासाठी आमची टीम तुम्हाला कॉल करेल.",
 }
 
 
