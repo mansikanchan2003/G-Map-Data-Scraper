@@ -50,6 +50,8 @@ _FROM_STEP = {
     bot.GUIDANCE_QA: "int_more_info",
     bot.AWAIT_WEBINAR: "int_more_info",
     bot.AWAIT_AVAILABILITY: "int_more_info",
+    bot.AWAIT_DC_DAY: "int_more_info",
+    bot.DC_BOOKED: "int_dc_visit",
     bot.WEBINAR_CONFIRMED: "int_more_info",
     bot.WEBINAR_AVAILABILITY: "int_more_info",
     bot.HANDOVER: "busy_later",

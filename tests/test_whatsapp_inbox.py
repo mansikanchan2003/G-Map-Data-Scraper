@@ -4708,3 +4708,44 @@ def test_a_question_claude_cannot_answer_is_not_asked_again(db, client):
     ask_id = claude_answers.pending(db)[0]["id"]
     claude_answers.ingest(db, ask_id, "not json at all")
     assert claude_answers.pending(db) == [] and conv(db).needs_attention     # with the team, not retried
+
+
+def test_meet_the_dc_button_asks_their_day_and_emails_biswajit_sir(db, client, monkeypatch):
+    """19 Nov 2026: CSPs near DCs campaigns' second button."""
+    from src.models import Business
+    from src.services import campaign_buttons, dc_network, notifier
+    sent = []
+    monkeypatch.setattr(notifier, "_send", lambda to, subject, body: sent.append((to, subject, body)) or True)
+    dc_network.save(db, [{"state": "Haryana", "district": "Ambala", "dc": "Rakesh Kumar", "phone": "98xxxxxx01"},
+                         {"state": "Haryana", "district": "Yamunanagar", "dc": "Sunil", "phone": ""}])
+    tap_campaign(db, lang="hi")
+    r = _recipient(db)
+    db.add(Business(business_id="BDC1", job_id="J1", name="Shop", phone=PHONE, category="Kiosk", district="Ambala",
+                    state="Haryana", source_query="q", dedup_key="k-dc1"))
+    r.business_id = "BDC1"
+    db.commit()
+    count = len(StubMeta.sent)
+    inbound(db, "button", button={"text": campaign_buttons.DC_MEET["hi"], "payload": campaign_buttons.DC_MEET["hi"]})
+    asked = " ".join(b for _k, b in _sent_kinds(count))
+    assert "Rakesh Kumar" in asked and "Ambala" in asked and conv(db).bot_step == onboarding_bot.AWAIT_DC_DAY
+    count = len(StubMeta.sent)
+    say(db, "Shanivaar ko subah 11 baje")
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.DC_BOOKED and c.disposition == "int_dc_visit" and c.needs_attention
+    assert "mangalmay" in " ".join(b for _k, b in _sent_kinds(count)).lower() or "मंगलमय" in " ".join(b for _k, b in _sent_kinds(count))
+    import time
+    time.sleep(0.3)
+    to, subject, body = [x for x in sent if "DC visit wanted" in x[1]][0]
+    assert to == "biswajit@eko.co.in" and "Shanivaar ko subah 11 baje" in body
+    assert "Rakesh Kumar" in body and "Sunil" in body and "Ambala" in body
+
+
+def test_near_dc_template_copies_carry_the_dc_button(db):
+    from src.services import campaign_buttons, dc_meet
+    db.add(WhatsAppTemplate(template_id="t-hr", name="csp_hindi", body="Namaste {{1}}", language_code="hi",
+                            status="APPROVED", buttons=campaign_buttons.quick_replies("hi")))
+    db.commit()
+    made = dc_meet.make_templates(db, ["csp_hindi"])
+    assert made[0]["status"] == "Draft"
+    t = db.query(WhatsAppTemplate).filter_by(name="csp_hindi · CSPs near DCs").one()
+    assert [b["text"] for b in t.buttons] == ["Interested", campaign_buttons.DC_MEET["hi"]] and t.status == "Draft"

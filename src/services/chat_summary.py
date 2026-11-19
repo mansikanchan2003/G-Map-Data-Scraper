@@ -62,6 +62,8 @@ STEP_NEXT = {
                       "chhode hain unka jawab dijiye, aur jab ready hon to Interested tap karne ko kahiye.", None),
     bot.AWAIT_WEBINAR: ("Personal guidance ke baare mein poocha. Poochiye kya woh join kar sakte hain.", None),
     bot.AWAIT_AVAILABILITY: ("Personal guidance kab join kar sakte hain, iska wait hai. Din aur time poochiye.", None),
+    bot.AWAIT_DC_DAY: ("District Coordinator ki visit ke liye unka din poocha hai. Din poochiye.", None),
+    bot.DC_BOOKED: ("DC visit chahiye: Biswajit Sir visit arrange karenge.", None),
     bot.WEBINAR_CONFIRMED: ("Personal guidance confirm hai. Time ke saath unse contact kijiye.", None),
     bot.WEBINAR_AVAILABILITY: ("Personal guidance ke liye apna time bata diya hai. Usi time contact kijiye.", None),
 }
@@ -81,6 +83,8 @@ STEP_HINGLISH = {
     bot.HANDOVER: "Team ki zaroorat hai",
     bot.AWAIT_WEBINAR: "Personal guidance ke baare mein poocha",
     bot.AWAIT_AVAILABILITY: "Guidance ka time poocha",
+    bot.AWAIT_DC_DAY: "DC visit ka din poocha",
+    bot.DC_BOOKED: "DC visit chahiye",
     bot.WEBINAR_CONFIRMED: "Personal guidance confirm",
     bot.WEBINAR_AVAILABILITY: "Guidance ka time bata diya",
     bot.GUIDANCE_QA: "Personal guidance: sawaal pooch rahe hain",
@@ -250,6 +254,7 @@ _WAITING = {
     bot.GUIDANCE_QA: "sawaal poochne, ya shuru karne ke liye Interested tap karne",
     bot.AWAIT_WEBINAR: "personal guidance join kar sakte hain ya nahi, yeh batane",
     bot.AWAIT_AVAILABILITY: "personal guidance kab join kar sakte hain, yeh batane",
+    bot.AWAIT_DC_DAY: "DC kis din visit kare, yeh batane",
 }
 TIMELINE_LIMIT = 30
 

@@ -646,6 +646,7 @@ def whats_next(conv: WhatsAppConversation, followups: List[FollowUp], messages: 
         bot.GUIDANCE_QA: "ask their questions, or tap Interested to start",
         bot.AWAIT_WEBINAR: "say whether they can join personal guidance",
         bot.AWAIT_AVAILABILITY: "say when they can join personal guidance",
+        bot.AWAIT_DC_DAY: "say which day the District Coordinator can visit",
     }
 
     now = inbox.now()

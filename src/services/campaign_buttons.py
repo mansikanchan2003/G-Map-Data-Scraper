@@ -83,3 +83,38 @@ WEBINAR_KEYS = {key(label) for labels in (WEBINAR, OLD_WEBINAR) for label in lab
 
 def is_webinar(text: Optional[str]) -> bool:
     return bool(key(text)) and key(text) in WEBINAR_KEYS
+
+
+# --- CSPs near DCs campaigns (19 Nov 2026): "Meet the District Coordinator" in place of
+# Personal Guidance. A tap asks for a day the DC can visit them (dc_meet.py). Each within
+# Meta's 25 characters.
+DC_MEET = {
+    "en": "Meet District Coordinator",
+    "hi": "DC से मिलना है",
+    "pa": "DC ਨੂੰ ਮਿਲਣਾ ਹੈ",
+    "gu": "DC ને મળવું છે",
+    "mr": "DC ला भेटायचे आहे",
+    "bn": "DC-র সাথে দেখা করব",
+    "ta": "DC-யை சந்திக்க வேண்டும்",
+    "te": "DCని కలవాలి",
+    "kn": "DC ಅನ್ನು ಭೇಟಿಯಾಗಬೇಕು",
+    "ml": "DC-യെ കാണണം",
+    "or": "DC ଙ୍କୁ ଭେଟିବାକୁ ଚାହେଁ",
+}
+DC_MEET_KEYS = {key(label) for label in DC_MEET.values()} | {key("DC se milna hai"), key("District Coordinator se milna hai")}
+
+
+def dc_meet_label(language_code: Optional[str]) -> str:
+    return DC_MEET.get((language_code or "").split("_")[0], DC_MEET["en"])
+
+
+def is_dc_meet(text: Optional[str]) -> bool:
+    return bool(key(text)) and key(text) in DC_MEET_KEYS
+
+
+def near_dc_quick_replies(language_code: Optional[str]) -> list:
+    """A CSPs near DCs template's buttons: Interested, and Meet the District Coordinator."""
+    return [
+        {"type": "QUICK_REPLY", "text": INTERESTED},
+        {"type": "QUICK_REPLY", "text": dc_meet_label(language_code)},
+    ]

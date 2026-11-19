@@ -77,6 +77,9 @@ NOT_INVESTING = "NOT_INVESTING"
 HANDOVER = "HANDOVER"
 AWAIT_WEBINAR = "AWAIT_WEBINAR"
 AWAIT_AVAILABILITY = "AWAIT_AVAILABILITY"
+# "Meet the District Coordinator" (CSPs near DCs campaigns, 19 Nov 2026; dc_meet.py).
+AWAIT_DC_DAY = "AWAIT_DC_DAY"
+DC_BOOKED = "DC_BOOKED"
 WEBINAR_CONFIRMED = "WEBINAR_CONFIRMED"
 WEBINAR_AVAILABILITY = "WEBINAR_AVAILABILITY"
 # Personal guidance since 2026-10-21: the person asks, the bot answers what it
@@ -104,6 +107,8 @@ STEP_LABELS = {
     HANDOVER: "Needs a person",
     AWAIT_WEBINAR: "Asked about personal guidance",
     AWAIT_AVAILABILITY: "Asked guidance availability",
+    AWAIT_DC_DAY: "Asked the day for the DC's visit",
+    DC_BOOKED: "DC visit asked for",
     WEBINAR_CONFIRMED: "Personal guidance confirmed",
     WEBINAR_AVAILABILITY: "Guidance time shared",
     GUIDANCE_QA: "Personal guidance: asking questions",
@@ -116,6 +121,7 @@ STEP_LABELS = {
 # Which flow a language choice leads into.
 ONBOARD = "onboard"
 WEBINAR = "webinar"
+DC_MEET = "dc_meet"
 
 # The documents asked for on the upload page and listed in the chat, in the
 # order SBI's CSP onboarding lists them. The required ones must be uploaded
@@ -641,6 +647,10 @@ def _ask_language_again(db, conv):
 
 def _begin(db, conv, flow: str):
     """The first question of a flow, in the chosen language."""
+    if flow == DC_MEET:
+        from src.services import dc_meet
+        dc_meet.start(db, conv)
+        return
     if flow == WEBINAR:
         # Not a booking: an invitation to ask, and a way to start when ready.
         _move(conv, GUIDANCE_QA)
@@ -1500,6 +1510,10 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
         _understood(conv)
         _start(db, conv, msg, WEBINAR)
         return
+    if msg.kind == "button" and campaign_buttons.is_dc_meet(msg.body):
+        _understood(conv)
+        _start(db, conv, msg, DC_MEET)
+        return
 
     # Their own bot answered the campaign, not a person: the bot greets them.
     if _auto_reply(db, conv, msg):
@@ -1519,6 +1533,25 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
             _begin(db, conv, (conv.bot_data or {}).get("next") or ONBOARD)
         else:
             _ask_language_again(db, conv)
+        return
+
+    # The day for the District Coordinator's visit: their answer goes to Biswajit Sir.
+    if step == AWAIT_DC_DAY:
+        said = message_text(msg) if msg.kind == "text" or getattr(msg, "voice", False) else ""
+        if said and not looks_like_question(said):
+            from src.services import dc_meet
+            _understood(conv)
+            dc_meet.got_day(db, conv, said)
+            return
+        # A question first: answered as in personal guidance; the day is asked again after.
+        _move(conv, GUIDANCE_QA)
+        _guidance_reply(db, conv, msg)
+        _move(conv, AWAIT_DC_DAY)
+        return
+    if step == DC_BOOKED:
+        _move(conv, GUIDANCE_QA)
+        _guidance_reply(db, conv, msg)
+        _move(conv, DC_BOOKED)
         return
 
     # Personal guidance (and anyone still at the old availability questions):
