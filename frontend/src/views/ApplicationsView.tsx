@@ -3,7 +3,7 @@ import { SubPageButton } from '../components/SubPage';
 import type { NavTab } from '../components/Header';
 import {
   fetchApplications, addApplicationComment, deleteApplicationComment, removeApplication,
-  restoreApplication, documentUrl, type Application, type ApplicationStats,
+  restoreApplication, documentUrl, fetchLeadBrief, type Application, type ApplicationStats, type LeadBrief,
 } from '../api/applications';
 import { formatDateTime } from '../utils/datetime';
 import { recorderNumbersExcelUrl } from '../api/inbox';
@@ -18,7 +18,7 @@ import { LeadJourneyView } from './LeadJourneyView';
  * purple), which the light theme redefines, so the page reads in both.
  */
 
-type Filter = 'all' | 'pin' | 'strong' | 'not' | 'submitted';
+type Filter = 'all' | 'pin' | 'strong' | 'not' | 'submitted' | 'esaf';
 
 const FILTERS: { key: Filter; label: string; hint: string; icon: string; tint: string; ring: string; pick: (a: Application) => boolean }[] = [
   { key: 'all', label: 'All applications', hint: 'Started onboarding on WhatsApp', icon: 'groups',
@@ -31,6 +31,9 @@ const FILTERS: { key: Filter; label: string; hint: string; icon: string; tint: s
     tint: 'bg-rose-950 text-rose-300', ring: 'ring-rose-500', pick: a => a.not_qualified },
   { key: 'submitted', label: 'Submitted', hint: 'Uploaded their documents', icon: 'task_alt',
     tint: 'bg-amber-950 text-amber-300', ring: 'ring-amber-400', pick: a => a.submitted },
+  // 19 Nov 2026: everyone who chose ESAF's banking agent (on the bot, on a call or by the team).
+  { key: 'esaf', label: 'Interested in ESAF', hint: "Chose ESAF's banking agent (₹1,999 registration)", icon: 'account_balance',
+    tint: 'bg-violet-950 text-violet-300', ring: 'ring-violet-500', pick: a => a.programme === 'esaf' },
 ];
 
 // The simple view (16 Nov 2026, Kavya's account: auth_service.ui_prefs): every part of the page
@@ -41,6 +44,7 @@ const PLAIN: Record<Filter, { label: string; hint: string }> = {
   strong: { label: 'Fully qualified', hint: 'In our area, 12th or above, and can invest (or chose ESAF)' },
   not: { label: 'Not eligible for SBI', hint: 'Outside our area, below 12th, or cannot invest' },
   submitted: { label: 'Documents received', hint: 'Sent all their documents' },
+  esaf: { label: 'Interested in ESAF', hint: 'Want ESAF (₹1,999), not SBI' },
 };
 const PLAIN_FUNNEL: Record<string, string> = {
   Applied: 'Started applying', 'PIN qualified': 'In our SBI area', 'Strongly qualified': 'Fully qualified', Submitted: 'Sent documents',
@@ -94,6 +98,7 @@ const STEP_OF: Record<string, number> = {
 };
 const STOPPED = new Set(['NOT_SERVED', 'NOT_ELIGIBLE', 'NOT_INVESTING', 'ESAF_DECLINED']);
 
+const FILTER_INPUT = 'w-full h-8 px-2 rounded-md border border-slate-800 bg-slate-900 text-[12px] text-slate-200 outline-none focus:border-sky-500';
 const yesNo = (v: boolean | null | undefined) => (v === true ? 'Yes' : v === false ? 'No' : '—');
 const csvCell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 const Icon: React.FC<{ name: string; className?: string }> = ({ name, className = '' }) =>
@@ -109,6 +114,13 @@ const NearDc: React.FC<{ a: Application }> = ({ a }) => (
     <Icon name="share_location" className="text-[13px]" />CSPs near DCs
   </span>
 );
+
+/** Who the lead is for (19 Nov 2026): For SBI, unless they chose ESAF. */
+const ProgrammeChip: React.FC<{ a: Application }> = ({ a }) => a.programme === 'esaf'
+  ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-500/40 text-violet-300 text-[11px] font-semibold whitespace-nowrap"
+      title="Chose ESAF's banking agent: ₹1,999 registration, no big investment"><Icon name="account_balance_wallet" className="text-[13px]" />Interested in ESAF</span>
+  : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-500/15 border border-sky-500/40 text-sky-300 text-[11px] font-semibold whitespace-nowrap"
+      title="For SBI's Customer Service Point (₹3–5 lakh, depending on location)"><Icon name="account_balance" className="text-[13px]" />For SBI</span>;
 
 const branch = (a: Application) => a.sbi_branch && [
   `SBI ${a.sbi_branch.branch_name} (${a.sbi_branch.branch_code})`, a.sbi_branch.ao,
@@ -148,6 +160,10 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
   const [stage, setStage] = useState('');
+  // A filter under every column heading (19 Nov 2026, Kavya's view and everyone's).
+  const [col, setCol] = useState({ who: '', next: '', place: '', programme: '', verdict: '', comment: '' });
+  const setColumn = (k: keyof typeof col, v: string) => setCol(c => ({ ...c, [k]: v }));
+  const [briefFor, setBriefFor] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -194,11 +210,23 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     const pick = FILTERS.find(f => f.key === filter)!.pick;
+    const has = (vals: (string | null | undefined)[], text: string) =>
+      !text.trim() || vals.some(v => (v || '').toLowerCase().includes(text.trim().toLowerCase()));
     return items.filter(a => pick(a)
       && (!stage || a.stage === stage)
+      && has([a.name, a.phone], col.who)
+      && (!col.next || nextStep(a).text === col.next)
+      && has([a.pincode, a.state, a.district, a.tehsil, a.category, a.source?.business_name, a.sbi_branch?.branch_name], col.place)
+      && (!col.programme || (a.programme || 'sbi') === col.programme)
+      && (!col.verdict || a.verdict === col.verdict)
+      && (!col.comment || (col.comment === 'with' ? a.comments.length > 0 : a.comments.length === 0))
       && (!q || [a.name, a.phone, a.pincode, a.state, a.district, a.tehsil, a.category, a.source?.campaign,
         a.sbi_branch?.branch_name, a.sbi_branch?.branch_code, a.sbi_branch?.ao].some(v => (v || '').toLowerCase().includes(q))));
-  }, [items, filter, search, stage]);
+  }, [items, filter, search, stage, col]);
+  const nextSteps = useMemo(() => Array.from(new Set(items.map(a => nextStep(a).text))).sort(), [items]);
+  const verdicts = useMemo(() => Array.from(new Set(items.map(a => a.verdict))).sort(), [items]);
+  const filtering = Object.values(col).some(Boolean) || !!stage;
+  const clearFilters = () => { setCol({ who: '', next: '', place: '', programme: '', verdict: '', comment: '' }); setStage(''); };
 
   const exportCsv = () => {
     const head = ['Name', 'Phone', 'Lead at', 'Category (persona)', 'Qualification', 'Verdict', 'Not qualified because', 'Franchise background',
@@ -229,7 +257,8 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
 
   const total = stats?.total || 0;
   const count = (key: Filter) => key === 'all' ? stats?.total : key === 'pin' ? stats?.pin_qualified
-    : key === 'strong' ? stats?.strongly_qualified : key === 'not' ? stats?.not_qualified : stats?.submitted;
+    : key === 'strong' ? stats?.strongly_qualified : key === 'not' ? stats?.not_qualified
+    : key === 'esaf' ? stats?.esaf : stats?.submitted;
   const funnel = [
     { label: 'Applied', value: total, icon: 'how_to_reg' },
     { label: 'PIN qualified', value: stats?.pin_qualified || 0, icon: 'location_on' },
@@ -284,7 +313,7 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
             {[
               ['touch_app', 'Tap a box below', 'to see only those people (for example, Documents received).'],
               ['assignment', 'Read "Next step"', 'on each row: it tells you what to do with that person.'],
-              ['call', 'Use the buttons', 'on the right: Call, Chat, Details (documents and notes), Remove.'],
+              ['summarize', 'Press "Summary & script"', 'to see what was said, their PIN and education, and what to say on the call. Use the boxes under each heading to filter.'],
             ].map(([icon, b, rest]) => (
               <div key={b} className="flex items-start gap-2.5">
                 <span className="h-8 w-8 shrink-0 rounded-lg bg-sky-500/20 text-sky-300 flex items-center justify-center"><Icon name={icon} className="text-[18px]" /></span>
@@ -299,7 +328,7 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
         {!showRemoved && (
           <>
             {/* The five totals; each one filters the list. */}
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
               {FILTERS.map(f => (
                 <button key={f.key} onClick={() => setFilter(f.key)}
                   className={`text-left p-4 rounded-xl border bg-slate-900 shadow-sm transition-all ${filter === f.key
@@ -382,10 +411,52 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
             <table className="w-full text-sm select-text">
               <thead className="bg-slate-950 text-[11px] uppercase tracking-wider text-slate-500">
                 <tr>
-                  {(simple ? ['Applicant', 'Next step', 'Place & business', 'Eligible?', 'Progress', 'Notes']
+                  {(simple ? ['Applicant', 'Next step', 'Place & business', 'Eligible?', 'Progress', 'Comment']
                     : ['Applicant', 'Business & place', 'Qualification', 'Progress', 'Comments', '']).map(h => (
                     <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
                   ))}
+                </tr>
+                <tr className="normal-case tracking-normal border-t border-slate-800 align-top">
+                  <th className="px-2 py-2 font-normal">
+                    <input value={col.who} onChange={e => setColumn('who', e.target.value)} placeholder="Name or phone" className={FILTER_INPUT} />
+                  </th>
+                  {simple && <th className="px-2 py-2 font-normal">
+                    <select value={col.next} onChange={e => setColumn('next', e.target.value)} className={FILTER_INPUT}>
+                      <option value="">Every next step</option>
+                      {nextSteps.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </th>}
+                  <th className="px-2 py-2 font-normal">
+                    <input value={col.place} onChange={e => setColumn('place', e.target.value)} placeholder="PIN, district, state or shop" className={FILTER_INPUT} />
+                  </th>
+                  <th className="px-2 py-2 font-normal space-y-1">
+                    <select value={col.programme} onChange={e => setColumn('programme', e.target.value)} className={FILTER_INPUT}>
+                      <option value="">SBI and ESAF</option>
+                      <option value="sbi">For SBI</option>
+                      <option value="esaf">Interested in ESAF</option>
+                    </select>
+                    <select value={col.verdict} onChange={e => setColumn('verdict', e.target.value)} className={FILTER_INPUT}>
+                      <option value="">{simple ? 'Eligible or not' : 'Every verdict'}</option>
+                      {verdicts.map(v => <option key={v} value={v}>{simple ? PLAIN_VERDICT[v] || v : v}</option>)}
+                    </select>
+                  </th>
+                  <th className="px-2 py-2 font-normal">
+                    <select value={stage} onChange={e => setStage(e.target.value)} className={FILTER_INPUT}>
+                      <option value="">{simple ? 'Any step' : 'All stages'}</option>
+                      {stages.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </th>
+                  <th className="px-2 py-2 font-normal">
+                    <select value={col.comment} onChange={e => setColumn('comment', e.target.value)} className={FILTER_INPUT}>
+                      <option value="">{simple ? 'Any' : 'All'}</option>
+                      <option value="with">Has a comment</option>
+                      <option value="none">No comment yet</option>
+                    </select>
+                    {simple && filtering && <button onClick={clearFilters} className="mt-1 text-[11.5px] font-semibold text-sky-300 hover:underline">Clear filters</button>}
+                  </th>
+                  {!simple && <th className="px-2 py-2 font-normal text-right">
+                    {filtering && <button onClick={clearFilters} className="text-[11.5px] font-semibold text-sky-300 hover:underline whitespace-nowrap">Clear filters</button>}
+                  </th>}
                 </tr>
               </thead>
               <tbody className="[&>tr]:border-b-2 [&>tr]:border-slate-700">
@@ -403,7 +474,7 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                         <div className="flex items-start gap-3">
                           <Avatar a={a} tone={a.submitted ? 'bg-amber-950 text-amber-300' : undefined} />
                           <div className="min-w-0">
-                            <div className="font-semibold text-slate-100 truncate max-w-[170px]">{a.name || '—'}</div>
+                            <div className="font-semibold text-slate-100 truncate max-w-[150px]">{a.name || '—'}</div>
                             <div className="font-mono text-xs text-slate-400 whitespace-nowrap">{a.phone}</div>
                             {a.lead_at && <div className="text-[11px] text-slate-500 whitespace-nowrap mt-0.5" title="When the lead came in">
                               <Icon name="schedule" className="text-[13px] align-[-2px] mr-0.5" />{formatDateTime(a.lead_at)}</div>}
@@ -413,10 +484,12 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                       {simple && (() => {
                         const n = nextStep(a);
                         return (
-                          <td className="px-3 py-3 min-w-[200px] max-w-[260px]">
+                          <td className="px-3 py-3 min-w-[176px] max-w-[210px]">
                             <div className={`rounded-lg border px-2.5 py-2 text-[12.5px] leading-snug font-medium ${NEXT_TONE[n.tone]}`}>{n.text}</div>
-                            <div className="grid grid-cols-2 gap-1.5 mt-2">
-                              <a href={`tel:+${a.phone.replace(/\D/g, '')}`} className="h-8 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[12.5px] font-semibold flex items-center justify-center gap-1"><Icon name="call" className="text-[16px]" />Call</a>
+                            <button onClick={() => setBriefFor(a.phone)}
+                              className="mt-2 w-full h-8 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-[12.5px] font-semibold flex items-center justify-center gap-1">
+                              <Icon name="summarize" className="text-[16px]" />Summary & script</button>
+                            <div className="grid grid-cols-2 gap-1.5 mt-1.5">
                               <a href={`#inbox/${a.phone.replace(/\D/g, '')}`} className="h-8 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-[12.5px] font-semibold flex items-center justify-center gap-1"><Icon name="chat" className="text-[16px]" />Chat</a>
                               <button onClick={() => setOpen(open === a.phone ? null : a.phone)} className="h-8 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-[12.5px] font-semibold flex items-center justify-center gap-1"><Icon name={open === a.phone ? 'expand_less' : 'expand_more'} className="text-[16px]" />{open === a.phone ? 'Hide' : 'Details'}</button>
                               {!readOnly && (showRemoved
@@ -436,7 +509,7 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                         </div>
                         {place(a) && <div className="text-[11px] text-slate-500 truncate max-w-[180px]" title={place(a)}>{place(a)}</div>}
                         {branch(a) && (
-                          <div className="mt-0.5 flex items-center gap-1 text-[11px] text-sky-300 max-w-[200px]" title={`Nearest SBI branch: ${branch(a)}`}>
+                          <div className="mt-0.5 flex items-center gap-1 text-[11px] text-sky-300 max-w-[170px]" title={`Nearest SBI branch: ${branch(a)}`}>
                             <Icon name="account_balance" className="text-[13px] shrink-0" />
                             <span className="truncate">{branch(a)}</span>
                           </div>
@@ -446,6 +519,7 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                         )}
                       </td>
                       <td className="px-3 py-3">
+                        <div className="mb-1.5"><ProgrammeChip a={a} /></div>
                         <span className={`inline-block px-2 py-0.5 rounded-full border text-[11px] font-semibold whitespace-nowrap ${VERDICT_STYLE[a.verdict]}`}
                           title={a.not_qualified_reasons.join(', ') || undefined}>{simple ? PLAIN_VERDICT[a.verdict] || a.verdict : a.verdict}</span>
                         <div className="text-xs text-slate-400 mt-1 whitespace-nowrap">{a.qualification || 'Education not given'}</div>
@@ -468,9 +542,9 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                           <span className="text-[11px] text-slate-400 tabular-nums">{a.documents_count}/{a.documents_total}</span>
                           {a.required_documents_done && <span className="text-[11px] text-emerald-300">✓</span>}
                         </div>
-                        {a.submitted && <div className="text-[11px] text-amber-300 mt-1 whitespace-nowrap">Submitted {formatDateTime(a.submitted_at)}</div>}
+                        {a.submitted && <div className={`text-[11px] text-amber-300 mt-1 ${simple ? 'max-w-[150px]' : 'whitespace-nowrap'}`}>Submitted {formatDateTime(a.submitted_at)}</div>}
                       </td>
-                      <td className="px-3 py-3 text-xs min-w-[150px] max-w-[220px]">
+                      <td className="px-3 py-3 text-xs min-w-[130px] max-w-[200px]">
                         {a.comments.length ? (() => {
                           const last = a.comments[a.comments.length - 1];
                           return (
@@ -482,11 +556,11 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                               </span>
                             </button>
                           );
-                        })() : <span className="text-slate-500">{simple ? 'No notes yet' : 'No comments'}</span>}
+                        })() : <span className="text-slate-500">{simple ? 'No comment yet' : 'No comments'}</span>}
                         {!readOnly && !showRemoved && (
                           <button onClick={() => openComments(a.phone)}
                             className="mt-1.5 text-[11.5px] font-semibold text-emerald-300 hover:underline flex items-center gap-0.5">
-                            <Icon name="add_comment" className="text-[15px]" /> {simple ? 'Add a note' : 'Add comment'}
+                            <Icon name="add_comment" className="text-[15px]" /> Add comment
                           </button>
                         )}
                       </td>
@@ -495,6 +569,7 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                         <div className="flex items-center justify-end gap-1.5">
                           <IconButton icon={open === a.phone ? 'expand_less' : 'expand_more'} title={open === a.phone ? 'Hide details' : 'Details'}
                             onClick={() => setOpen(open === a.phone ? null : a.phone)} />
+                          <IconButton icon="summarize" title="Summary and call script" onClick={() => setBriefFor(a.phone)} tone="text-violet-300 hover:text-violet-200" />
                           <IconButton icon="chat" title="Open the chat" href={`#inbox/${a.phone.replace(/\D/g, '')}`} />
                           {!readOnly && (showRemoved ? (
                             <IconButton icon="restore_from_trash" title="Restore" onClick={() => restore(a)} tone="text-emerald-300 hover:text-emerald-300" />
@@ -518,6 +593,7 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
           </div>
         </section>
       </div>
+      {briefFor && <LeadBriefModal phone={briefFor} onClose={() => setBriefFor(null)} />}
     </div>
   );
 };
@@ -561,7 +637,7 @@ const LeadsBlock: React.FC<{ leads: Application[]; onOpen: (phone: string) => vo
                 <span className="truncate">{branch(a)}</span>
               </div>
             )}
-            {a.near_dc && <div className="mt-1.5"><NearDc a={a} /></div>}
+            <div className="mt-1.5 flex flex-wrap gap-1.5"><ProgrammeChip a={a} />{a.near_dc && <NearDc a={a} />}</div>
             <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px]">
               <span className="px-2 py-0.5 rounded-full bg-slate-950 border border-slate-800 text-slate-300">{a.qualification || 'Education —'}</span>
               <span className="px-2 py-0.5 rounded-full bg-slate-950 border border-slate-800 text-slate-300">Docs {a.documents_count}/{a.documents_total}{a.required_documents_done ? ' ✓' : ''}</span>
@@ -699,6 +775,110 @@ const ApplicationDetails: React.FC<{
                 {saving ? 'Saving…' : app.comments.length ? 'Add another' : 'Add comment'}
               </button>
             </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * One lead on one page (19 Nov 2026, Kavya's Summary button): what happened in the chat,
+ * everything they told us, and a warm, polite call script for where they are now.
+ */
+const LeadBriefModal: React.FC<{ phone: string; onClose: () => void }> = ({ phone, onClose }) => {
+  const [b, setB] = useState<LeadBrief | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetchLeadBrief(phone).then(r => alive && setB(r)).catch(e => alive && setError(e.message));
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', esc);
+    return () => { alive = false; window.removeEventListener('keydown', esc); };
+  }, [phone, onClose]);
+  const digits = phone.replace(/\D/g, '');
+  const esaf = b?.programme === 'esaf';
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-start justify-center p-3 sm:p-6 overflow-y-auto" onClick={onClose}>
+      <div className="w-full max-w-3xl rounded-2xl overflow-hidden border border-slate-800 bg-slate-900 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 text-white" style={{ background: esaf ? 'linear-gradient(120deg, #3b0764 0%, #6d28d9 60%, #8b5cf6 100%)'
+          : 'linear-gradient(120deg, #0a3543 0%, #16435a 60%, #1d5a6e 100%)' }}>
+          <div className="flex items-start gap-3">
+            <span className="h-10 w-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0"><Icon name="summarize" className="text-[22px]" /></span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[17px] font-semibold leading-tight truncate">{b?.name || phone}</div>
+              <div className="text-[12px] text-white/75 mt-0.5">{phone}{b ? ` · ${esaf ? 'Interested in ESAF' : 'For SBI'}` : ''}{b?.headline ? ` · ${b.headline}` : ''}</div>
+            </div>
+            <button onClick={onClose} title="Close" className="h-8 w-8 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center"><Icon name="close" className="text-[18px]" /></button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <a href={`#inbox/${digits}`} onClick={onClose} className="h-8 px-3 rounded-lg bg-white/15 hover:bg-white/25 text-white text-[12.5px] font-semibold flex items-center gap-1"><Icon name="chat" className="text-[16px]" />Open chat</a>
+          </div>
+        </div>
+        {error ? <div className="p-5 text-sm text-rose-300">{error}</div> : !b ? (
+          <div className="p-8 text-center text-sm text-slate-500"><Icon name="progress_activity" className="animate-spin text-[22px] block mx-auto mb-1" />Loading…</div>
+        ) : (
+          <div className="p-5 space-y-5">
+            {b.in_short && (
+              <div className="rounded-xl border border-sky-800/50 bg-sky-950 p-3.5 text-[13.5px] leading-relaxed text-slate-100">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-sky-300 mb-1">In short</div>{b.in_short}
+              </div>
+            )}
+            <section>
+              <h3 className="text-[13px] font-semibold text-slate-100 mb-2 flex items-center gap-1.5"><Icon name="badge" className="text-[17px] text-sky-300" />What we know</h3>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {b.facts.map(f => (
+                  <div key={f.label} className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+                    <div className="text-[10.5px] uppercase tracking-wider text-slate-500">{f.label}</div>
+                    <div className="text-[13px] text-slate-200 mt-0.5">{f.value}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+            {b.story.length > 0 && (
+              <section>
+                <h3 className="text-[13px] font-semibold text-slate-100 mb-2 flex items-center gap-1.5"><Icon name="forum" className="text-[17px] text-sky-300" />What happened in the chat</h3>
+                <ol className="space-y-1.5 border-l-2 border-slate-800 pl-3">
+                  {b.story.map((line, i) => <li key={i} className="text-[13px] text-slate-300 leading-snug">{line}</li>)}
+                </ol>
+              </section>
+            )}
+            {b.their_questions.length > 0 && (
+              <section className="rounded-xl border border-amber-800/50 bg-amber-950 p-3.5">
+                <h3 className="text-[13px] font-semibold text-amber-300 mb-1.5 flex items-center gap-1.5"><Icon name="help" className="text-[17px]" />Their questions to answer</h3>
+                <ul className="space-y-1">{b.their_questions.map(q => <li key={q} className="text-[13px] text-slate-100">“{q}”</li>)}</ul>
+              </section>
+            )}
+            <section>
+              <h3 className="text-[13px] font-semibold text-slate-100 mb-2 flex items-center gap-1.5"><Icon name="record_voice_over" className="text-[17px] text-emerald-300" />Call script</h3>
+              <div className="space-y-2.5">
+                {b.script.map((part, i) => (
+                  <div key={part.title} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5">
+                    <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-100">
+                      <span className="h-6 w-6 rounded-full bg-emerald-500/15 text-emerald-300 flex items-center justify-center text-[11px] font-bold">{i + 1}</span>
+                      <Icon name={part.icon} className="text-[17px] text-emerald-300" />{part.title}
+                    </div>
+                    <ul className="mt-2 space-y-1.5 pl-1">
+                      {part.lines.map((line, j) => <li key={j} className="text-[13px] leading-relaxed text-slate-200 flex gap-2"><span className="text-emerald-400 mt-0.5">•</span><span>{line}</span></li>)}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <section className="rounded-xl border border-rose-800/50 bg-rose-950 p-3.5">
+              <h3 className="text-[13px] font-semibold text-rose-300 mb-1.5 flex items-center gap-1.5"><Icon name="do_not_disturb_on" className="text-[17px]" />Please avoid</h3>
+              <ul className="space-y-1">{b.avoid.map(t => <li key={t} className="text-[12.5px] text-slate-200">{t}</li>)}</ul>
+            </section>
+            {b.comments.length > 0 && (
+              <section>
+                <h3 className="text-[13px] font-semibold text-slate-100 mb-2 flex items-center gap-1.5"><Icon name="comment" className="text-[17px] text-sky-300" />Comments</h3>
+                <ul className="space-y-1.5">{b.comments.map(c => (
+                  <li key={c.comment_id} className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-[13px] text-slate-200">
+                    {c.body}<div className="text-[11px] text-slate-500 mt-0.5">{formatDateTime(c.created_at)} · {c.author}</div>
+                  </li>))}
+                </ul>
+              </section>
+            )}
           </div>
         )}
       </div>

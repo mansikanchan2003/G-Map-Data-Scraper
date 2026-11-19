@@ -52,3 +52,9 @@ def signed_in_by_default(request, monkeypatch):
 def no_call_transcription(monkeypatch):
     """Call recordings are not written out with Whisper in tests (call_recordings.transcribe_in_background)."""
     monkeypatch.setenv("TRANSCRIBE_CALLS", "0")
+
+
+@pytest.fixture(autouse=True)
+def no_insights_cache(monkeypatch):
+    """Every Campaign Insights request works its parts out afresh in tests (insights_cache)."""
+    monkeypatch.setenv("INSIGHTS_CACHE_SECONDS", "0")

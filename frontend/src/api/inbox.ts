@@ -527,6 +527,8 @@ export interface Ticket {
   resolved_by: string | null;
   /** The bot answered it itself, from Eko's FAQ and kiosk.eko.in; bot_answer is what it sent. */
   resolved_by_bot?: boolean;
+  /** Solved by Claude CLI (19 Nov 2026): it answered, or the bot reused its earlier answer. */
+  resolved_by_claude?: boolean;
   bot_answer?: string | null;
 }
 export const fetchTickets = (status?: 'open' | 'resolved') => call<Ticket[]>(`/tickets${status ? `?status=${status}` : ''}`);

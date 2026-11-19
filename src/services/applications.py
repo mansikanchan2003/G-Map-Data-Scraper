@@ -61,8 +61,23 @@ def is_application(conv: WhatsAppConversation) -> bool:
     return conv.bot_step == bot.HANDOVER and "pin_attempts" in data
 
 
+# SBI takes people within this distance of one of our SBI branches' PIN codes (the user,
+# 19 Nov 2026). Before, "served" meant near any of our scraping locations, all over India.
+SBI_RADIUS_KM = 20
+
+
 def _served(conv: WhatsAppConversation) -> Optional[bool]:
-    coverage = (conv.bot_data or {}).get("coverage")
+    """
+    Whether their PIN is in our SBI area: within SBI_RADIUS_KM of one of our SBI branches, or
+    near an SBI-allocated CSP centre (CSPs near DCs). Worked out when Applications loads and kept
+    on the chat as sbi_area, for their current PIN; until then, the bot's own check.
+    """
+    data = conv.bot_data or {}
+    coverage = data.get("coverage")
+    pin = (coverage or {}).get("pincode") or (data.get("typed_pin") or {}).get("pincode")
+    area = data.get("sbi_area") or {}
+    if pin and area.get("pin") == pin and "ok" in area:
+        return bool(area["ok"])
     if not coverage:
         return None
     if "served" in coverage:
@@ -256,6 +271,15 @@ def _branches(db: Session) -> List[Dict]:
 BRANCH_MAX_KM = 50
 
 
+def nearest_any_branch(branches: List[Dict], coords: Optional[List[float]]) -> Optional[Dict]:
+    """The nearest of our SBI branches however far, with its distance; None without coordinates."""
+    if not coords or not branches:
+        return None
+    km, best = min(((haversine_distance(coords[0], coords[1], *b["coords"]), b) for b in branches),
+                   key=lambda pair: pair[0])
+    return {k: v for k, v in best.items() if k != "coords"} | {"distance_km": round(km, 1)}
+
+
 def _nearest_branch(branches: List[Dict], coords: Optional[List[float]]) -> Optional[Dict]:
     """The SBI branch nearest a PIN, and how far it is; None if none of ours is within BRANCH_MAX_KM."""
     if not coords or not branches:
@@ -305,6 +329,7 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
                     .group_by(WhatsAppMessage.phone).all()) if phones else {}
 
     items = []
+    area_changed = False
     for conv in convs:
         data = conv.bot_data or {}
         coverage = data.get("coverage") or {}
@@ -314,6 +339,17 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
         pin_info = coverage if coverage.get("pincode") else (data.get("typed_pin") or {})
         current = pin_info.get("pincode") in (coverage.get("pincode"), typed_pin)
         geo = (pin_info.get("geo") if current else None) or {}
+        coords = pin_info.get("coords") if current else None
+        near_branch = _nearest_branch(branches, coords)
+        near_centre = _near_centre(centres, coords)
+        if coords and pin_info.get("pincode") and (branches or centres):
+            ok = bool(near_branch and near_branch["distance_km"] <= SBI_RADIUS_KM) or near_centre is not None
+            area = {"pin": pin_info["pincode"], "ok": ok,
+                    "km": near_branch["distance_km"] if near_branch else None}
+            if data.get("sbi_area") != area:
+                conv.bot_data = {**data, "sbi_area": area}
+                flag_modified(conv, "bot_data")
+                area_changed = True
         q = qualify(conv)
         mine = docs.get(conv.phone, [])
         # A document from DigiLocker fills its row as an upload does.
@@ -331,12 +367,15 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
             "place": coverage.get("place"),
             "distance_km": coverage.get("distance_km"),
             # The SBI branch nearest their PIN: its code, name, AO and how far.
-            "sbi_branch": _nearest_branch(branches, pin_info.get("coords") if current else None),
+            "sbi_branch": near_branch,
+            # Within SBI_RADIUS_KM of that branch (or near a CSP centre): in our SBI area.
+            "sbi_area_km": SBI_RADIUS_KM,
+            # The nearest of our SBI branches however far (for the Summary page): code, AO, km.
+            "nearest_sbi": nearest_any_branch(branches, coords),
             # "CSPs near DCs" (17 Nov 2026): the campaign reached them as one, or their PIN
             # is within CSP_CENTRE_KM of an SBI-allocated CSP centre in a DC's district.
-            "csp_centre": _near_centre(centres, pin_info.get("coords") if current else None),
-            "near_dc": bool((sources.get(conv.phone) or {}).get("near_dc"))
-                       or _near_centre(centres, pin_info.get("coords") if current else None) is not None,
+            "csp_centre": near_centre,
+            "near_dc": bool((sources.get(conv.phone) or {}).get("near_dc")) or near_centre is not None,
             "category": (sources.get(conv.phone) or {}).get("category"),
             "qualification": QUALIFICATION.get(data.get("education")),
             "franchise_background": data.get("franchise"),
@@ -352,6 +391,9 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
             "documents_total": len(bot.documents_for(conv)),
             "required_documents_done": all(d["key"] in have for d in bot.required_for(conv)),
             "drive_folder_url": conv.drive_folder_url,
+            # Which programme the lead is for (19 Nov 2026): "sbi" ("For SBI") unless they chose ESAF.
+            "programme": "esaf" if (q.get("esaf") or conv.disposition == "int_esaf") else "sbi",
+            "disposition": conv.disposition,
             "submitted": conv.documents_submitted_at is not None,
             "submitted_at": _iso(conv.documents_submitted_at),
             "started_at": _iso(conv.created_at),
@@ -363,6 +405,8 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
             "removed": conv.phone in removals,
             "removed_by": removals[conv.phone].removed_by if conv.phone in removals else None,
         })
+    if area_changed:
+        db.commit()
     items.sort(key=lambda a: a["last_message_at"] or "", reverse=True)
 
     stats = {
@@ -371,6 +415,7 @@ def list_applications(db: Session, removed: bool = False) -> Dict:
         "strongly_qualified": sum(a["strongly_qualified"] for a in items),
         "not_qualified": sum(a["not_qualified"] for a in items),
         "submitted": sum(a["submitted"] for a in items),
+        "esaf": sum(a["programme"] == "esaf" for a in items),
         "removed": len(removals) if not removed else len(items),
     }
     return {"stats": stats, "items": items}

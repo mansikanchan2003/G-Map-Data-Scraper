@@ -474,7 +474,10 @@ const TicketsPanel: React.FC<{ initial: 'open' | 'resolved'; onClose: () => void
                     </td>
                     <td className="px-3 py-2.5 text-slate-300 whitespace-nowrap">{when(t.raised_at)}</td>
                     <td className="px-3 py-2.5 text-slate-300 whitespace-nowrap">{when(t.resolved_at)}
-                      {t.resolved_by_bot
+                      {t.resolved_by_claude
+                        ? <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-orange-700/60 bg-orange-950 text-orange-300 text-[10.5px] font-semibold">
+                            <span className="material-symbols-outlined text-[12px]">auto_awesome</span>Solved by Claude CLI</div>
+                        : t.resolved_by_bot
                         ? <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-sky-800/60 bg-sky-950 text-sky-300 text-[10.5px] font-semibold">
                             <span className="material-symbols-outlined text-[12px]">smart_toy</span>Resolved by bot</div>
                         : t.resolved_by && <div className="text-[10.5px] text-slate-500">by {t.resolved_by.split('@')[0]}</div>}</td>

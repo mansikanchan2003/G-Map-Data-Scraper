@@ -523,3 +523,33 @@ def test_each_branch_in_the_plan_has_its_send_time_two_campaigns_a_day_and_no_su
         assert all(c["people"] <= p["daily"] for c in d["campaigns"])
     full = [d for d in p["days"] if len(d["campaigns"]) == 2]
     assert full and [c["time"] for c in full[0]["campaigns"]] == ["10:30 AM", "12:30 PM"]
+
+
+def test_the_csps_near_dcs_plan_puts_haryana_at_10_30_and_punjab_at_12_30(db, monkeypatch):
+    """19 Nov 2026: the CSPs near DCs plan, day by day, like the SBI branch plan."""
+    from src.models import Business, Job, Location
+    monkeypatch.setattr(gp, "campaign_approval_cap", lambda: 199)
+    for i, (state, centre) in enumerate([("Haryana", "Baragarh"), ("Punjab", "Suba Jadid")]):
+        db.add(Location(location_id=f"C{i}", pincode=f"13420{i}", latitude=30.4 + i, longitude=77.0 - i,
+                        district="D", state=state, tehsil="T", anchor_name=f"{centre} (CISBI 34052{i}), T, D, {state}",
+                        source_dataset="sbi_csp_centre", pin_basis=f"CISBI 34052{i}"))
+        db.add(Job(job_id=f"J{i}", location_id=f"C{i}", category_id="cat", status="COMPLETED", search_query="q",
+                   hiring_for="CSP_NEAR_DC"))
+        for n in range(3):
+            db.add(Business(business_id=f"B{i}{n}", job_id=f"J{i}", name="Shop", phone=f"+9198{i}000000{n}",
+                            category="Kiosk", state=state, source_query="q", dedup_key=f"nd{i}{n}",
+                            for_csp=False, near_dc=True))
+    # An ordinary CSP shop is not in this plan.
+    db.add(Business(business_id="BX", job_id="J0", name="CSP", phone="+919811111111", category="Kiosk",
+                    state="Haryana", source_query="q", dedup_key="ndx"))
+    db.commit()
+    p = gp.near_dc_plan(db, {"_facts": [], "judged_on": "qualified"})
+    assert p["left"] == 6 and p["left_by_state"] == {"Haryana": 3, "Punjab": 3}
+    slots = [s for d in p["days"] for s in d["slots"]]
+    assert {(s["state"], s["time"]) for s in slots} == {("Haryana", "10:30 AM"), ("Punjab", "12:30 PM")}
+    assert {s["centre"] for s in slots} == {"Baragarh", "Suba Jadid"} and sum(s["people"] for s in slots) == 6
+    assert all(date.fromisoformat(d["date"]).weekday() != 6 for d in p["days"])
+
+
+def test_without_centres_there_is_no_csps_near_dcs_plan(db):
+    assert gp.near_dc_plan(db, {"_facts": [], "judged_on": "qualified"}) is None

@@ -38,6 +38,9 @@ export interface Application {
                 pincode: string; distance_km: number } | null;
   /** "CSPs near DCs" (17 Nov 2026): reached as one, or their PIN is near an SBI-allocated CSP centre in a DC's district. */
   near_dc?: boolean;
+  /** "sbi" (For SBI) unless they chose ESAF ("esaf": Interested in ESAF), 19 Nov 2026. */
+  programme?: 'sbi' | 'esaf';
+  disposition?: string | null;
   csp_centre?: { name: string; code: string | null; distance_km: number } | null;
   /** The persona: the business's Google Maps category, from the campaign that reached them. */
   category: string | null;
@@ -79,7 +82,20 @@ export interface ApplicationStats {
   strongly_qualified: number;
   not_qualified: number;
   submitted: number;
+  /** Leads interested in ESAF (19 Nov 2026). */
+  esaf?: number;
   removed: number;
+}
+
+/** One lead on one page, for the person calling them (the Summary button). */
+export interface LeadBrief {
+  phone: string; name: string | null; programme: 'sbi' | 'esaf';
+  headline: string | null; in_short: string | null; story: string[];
+  facts: { label: string; value: string }[];
+  their_questions: string[]; missing_documents: string[];
+  script: { title: string; icon: string; lines: string[] }[];
+  avoid: string[];
+  comments: { comment_id: string; body: string; author: string; created_at: string }[];
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
@@ -97,6 +113,8 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 const digits = (phone: string) => phone.replace(/\D/g, '');
+
+export const fetchLeadBrief = (phone: string) => call<LeadBrief>(`/${digits(phone)}/brief`);
 
 export const fetchApplications = (removed = false) =>
   call<{ stats: ApplicationStats; items: Application[] }>(removed ? '?removed=true' : '');

@@ -18,7 +18,7 @@ from src.models.insights import CampaignInsight, InsightSnapshot
 from src.models.user import User
 from src.models.whatsapp import WhatsAppCampaign
 from src.routers.auth import current_user
-from src.services import campaign_insights as ci
+from src.services import campaign_insights as ci, insights_cache
 
 router = APIRouter(prefix="/api/v1/whatsapp/insights", tags=["Campaign Insights"])
 
@@ -43,8 +43,8 @@ def dimensions():
 
 @router.get("/playbook")
 def get_playbook(db: Session = Depends(get_db)):
-    """What works best so far — the reference for writing the next template."""
-    return ci.playbook(db)
+    """What works best so far — the reference for writing the next template. Kept warm (insights_cache)."""
+    return insights_cache.get("playbook", db)
 
 
 @router.get("/explore")
@@ -68,6 +68,11 @@ def explore(
 
 @router.get("/campaigns")
 def list_campaign_insights(db: Session = Depends(get_db)):
+    """Every finished campaign with its saved report. Kept warm (insights_cache)."""
+    return insights_cache.get("campaigns", db)
+
+
+def _campaign_list(db: Session):
     """Every finished campaign with its saved report, refreshing recent stale ones."""
     campaigns = (
         db.query(WhatsAppCampaign)
@@ -155,8 +160,7 @@ def growth(db: Session = Depends(get_db)):
     The lead goal, where people drop out on the way to a lead, and what to do
     next: who to call, where and whom to message, what to make.
     """
-    from src.services import growth_plan
-    return growth_plan.plan(db)
+    return insights_cache.get("growth", db)
 
 
 # --- Questions to Kiosk KAI, from the Plan tab ----------------------------------
@@ -225,3 +229,14 @@ def disposition_mix(db: Session = Depends(get_db)):
     """Where the people each campaign, template and state reached stand now, by disposition."""
     from src.services import lead_journey
     return lead_journey.disposition_mix(db)
+
+
+# Campaign Insights' slow parts, kept warm so the page opens at once (19 Nov 2026).
+def _growth(db: Session):
+    from src.services import growth_plan
+    return growth_plan.plan(db)
+
+
+insights_cache.register("playbook", lambda db: ci.playbook(db))
+insights_cache.register("campaigns", _campaign_list)
+insights_cache.register("growth", _growth)

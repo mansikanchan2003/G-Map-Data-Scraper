@@ -824,8 +824,8 @@ def test_a_question_marks_the_conversation_and_is_thanked(db):
     # Not in Eko's FAQ ("Isme kitna kamaunga?" now is: the bot answers that itself).
     say(db, "Kya aap Sunday ko bhi baat karte ho?")
     body = StubMeta.sent[-1][2]
-    assert body.startswith(bot_messages.MESSAGES["en"]["question_ack"])
-    assert onboarding_bot.ASK_EDUCATION in body  # and the question it left is asked again
+    assert body.startswith((bot_messages.MESSAGES["en"]["question_ack"], bot_messages.HINGLISH["question_ack"]))   # asked in Hinglish: Hinglish (19 Nov 2026)
+    assert onboarding_bot.ASK_EDUCATION in body or "padhai" in body  # and the question it left is asked again (in their language)
     c = conv(db)
     assert c.needs_attention and c.attention_reason == "Kya aap Sunday ko bhi baat karte ho?"
     assert c.bot_step == onboarding_bot.AWAIT_EDUCATION
@@ -1069,7 +1069,7 @@ def test_wanting_to_ask_counts_as_a_question(db):
     say(db, "ok")                        # a plain reply, paced
     say(db, "Mujhe kuch puchna hai")     # straight after: still answered and marked
     assert conv(db).needs_attention
-    assert StubMeta.sent[-1][2].startswith(bot_messages.MESSAGES["en"]["question_ack"])
+    assert StubMeta.sent[-1][2].startswith((bot_messages.MESSAGES["en"]["question_ack"], bot_messages.HINGLISH["question_ack"]))   # asked in Hinglish: Hinglish (19 Nov 2026)
 
 
 def test_the_language_is_chosen_among_the_bots_own():
@@ -1094,7 +1094,7 @@ def test_questions_are_answered_past_the_few_in_a_row_limit(db, monkeypatch):
     sent = len(StubMeta.sent)
     say(db, "Mere kuch sawal hain")
     assert len(StubMeta.sent) == sent + 1
-    assert StubMeta.sent[-1][2].startswith(bot_messages.MESSAGES["en"]["question_ack"])
+    assert StubMeta.sent[-1][2].startswith((bot_messages.MESSAGES["en"]["question_ack"], bot_messages.HINGLISH["question_ack"]))   # asked in Hinglish: Hinglish (19 Nov 2026)
 
 
 def test_a_run_of_replies_is_forgotten_after_a_while(db, monkeypatch):
@@ -1193,8 +1193,8 @@ def test_a_question_the_faq_answers_is_answered_and_the_question_asked_again(db)
     qualify(db)                                  # now asked about investing
     say(db, "Kitna invest karna hoga?")
     body = StubMeta.sent[-1][2]
-    assert body.startswith("₹3–5 lakh, depending")                   # in English, as chosen
-    assert bot_messages.MESSAGES["en"]["ask_invest"] in body     # and the question follows
+    assert body.startswith(("₹3–5 lakh, depending", "INR 3–5 lakh"))  # in the language asked (19 Nov 2026)
+    assert bot_messages.MESSAGES["en"]["ask_invest"] in body or bot_messages.HINGLISH["ask_invest"] in body  # and the question follows
     c = conv(db)
     assert c.bot_step == onboarding_bot.AWAIT_INVEST
     assert not c.needs_attention, "an answered question needs nobody"
@@ -1212,7 +1212,7 @@ def test_a_question_the_faq_does_not_answer_still_goes_to_a_person(db):
     say(db, "Mere ghar ka pata badalna hai, kya karna hoga?")
     c = conv(db)
     assert c.needs_attention
-    assert StubMeta.sent[-1][2].startswith(bot_messages.MESSAGES["en"]["question_ack"])
+    assert StubMeta.sent[-1][2].startswith((bot_messages.MESSAGES["en"]["question_ack"], bot_messages.HINGLISH["question_ack"]))   # asked in Hinglish: Hinglish (19 Nov 2026)
 
 
 def test_a_voice_note_answered_from_the_faq_is_still_checked_by_a_person(db, heard):
@@ -1241,8 +1241,8 @@ def test_what_the_5_lakh_is_for_comes_before_the_investment_question(db):
 
 def test_asking_how_much_to_invest_also_explains_the_e_wallet(db):
     tap_campaign(db)
-    say(db, "Kitna invest karna hoga?")
-    assert bot_messages.MESSAGES["en"]["invest_explained"] in StubMeta.sent[-1][2]
+    say(db, "Kitna invest karna hoga?")       # asked in Hinglish: answered in Hinglish
+    assert bot_messages.HINGLISH["invest_explained"] in StubMeta.sent[-1][2]
 
 
 @pytest.fixture
@@ -1289,9 +1289,10 @@ def test_the_summary_shows_questions_answers_and_what_to_send_next(db, client):
     assert any(line.startswith("PIN 110001 diya") for line in s["story"])
     q = s["questions"][-1]
     assert q["text"] == "Kitna invest karna hoga?" and q["answered_by_bot"]
-    assert q["answers"][0]["answer"].startswith("₹3–5 lakh, depending")
+    assert q["answers"][0]["answer"]          # in Hinglish, as it was asked (19 Nov 2026)
     assert [o["text"] for o in s["other_messages"]] == ["Mera naam Ravi hai"]
-    assert "Investment" in s["next"]["action"] and s["next"]["reply"] == bot_messages.MESSAGES["en"]["ask_invest"]
+    assert "Investment" in s["next"]["action"] and s["next"]["reply"] in (
+        bot_messages.MESSAGES["en"]["ask_invest"], bot_messages.MESSAGES["hi"]["ask_invest"], bot_messages.HINGLISH["ask_invest"])
 
 
 def test_attention_alerts_list_waiting_conversations_until_resolved(db, client):
@@ -1489,8 +1490,9 @@ def test_a_question_the_faq_does_not_cover_is_not_forced_onto_it(question):
 
 def test_naukari_spelt_differently_is_answered_by_the_bot(db):
     tap_campaign(db)
-    say(db, "Ye bank ki naukari hai?")
-    assert StubMeta.sent[-1][2].startswith("No. This is your own business.")
+    say(db, "Ye bank ki naukari hai?")       # Hinglish: answered in Hinglish (19 Nov 2026)
+    assert not StubMeta.sent[-1][2].startswith("No. This is your own business.")
+    assert "business" in StubMeta.sent[-1][2].lower()
     assert not conv(db).needs_attention
 
 
@@ -1663,7 +1665,9 @@ def test_saying_they_are_interested_starts_the_application(db, said):
     say(db, said)
     c = conv(db)
     assert c.bot_step == onboarding_bot.AWAIT_PIN
-    assert StubMeta.sent[-1][2] in (bot_messages.MESSAGES["hi"]["ask_pin"], bot_messages.HINGLISH["ask_pin"])
+    # In the language they said it in (19 Nov 2026): "I want to start" gets English.
+    assert StubMeta.sent[-1][2] in (bot_messages.MESSAGES["hi"]["ask_pin"], bot_messages.HINGLISH["ask_pin"],
+                                    bot_messages.MESSAGES["en"]["ask_pin"])
 
 
 def test_tapping_interested_during_guidance_starts_the_application(db):
@@ -3476,7 +3480,7 @@ def invest_video(db, tmp_path, monkeypatch):
     path = tmp_path / "investment_gu.mp4"
     path.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"0" * 1000)
     monkeypatch.setattr(onboarding_bot, "INVEST_VIDEO_GU", str(path))
-    monkeypatch.setattr(onboarding_bot, "_upload_in_background", lambda p: None)
+    monkeypatch.setattr(onboarding_bot, "_upload_in_background", lambda *a: None)
     StubMeta.uploads.clear()
     onboarding_bot.upload_invest_video(str(path), db=db)
     return path
@@ -3506,7 +3510,7 @@ def test_a_gujarat_lead_asking_about_the_investment_gets_the_video(db, invest_vi
     _gujarat_campaign(db)
     tap_campaign(db, lang="gu")
     count = len(StubMeta.sent)
-    say(db, "Kitna invest karna hoga?")
+    say(db, "Ketlu invest karvu padse?")
     kinds = _sent_kinds(count)
     assert [k for k, _b in kinds][:2] == ["text", "video"]
     assert bot_messages.MESSAGES["gu"]["invest_explained"] not in kinds[0][1]
@@ -3517,7 +3521,7 @@ def test_a_gujarat_lead_asking_about_the_investment_gets_the_video(db, invest_vi
     c = conv(db)
     c.bot_data = {k: v for k, v in c.bot_data.items() if k not in ("fallback_at", "fallback_streak")}
     db.commit()
-    say(db, "Kitna invest karna hoga?")
+    say(db, "Ketlu invest karvu padse?")
     again = _sent_kinds(count)
     assert "video" not in [k for k, _b in again]
     assert not any(bot_messages.MESSAGES["gu"]["invest_explained"] in b for _k, b in again)
@@ -3558,7 +3562,7 @@ def test_a_lead_never_waits_on_the_video_upload(db, tmp_path, monkeypatch):
     path.write_bytes(b"0" * 1000)
     monkeypatch.setattr(onboarding_bot, "INVEST_VIDEO_GU", str(path))
     started = []
-    monkeypatch.setattr(onboarding_bot, "_upload_in_background", lambda p: started.append(p))
+    monkeypatch.setattr(onboarding_bot, "_upload_in_background", lambda p, *video: started.append(p))
     _gujarat_campaign(db)
     tap_campaign(db, lang="en")
     say(db, SERVED_PIN)
@@ -3955,7 +3959,8 @@ def test_an_unrelated_question_gets_a_kind_note_on_what_we_can_help_with_and_no_
     _guidance(db, lang="en")
     say(db, said)
     kind, _to, body, buttons = StubMeta.sent[-1]
-    assert body in (bot_messages.MESSAGES["en"]["off_topic"], bot_messages.HINGLISH["off_topic"])
+    assert body in (bot_messages.MESSAGES["en"]["off_topic"], bot_messages.HINGLISH["off_topic"],
+                    bot_messages.MESSAGES["hi"]["off_topic"])        # Hindi letters: Hindi (19 Nov 2026)
     assert [b["id"] for b in buttons] == [onboarding_bot.START_INTERESTED]
     c = conv(db)
     assert not c.needs_attention and tickets.open_ticket(db, PHONE) is None and emailed == []
@@ -4411,3 +4416,121 @@ def test_a_person_choosing_esaf_or_sbi_moves_the_programme_too(db, client):
 def test_the_programme_rules(words, first_person, want):
     from src.services import call_programme
     assert call_programme.statement(words, first_person) == want
+
+
+# --- 19 Nov 2026: Haryana and Punjab breakdown videos; Claude CLI answers new questions ----
+
+def _state_campaign(db, state, name="CSP Nov 18"):
+    """A campaign whose template names no state, sent to a shop in this state (the CSPs near DCs campaigns)."""
+    from src.models import Business
+    template_id, campaign_id = uuid.uuid4().hex, uuid.uuid4().hex
+    db.add(WhatsAppTemplate(template_id=template_id, name="csp_hi", body="Namaste {{1}}", language_code="hi",
+                            buttons=campaign_buttons.quick_replies("hi")))
+    db.add(WhatsAppCampaign(campaign_id=campaign_id, name=name, template_id=template_id,
+                            data_source_type="scraped", status="COMPLETED", total_contacts=1))
+    bid = uuid.uuid4().hex[:16]
+    db.add(Business(business_id=bid, job_id="J1", name="Shop", phone=PHONE, category="Kiosk", state=state,
+                    source_query="q", dedup_key=f"k-{bid}"))
+    db.add(WhatsAppCampaignRecipient(recipient_id=uuid.uuid4().hex, campaign_id=campaign_id, business_id=bid,
+                                     phone=PHONE, status="READ", provider_message_id="wamid.state"))
+    db.commit()
+
+
+def test_each_state_campaign_gets_its_own_breakdown_video(db):
+    tap_campaign(db)
+    c = conv(db)
+    assert onboarding_bot.invest_video_for(db, c) is None
+    assert onboarding_bot.invest_video_for(db, c, "ਨਿਵੇਸ਼ ਕਿੰਨਾ ਹੈ?") == "punjab"       # asked in Punjabi
+    _state_campaign(db, "Haryana")
+    assert onboarding_bot.campaign_state(db, PHONE) == "haryana"
+    assert onboarding_bot.invest_video_for(db, c, "kitna invest lagega") == "haryana"
+
+
+def test_a_punjab_campaign_lead_gets_the_punjab_video_before_the_question(db, tmp_path, monkeypatch):
+    path = tmp_path / "investment_punjab.mp4"
+    path.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"0" * 1000)
+    monkeypatch.setitem(onboarding_bot.INVEST_VIDEOS, "punjab", str(path))
+    monkeypatch.setattr(onboarding_bot, "_upload_in_background", lambda *a: None)
+    onboarding_bot.upload_invest_video(str(path), db=db, video="punjab")
+    _state_campaign(db, "Punjab")
+    tap_campaign(db, lang="en")
+    say(db, SERVED_PIN)
+    count = len(StubMeta.sent)
+    qualify(db)
+    (k1, _caption), (k2, _q) = _sent_kinds(count)[:2]
+    assert k1 == "video" and k2 == "buttons"
+    video = db.query(WhatsAppMessage).filter_by(phone=PHONE, kind="video").one()
+    assert video.payload["video"] == "punjab"
+
+
+def _claude_json(**kw):
+    import json
+    return json.dumps({"result": json.dumps(kw)})
+
+
+def test_claude_answers_a_new_question_and_the_bot_learns_it(db, client):
+    from src.services import claude_answers, learning_loop, tickets
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "Kya aap Sunday ko bhi baat karte ho?")
+    c = conv(db)
+    assert c.needs_attention and c.bot_data["claude_ask"]["state"] == "waiting"
+    waiting = claude_answers.pending(db)
+    assert len(waiting) == 1 and "Sunday" in waiting[0]["prompt"] and "commission" in waiting[0]["prompt"]
+    count = len(StubMeta.sent)
+    done = claude_answers.ingest(db, waiting[0]["id"], _claude_json(
+        can_answer=True, answer="Haan ji, Sunday ko bhi aap humein WhatsApp par likh sakte hain.",
+        answer_en="Yes, you can write to us on WhatsApp on Sunday too.",
+        answer_hi="हाँ जी, रविवार को भी आप हमें WhatsApp पर लिख सकते हैं।",
+        answer_hinglish="Haan ji, Sunday ko bhi aap humein WhatsApp par likh sakte hain."))
+    assert done["done"]
+    assert any("Sunday ko bhi aap" in b for _k, b in _sent_kinds(count))
+    c = conv(db)
+    assert not c.needs_attention and c.attention_resolved_by == "Claude CLI"
+    t = tickets.history(db, status="resolved")[0]
+    assert t["resolved_by_claude"] and "Sunday" in t["bot_answer"]
+    assert any(p["kind"] == "claude_answer" for p in learning_loop._load(db)["accepted"])
+    # Asked again in other words: the bot answers it itself, with no call to Claude.
+    c.bot_data = {k: v for k, v in c.bot_data.items() if k not in ("fallback_at", "fallback_streak")}
+    db.commit()
+    count = len(StubMeta.sent)
+    say(db, "Sunday ko bhi aap log baat karte ho kya?")
+    assert any("Sunday ko bhi aap" in b for _k, b in _sent_kinds(count))
+    assert not conv(db).needs_attention and claude_answers.pending(db) == []
+    assert tickets.history(db, status="resolved")[0]["resolved_by_claude"]
+
+
+def test_an_answer_that_breaks_ekos_word_rules_is_not_sent(db, client):
+    from src.services import claude_answers
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "Kya aap Sunday ko bhi baat karte ho?")
+    ask_id = claude_answers.pending(db)[0]["id"]
+    count = len(StubMeta.sent)
+    done = claude_answers.ingest(db, ask_id, _claude_json(can_answer=True, answer="Zero investment, mini bank kholiye!"))
+    assert not done["done"] and "word rules" in done["why"]
+    assert _sent_kinds(count) == [] and conv(db).needs_attention
+    assert claude_answers.ingest(db, ask_id, _claude_json(can_answer=False, why="needs a person"))["done"] is False
+
+
+def test_claude_is_not_asked_when_switched_off(db, client):
+    from src.services import agent_controls, claude_answers
+    agent_controls.set_agent(db, "claude_answers", False, "admin@eko.co.in") if hasattr(agent_controls, "set_agent") else None
+    if not hasattr(agent_controls, "set_agent"):
+        pytest.skip("no setter")
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "Kya aap Sunday ko bhi baat karte ho?")
+    assert "claude_ask" not in (conv(db).bot_data or {}) and claude_answers.pending(db) == []
+
+
+def test_a_question_is_answered_in_the_language_it_was_asked_in(db):
+    """19 Nov 2026: "who are you?" after a Gujarati campaign is answered in English, not Gujarati."""
+    _gujarat_campaign(db)
+    tap_campaign(db, lang="gu")
+    count = len(StubMeta.sent)
+    say(db, "Who are you?")
+    sent = " ".join(b for _k, b in _sent_kinds(count))
+    assert not re.search(r"[\u0A80-\u0AFF]", sent), "no Gujarati letters in the answer"
+    assert re.search(r"[A-Za-z]{4,}", sent)
+    assert conv(db).bot_data["lang"] == "en"

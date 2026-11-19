@@ -32,6 +32,16 @@ def list_qualified(db: Session = Depends(get_db)):
     return qualified_leads.list_leads(db)
 
 
+@router.get("/{digits}/brief")
+def lead_brief(digits: str, db: Session = Depends(get_db)):
+    """One lead on one page: what was said, everything they told us, and a warm call script (19 Nov 2026)."""
+    from src.services import call_script
+    try:
+        return call_script.brief(db, _phone(digits))
+    except LookupError:
+        raise HTTPException(status_code=404, detail="No such application")
+
+
 @router.post("/{digits}/comments")
 def add_comment(digits: str, payload: CommentIn, db: Session = Depends(get_db),
                 user: User = Depends(current_user)):

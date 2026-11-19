@@ -46,13 +46,17 @@ def raise_or_update(db: Session, conv: WhatsAppConversation, via: str = "bot") -
     return ticket
 
 
-def answered_by_bot(db: Session, conv: WhatsAppConversation, question: str, answer: str) -> AttentionTicket:
-    """A question the bot answered itself: a ticket raised and solved by the bot, with its answer."""
+def answered_by_bot(db: Session, conv: WhatsAppConversation, question: str, answer: str,
+                    by: str = "bot") -> AttentionTicket:
+    """
+    A question the bot answered itself: a ticket raised and solved by the bot, with its answer.
+    `by` is "claude_cli" when the answer is one Claude CLI gave before (claude_answers).
+    """
     now = inbox.now()
     question = (question or "").strip()[:500] or None
     ticket = AttentionTicket(phone=conv.phone, raised_by_name=conv.profile_name, question=question,
                              latest_question=question, questions_count=1, raised_via="bot", raised_at=now,
-                             resolved_at=now, resolved_by="bot", bot_answer=answer)
+                             resolved_at=now, resolved_by=by, bot_answer=answer)
     db.add(ticket)
     db.flush()
     return ticket
@@ -82,6 +86,8 @@ def as_dict(t: AttentionTicket) -> dict:
         "resolved_at": inbox.aware(t.resolved_at).isoformat() if t.resolved_at else None,
         "resolved_by": t.resolved_by,
         "resolved_by_bot": t.resolved_by == "bot",
+        # Solved by Claude CLI (19 Nov 2026): it answered, or the bot reused its earlier answer.
+        "resolved_by_claude": t.resolved_by == "claude_cli",
         "bot_answer": t.bot_answer,
     }
 

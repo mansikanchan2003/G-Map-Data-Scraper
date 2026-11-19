@@ -238,6 +238,8 @@ export interface GrowthPlan {
   next_campaign?: NextCampaign | null;
   /** A campaign a day for the next week around our SBI branches (11 Nov 2026). */
   branch_plan?: BranchPlan | null;
+  /** CSPs near DCs, day by day (19 Nov 2026). */
+  near_dc_plan?: NearDcPlan | null;
   /** icon: a Material Symbols name. */
   next_steps: { title: string; detail: string; why: string; impact: 'high' | 'medium' | 'low'; icon?: string }[];
   /** What happens after AutoGMap, from Kiosk KAI (the form and TARA); null without the app's Kiosk KAI key. */
@@ -380,4 +382,25 @@ export interface BranchPlan {
   overall_rates: Record<Stage, number>; messages_sent: number; max_km: number;
   /** The step branches are ranked by, as Insights judges campaigns. */
   judged_on: Stage; judged_on_label: string;
+}
+
+
+/** One campaign's centre in the CSPs near DCs plan. */
+export interface NearDcSlot {
+  centre: string; code: string | null; pincode: string | null; district: string | null; subdistrict: string | null;
+  state: string | null; people: number; kinds: { category: string; people: number }[]; time: string;
+  expect: Record<Stage, number>;
+}
+export interface NearDcDay {
+  date: string; label: string; slots: NearDcSlot[]; people: number; expect: Record<Stage, number>;
+  campaigns?: { time: string; people: number }[];
+}
+export interface NearDcPlan {
+  days: NearDcDay[];
+  centres: { centre: string; code: string | null; pincode: string | null; district: string | null; subdistrict: string | null;
+             state: string | null; left: number }[];
+  send_times: { haryana: string; punjab: string };
+  cap: number; left: number; left_by_state: Record<string, number>;
+  week_people: number; week_expect: Record<Stage, number>;
+  overall_rates: Record<Stage, number>; judged_on: Stage; judged_on_label: string;
 }

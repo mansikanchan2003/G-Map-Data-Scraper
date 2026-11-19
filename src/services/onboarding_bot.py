@@ -788,47 +788,117 @@ def _guidance_ask(db, conv) -> str:
 # upload is done the text goes.
 
 INVEST_VIDEO_GU = os.environ.get("BOT_INVEST_VIDEO_GU", os.path.join("data", "bot_media", "investment_gu.mp4"))
+# The same breakdown for Haryana and Punjab (the user, 19 Nov 2026): Haryana's for leads a
+# Haryana campaign reached, Punjab's for a Punjab campaign's leads and for anyone asking in
+# Punjabi (Haryana's leads write Hindi, so only the campaign tells them apart).
+INVEST_VIDEOS = {
+    "gu": INVEST_VIDEO_GU,
+    "haryana": os.environ.get("BOT_INVEST_VIDEO_HARYANA", os.path.join("data", "bot_media", "investment_haryana.mp4")),
+    "punjab": os.environ.get("BOT_INVEST_VIDEO_PUNJAB", os.path.join("data", "bot_media", "investment_punjab.mp4")),
+}
 INVEST_VIDEO_MAX_BYTES = 16 * 1024 * 1024
 INVEST_VIDEO_DAYS = 25
 INVEST_VIDEO_RENEW_DAYS = 18
 INVEST_VIDEO_UPLOAD_TIMEOUT = 900
-_invest_upload_lock = threading.Lock()
+_invest_upload_locks = {v: threading.Lock() for v in INVEST_VIDEOS}
+_invest_upload_lock = _invest_upload_locks["gu"]
 INVEST_VIDEO_SETTING = "bot_invest_video_gu"
 # Asked again soon after: not sent twice in a row.
 INVEST_VIDEO_AGAIN = timedelta(minutes=30)
+_GURMUKHI = re.compile(r"[਀-੿]")
+
+
+def _video_path(video: str) -> str:
+    # Gujarat's read at call time, so BOT_INVEST_VIDEO_GU (or a test) can point elsewhere.
+    return INVEST_VIDEO_GU if video == "gu" else INVEST_VIDEOS[video]
+
+
+def _video_setting(video: str) -> str:
+    return INVEST_VIDEO_SETTING if video == "gu" else f"bot_invest_video_{video}"
+
+
+def _newest_campaign_reach(db: Session, phone: str):
+    """(campaign, template, recipient) of the newest template campaign that reached this number, or None."""
+    from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
+
+    return (db.query(WhatsAppCampaign, WhatsAppCampaignRecipient)
+            .join(WhatsAppCampaignRecipient,
+                  WhatsAppCampaignRecipient.campaign_id == WhatsAppCampaign.campaign_id)
+            .filter(WhatsAppCampaignRecipient.phone == phone,
+                    WhatsAppCampaignRecipient.provider_message_id.isnot(None),
+                    WhatsAppCampaign.template_id.isnot(None))
+            .order_by(WhatsAppCampaignRecipient.created_at.desc())
+            .first())
 
 
 def from_gujarat_campaign(db: Session, phone: str) -> bool:
     """Whether the newest campaign that reached this number was a Gujarat one (written for Gujarat, or in Gujarati)."""
-    from src.models.whatsapp import WhatsAppCampaign, WhatsAppCampaignRecipient
-
-    row = (db.query(WhatsAppCampaign)
-           .join(WhatsAppCampaignRecipient,
-                 WhatsAppCampaignRecipient.campaign_id == WhatsAppCampaign.campaign_id)
-           .filter(WhatsAppCampaignRecipient.phone == phone,
-                   WhatsAppCampaignRecipient.provider_message_id.isnot(None),
-                   WhatsAppCampaign.template_id.isnot(None))
-           .order_by(WhatsAppCampaignRecipient.created_at.desc())
-           .first())
-    template = row.template if row else None
+    row = _newest_campaign_reach(db, phone)
+    template = row[0].template if row else None
     if template is None:
         return False
     return (template.target_state or "").strip().lower() == "gujarat" or language_of_template(template) == "gu"
+
+
+def campaign_state(db: Session, phone: str) -> Optional[str]:
+    """
+    The state the newest campaign that reached them was for, lower case: the template's own
+    state, else the state of the shop it went to, else a state in the campaign's name
+    ("Gujarat Bodeli Nov 17"). None when nothing says.
+    """
+    row = _newest_campaign_reach(db, phone)
+    if not row:
+        return None
+    campaign, recipient = row
+    template = campaign.template
+    if template is not None and (template.target_state or "").strip():
+        return template.target_state.strip().lower()
+    if recipient.business_id:
+        from src.models import Business
+        biz = db.get(Business, recipient.business_id)
+        if biz is not None and (biz.state or "").strip():
+            return biz.state.strip().lower()
+    name = (campaign.name or "").lower()
+    return next((s for s in ("gujarat", "haryana", "punjab") if s in name), None)
+
+
+def invest_video_for(db: Session, conv, said: str = "") -> Optional[str]:
+    """
+    Which breakdown video a lead gets, or None (the text goes): Gujarati for a Gujarat
+    campaign's lead; Punjab's for a Punjab campaign's lead or anyone writing or chatting in
+    Punjabi; Haryana's for a Haryana campaign's lead.
+    """
+    if from_gujarat_campaign(db, conv.phone):
+        return "gu"
+    state = campaign_state(db, conv.phone)
+    if state == "punjab":
+        return "punjab"
+    if state == "haryana":
+        return "haryana"
+    if _GURMUKHI.search(said or "") or _lang(db, conv) == "pa":
+        return "punjab"
+    return None
+
+
+def agent_controls_on_video(db) -> bool:
+    from src.services import agent_controls
+    return agent_controls.is_on(db, "invest_video")
 
 
 def _video_stamp(path: str) -> str:
     return f"{os.path.getsize(path)}:{int(os.path.getmtime(path))}"
 
 
-def upload_invest_video(path: Optional[str] = None, db: Optional[Session] = None) -> Optional[str]:
+def upload_invest_video(path: Optional[str] = None, db: Optional[Session] = None, video: str = "gu") -> Optional[str]:
     """
-    Upload the video to Meta and keep its id; the id, or None. Slow (minutes),
-    so it runs in a thread or by hand, never while a lead waits; one at a time.
+    Upload a breakdown video to Meta and keep its id; the id, or None. Slow (minutes),
+    so it runs in a thread or by hand, never while a lead waits; one at a time per video.
     """
     from src.database import SessionLocal
 
-    path = path or INVEST_VIDEO_GU
-    if not _invest_upload_lock.acquire(blocking=False):
+    path = path or _video_path(video)
+    lock = _invest_upload_locks[video]
+    if not lock.acquire(blocking=False):
         return None  # already uploading
     try:
         started = time.monotonic()
@@ -836,73 +906,74 @@ def upload_invest_video(path: Optional[str] = None, db: Optional[Session] = None
         meta = inbox.MetaWhatsAppService()
         media_id = meta.upload_media(path, "video", timeout=INVEST_VIDEO_UPLOAD_TIMEOUT)
         if not media_id:
-            logger.warning(f"bot event=INVEST_VIDEO_UPLOAD_FAILED seconds={round(time.monotonic() - started)} "
+            logger.warning(f"bot event=INVEST_VIDEO_UPLOAD_FAILED video={video} seconds={round(time.monotonic() - started)} "
                            f"error={getattr(meta, 'last_media_error', None)}")
             return None
         own = db is None
         db = SessionLocal() if own else db
         try:
             value = json.dumps({"media_id": media_id, "file": _video_stamp(path), "uploaded_at": inbox.now().isoformat()})
-            row = db.query(AppSetting).filter(AppSetting.key == INVEST_VIDEO_SETTING).first()
+            row = db.query(AppSetting).filter(AppSetting.key == _video_setting(video)).first()
             if row:
                 row.value = value
             else:
-                db.add(AppSetting(key=INVEST_VIDEO_SETTING, value=value))
+                db.add(AppSetting(key=_video_setting(video), value=value))
             db.commit()
         finally:
             if own:
                 db.close()
-        logger.info(f"bot event=INVEST_VIDEO_UPLOADED seconds={round(time.monotonic() - started)}")
+        logger.info(f"bot event=INVEST_VIDEO_UPLOADED video={video} seconds={round(time.monotonic() - started)}")
         return media_id
     finally:
-        _invest_upload_lock.release()
+        lock.release()
 
 
-def _upload_in_background(path: str) -> None:
-    if not _invest_upload_lock.locked():
-        threading.Thread(target=upload_invest_video, args=(path,), daemon=True, name="invest-video-upload").start()
+def _upload_in_background(path: str, video: str = "gu") -> None:
+    if not _invest_upload_locks[video].locked():
+        threading.Thread(target=upload_invest_video, args=(path, None, video), daemon=True,
+                         name=f"invest-video-upload-{video}").start()
 
 
-def _invest_video_id(db: Session, path: str) -> Optional[str]:
+def _invest_video_id(db: Session, path: str, video: str = "gu") -> Optional[str]:
     """Meta's id for the video while the kept one is fresh and the file unchanged; else None, and an upload starts."""
-    row = db.query(AppSetting).filter(AppSetting.key == INVEST_VIDEO_SETTING).first()
+    row = db.query(AppSetting).filter(AppSetting.key == _video_setting(video)).first()
     kept = json.loads(row.value) if row and row.value else {}
     age = (inbox.now() - datetime.fromisoformat(kept["uploaded_at"])) if kept.get("uploaded_at") else None
     if kept.get("media_id") and kept.get("file") == _video_stamp(path) and age is not None \
             and age < timedelta(days=INVEST_VIDEO_DAYS):
         if age >= timedelta(days=INVEST_VIDEO_RENEW_DAYS):
-            _upload_in_background(path)  # renewed before Meta forgets it
+            _upload_in_background(path, video)  # renewed before Meta forgets it
         return kept["media_id"]
-    _upload_in_background(path)
+    _upload_in_background(path, video)
     return None
 
 
-def _send_invest_video(db, conv) -> bool:
-    """The Gujarati investment video, recorded in the thread. False when it could not go (the text goes instead)."""
+def _send_invest_video(db, conv, video: str = "gu") -> bool:
+    """A breakdown video, recorded in the thread. False when it could not go (the text goes instead)."""
     from src.models.inbox import WhatsAppMessage
 
-    path = INVEST_VIDEO_GU
+    path = _video_path(video)
     if not os.path.isfile(path) or os.path.getsize(path) > INVEST_VIDEO_MAX_BYTES:
-        logger.warning(f"bot event=INVEST_VIDEO_MISSING path={path} "
+        logger.warning(f"bot event=INVEST_VIDEO_MISSING video={video} path={path} "
                        f"size={os.path.getsize(path) if os.path.isfile(path) else None}")
         return False
-    media_id = _invest_video_id(db, path)
+    media_id = _invest_video_id(db, path, video)
     if not media_id:
         return False
     caption = _t(db, conv, "invest_video_caption")
     ok, provider_id, _s, error, _c = inbox.MetaWhatsAppService().send_media_message(
         conv.phone, "video", media_id, caption, None)
     if not ok:
-        logger.warning(f"bot event=INVEST_VIDEO_NOT_SENT phone=...{conv.phone[-4:]} error={str(error)[:200]}")
+        logger.warning(f"bot event=INVEST_VIDEO_NOT_SENT video={video} phone=...{conv.phone[-4:]} error={str(error)[:200]}")
         # A kept id Meta no longer has: uploaded afresh, in the background.
-        db.query(AppSetting).filter(AppSetting.key == INVEST_VIDEO_SETTING).delete()
-        _upload_in_background(path)
+        db.query(AppSetting).filter(AppSetting.key == _video_setting(video)).delete()
+        _upload_in_background(path, video)
         return False
     db.add(WhatsAppMessage(
         message_id=uuid.uuid4().hex, phone=conv.phone, direction="OUT", kind="video",
         body=f"[Video] {caption}",
         payload={"stored": path, "mime_type": "video/mp4", "filename": os.path.basename(path),
-                 "size": os.path.getsize(path), "bot": "invest_video"},
+                 "size": os.path.getsize(path), "bot": "invest_video", "video": video},
         provider_message_id=provider_id, status="SENT", sent_by="bot", created_at=inbox.now(),
     ))
     conv.last_message_at = inbox.now()
@@ -911,15 +982,16 @@ def _send_invest_video(db, conv) -> bool:
     return True
 
 
-def _invest_breakdown(db, conv) -> bool:
-    """For a Gujarat campaign's lead, the breakdown as the video. True when the video went."""
+def _invest_breakdown(db, conv, said: str = "") -> bool:
+    """The breakdown as a video for the leads that have one (invest_video_for). True when the video went."""
     from src.services import agent_controls
-    if not agent_controls.is_on(db, "invest_video") or not from_gujarat_campaign(db, conv.phone):
+    video = invest_video_for(db, conv, said) if agent_controls.is_on(db, "invest_video") else None
+    if not video:
         return False
     last = (conv.bot_data or {}).get("invest_video_at")
     if last and inbox.now() - datetime.fromisoformat(last) < INVEST_VIDEO_AGAIN:
         return True  # just sent: not again
-    return _send_invest_video(db, conv)
+    return _send_invest_video(db, conv, video)
 
 
 def _ask_invest(db, conv, lang):
@@ -1115,7 +1187,7 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
         if "investment" in faq:
             # How much, then what the money is for: it stays theirs. A Gujarat
             # campaign's lead gets the video after the answer instead of the text.
-            if from_gujarat_campaign(db, conv.phone):
+            if agent_controls_on_video(db) and invest_video_for(db, conv, said):
                 invest_video = True
             else:
                 answer += "\n\n" + _t(db, conv, "invest_explained")
@@ -1165,9 +1237,24 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
         else:
             body = answer if body == _t(db, conv, "acknowledge") else f"{answer}\n\n{body}"
     elif asked:
-        flag(conv, f"Voice note: {said}" if voice and said else ("Voice note" if voice else said))
-        ack = _t(db, conv, "question_ack")
-        body = ack if body == _t(db, conv, "acknowledge") else f"{ack}\n\n{body}"
+        # Not in Eko's FAQ. Claude CLI may have answered the same question before (claude_answers,
+        # 19 Nov 2026): then the bot sends that answer itself. Otherwise it goes to the team as a
+        # ticket, and to Claude CLI, which answers within a few minutes if it can.
+        from src.services import claude_answers
+        learned = claude_answers.match(db, said) if said and not voice and claude_answers.on(db) else None
+        reused = claude_answers.answer_in(learned, _lang(db, conv), said) if learned else ""
+        if reused:
+            from src.services import tickets
+            tickets.answered_by_bot(db, conv, said, reused, by=claude_answers.BY)
+            claude_answers.remember_wording(db, learned["id"], said)
+            body = reused if body == _t(db, conv, "acknowledge") else f"{reused}\n\n{body}"
+        else:
+            flag(conv, f"Voice note: {said}" if voice and said else ("Voice note" if voice else said))
+            if said and not voice:
+                claude_answers.ask(db, conv, said, _lang(db, conv))
+                data = conv.bot_data   # kept when the pacing below writes bot_data again
+            ack = _t(db, conv, "question_ack")
+            body = ack if body == _t(db, conv, "acknowledge") else f"{ack}\n\n{body}"
     if last and inbox.now() - datetime.fromisoformat(last) >= STREAK_RESET:
         streak = 0
     if streak >= (MAX_QUESTION_STREAK if asked else MAX_FALLBACK_STREAK):
@@ -1179,7 +1266,7 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
         _say(db, conv, body, **kw)
         return
     _say(db, conv, body)
-    if not _invest_breakdown(db, conv):
+    if not _invest_breakdown(db, conv, said):
         _say(db, conv, _t(db, conv, "invest_explained"))
     if rest:
         _say(db, conv, rest, **kw)
@@ -1240,6 +1327,15 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
             conv.bot_data = {**(conv.bot_data or {}), "lang": spoken,
                              "lang_campaign": _campaign_lang(db, conv)}
         msg = _Spoken(msg, message_text(msg))
+    elif msg.kind == "text" and conv.bot_step != CHOOSE_LANG and len(re.findall(r"[^\W\d_]+", msg.body or "")) >= 2:
+        # A sentence is answered in the language it was written in, not the campaign's (19 Nov
+        # 2026: "who are you?" got a Gujarati answer because the campaign was Gujarati). As with
+        # a voice note, the chat carries on in that language.
+        from src.services import reply_language
+        found = reply_language.of_text(msg.body, _lang(db, conv))
+        if found and found[0] in MESSAGES and found[0] != _lang(db, conv):
+            conv.bot_data = {**(conv.bot_data or {}), "lang": found[0],
+                             "lang_campaign": _campaign_lang(db, conv)}
 
     _note_script(conv, msg)
     # Asked not to be messaged (DPDP): on the list, told so once, nothing more.

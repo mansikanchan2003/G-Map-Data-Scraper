@@ -967,6 +967,139 @@ def branch_plan(db: Session, g: dict, book: dict) -> Optional[dict]:
     }
 
 
+
+# --- CSPs near DCs: a day-by-day plan around the SBI-allocated CSP centres (19 Nov 2026) ---------
+#
+# Like the SBI branch plan: who is left to message near each centre, two campaigns a day
+# (Haryana at 10:30 AM, Punjab at 12:30 PM, the plan of 17 Nov), up to CAMPAIGN_CAP people
+# each, no campaign on Sunday. Only shops labelled CSPs near DCs (Business.near_dc).
+
+NEAR_DC_TIMES = {"haryana": "10:30 AM", "punjab": "12:30 PM"}
+NEAR_DC_DAYS = 7
+
+
+def near_dc_plan(db: Session, book: dict) -> Optional[dict]:
+    from src.models import Job
+
+    centres = {l.location_id: l for l in db.query(Location).filter(Location.source_dataset == "sbi_csp_centre")}
+    if not centres:
+        return None
+    stages = [k for k, _ in ci.STAGES]
+    facts = book.get("_facts") or []
+    overall = {k: _rate(sum(f.get(k, 0) for f in facts), len(facts)) for k in stages}
+    messaged = {_last10(p) for (p,) in db.query(WhatsAppCampaignRecipient.phone)}
+    left: Dict[str, Counter] = {}
+    seen = set()
+    q = (db.query(Business.phone, Business.category, Job.location_id, Business.state)
+         .join(Job, Job.job_id == Business.job_id)
+         .filter(Business.near_dc.is_(True), Business.is_valid.is_(True), CONTACTABLE, NOT_PARTNER,
+                 Business.phone.isnot(None)))
+    other: Dict[str, Counter] = {}
+    for phone, category, loc_id, state in q:
+        d = _last10(phone)
+        if len(d) != 10 or d[0] not in "6789" or d in messaged or d in seen:
+            continue
+        seen.add(d)
+        if loc_id in centres:
+            left.setdefault(loc_id, Counter())[category or "Unknown"] += 1
+        else:
+            # Found again by a centre's search, kept with an earlier search's place.
+            other.setdefault((state or "").strip().lower(), Counter())[category or "Unknown"] += 1
+
+    cap = min(campaign_approval_cap(), CAMPAIGN_MAX)
+    now_ist = datetime.now(timezone.utc).astimezone(IST)
+    # Counted before the campaigns below use the counters up.
+    left_by_state: Counter = Counter()
+    for loc_id, c in left.items():
+        left_by_state[(centres[loc_id].state or "").strip().title()] += sum(c.values())
+    for state, c in other.items():
+        left_by_state[state.title()] += sum(c.values())
+    rows = []
+    for loc_id, l in centres.items():
+        c = left.get(loc_id, Counter())
+        rows.append({"centre": (l.anchor_name or "").split(" (")[0], "code": l.pin_basis, "pincode": l.pincode if (l.pincode or "").isdigit() else None,
+                     "district": l.district, "subdistrict": l.tehsil, "state": l.state, "left": sum(c.values()),
+                     "_pool": Counter(c)})
+    rows.sort(key=lambda r: (-r["left"], r["centre"]))
+    by_state: Dict[str, List[dict]] = {}
+    for r in rows:
+        by_state.setdefault((r["state"] or "").strip().lower(), []).append(r)
+
+    def campaign(state: str, at: str) -> List[dict]:
+        need, slots = cap, []
+        extra = other.get(state, Counter())
+        for r in by_state.get(state, []):
+            have = sum(r["_pool"].values())
+            if need <= 0 or not have:
+                continue
+            take = min(need, have)
+            kinds, got = [], 0
+            for cat, n in r["_pool"].most_common():
+                if got >= take:
+                    break
+                use = min(n, take - got)
+                kinds.append({"category": cat, "people": use})
+                r["_pool"][cat] -= use
+                got += use
+            r["_pool"] += Counter()
+            slots.append({"centre": r["centre"], "code": r["code"], "pincode": r["pincode"], "district": r["district"],
+                          "subdistrict": r["subdistrict"], "state": r["state"], "people": take, "kinds": kinds[:4],
+                          "time": at, "expect": {k: round(take * overall[k], 2) for k in stages}})
+            need -= take
+        if need > 0 and sum(extra.values()):
+            take = min(need, sum(extra.values()))
+            kinds, got = [], 0
+            for cat, n in extra.most_common():
+                if got >= take:
+                    break
+                use = min(n, take - got)
+                kinds.append({"category": cat, "people": use})
+                extra[cat] -= use
+                got += use
+            extra += Counter()
+            slots.append({"centre": "Other shops these searches found", "code": None, "pincode": None, "district": None,
+                          "subdistrict": None, "state": state.title(), "people": take, "kinds": kinds[:4], "time": at,
+                          "expect": {k: round(take * overall[k], 2) for k in stages}})
+        return slots
+
+    days, day = [], now_ist.date()
+    while len(days) < NEAR_DC_DAYS and day <= now_ist.date() + timedelta(days=NEAR_DC_DAYS * 2):
+        if day.weekday() != 6:
+            slots = []
+            for state, at in NEAR_DC_TIMES.items():
+                hh, mm = (10, 30) if at.startswith("10") else (12, 30)
+                if day == now_ist.date() and (now_ist.hour, now_ist.minute) >= (hh, mm):
+                    continue
+                slots += campaign(state, at)
+            if slots:
+                days.append(_branch_day(day, now_ist.date(), slots, stages))
+            elif not any(sum(r["_pool"].values()) for r in rows) and not any(sum(c.values()) for c in other.values()):
+                break
+        day += timedelta(days=1)
+    for r in rows:
+        r.pop("_pool", None)
+    return {
+        "days": days,
+        "centres": rows,
+        "send_times": NEAR_DC_TIMES,
+        "cap": cap,
+        "left": len(seen),
+        "left_by_state": {s: n for s, n in left_by_state.items() if s and n},
+        "week_people": sum(d["people"] for d in days),
+        "week_expect": {k: round(sum(d["expect"][k] for d in days), 2) for k in stages},
+        "overall_rates": overall,
+        "judged_on": book["judged_on"],
+        "judged_on_label": ci.STAGE_LABELS[book["judged_on"]],
+    }
+
+
+def campaign_approval_cap() -> int:
+    """The most one campaign sends without a second approval (199 while approval starts at 200)."""
+    from src.services import campaign_approval
+    approval = campaign_approval.approval_min()
+    return approval - 1 if approval > CAMPAIGN_MIN else CAMPAIGN_MAX
+
+
 def plan(db: Session) -> dict:
     """The whole plan: goal, funnel, warm people, targets, creative lessons and next steps."""
     facts = ci.load_facts(db)
@@ -998,6 +1131,7 @@ def plan(db: Session) -> dict:
         "beyond": out,
         "next_campaign": next_campaign(db, g, book, t, pool),
         "branch_plan": branch_plan(db, g, book),
+        "near_dc_plan": near_dc_plan(db, book),
         "next_steps": next_steps(g, f, warm, t, c, book, out),
     }
 

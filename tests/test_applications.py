@@ -120,7 +120,7 @@ def test_people_in_the_onboarding_or_guidance_flow_are_applications(client):
 def test_the_totals_follow_the_teams_definitions(client):
     stats, apps = _by_phone(client)
     assert stats == {"total": 7, "pin_qualified": 4, "strongly_qualified": 2,
-                     "not_qualified": 3, "submitted": 1, "removed": 0}
+                     "not_qualified": 3, "submitted": 1, "esaf": 0, "removed": 0}
     assert apps["+919000000001"]["verdict"] == "Strongly qualified"
     assert apps["+919000000002"]["strongly_qualified"] is True
     assert apps["+919000000003"]["not_qualified_reasons"] == ["Below 12th"]
@@ -632,4 +632,45 @@ def test_a_recorded_call_where_they_chose_esaf_moves_them(client, recordings_dir
     conv = db.get(WhatsAppConversation, rec.phone)
     assert conv.disposition == "int_esaf" and conv.disposition_by == "call_recording" and onboarding_bot.is_esaf(conv)
     assert "ESAF" in rec.outcome_note and rec.transcript.startswith("Namaste")
+    db.close()
+
+
+def test_each_lead_is_marked_for_sbi_or_esaf_and_has_a_brief(client):
+    """19 Nov 2026: For SBI / Interested in ESAF on every lead, an ESAF count, and the Summary page."""
+    data = client.get("/api/v1/applications").json()
+    by = {a["phone"]: a for a in data["items"]}
+    assert all(a["programme"] in ("sbi", "esaf") for a in by.values())
+    assert data["stats"]["esaf"] == sum(a["programme"] == "esaf" for a in by.values())
+    phone = next(iter(by))
+    b = client.get(f"/api/v1/applications/{phone.lstrip('+')}/brief").json()
+    assert b["phone"] == phone and [s["title"] for s in b["script"]][0] == "Shuruaat"
+    labels = [f["label"] for f in b["facts"]]
+    assert "PIN code" in labels and "Padhai" in labels and "Programme" in labels
+    text = " ".join(line for s in b["script"] for line in s["lines"]).lower()
+    assert "zero investment" not in text.replace("\"zero investment\"", "") and "commission ka" not in text
+    assert client.get("/api/v1/applications/919999999999/brief").status_code == 404
+
+
+def test_sbi_area_is_20_km_from_one_of_our_sbi_branches(client):
+    """19 Nov 2026: SBI takes people within 20 km of our branches' PINs, not near any place we scraped."""
+    from src.models import Location
+    from src.models.sbi_branch import SbiBranch
+    db = TestingSessionLocal()
+    # A branch about 30 km from Chotila (363520): outside the 20 km.
+    db.add(SbiBranch(branch_code="60077", branch_name="Jasdan", pincode="360050", module="Rajkot"))
+    db.add(Location(location_id="loc-jasdan", pincode="360050", latitude=22.04, longitude=71.20,
+                    radius_km=10, anchor_name="Jasdan", source_dataset="test"))
+    db.commit()
+    stats, apps = _by_phone(client)
+    strong = apps["+919000000001"]
+    assert strong["pin_qualified"] is False and "Not qualified for SBI branch code" in strong["not_qualified_reasons"]
+    assert strong["nearest_sbi"]["branch_code"] == "60077" and strong["nearest_sbi"]["distance_km"] > 20
+    # The branch moved within 20 km: qualified again.
+    db.query(Location).filter_by(location_id="loc-jasdan").update({"latitude": 22.40, "longitude": 71.25})
+    db.commit()
+    stats, apps = _by_phone(client)
+    assert apps["+919000000001"]["pin_qualified"] is True and apps["+919000000001"]["verdict"] == "Strongly qualified"
+    b = client.get("/api/v1/applications/919000000001/brief").json()
+    branch = next(f["value"] for f in b["facts"] if f["label"] == "Nearest SBI branch")
+    assert "60077" in branch and "AO Rajkot" in branch and "km" in branch
     db.close()

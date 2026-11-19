@@ -53,9 +53,14 @@ AGENTS: Dict[str, dict] = {
     "auto_replies": {"label": "Greeting after a shop's auto-reply",
                      "on": "Greets chats whose only answer was their shop's automatic reply",
                      "off": "Those chats are left for the team"},
-    "invest_video": {"label": "Bot: Gujarat investment video",
-                     "on": "Gujarat campaign leads get the ₹3–5 lakh video instead of the text breakdown",
+    "invest_video": {"label": "Bot: investment videos (Gujarat, Haryana, Punjab)",
+                     "on": "Gujarat, Haryana and Punjab campaign leads (and anyone writing in Punjabi) get the "
+                           "₹3–5 lakh video of their state instead of the text breakdown",
                      "off": "Everyone gets the text breakdown"},
+    "claude_answers": {"label": "Bot: Claude CLI answers new questions",
+                       "on": "A question the bot cannot answer also goes to Claude CLI; a sound answer is sent, "
+                             "the ticket is solved, and the bot learns it",
+                       "off": "Such questions go only to the team"},
     "digilocker": {"label": "DigiLocker on the upload page",
                    "on": "People can fetch Aadhaar (and their licence) from DigiLocker; each fetch is billed",
                    "off": "The upload page offers uploads only; nothing is fetched or billed"},

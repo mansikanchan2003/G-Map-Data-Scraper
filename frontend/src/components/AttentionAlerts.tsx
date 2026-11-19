@@ -66,7 +66,7 @@ export const AttentionAlerts: React.FC = () => {
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold text-slate-100">Ticket {t.ticket_id} resolved</div>
             <div className="text-[11.5px] text-slate-400 truncate">
-              {t.raised_by || t.phone}{t.resolved_by ? ` · by ${t.resolved_by.split('@')[0]}` : ''} · {ago(t.resolved_at)}
+              {t.raised_by || t.phone}{t.resolved_by_claude ? ' · Solved by Claude CLI' : t.resolved_by ? ` · by ${t.resolved_by.split('@')[0]}` : ''} · {ago(t.resolved_at)}
             </div>
           </div>
           <button onClick={() => dismiss(t.ticket_id)} title="Dismiss"

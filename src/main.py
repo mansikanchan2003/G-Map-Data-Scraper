@@ -106,6 +106,10 @@ async def lifespan(app: FastAPI):
     if os.environ.get("CALL_RECORDINGS_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
         from src.services import call_recordings
         call_recordings.start()
+    # Campaign Insights' slow parts, worked out ahead (insights_cache, 19 Nov 2026).
+    if "pytest" not in sys.modules:
+        from src.services import insights_cache
+        insights_cache.start()
     yield
     # --- Shutdown ---
     try:
