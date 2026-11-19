@@ -927,6 +927,36 @@ def _age(db, hours):
     db.commit()
 
 
+def test_an_unanswered_reminder_is_followed_by_one_closure_at_20_hours(db):
+    from src.services import nudge_messages
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    assert nudges.tick(db, _hours_later(2.1)) == 1          # the reminder, with the question
+    assert onboarding_bot.ASK_EDUCATION in StubMeta.sent[-1][2]
+    assert nudges.tick(db, _hours_later(19)) == 0, "not before 20 hours"
+    assert nudges.tick(db, _hours_later(20.1)) == 1
+    assert StubMeta.sent[-1][2] == nudge_messages.QUIET_CLOSE["en"]
+    assert onboarding_bot.ASK_EDUCATION not in StubMeta.sent[-1][2]
+    assert nudges.tick(db, _hours_later(22)) == 0, "nothing more after the closure"
+
+
+def test_no_closure_without_a_reminder_first(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    c = conv(db)
+    c.bot_data = {**(c.bot_data or {}), "nudge_message_id": None}
+    db.commit()
+    # The reminder goes first even this late; the closure only after it.
+    assert nudges.tick(db, _hours_later(20.1)) == 1
+    assert onboarding_bot.ASK_EDUCATION in StubMeta.sent[-1][2]
+
+
+def test_the_closure_is_written_in_every_language():
+    from src.services import nudge_messages
+    for v in nudge_messages.VARIANTS:
+        assert nudge_messages.QUIET_CLOSE[v].strip() and "🙏" in nudge_messages.QUIET_CLOSE[v]
+
+
 def test_a_reply_and_a_new_pause_gets_a_new_nudge(db):
     tap_campaign(db)
     say(db, SERVED_PIN)

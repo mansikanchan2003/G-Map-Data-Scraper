@@ -13,6 +13,11 @@ a person (attention needed or the bot paused), never to people no AutoGMap
 campaign reached, and never once Meta's 24-hour window is closing, since a
 free-form message cannot be sent after it.
 
+The closure (Mansi, 20 Nov 2026), in place of the 20-hour reminder: when the reminder too has
+gone unanswered and 20 hours have passed since their last reply, one kind closing message
+(nudge_messages.QUIET_CLOSE) says we will not disturb them and that their application waits for
+them. After it the bot sends nothing more in that pause; a reply carries the flow on as before.
+
 A daemon thread in the backend process, like the photo queue; it relies on
 there being one backend process.
 """
@@ -30,6 +35,7 @@ from src.services import onboarding_bot as bot
 logger = logging.getLogger("gmap_scraper.nudges")
 
 AFTER = timedelta(hours=1)
+CLOSE_AFTER = timedelta(hours=20)
 # Left before the 24-hour window closes, so the reminder is still accepted.
 WINDOW_MARGIN = timedelta(minutes=10)
 CHECK_EVERY_SECONDS = 300
@@ -60,7 +66,7 @@ def due(db: Session, conv: WhatsAppConversation, now: datetime) -> bool:
     # One per pause: if the bot's last word is already the reminder, wait for
     # them. Recognised by the message itself rather than by times, which Meta
     # gives only to the second.
-    if last.message_id == (conv.bot_data or {}).get("nudge_message_id"):
+    if last.message_id in ((conv.bot_data or {}).get("nudge_message_id"), (conv.bot_data or {}).get("closure_message_id")):
         return False
     # An hour, unless the admin accepted another timing for this question from the bot coach.
     from src.services import learning_loop
@@ -91,6 +97,40 @@ def nudge(db: Session, conv: WhatsAppConversation, now: datetime) -> bool:
     return True
 
 
+def closure_due(db: Session, conv: WhatsAppConversation, now: datetime) -> bool:
+    """Whether their reminder went unanswered and 20 hours have passed since their last reply."""
+    if conv.bot_step not in bot.NUDGE_STEPS or conv.bot_paused or conv.needs_attention:
+        return False
+    last_in = inbox.aware(conv.last_inbound_at)
+    if not last_in or now - last_in < CLOSE_AFTER or now >= last_in + inbox.REPLY_WINDOW - WINDOW_MARGIN:
+        return False
+    from src.services import dispositions as dz
+    told = inbox.aware(conv.disposition_at)
+    if conv.disposition and told and told >= last_in and dz.group(conv.disposition) != "positive":
+        return False
+    data = conv.bot_data or {}
+    last = _last_message(db, conv.phone)
+    # The bot's last word is its reminder, still unanswered.
+    return bool(last and last.direction == "OUT" and last.sent_by == "bot"
+                and data.get("nudge_message_id") and last.message_id == data.get("nudge_message_id"))
+
+
+def close(db: Session, conv: WhatsAppConversation, now: datetime) -> bool:
+    from src.services import nudge_messages, opt_out
+    if opt_out.is_out(db, conv.phone):
+        return False
+    lang = bot._lang(db, conv)
+    key = "hinglish" if lang == "hi" and (conv.bot_data or {}).get("script") == "latin" else lang
+    body = nudge_messages.QUIET_CLOSE.get(key) or nudge_messages.QUIET_CLOSE["en"]
+    msg = inbox.send(db, conv.phone, body, sent_by="bot")
+    data = dict(conv.bot_data or {})
+    data["closed_at"] = now.isoformat()
+    data["closure_message_id"] = msg.message_id
+    conv.bot_data = data
+    logger.info(f"nudges event=CLOSED phone=...{conv.phone[-4:]} step={conv.bot_step} status={msg.status}")
+    return True
+
+
 def tick(db: Session, now: Optional[datetime] = None) -> int:
     """Send every reminder that is due. Returns how many were sent."""
     now = now or datetime.now(timezone.utc)
@@ -105,6 +145,8 @@ def tick(db: Session, now: Optional[datetime] = None) -> int:
     for conv in candidates:
         try:
             if due(db, conv, now) and inbox.from_campaign(db, conv.phone) and nudge(db, conv, now):
+                sent += 1
+            elif closure_due(db, conv, now) and inbox.from_campaign(db, conv.phone) and close(db, conv, now):
                 sent += 1
             db.commit()
         except Exception:
