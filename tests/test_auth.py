@@ -894,3 +894,11 @@ class TestHowTheAppOpens:
         client.post("/api/v1/auth/logout")
         r = client.post("/api/v1/auth/login", json={"email": "someone.else@eko.co.in", "password": GOOD_PASSWORD})
         assert r.json()["home_tab"] is None and r.json()["simple_view"] is False
+
+
+def test_biswajit_gets_the_same_easy_applications_page():
+    """19 Nov 2026: Biswajit Sir, like Kavya Ma'am."""
+    from src.models import User
+    from src.services import auth_service
+    assert auth_service.ui_prefs(User(email="biswajit@eko.co.in")) == {"home_tab": "applications", "simple_view": True}
+    assert auth_service.ui_prefs(User(email="Biswajit@Eko.co.in"))["simple_view"] is True

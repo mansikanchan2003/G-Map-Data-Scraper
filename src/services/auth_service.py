@@ -55,7 +55,9 @@ READ_ONLY_SAFE_POSTS = (
 # signing in, and the simple Applications page for someone without a technical
 # background. Kavya's only, as the user asked; USER_UI_PREFS (JSON, by email)
 # replaces it when set.
-DEFAULT_UI_PREFS = {"kavya.shukla@eko.co.in": {"home_tab": "applications", "simple_view": True}}
+DEFAULT_UI_PREFS = {"kavya.shukla@eko.co.in": {"home_tab": "applications", "simple_view": True},
+                    # Biswajit Sir (19 Nov 2026): the same easy Applications page as Kavya Ma'am.
+                    "biswajit@eko.co.in": {"home_tab": "applications", "simple_view": True}}
 
 
 def ui_prefs(user: "User") -> dict:
