@@ -116,12 +116,21 @@ async def upload_recording(
 # --- For the team, signed in --------------------------------------------------------------------
 
 team = APIRouter(prefix="/api/v1/call-recordings", tags=["Call recorder"])
-LISTENERS = ("admin", "manager", "operator")
+# Recordings, their transcripts and the zip: the owner only (Mansi, 19 Nov 2026).
+LISTENERS = ("admin",)
+# The call-recorder app's number list (no recordings in it): the team that runs the app.
+TEAM = ("admin", "manager", "operator")
 
 
 def _listener(user: User = Depends(current_user)) -> User:
     if user.role not in LISTENERS:
-        raise HTTPException(status_code=403, detail="Call recordings are for managers and operators.")
+        raise HTTPException(status_code=403, detail="Call recordings are for the owner only.")
+    return user
+
+
+def _team(user: User = Depends(current_user)) -> User:
+    if user.role not in TEAM:
+        raise HTTPException(status_code=403, detail="This is for managers and operators.")
     return user
 
 
@@ -160,7 +169,7 @@ def export_recordings(since: Optional[str] = None, db: Session = Depends(get_db)
 
 
 @team.get("/numbers.xlsx")
-def numbers_excel(db: Session = Depends(get_db), user: User = Depends(_listener)):
+def numbers_excel(db: Session = Depends(get_db), user: User = Depends(_team)):
     """
     The call-recorder app's list as Excel (Phone | Name | Description | Active), for
     uploading through the app's own admin panel. The API stays the live list; this is

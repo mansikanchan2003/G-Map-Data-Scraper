@@ -413,9 +413,14 @@ def test_the_call_recorder_list_needs_the_right_key(client, monkeypatch, server_
 
 @pytest.fixture
 def recordings_dir(tmp_path, monkeypatch):
+    from src.models import User
+    from src.routers.auth import current_user
     from src.services import call_recordings
     monkeypatch.setattr(call_recordings, "RECORDINGS_DIR", str(tmp_path))
     monkeypatch.setenv("CALL_RECORDER_API_KEY", KEY)
+    # Recordings are the owner's alone (19 Nov 2026): these tests listen as the admin.
+    app.dependency_overrides[current_user] = lambda: User(email="mansi@eko.co.in", full_name="Mansi",
+                                                          role="admin", status="APPROVED")
     return tmp_path
 
 
@@ -684,3 +689,15 @@ def test_sbi_area_is_20_km_from_one_of_our_sbi_branches(client):
     branch = next(f["value"] for f in b["facts"] if f["label"] == "Nearest SBI branch")
     assert "60077" in branch and "AO Rajkot" in branch and "km" in branch
     db.close()
+
+
+def test_only_the_owner_may_hear_or_list_recordings(client, recordings_dir):
+    """19 Nov 2026: a manager (Kavya Ma'am) sees no recordings; the recorder app's Excel stays hers."""
+    from src.models import User
+    from src.routers.auth import current_user
+    _upload(client, "09000000001")
+    app.dependency_overrides[current_user] = lambda: User(email="kavya.shukla@eko.co.in", role="manager", status="APPROVED")
+    assert client.get("/api/v1/call-recordings/summary").status_code == 403
+    assert client.get("/api/v1/call-recordings/export").status_code == 403
+    assert client.get("/api/v1/inbox/conversations/919000000001/recordings").json() == []
+    assert client.get("/api/v1/call-recordings/numbers.xlsx").status_code == 200

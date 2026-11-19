@@ -196,6 +196,16 @@
   --color-violet-300: #4c2fae;
   --color-violet-200: #3a2288;
   --color-violet-100: #2c1968;
+  /* Teal, for "CSPs near DCs" (19 Nov 2026): the dark theme's light teal was unreadable here. */
+  --color-teal-950: #eefaf7;
+  --color-teal-900: #d3f2ea;
+  --color-teal-800: #9fdccd;
+  --color-teal-700: #4fb39d;
+  --color-teal-500: #0d8a76;
+  --color-teal-400: #0a7363;
+  --color-teal-300: #075a4e;
+  --color-teal-200: #05473e;
+  --color-teal-100: #03342d;
 
   --eko-gold: #f9ab10;
   --eko-teal: #094053;

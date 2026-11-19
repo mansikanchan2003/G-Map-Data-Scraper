@@ -656,9 +656,12 @@ def conversation_calls(digits: str, db: Session = Depends(get_db)):
 
 
 @router.get("/conversations/{digits}/recordings")
-def conversation_recordings(digits: str, db: Session = Depends(get_db)):
+def conversation_recordings(digits: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Recordings of phone calls with this person, from the call-recorder app, newest first."""
+    from src.routers.call_recorder import LISTENERS
     from src.services import call_recordings
+    if user.role not in LISTENERS:
+        return []          # the owner only (19 Nov 2026): nothing shows for anyone else
     return call_recordings.for_phone(db, _get_conversation(db, digits).phone)
 
 
