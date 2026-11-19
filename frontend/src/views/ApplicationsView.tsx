@@ -9,6 +9,7 @@ import { formatDateTime } from '../utils/datetime';
 import { recorderNumbersExcelUrl } from '../api/inbox';
 import { QualifiedLeadsView } from './QualifiedLeadsView';
 import { LeadJourneyView } from './LeadJourneyView';
+import { useShowMore, ShowMoreButton } from '../components/ShowMore';
 
 /**
  * Everyone who started onboarding through the WhatsApp bot: how far they got,
@@ -599,7 +600,9 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
 };
 
 /** Leads: everyone who has submitted their documents, newest first. */
-const LeadsBlock: React.FC<{ leads: Application[]; onOpen: (phone: string) => void }> = ({ leads, onOpen }) => (
+const LeadsBlock: React.FC<{ leads: Application[]; onOpen: (phone: string) => void }> = ({ leads, onOpen }) => {
+  const more = useShowMore(leads, 6);
+  return (
   <section className="rounded-2xl overflow-hidden shadow-md"
     style={{ background: 'linear-gradient(120deg, #0a3543 0%, #16435a 60%, #1d5a6e 100%)' }}>
     <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-2 text-white">
@@ -617,7 +620,7 @@ const LeadsBlock: React.FC<{ leads: Application[]; onOpen: (phone: string) => vo
       <div className="px-5 pb-5 text-sm text-white/70">No one has submitted their documents yet. The Campaign Insights plan lists who to call first.</div>
     ) : (
       <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        {leads.map(a => (
+        {more.shown.map(a => (
           <div key={a.phone} className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-sm">
             <div className="flex items-start gap-3">
               <Avatar a={a} tone="bg-amber-950 text-amber-300" />
@@ -657,8 +660,10 @@ const LeadsBlock: React.FC<{ leads: Application[]; onOpen: (phone: string) => vo
         ))}
       </div>
     )}
+    {more.hidden > 0 && <div className="px-4 pb-4"><ShowMoreButton hidden={more.hidden} open={more.open} onClick={more.toggle} noun={`more lead${more.hidden === 1 ? '' : 's'}`} className="!mt-0 bg-white/10 border-white/20 text-white hover:bg-white/20" /></div>}
   </section>
-);
+  );
+};
 
 const Field: React.FC<{ icon: string; label: string; value: React.ReactNode }> = ({ icon, label, value }) => (
   <div className="flex gap-2.5 min-w-0">

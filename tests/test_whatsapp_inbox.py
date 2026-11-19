@@ -4534,3 +4534,10 @@ def test_a_question_is_answered_in_the_language_it_was_asked_in(db):
     assert not re.search(r"[\u0A80-\u0AFF]", sent), "no Gujarati letters in the answer"
     assert re.search(r"[A-Za-z]{4,}", sent)
     assert conv(db).bot_data["lang"] == "en"
+
+
+@pytest.mark.parametrize("asked", ["who are you?", "Who is this?", "Aap kaun ho?", "what is eko", "tame kon cho?"])
+def test_who_are_you_is_answered_from_ekos_faq(asked):
+    """19 Nov 2026: "who are you?" went to the team; Eko's own answer covers it."""
+    from src.services import eko_knowledge
+    assert eko_knowledge.match(asked)[:1] == ["real"]

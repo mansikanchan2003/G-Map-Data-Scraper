@@ -1,4 +1,5 @@
 import React from 'react';
+import { useShowMore, ShowMoreButton } from './ShowMore';
 import type { BranchDay, BranchPlan as Plan, Stage } from '../api/insights';
 
 /**
@@ -92,6 +93,8 @@ const DayCard: React.FC<{ d: BranchDay; first: boolean; daily: number }> = ({ d,
 };
 
 export const BranchPlanCard: React.FC<{ plan: Plan | null | undefined }> = ({ plan: p }) => {
+  const days = useShowMore(p?.days || [], 2);
+  const rows = useShowMore(p?.branches || [], 5);
   if (!p) return null;
   const leads = p.week_expect.lead;
   const maxLeft = Math.max(1, ...p.branches.map(b => b.left));
@@ -134,8 +137,11 @@ export const BranchPlanCard: React.FC<{ plan: Plan | null | undefined }> = ({ pl
 
       <div className="p-5 space-y-5">
         {p.days.length ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
-            {p.days.map((d, i) => <DayCard key={d.date} d={d} first={i === 0} daily={p.daily} />)}
+          <div>
+            <div className={`grid gap-3 sm:grid-cols-2 ${days.open ? 'lg:grid-cols-4 2xl:grid-cols-7' : ''}`}>
+              {days.shown.map((d, i) => <DayCard key={d.date} d={d} first={i === 0} daily={p.daily} />)}
+            </div>
+            <ShowMoreButton hidden={days.hidden} open={days.open} onClick={days.toggle} noun={`more day${days.hidden === 1 ? '' : 's'}`} />
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-slate-700 p-6 text-center text-sm text-slate-400">
@@ -171,7 +177,7 @@ export const BranchPlanCard: React.FC<{ plan: Plan | null | undefined }> = ({ pl
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
-                {p.branches.map((b, i) => (
+                {rows.shown.map((b, i) => (
                   <tr key={b.branch_code} className="hover:bg-slate-800/40">
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2 min-w-0">
@@ -203,6 +209,7 @@ export const BranchPlanCard: React.FC<{ plan: Plan | null | undefined }> = ({ pl
               </tbody>
             </table>
           </div>
+          <div className="px-3 pb-3"><ShowMoreButton hidden={rows.hidden} open={rows.open} onClick={rows.toggle} noun={`more branch${rows.hidden === 1 ? '' : 'es'}`} /></div>
         </div>
       </div>
     </section>

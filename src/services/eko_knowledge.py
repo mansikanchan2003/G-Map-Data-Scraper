@@ -473,7 +473,11 @@ MORE_KEYS: Dict[str, List[str]] = {
             "kya main bank ka", "bank wala ban", "मुलाजिम", "कर्मचारी", "નોકરિયાત", "ਮੁਲਾਜ਼ਮ"],
     "real": ["aap sahi ho", "sahi ho", "paise le liye", "thag liya", "thage gaye", "fraud hua", "dhokha hua", "sach", "sacha", "sachcha", "bharosa", "vishwas", "trust", "scam", "dhokha", "thagi", "nakli", "legit",
              "authorized", "authorised", "registered company", "sahi company", "eko kya hai", "eko company", "eko kya company", "kaun si company", "company ka naam",
-             "विश्वास", "नकली", "ठगी", "ભરોસો", "ਭਰੋਸਾ"],
+             "विश्वास", "नकली", "ठगी", "ભરોસો", "ਭਰੋਸਾ",
+             # Who is writing to them (19 Nov 2026: "who are you?" went to the team).
+             "who are you", "who is this", "who r u", "what is eko", "about eko", "aap kaun", "aap kon",
+             "kaun hain aap", "tame kon", "tusi kaun", "आप कौन", "तुम कौन", "તમે કોણ",
+             "ਤੁਸੀਂ ਕੌਣ"],
     "fees": ["form ka paisa", "form ka koi paisa", "form ke paise", "form ka charge", "bharne ka charge", "form bharne ka charge", "koi charge", "apply ka charge", "fees lagegi", "kitni fees", "form fees", "charge lagega", "registration fees", "apply free",
              "free hai", "mufat", "muft", "paise lagenge apply", "मुफ्त", "ફ્રી", "ਮੁਫ਼ਤ"],
     "investment": ["kitna lagta", "lagta hai total", "total kitna", "पैसा देना", "कितना पैसा", "paise ka kya", "paise ka scene", "paisa ka kya", "bina paisa", "bina invest", "zero investment", "paisa lagega", "paisa lagana", "kuch paisa", "paisa dena", "kuch invest", "invest karna",

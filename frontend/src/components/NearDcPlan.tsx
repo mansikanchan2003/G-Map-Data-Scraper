@@ -1,5 +1,6 @@
 import React from 'react';
 import type { NearDcPlan as Plan, NearDcDay, Stage } from '../api/insights';
+import { useShowMore, ShowMoreButton } from './ShowMore';
 
 /**
  * CSPs near DCs, day by day (19 Nov 2026): the shops at the 40 SBI-allocated CSP centres in the
@@ -22,6 +23,9 @@ const BANNER = 'linear-gradient(120deg, #053b3a 0%, #0f5e5a 55%, #14857d 100%)';
 
 const DayCard: React.FC<{ d: NearDcDay; first: boolean; cap: number }> = ({ d, first, cap }) => {
   const [day, ...rest] = d.label.split(', ');
+  // A campaign can span twenty centres: its top three show, the rest on a click (19 Nov 2026).
+  const [openTimes, setOpenTimes] = React.useState<string[]>([]);
+  const FIRST = 3;
   return (
     <div className={`rounded-xl border p-3.5 min-w-0 flex flex-col ${first
       ? 'border-teal-500/60 ring-1 ring-teal-500/30 bg-teal-500/5' : 'border-slate-800 bg-slate-950/60'}`}>
@@ -45,7 +49,7 @@ const DayCard: React.FC<{ d: NearDcDay; first: boolean; cap: number }> = ({ d, f
                 <span className="text-[11px] text-slate-300 font-semibold truncate">{state}</span>
                 <span className="text-[11px] text-slate-400 tabular-nums">{num(c.people)}</span>
               </div>
-              {slots.map((s, i) => (
+              {(openTimes.includes(c.time) ? slots : slots.slice(0, FIRST)).map((s, i) => (
                 <div key={`${c.time}-${s.code || i}`} className="min-w-0">
                   <div className="flex items-baseline gap-1.5 min-w-0">
                     <Icon name="share_location" className="text-[15px] text-teal-400 self-center" />
@@ -62,6 +66,13 @@ const DayCard: React.FC<{ d: NearDcDay; first: boolean; cap: number }> = ({ d, f
                   </div>
                 </div>
               ))}
+              {slots.length > FIRST && (
+                <button type="button" onClick={() => setOpenTimes(t => t.includes(c.time) ? t.filter(x => x !== c.time) : [...t, c.time])}
+                  className="w-full h-7 rounded-md border border-slate-800 bg-slate-900 hover:bg-slate-800/60 text-[11.5px] font-semibold text-teal-300 flex items-center justify-center gap-1">
+                  <Icon name={openTimes.includes(c.time) ? 'expand_less' : 'expand_more'} className="text-[15px]" />
+                  {openTimes.includes(c.time) ? 'Show fewer' : `Show ${slots.length - FIRST} more centres`}
+                </button>
+              )}
             </div>
           );
         })}
@@ -82,6 +93,7 @@ const DayCard: React.FC<{ d: NearDcDay; first: boolean; cap: number }> = ({ d, f
 };
 
 export const NearDcPlanCard: React.FC<{ plan: Plan | null | undefined }> = ({ plan: p }) => {
+  const days = useShowMore(p?.days || [], 2);
   if (!p) return null;
   const states = Object.entries(p.left_by_state || {});
   const withPeople = p.centres.filter(c => c.left > 0);
@@ -122,8 +134,11 @@ export const NearDcPlanCard: React.FC<{ plan: Plan | null | undefined }> = ({ pl
       </div>
       <div className="p-4">
         {p.days.length ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {p.days.map((d, i) => <DayCard key={d.date} d={d} first={i === 0} cap={p.cap} />)}
+          <div>
+            <div className={`grid gap-3 sm:grid-cols-2 ${days.open ? 'lg:grid-cols-3 xl:grid-cols-4' : ''}`}>
+              {days.shown.map((d, i) => <DayCard key={d.date} d={d} first={i === 0} cap={p.cap} />)}
+            </div>
+            <ShowMoreButton hidden={days.hidden} open={days.open} onClick={days.toggle} noun={`more day${days.hidden === 1 ? '' : 's'}`} />
           </div>
         ) : (
           <div className="text-sm text-slate-400 p-2">Everyone found near the centres has been messaged. Run more CSPs near DCs jobs to find new shops.</div>

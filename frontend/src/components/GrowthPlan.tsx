@@ -6,6 +6,7 @@ import {
 import { formatDateTime } from '../utils/datetime';
 import { BranchPlanCard } from './BranchPlan';
 import { NearDcPlanCard } from './NearDcPlan';
+import { useShowMore, ShowMoreButton } from './ShowMore';
 
 /**
  * The lead goal at the top of Campaign Insights: leads so far against the
@@ -532,6 +533,8 @@ const AfterUs: React.FC<{ out: Beyond }> = ({ out }) => {
   const csps = t.csps || 0;
   const maxCircle = Math.max(1, ...out.tara.circles.map(c => c.csps));
   const maxLeft = Math.max(1, ...out.need_campaign.map(d => d.left));
+  const circles = useShowMore(out.tara.circles, 6);
+  const districts = useShowMore(out.need_campaign, 6);
   const asOf = out.form.as_of || out.tara.as_of || out.targets_as_of;
   return (
     <Card icon="hub" title="After AutoGMap: the form and TARA" tint="bg-teal-950 text-teal-300"
@@ -576,7 +579,7 @@ const AfterUs: React.FC<{ out: Beyond }> = ({ out }) => {
             </div>
           )}
           <ul className="mt-3 space-y-1.5">
-            {out.tara.circles.map(c => (
+            {circles.shown.map(c => (
               <li key={c.circle} className="text-[12px]">
                 <div className="flex justify-between"><span className="text-slate-300">{c.circle}</span>
                   <span className="text-slate-500 tabular-nums">{c.active}{c.inactive ? <span className="text-amber-400"> +{c.inactive} inactive</span> : null}</span></div>
@@ -586,6 +589,7 @@ const AfterUs: React.FC<{ out: Beyond }> = ({ out }) => {
               </li>
             ))}
           </ul>
+          <ShowMoreButton hidden={circles.hidden} open={circles.open} onClick={circles.toggle} />
         </div>
 
         <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
@@ -594,7 +598,7 @@ const AfterUs: React.FC<{ out: Beyond }> = ({ out }) => {
           </div>
           <p className="mt-1 text-[11.5px] text-slate-500">{out.need_campaign_total} on Eko's targeting sheet; bars are businesses we found there and have not messaged.</p>
           <ul className="mt-3 space-y-2">
-            {out.need_campaign.map(d => (
+            {districts.shown.map(d => (
               <li key={`${d.state}-${d.district}`} className="text-[12px]">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-slate-200 truncate">{titleCase(d.district)} <span className="text-slate-500">· {d.state}</span></span>
@@ -613,6 +617,7 @@ const AfterUs: React.FC<{ out: Beyond }> = ({ out }) => {
               </li>
             ))}
           </ul>
+          <ShowMoreButton hidden={districts.hidden} open={districts.open} onClick={districts.toggle} noun="more districts" />
         </div>
       </div>
       {out.caveats.length > 0 && (
@@ -755,14 +760,17 @@ const Funnel: React.FC<{ plan: Plan }> = ({ plan }) => {
 const initials = (name: string | null, phone: string) =>
   (name || '').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase() || phone.slice(-2);
 
-const CallList: React.FC<{ plan: Plan }> = ({ plan }) => (
+const CallList: React.FC<{ plan: Plan }> = ({ plan }) => {
+  const people = useShowMore(plan.warm_people, 5);
+  return (
   <Card icon="call" title="Call these people first" tint="bg-amber-950 text-amber-300"
     subtitle="Part-way to applying and not ruled out: the quickest leads there are.">
     {plan.warm_people.length === 0 ? (
       <div className="text-sm text-slate-500 py-6 text-center">Nobody part-way right now.</div>
     ) : (
+      <>
       <ul className="divide-y divide-slate-800">
-        {plan.warm_people.map(p => (
+        {people.shown.map(p => (
           <li key={p.phone} className="flex items-center gap-3 py-2.5">
             <span className="h-9 w-9 shrink-0 rounded-full bg-sky-950 text-sky-300 text-xs font-bold flex items-center justify-center">
               {initials(p.name, p.phone)}
@@ -786,9 +794,12 @@ const CallList: React.FC<{ plan: Plan }> = ({ plan }) => (
           </li>
         ))}
       </ul>
+      <ShowMoreButton hidden={people.hidden} open={people.open} onClick={people.toggle} noun={`more ${people.hidden === 1 ? 'person' : 'people'}`} />
+      </>
     )}
   </Card>
-);
+  );
+};
 
 // ---------------------------------------------------------------------------
 // Where and whom to message
@@ -798,13 +809,14 @@ const TargetList: React.FC<{ title: string; icon: string; rows: GrowthRow[] }> =
   const tried = rows.filter(r => r.confidence !== 'untried');
   const untried = rows.filter(r => r.confidence === 'untried');
   const top = Math.max(0.0001, ...tried.map(r => r.rate || 0));
+  const list = useShowMore(tried, 6);
   return (
     <div className="min-w-0">
       <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
         <Icon name={icon} className="text-[16px]" />{title}
       </div>
       <ul className="space-y-2.5">
-        {tried.map(r => (
+        {list.shown.map(r => (
           <li key={r.name}>
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-slate-100 truncate flex-1" title={r.name}>{r.name}</span>
@@ -823,6 +835,7 @@ const TargetList: React.FC<{ title: string; icon: string; rows: GrowthRow[] }> =
           </li>
         ))}
       </ul>
+      <ShowMoreButton hidden={list.hidden} open={list.open} onClick={list.toggle} />
       {untried.length > 0 && (
         <div className="mt-4">
           <div className="text-[11px] font-semibold text-purple-300 mb-1.5">Worth a small test</div>
