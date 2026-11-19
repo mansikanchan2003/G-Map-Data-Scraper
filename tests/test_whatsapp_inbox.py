@@ -4749,3 +4749,31 @@ def test_near_dc_template_copies_carry_the_dc_button(db):
     assert made[0]["status"] == "Draft"
     t = db.query(WhatsAppTemplate).filter_by(name="csp_hindi · CSPs near DCs").one()
     assert [b["text"] for b in t.buttons] == ["Interested", campaign_buttons.DC_MEET["hi"]] and t.status == "Draft"
+
+
+def test_each_person_gets_the_email_in_their_language_with_the_design(monkeypatch):
+    """20 Nov 2026: Biswajit Sir Hindi, Kavya Ma'am Hinglish, others English; HTML with the text."""
+    import smtplib
+    from src.services import notifier
+    sent = []
+
+    class FakeSMTP:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def starttls(self): pass
+        def login(self, *a): pass
+        def send_message(self, msg): sent.append(msg)
+    for k, v in {"SMTP_HOST": "smtp.test", "SMTP_PORT": "587", "SMTP_FROM": "autogmap@eko.co.in"}.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
+    body = "Sunita Devi wants our District Coordinator to visit them.\n\nAvailable    Saturday, 11 AM\nName         Sunita Devi\n"
+    assert notifier._send("mansi@eko.co.in, biswajit@eko.co.in, kavya.shukla@eko.co.in", "AutoGMap: DC visit wanted — Sunita Devi", body)
+    by = {m["To"]: m for m in sent}
+    assert set(by) == {"mansi@eko.co.in", "biswajit@eko.co.in", "kavya.shukla@eko.co.in"}
+    text = lambda m: m.get_body(("plain",)).get_content()          # noqa: E731
+    html = lambda m: m.get_body(("html",)).get_content()           # noqa: E731
+    assert "wants our District Coordinator" in text(by["mansi@eko.co.in"])
+    assert "District Coordinator उनसे मिलने" in text(by["biswajit@eko.co.in"]) and "नाम" in html(by["biswajit@eko.co.in"])
+    assert "chahte hain" in text(by["kavya.shukla@eko.co.in"]) and "Naam" in html(by["kavya.shukla@eko.co.in"])
+    assert "Saturday, 11 AM" in html(by["biswajit@eko.co.in"]) and "AUTOGMAP" in html(by["biswajit@eko.co.in"])

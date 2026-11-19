@@ -38,6 +38,18 @@ def smtp_configured() -> bool:
 
 
 def _send(to: str, subject: str, body: str) -> bool:
+    """
+    Each address gets its own email (20 Nov 2026): in that person's language (email_i18n:
+    Biswajit Sir Hindi, Kavya Ma'am Hinglish) and with the designed look (email_html),
+    the plain text going with it for mail apps that show no HTML.
+    """
+    addresses = [a.strip() for a in (to or "").split(",") if a.strip()]
+    if len(addresses) > 1:
+        return all([_send(a, subject, body) for a in addresses])
+    return _send_one(to, subject, body)
+
+
+def _send_one(to: str, subject: str, body: str) -> bool:
     if not smtp_configured():
         logger.info(f"notifier event=EMAIL_SKIPPED reason=smtp_not_configured to={to}")
         return False
@@ -51,11 +63,19 @@ def _send(to: str, subject: str, body: str) -> bool:
     password = (os.environ.get("SMTP_PASSWORD") or "").replace(" ", "") or None
     sender = os.environ["SMTP_FROM"]
 
+    from src.services import email_html, email_i18n
+    lang = email_i18n.language_of(to)
+    shown_subject, shown_body = email_i18n.translate(subject, body, lang)
     msg = EmailMessage()
-    msg["Subject"] = subject
+    msg["Subject"] = shown_subject
     msg["From"] = sender
     msg["To"] = to
-    msg.set_content(body)
+    msg.set_content(shown_body)
+    try:
+        # The look is read from the English; only what is shown is in their language.
+        msg.add_alternative(email_html.render(subject, body, email_i18n.footer(lang), lang=lang), subtype="html")
+    except Exception:
+        logger.exception("notifier event=EMAIL_HTML_FAILED")
 
     try:
         if port == 465:
