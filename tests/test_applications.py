@@ -537,6 +537,16 @@ def test_the_teams_test_phones_are_listed_and_their_recordings_kept_apart(client
     assert _upload(client, "9811122233", rid="t2").status_code == 422
 
 
+def test_the_teams_test_recordings_are_listed_for_checking(client, recordings_dir, monkeypatch):
+    monkeypatch.setenv("CALL_RECORDER_TEST_NUMBERS", "9811122233")
+    assert _upload(client, "9811122233", rid="t1").status_code == 201
+    assert _upload(client, "+919000000001", rid="real").status_code == 201
+    rows = client.get("/api/v1/call-recordings/tests").json()
+    assert len(rows) == 1 and rows[0]["phone_ends"] == "2233" and rows[0]["phone"] is None
+    audio = client.get(f"/api/v1/call-recordings/{rows[0]['recording_id']}/audio")
+    assert audio.status_code == 200
+
+
 def test_cannot_invest_but_yes_to_esaf_is_still_qualified_and_marked_for_esaf():
     from src.services import applications
     base = {"coverage": SERVED, "education": "12", "can_invest": False}

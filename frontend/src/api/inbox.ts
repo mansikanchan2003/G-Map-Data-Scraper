@@ -571,6 +571,15 @@ export const recordingAudioUrl = (id: string) => `${recBase()}/${id}/audio`;
 export const recordingsExportUrl = () => `${recBase()}/export`;
 /** The call-recorder app's list as Excel (Phone | Name | Description | Active), for its admin panel. */
 export const recorderNumbersExcelUrl = () => `${recBase()}/numbers.xlsx`;
+/** Calls with the team's own test phones (number shows its last 4 digits only). */
+export type TestRecording = CallRecording & { phone_ends: string };
+export const fetchTestRecordings = async (): Promise<TestRecording[]> => {
+  const res = await fetch(`${recBase()}/tests`, { credentials: 'include' });
+  const json = await res.json().catch(() => []);
+  if (!res.ok) throw new Error((json as any).detail || `Request failed (${res.status})`);
+  return json as TestRecording[];
+};
+
 export const fetchRecordingsSummary = async (): Promise<RecordingsSummary> => {
   const res = await fetch(`${recBase()}/summary`, { credentials: 'include' });
   const json = await res.json().catch(() => ({}));

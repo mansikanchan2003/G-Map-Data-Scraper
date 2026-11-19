@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
-  fetchRecordings, fetchRecordingsSummary, recordingAudioUrl, recordingsExportUrl,
-  type CallRecording, type RecordingsSummary,
+  fetchRecordings, fetchRecordingsSummary, fetchTestRecordings, recordingAudioUrl, recordingsExportUrl,
+  type CallRecording, type RecordingsSummary, type TestRecording,
 } from '../api/inbox';
 
 /**
@@ -97,5 +97,70 @@ export const CallRecordingsCard: React.FC<{ phone: string; version?: string }> =
         })}
       </ul>
     </div>
+  );
+};
+
+
+const TEST_HERO = 'linear-gradient(120deg, #78350f 0%, #b45309 55%, #f59e0b 100%)';
+
+/**
+ * Calls with the team's own test phones (CALL_RECORDER_TEST_NUMBERS), to check the
+ * call-recorder app before real use (19 Nov 2026). Their chats are not in the Inbox,
+ * so they are listed on the Applications tab. Never in Sumit's zip. Hidden when
+ * there are none, and for anyone who may not listen.
+ */
+export const TestRecordingsCard: React.FC = () => {
+  const [rows, setRows] = useState<TestRecording[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetchTestRecordings().then(r => alive && setRows(r)).catch(() => alive && setRows([]));
+    return () => { alive = false; };
+  }, []);
+  if (!rows || !rows.length) return null;
+  const seconds = rows.reduce((n, r) => n + (r.duration_seconds || 0), 0);
+  return (
+    <section className="rounded-xl overflow-hidden border border-slate-800 bg-slate-900 shadow-sm">
+      <div className="px-4 py-3 text-white" style={{ background: TEST_HERO }}>
+        <div className="flex items-center gap-2.5">
+          <span className="h-8 w-8 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
+            <Icon name="science" className="text-[19px]" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-semibold leading-tight">Test recordings</div>
+            <div className="text-[11px] text-white/80">
+              {rows.length} test {rows.length === 1 ? 'call' : 'calls'}{seconds ? ` · ${length(seconds)}` : ''} · team ke test phones se, Sumit ki zip mein nahi jaati
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul className="divide-y divide-slate-800 max-h-[420px] overflow-y-auto">
+        {rows.map(r => {
+          const d = DIRECTION[r.direction || 'none'];
+          return (
+            <li key={r.recording_id} className="px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 font-semibold text-amber-300">
+                  <Icon name="smartphone" className="text-[14px]" /> ••{r.phone_ends}
+                </span>
+                <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold ${d.chip}`}>
+                  <Icon name={d.icon} className="text-[14px]" /> {d.label}
+                </span>
+                <span className="text-slate-400">{when(r.started_at || r.received_at)}</span>
+                {r.duration_seconds != null && <span className="ml-auto text-slate-300 font-semibold tabular-nums">{length(r.duration_seconds)}</span>}
+              </div>
+              <audio controls preload="none" src={recordingAudioUrl(r.recording_id)} className="mt-2 w-full h-9" />
+              {r.transcript && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer select-none text-[11px] font-semibold text-slate-400 hover:text-slate-200 inline-flex items-center gap-1">
+                    <Icon name="notes" className="text-[14px]" /> Call ki baatein (likhit)
+                  </summary>
+                  <p className="mt-1.5 text-[12px] leading-relaxed text-slate-300 whitespace-pre-wrap">{r.transcript}</p>
+                </details>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 };

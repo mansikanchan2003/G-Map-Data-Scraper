@@ -7,6 +7,7 @@ import {
 } from '../api/applications';
 import { formatDateTime } from '../utils/datetime';
 import { recorderNumbersExcelUrl } from '../api/inbox';
+import { TestRecordingsCard } from '../components/CallRecordings';
 import { QualifiedLeadsView } from './QualifiedLeadsView';
 import { LeadJourneyView } from './LeadJourneyView';
 import { useShowMore, ShowMoreButton } from '../components/ShowMore';
@@ -380,6 +381,9 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
             </section>
           </>
         )}
+
+        {/* Calls with the team's test phones, while the call-recorder app is tested. */}
+        {!readOnly && <TestRecordingsCard />}
 
         {/* The list, with search, stage and export. */}
         <section className="rounded-xl border border-slate-800 bg-slate-900 shadow-sm overflow-hidden">

@@ -223,6 +223,17 @@ def for_phone(db: Session, phone: str) -> List[dict]:
     return [as_dict(r) for r in rows]
 
 
+def tests(db: Session) -> List[dict]:
+    """
+    The recordings of calls with the team's own test phones, newest first, so the
+    team can check the app works (19 Nov 2026). Their chats are not in the Inbox,
+    so they are listed here; the number shows only its last 4 digits.
+    """
+    rows = (db.query(CallRecording).filter(CallRecording.source == TEST)
+            .order_by(CallRecording.received_at.desc()).all())
+    return [{**as_dict(r), "phone": None, "phone_ends": (r.phone or "")[-4:]} for r in rows]
+
+
 def summary(db: Session) -> dict:
     every = db.query(CallRecording).all()
     rows = [r for r in every if r.source != TEST]

@@ -131,6 +131,13 @@ def recordings_summary(db: Session = Depends(get_db), _: User = Depends(_listene
     return call_recordings.summary(db)
 
 
+@team.get("/tests")
+def test_recordings(db: Session = Depends(get_db), _: User = Depends(_listener)):
+    """Calls with the team's test phones, to check the call-recorder app before real use."""
+    from src.services import call_recordings
+    return call_recordings.tests(db)
+
+
 @team.get("/{recording_id}/audio")
 def recording_audio(recording_id: str, db: Session = Depends(get_db), _: User = Depends(_listener)):
     from src.models.inbox import CallRecording
