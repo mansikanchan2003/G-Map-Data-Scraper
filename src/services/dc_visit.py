@@ -28,12 +28,17 @@ PLAN_KEY = "dc_visit_plan"
 PURPOSE = "dc_visit"
 # Where in the chat it can go (Claude CLI picks one).
 POINTS: Dict[str, str] = {
+    # Mansi's choice (19 Nov 2026): someone who stops part-way gets the bot's usual reminder
+    # first; the next reminder is this offer, in place of the next follow-up.
+    "after_nudge": "In place of the next reminder, once the bot's first reminder went unanswered",
     "after_pin": "Right after they send a PIN code in a DC's district, before the education question",
     "trust": "When they doubt Eko is genuine or ask who we are",
     "cannot_invest": "When they say they cannot invest ₹3–5 lakh for SBI",
     "docs_not_ready": "When they say their documents are not ready",
 }
-DEFAULT_POINT = "trust"
+DEFAULT_POINT = "after_nudge"
+# How long the bot's first reminder waits for a reply before the offer goes in its place.
+AFTER_NUDGE = timedelta(hours=24)
 QUIET_AFTER = timedelta(days=2)
 ANSWER_WITHIN = timedelta(days=7)
 REPLAN_EVERY = timedelta(days=7)
@@ -63,7 +68,7 @@ def plan(db: Session) -> dict:
     except ValueError:
         held = {}
     if held.get("point") not in POINTS:
-        return {"point": DEFAULT_POINT, "by": "default", "why": "Until Claude CLI has planned: when they doubt us."}
+        return {"point": DEFAULT_POINT, "by": "Mansi", "why": "In place of the next reminder after the first one went unanswered."}
     return held
 
 
@@ -138,33 +143,51 @@ def offer_at(db: Session, conv, point: str) -> bool:
 
 def queue_quiet(db: Session, now: Optional[datetime] = None) -> int:
     """
-    Everyone in a DC's district who never got the offer and has been quiet for QUIET_AFTER:
-    the offer as a reminder (a template once their window has closed). Returns how many.
+    Someone in a DC's district who stopped part-way: once the bot's usual reminder has gone
+    unanswered for AFTER_NUDGE, the next reminder is this offer (a template once their 24-hour
+    window has closed), in place of the next follow-up in line. Returns how many were queued.
     """
     from src.models.inbox import FollowUp, WhatsAppConversation
-    from src.services import applications, dispositions as dz, inbox
+    from src.services import applications, dispositions as dz, followups, inbox
     now = now or _now()
     from src.services import dc_network
-    if not dc_network.load(db):
+    if not dc_network.load(db) or plan(db)["point"] != "after_nudge":
         return 0
     n = 0
     for conv in db.query(WhatsAppConversation).filter(WhatsAppConversation.bot_step.isnot(None)).all():
+        data = conv.bot_data or {}
         if offered(conv) or conv.documents_submitted_at or not applications.is_application(conv):
             continue
+        nudged = _iso(data.get("nudged_at"))
         last_in = inbox.aware(conv.last_inbound_at)
-        if last_in is None or now - last_in < QUIET_AFTER:
+        # The bot's reminder went, and they have not written since.
+        if not nudged or (last_in and last_in >= nudged) or now - nudged < AFTER_NUDGE:
             continue
         dc = dc_of(db, conv)
         if not dc:
             continue
+        # In place of the next follow-up reminder in line.
+        nxt = (db.query(FollowUp).filter(FollowUp.phone == conv.phone, FollowUp.status.in_(followups.PENDING),
+                                         FollowUp.wants == dz.NUDGE, FollowUp.purpose != PURPOSE)
+               .order_by(FollowUp.due_at).first())
+        if nxt is not None:
+            nxt.status, nxt.note, nxt.done_at = "cancelled", "Replaced by the District Coordinator visit offer", now
         db.add(FollowUp(followup_id=uuid.uuid4().hex, phone=conv.phone, disposition=conv.disposition or "int_in_bot_flow",
                         purpose=PURPOSE, owner=dz.BOT, wants=dz.NUDGE, due_at=now, status="scheduled", attempt=1,
                         expects_reply=True, cancel_on_reply=False, created_by="dc_visit", created_at=now))
-        _mark(conv, "quiet", dc)
+        _mark(conv, "after_nudge", dc)
         n += 1
     if n:
         db.commit()
     return n
+
+
+def _iso(v):
+    try:
+        d = datetime.fromisoformat(v) if v else None
+    except ValueError:
+        return None
+    return d.replace(tzinfo=timezone.utc) if d and d.tzinfo is None else d
 
 
 def answer(db: Session, conv, said: str) -> bool:

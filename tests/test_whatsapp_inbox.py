@@ -4617,6 +4617,7 @@ def test_in_a_dc_district_a_doubt_gets_the_visit_offer_and_a_yes_tells_biswajit_
     monkeypatch.setattr(notifier, "_send", lambda to, subject, body: sent_to.append(to) or True)
     tap_campaign(db)
     _dc_district(db)
+    dc_visit.save_plan(db, "trust", "test: the in-chat point still works", "test")
     count = len(StubMeta.sent)
     say(db, "Kya ye fraud to nahi hai?")
     bodies = [b for _k, b in _sent_kinds(count)]
@@ -4644,17 +4645,27 @@ def test_outside_a_dc_district_there_is_no_offer(db, client):
     assert not any(b in nudge_messages.TEXT["dc_visit"].values() for _k, b in _sent_kinds(count))
 
 
-def test_someone_quiet_in_a_dc_district_still_gets_the_offer_as_a_reminder(db, client):
-    from src.services import dc_visit
+def test_after_the_bots_reminder_goes_unanswered_the_next_reminder_is_the_dc_offer(db, client):
+    """19 Nov 2026 (Mansi): the usual reminder first; the next one is the visit offer, in its place."""
+    from src.models.inbox import FollowUp
+    from src.services import dc_visit, dispositions as dz
     tap_campaign(db)
     _dc_district(db)
     c = conv(db)
-    c.last_inbound_at = inbox.now() - timedelta(days=3)
+    assert dc_visit.queue_quiet(db) == 0                 # no reminder yet
+    c.bot_data = {**c.bot_data, "nudged_at": (inbox.now() - timedelta(hours=25)).isoformat()}
+    c.last_inbound_at = inbox.now() - timedelta(hours=26)
+    nxt = FollowUp(followup_id=uuid.uuid4().hex, phone=PHONE, disposition="rnr_no_answer", purpose="missed_you",
+                   owner=dz.BOT, wants=dz.NUDGE, due_at=inbox.now() + timedelta(hours=2), status="scheduled",
+                   attempt=1, expects_reply=True, cancel_on_reply=True, created_by="bot", created_at=inbox.now())
+    db.add(nxt)
     db.commit()
     assert dc_visit.queue_quiet(db) == 1
-    f = [x for x in _followups(db) if x.purpose == "dc_visit"]
-    assert len(f) == 1 and f[0].status == "scheduled"
-    assert dc_visit.queue_quiet(db) == 0
+    f = {x.purpose: x for x in _followups(db)}
+    assert f["dc_visit"].status == "scheduled" and f["missed_you"].status == "cancelled"
+    assert dc_visit.queue_quiet(db) == 0                 # once only
+    # Someone who replied after the reminder gets nothing.
+    assert conv(db).bot_data["dc_offer"]["point"] == "after_nudge"
 
 
 def test_loading_the_dc_list_sends_the_visit_templates_to_meta_and_claude_plans_nothing(db, monkeypatch):
@@ -4664,7 +4675,7 @@ def test_loading_the_dc_list_sends_the_visit_templates_to_meta_and_claude_plans_
     monkeypatch.setattr(nudge_templates, "submit", lambda db, purpose, by: submitted.append(purpose) or [])
     dc_network.save(db, [{"state": "Haryana", "district": "Ambala", "dc": "X", "phone": ""}])
     assert submitted == ["dc_visit"]
-    assert dc_visit.plan(db)["point"] == "trust"
+    assert dc_visit.plan(db)["point"] == "after_nudge"
     assert claude_answers.pending(db) == []
 
 
