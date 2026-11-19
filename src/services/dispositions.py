@@ -133,6 +133,13 @@ CATEGORIES: List[Category] = [
             (Step("sbi_call", NOW, HUMAN, TASK, cancel_on_reply=False,
                   task="Call them: SBI's CSP needs ₹3–5 lakh in their own e-wallet; if yes, send SBI's documents and the upload link"),),
             email=True),
+        # Not in the sheet (19 Nov 2026): said yes to a face-to-face visit by the District
+        # Coordinator of their district. Biswajit Sir arranges it (DC_VISIT_NOTIFY is emailed too).
+        Sub("int_dc_visit", "Wants a DC visit", "interested",
+            "Arrange the District Coordinator's visit to explain the process face to face", "Biswajit Sir",
+            (Step("dc_visit", NOW, HUMAN, TASK, cancel_on_reply=False,
+                  task="Arrange the District Coordinator's visit"),),
+            email=True),
         # The end of AutoGMap's journey: documents are in, and Eko Acquisition
         # takes over. The bot's own outcome once documents are uploaded.
         Sub("int_visit", "Physical visit required", "interested",

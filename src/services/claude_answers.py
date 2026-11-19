@@ -167,7 +167,8 @@ Reply with ONLY a JSON object, no other text:
 
 def pending(db: Session) -> List[dict]:
     """Everything waiting for Claude, each with its prompt: questions, then interest ratings."""
-    return pending_questions(db) + interest_pending(db)
+    from src.services import dc_visit
+    return pending_questions(db) + interest_pending(db) + dc_visit.plan_pending(db)
 
 
 def pending_questions(db: Session) -> List[dict]:
@@ -207,6 +208,9 @@ def ingest(db: Session, ask_id: str, claude_output: str) -> dict:
     """Claude's answer to one waiting question: sent and learned if sound, else left for the team."""
     if ask_id.startswith(INTEREST_PREFIX):
         return interest_ingest(db, ask_id, claude_output)
+    if ask_id.startswith("dcplan:"):
+        from src.services import dc_visit
+        return {"id": ask_id, **dc_visit.plan_ingest(db, claude_output)}
     from src.models.inbox import WhatsAppConversation
     from src.services import eko_knowledge as ek, learning_loop, onboarding_bot as bot, tickets
 

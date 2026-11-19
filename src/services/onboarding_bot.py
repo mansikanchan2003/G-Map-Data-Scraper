@@ -1090,6 +1090,8 @@ def _on_pin(db, conv, msg):
     # A PIN that cannot be found anywhere is still asked for again, above.
     _move(conv, AWAIT_EDUCATION, coverage=coverage)
     _say(db, conv, _t(db, conv, "ask_education"), buttons=education_buttons(_lang(db, conv)))
+    from src.services import dc_visit
+    dc_visit.offer_at(db, conv, "after_pin")
 
 
 def _only_a_pin(msg: WhatsAppMessage) -> Optional[str]:
@@ -1208,6 +1210,9 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
             # an hour after the bot's reminder, unless the documents come in first
             # (the user, 2026-10-23).
             from src.services import dispositions as dz, handover
+            from src.services import dc_visit
+            if dc_visit.offer_at(db, conv, "trust"):
+                data = conv.bot_data   # kept when the pacing below writes bot_data again
             if dz.normalise(conv.disposition) != "int_trust":
                 handover.record(db, conv, "int_trust", "bot", run_now=False,
                                 note=f"They worry Eko may be fake. At: {step}{near_end}. They wrote: "
@@ -1362,7 +1367,11 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
             if voice or looks_like_question(message_text(msg)):
                 flag(conv, message_text(msg) or "Voice note")
         else:
-            _handle(db, conv, msg, cfg)
+            from src.services import dc_visit
+            if msg.kind == "text" and _last_out_was_dc_offer(db, conv) and dc_visit.answer(db, conv, said):
+                pass      # a yes to the District Coordinator's visit: Biswajit Sir arranges it
+            else:
+                _handle(db, conv, msg, cfg)
     finally:
         _CURRENT.reset(token)
     # Newly left for a person (or for a new reason): a ticket, and an email to the admin.
@@ -1370,6 +1379,20 @@ def handle(db: Session, conv: WhatsAppConversation, msg: WhatsAppMessage) -> Non
         from src.services import tickets
         tickets.raise_or_update(db, conv)
         email_attention(db, conv)
+
+
+def _last_out_was_dc_offer(db, conv) -> bool:
+    """Whether our latest message was the District Coordinator visit offer (dc_visit)."""
+    from src.models.inbox import WhatsAppMessage
+    if not (conv.bot_data or {}).get("dc_offer"):
+        return False
+    from src.services import nudge_messages
+    offers = set(nudge_messages.TEXT["dc_visit"].values())
+    # Among our last three: the bot's own answer may follow the offer (a trust worry).
+    recent = (db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone, WhatsAppMessage.direction == "OUT")
+              .order_by(WhatsAppMessage.created_at.desc()).limit(3).all())
+    return any((isinstance(m.payload, dict) and m.payload.get("bot") == "dc_visit") or (m.body or "") in offers
+               for m in recent)
 
 
 def _answers_the_step(conv, msg) -> bool:
@@ -1575,6 +1598,8 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
             from src.services import followups, handover
             handover.record(db, conv, "ni_investment", "bot", note="Said they cannot invest ₹3–5 lakh", run_now=False)
             followups.mark_sent(db, conv, "lower_investment", said)
+            from src.services import dc_visit
+            dc_visit.offer_at(db, conv, "cannot_invest")
         else:
             _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n" + _t(db, conv, "ask_invest"),
                       buttons=YES_NO("invest", lang))
@@ -1589,6 +1614,8 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
             _understood(conv)
             _move(conv, AWAIT_DOCS, has_documents=False)
             _say(db, conv, _t(db, conv, "docs_later"))
+            from src.services import dc_visit
+            dc_visit.offer_at(db, conv, "docs_not_ready")
         elif step == AWAIT_DOCS:
             _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n"
                       + _t(db, conv, "ask_docs", documents=document_list(lang, documents_for(conv))), buttons=YES_NO("docs", lang))

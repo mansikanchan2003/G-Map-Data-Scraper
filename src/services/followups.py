@@ -19,6 +19,7 @@ Every few minutes `tick`:
 Times are India's: "this evening" is 6 PM IST, "tomorrow" 11 AM IST.
 """
 import logging
+import os
 import threading
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
@@ -136,7 +137,9 @@ def _tell_team(db: Session, conv: WhatsAppConversation, s: "dz.Sub", by: str, no
         logger.exception(f"followups event=TEAM_EMAIL_TEXT_FAILED phone=...{conv.phone[-4:]}")
         return
     who = conv.profile_name or conv.phone
-    threading.Thread(target=_email_team, args=(f"AutoGMap: {s.label} — {who}", text), daemon=True).start()
+    also = DC_VISIT_NOTIFY if s.key == "int_dc_visit" else None
+    args = (f"AutoGMap: {s.label} — {who}", text) + ((also,) if also else ())
+    threading.Thread(target=_email_team, args=args, daemon=True).start()
 
 
 def _team_email_text(db: Session, conv: WhatsAppConversation, s: "dz.Sub", by: str, note: Optional[str]) -> str:
@@ -172,10 +175,16 @@ def _team_email_text(db: Session, conv: WhatsAppConversation, s: "dz.Sub", by: s
     return "\n".join(lines) + "\n"
 
 
-def _email_team(subject: str, body: str) -> None:
+# Who arranges a District Coordinator's visit (Biswajit Sir, 19 Nov 2026): emailed with the team.
+DC_VISIT_NOTIFY = os.environ.get("DC_VISIT_NOTIFY", "biswajit@eko.co.in")
+
+
+def _email_team(subject: str, body: str, also: Optional[str] = None) -> None:
     from src.services import auth_service, notifier
     try:
         notifier.notify_team(auth_service.BOOTSTRAP_ADMIN, subject, body)
+        if also:
+            notifier._send(also, subject, body)
     except Exception:
         logger.exception("followups event=TEAM_EMAIL_FAILED")
 
@@ -315,6 +324,12 @@ def tick(db: Session, now: Optional[datetime] = None) -> int:
         return 0  # turned off by the admin: due follow-ups wait
     if not bot.get_settings(db)["enabled"]:
         return 0
+    # The District Coordinator's visit, for those in a DC's district it never reached (dc_visit).
+    try:
+        from src.services import dc_visit
+        dc_visit.queue_quiet(db, now)
+    except Exception:
+        logger.exception("followups event=DC_VISIT_QUEUE_FAILED")
     convs = {}
 
     def conv_of(phone):

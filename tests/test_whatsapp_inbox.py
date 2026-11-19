@@ -2127,7 +2127,7 @@ def test_only_dispositions_the_sheet_gives_a_person_email_the_team():
     # int_sbi (18 Nov 2026), its counterpart: the team confirms the investment for SBI.
     assert human == {"int_more_info", "rej_credit", "rej_eligibility", "inv_denied",
                      "ndm_not_applicant", "ndm_unavailable", "hold_later", "hold_financial", "hold_after_date",
-                     "int_esaf", "int_sbi"}
+                     "int_esaf", "int_sbi", "int_dc_visit"}
 
 
 def test_a_disposition_for_a_person_raises_a_ticket_and_emails_the_team(db, client, team_mail):
@@ -4588,3 +4588,84 @@ def test_after_three_unanswered_nudges_claude_rates_their_interest(db, client):
     assert claude_answers.interest_pending(db) == []          # rated on these messages
     s = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/summary").json()
     assert s["interest"]["level"] == "low"
+
+
+# --- 19 Nov 2026: a face-to-face visit by the District Coordinator ------------------------
+
+def _dc_district(db, district="Ambala", state="Haryana"):
+    from src.services import dc_network
+    dc_network.save(db, [{"state": state, "district": district, "dc": "Test DC", "phone": ""}])
+    c = conv(db)
+    c.bot_data = {**(c.bot_data or {}), "coverage": {**((c.bot_data or {}).get("coverage") or {}), "pincode": "134203",
+                  "geo": {"district": district, "state": state}}}
+    db.commit()
+
+
+def test_the_dc_list_matches_districts_by_any_of_their_names(db, tmp_path):
+    from src.services import dc_network
+    path = tmp_path / "dcs.csv"
+    path.write_text("State,District,DC Name,DC Phone\nPunjab,Firozpur,A,1\nPunjab,SAS Nagar,B,2\n", encoding="utf-8")
+    assert dc_network.save(db, dc_network._rows_from_file(str(path))) == 2
+    assert dc_network.dc_for(db, "Ferozpur", "Punjab")["dc"] == "A"
+    assert dc_network.dc_for(db, "Mohali", "Punjab")["dc"] == "B"
+    assert dc_network.dc_for(db, "Ludhiana", "Punjab") is None
+
+
+def test_in_a_dc_district_a_doubt_gets_the_visit_offer_and_a_yes_tells_biswajit_sir(db, client, monkeypatch):
+    from src.services import dc_visit, notifier, nudge_messages
+    sent_to = []
+    monkeypatch.setattr(notifier, "_send", lambda to, subject, body: sent_to.append(to) or True)
+    tap_campaign(db)
+    _dc_district(db)
+    count = len(StubMeta.sent)
+    say(db, "Kya ye fraud to nahi hai?")
+    bodies = [b for _k, b in _sent_kinds(count)]
+    assert any(b in nudge_messages.TEXT["dc_visit"].values() for b in bodies)
+    assert conv(db).bot_data["dc_offer"]["point"] == "trust"
+    say(db, "Haan ji, aaiye")
+    c = conv(db)
+    assert c.disposition == "int_dc_visit" and c.bot_data["dc_offer"]["answer"] == "yes"
+    import time
+    time.sleep(0.3)                     # the team email goes on a thread
+    assert any("biswajit@eko.co.in" in t for t in sent_to)
+    # Offered once only.
+    assert dc_visit.offer_at(db, c, "trust") is False
+
+
+def test_outside_a_dc_district_there_is_no_offer(db, client):
+    from src.services import nudge_messages
+    tap_campaign(db)
+    _dc_district(db, district="Ambala")
+    c = conv(db)
+    c.bot_data = {**c.bot_data, "coverage": {**c.bot_data["coverage"], "geo": {"district": "Rajkot", "state": "Gujarat"}}}
+    db.commit()
+    count = len(StubMeta.sent)
+    say(db, "Kya ye fraud to nahi hai?")
+    assert not any(b in nudge_messages.TEXT["dc_visit"].values() for _k, b in _sent_kinds(count))
+
+
+def test_someone_quiet_in_a_dc_district_still_gets_the_offer_as_a_reminder(db, client):
+    from src.services import dc_visit
+    tap_campaign(db)
+    _dc_district(db)
+    c = conv(db)
+    c.last_inbound_at = inbox.now() - timedelta(days=3)
+    db.commit()
+    assert dc_visit.queue_quiet(db) == 1
+    f = [x for x in _followups(db) if x.purpose == "dc_visit"]
+    assert len(f) == 1 and f[0].status == "scheduled"
+    assert dc_visit.queue_quiet(db) == 0
+
+
+def test_claude_cli_plans_where_the_offer_goes(db, monkeypatch):
+    from src.services import claude_answers, dc_network, dc_visit, nudge_templates
+    submitted = []
+    monkeypatch.setattr(nudge_templates, "submit", lambda db, purpose, by: submitted.append(purpose) or [])
+    assert dc_visit.plan_pending(db) == []                       # no DCs yet
+    dc_network.save(db, [{"state": "Haryana", "district": "Ambala", "dc": "X", "phone": ""}])
+    tasks = dc_visit.plan_pending(db)
+    assert len(tasks) == 1 and "after_pin" in tasks[0]["prompt"]
+    import json
+    out = claude_answers.ingest(db, tasks[0]["id"], json.dumps({"result": json.dumps({"point": "after_pin", "why": "Most stop after the PIN."})}))
+    assert out["done"] and dc_visit.plan(db)["point"] == "after_pin" and submitted == ["dc_visit"]
+    assert dc_visit.plan_pending(db) == []                       # planned this week
