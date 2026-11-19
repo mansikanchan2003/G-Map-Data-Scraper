@@ -58,6 +58,11 @@ def _facts(a: dict, conv: WhatsAppConversation) -> List[Dict[str, str]]:
         rows.insert(2, ("Area", "CSPs near DCs (SBI CSP centre ke paas)"))
     if conv.disposition:
         rows.append(("Abhi ka outcome", dz.label(conv.disposition) or conv.disposition))
+    interest = a.get("interest")
+    if interest:
+        level = {"high": "High interest", "medium": "Some interest", "low": "Low interest",
+                 "not_interested": "Not interested"}.get(interest["level"], interest["level"])
+        rows.append(("Interest (Claude, after our reminders)", level + (f": {interest['reason']}" if interest.get("reason") else "")))
     return [{"label": k, "value": v} for k, v in rows]
 
 

@@ -450,6 +450,11 @@ def _ready_replies_on(db: Session) -> bool:
     return agent_controls.is_on(db, "inbox_ready_reply")
 
 
+def _interest(conv):
+    from src.services import claude_answers
+    return claude_answers.interest_of(conv)
+
+
 def summarise(db: Session, conv: WhatsAppConversation) -> dict:
     """Everything the summary panel and the attention email show."""
     data = conv.bot_data or {}
@@ -541,6 +546,8 @@ def summarise(db: Session, conv: WhatsAppConversation) -> dict:
         "headline": headline,
         "in_short": short,
         "disposition": disposition,
+        # Claude CLI's read of their interest after our nudges went unanswered (19 Nov 2026).
+        "interest": _interest(conv),
         "handled_by": conv.handled_by if conv.bot_paused else None,
         "direct": direct is not None,
         "timeline": events[-TIMELINE_LIMIT:],

@@ -486,6 +486,8 @@ export interface ChatSummary {
   headline: string;
   /** One or two plain sentences: where this person stands. */
   in_short: string;
+  /** Claude CLI's read of their interest after our nudges went unanswered (19 Nov 2026). */
+  interest?: { level: 'high' | 'medium' | 'low' | 'not_interested'; reason?: string | null; at?: string | null } | null;
   /** The conversation from the start, one plain line per thing that happened. */
   timeline: { when: string; kind: 'event' | 'said' | 'answered' | 'waiting' | 'team'; text: string }[];
   /** True when they wrote to us on their own, not from a campaign or the bot's flow. */

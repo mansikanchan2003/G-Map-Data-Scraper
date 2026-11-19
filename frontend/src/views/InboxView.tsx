@@ -1,4 +1,5 @@
 import { AICallsCard } from '../components/AICalls';
+import { InterestChip } from '../components/InterestChip';
 import { CallRecordingsCard } from '../components/CallRecordings';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -598,6 +599,7 @@ const SummaryCard: React.FC<{
           <span className="material-symbols-outlined text-[16px]">summarize</span>Short mein
         </div>
         <p className="text-slate-100 mt-1.5 leading-relaxed">{s.in_short}</p>
+        {s.interest && <div className="mt-2"><InterestChip interest={s.interest} withReason /></div>}
         {place && <p className="text-[11.5px] text-slate-400 mt-1.5">{place}{p.category ? ` · ${p.category}` : ''}</p>}
       </div>
 

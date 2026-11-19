@@ -91,11 +91,15 @@ def match(db: Session, said: str) -> Optional[dict]:
 
 
 def answer_in(entry: dict, lang: str, said: str = "") -> str:
+    """
+    The learned answer in the person's own language; "" when Claude has not given it in that
+    language yet (19 Nov 2026): then Claude is asked again, never the wrong language sent.
+    """
     from src.services import eko_knowledge as ek
     answers = entry.get("answers") or {}
-    if lang == "hi" and said and ek._LATIN.search(said) and not re.search(r"[ऀ-ॿ]", said) and answers.get("hinglish"):
-        return answers["hinglish"]
-    return answers.get(lang) or answers.get(entry.get("lang") or "") or answers.get("en") or ""
+    if lang == "hi" and said and ek._LATIN.search(said) and not re.search(r"[ऀ-ॿ]", said):
+        return answers.get("hinglish") or ""
+    return answers.get(lang) or ""
 
 
 def remember_wording(db: Session, entry_id: str, said: str) -> None:
@@ -119,15 +123,19 @@ def on(db: Session) -> bool:
     return agent_controls.is_on(db, AGENT)
 
 
-def ask(db: Session, conv, said: str, lang: str) -> None:
-    """A question the bot could not answer, already a ticket: queued for Claude."""
+def ask(db: Session, conv, said: str, lang: str, learned_id: Optional[str] = None) -> None:
+    """
+    A question the bot could not answer, already a ticket: queued for Claude. `learned_id` is
+    a learned answer that has no version in this language yet: Claude's reply is added to it.
+    """
     from src.services import bot_coach, handover
     if not on(db) or not (said or "").strip():
         return
     names = [n for n in (conv.profile_name or "").split() if len(n) > 2]
     conv.bot_data = {**(conv.bot_data or {}), "claude_ask": {
         "id": uuid.uuid4().hex[:16], "question": bot_coach.redact(said, names)[:600], "lang": lang,
-        "programme": handover.programme(conv), "at": _now().isoformat(), "state": "waiting"}}
+        "programme": handover.programme(conv), "at": _now().isoformat(), "state": "waiting",
+        "learned_id": learned_id}}
     flag_modified(conv, "bot_data")
 
 
@@ -158,6 +166,11 @@ Reply with ONLY a JSON object, no other text:
 
 
 def pending(db: Session) -> List[dict]:
+    """Everything waiting for Claude, each with its prompt: questions, then interest ratings."""
+    return pending_questions(db) + interest_pending(db)
+
+
+def pending_questions(db: Session) -> List[dict]:
     """The questions waiting for Claude, each with its prompt."""
     from src.models.inbox import WhatsAppConversation
     from src.services import tickets
@@ -192,6 +205,8 @@ def _parse(text: str) -> dict:
 
 def ingest(db: Session, ask_id: str, claude_output: str) -> dict:
     """Claude's answer to one waiting question: sent and learned if sound, else left for the team."""
+    if ask_id.startswith(INTEREST_PREFIX):
+        return interest_ingest(db, ask_id, claude_output)
     from src.models.inbox import WhatsAppConversation
     from src.services import eko_knowledge as ek, learning_loop, onboarding_bot as bot, tickets
 
@@ -239,6 +254,12 @@ def ingest(db: Session, ask_id: str, claude_output: str) -> dict:
     db.commit()
 
     data = learning_loop._load(db)
+    known = next((p for p in data.get("accepted", []) if p.get("id") == a.get("learned_id")), None)
+    if known is not None:
+        # The same question in another language: its answer joins the one already learned.
+        known.setdefault("answers", {}).update({k: v for k, v in answers.items() if k not in known["answers"]})
+        learning_loop._save(db, data)
+        return {"id": ask_id, "done": True, "ticket": ticket.ticket_id if ticket is not None else None}
     eid = learning_loop._id(KIND, learning_loop._norm(a["question"]))
     if not any(p.get("id") == eid for p in data.get("accepted", [])):
         entry = {"id": eid, "kind": KIND, "agent": AGENT, "question": a["question"], "lang": a.get("lang"),
@@ -251,6 +272,109 @@ def ingest(db: Session, ask_id: str, claude_output: str) -> dict:
                                               "at": _now().isoformat()})
         learning_loop._save(db, data)
     return {"id": ask_id, "done": True, "ticket": ticket.ticket_id if ticket is not None else None}
+
+
+# --- How interested someone is, after our nudges went unanswered (19 Nov 2026) --------------
+#
+# After NUDGES_BEFORE_RATING of the bot's messages since their last reply, Claude reads the
+# chat (names and numbers taken out) and rates their interest: high, medium, low or not
+# interested, with one line why. Shown on the Applications tab and in the chat. Rated again
+# when they write or after another nudge. A label only: nothing is sent, no disposition is set.
+
+INTEREST_PREFIX = "int:"
+NUDGES_BEFORE_RATING = 3
+INTEREST_LEVELS = ("high", "medium", "low", "not_interested")
+INTEREST_PER_RUN = 15
+# The bot's own reply right after theirs is not a nudge.
+REPLY_GAP = timedelta(minutes=10)
+
+
+def _aware(d):
+    return d.replace(tzinfo=timezone.utc) if d is not None and d.tzinfo is None else d
+
+
+def nudges_since_reply(messages: list) -> int:
+    """Our messages after their last one, leaving out the bot's immediate reply."""
+    last_in = max((_aware(m.created_at) for m in messages if m.direction == "IN"), default=None)
+    outs = [_aware(m.created_at) for m in messages if m.direction == "OUT" and m.created_at is not None]
+    if last_in is None:
+        return 0
+    return sum(1 for at in outs if at > last_in + REPLY_GAP)
+
+
+def _interest_brief(conv, messages: list) -> str:
+    from src.services import bot_coach, handover
+    from src.services import onboarding_bot as bot
+    names = [n for n in (conv.profile_name or "").split() if len(n) > 2]
+    lines = []
+    for m in messages[-16:]:
+        text = (m.body or "").strip() or (m.payload or {}).get("transcript") or f"[{m.kind}]"
+        who = "THEM" if m.direction == "IN" else "US"
+        lines.append(f"{who}: {bot_coach.redact(text, names)[:240]}")
+    step = bot.STEP_LABELS.get(conv.bot_step, conv.bot_step or "not started")
+    return f"""You judge how interested a person is in becoming an Eko Kiosk Operator ({"ESAF banking agent" if handover.programme(conv) == "esaf" else "SBI Customer Service Point"}), from their WhatsApp chat with Eko. We have sent them {nudges_since_reply(messages)} messages since their last reply. Where they stopped in our questions: {step}.
+
+THE CHAT, oldest first (THEM = the person, US = Eko and its bot; names and numbers removed):
+{chr(10).join(lines)}
+
+Judge mostly from THEIR last messages and how they stopped. Reply with ONLY a JSON object:
+{{"level": "high" | "medium" | "low" | "not_interested", "reason": "one plain English line, under 20 words, why"}}"""
+
+
+def interest_pending(db: Session) -> List[dict]:
+    from src.models.inbox import WhatsAppConversation, WhatsAppMessage
+    from src.services import applications
+    if not on(db):
+        return []
+    out = []
+    convs = [c for c in db.query(WhatsAppConversation).filter(WhatsAppConversation.bot_step.isnot(None)).all()
+             if applications.is_application(c) and not c.documents_submitted_at]
+    for conv in convs:
+        messages = (db.query(WhatsAppMessage).filter(WhatsAppMessage.phone == conv.phone)
+                    .order_by(WhatsAppMessage.created_at).all())
+        if nudges_since_reply(messages) < NUDGES_BEFORE_RATING or not messages:
+            continue
+        latest = _aware(messages[-1].created_at)
+        held = (conv.bot_data or {}).get("interest") or {}
+        if held.get("basis_at") and _iso(held["basis_at"]) and _iso(held["basis_at"]) >= latest:
+            continue          # rated on these very messages
+        out.append({"id": f"{INTEREST_PREFIX}{conv.phone.lstrip('+')}:{int(latest.timestamp())}",
+                    "prompt": _interest_brief(conv, messages)})
+        if len(out) >= INTEREST_PER_RUN:
+            break
+    return out
+
+
+def interest_ingest(db: Session, ask_id: str, claude_output: str) -> dict:
+    from src.models.inbox import WhatsAppConversation
+    try:
+        _, digits, stamp = ask_id.split(":")
+    except ValueError:
+        return {"id": ask_id, "done": False, "why": "not an interest id"}
+    conv = db.get(WhatsAppConversation, "+" + digits) or db.get(WhatsAppConversation, digits)
+    if conv is None:
+        return {"id": ask_id, "done": False, "why": "no such chat"}
+    try:
+        got = _parse(claude_output)
+    except Exception:
+        return {"id": ask_id, "done": False, "why": "Claude's reply was not readable"}
+    level = str(got.get("level") or "").strip().lower().replace(" ", "_")
+    if level not in INTEREST_LEVELS:
+        return {"id": ask_id, "done": False, "why": f"unknown level {level!r}"}
+    reason = " ".join(str(got.get("reason") or "").split())[:200]
+    conv.bot_data = {**(conv.bot_data or {}), "interest": {
+        "level": level, "reason": reason, "at": _now().isoformat(),
+        "basis_at": datetime.fromtimestamp(int(stamp), timezone.utc).isoformat(), "by": LABEL}}
+    flag_modified(conv, "bot_data")
+    db.commit()
+    return {"id": ask_id, "done": True, "level": level}
+
+
+def interest_of(conv) -> Optional[dict]:
+    held = (conv.bot_data or {}).get("interest") if conv is not None else None
+    if not held or held.get("level") not in INTEREST_LEVELS:
+        return None
+    return {k: held.get(k) for k in ("level", "reason", "at")}
 
 
 def main(argv: List[str]) -> int:

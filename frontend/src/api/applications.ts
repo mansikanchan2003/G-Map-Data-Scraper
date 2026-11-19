@@ -40,6 +40,8 @@ export interface Application {
   near_dc?: boolean;
   /** "sbi" (For SBI) unless they chose ESAF ("esaf": Interested in ESAF), 19 Nov 2026. */
   programme?: 'sbi' | 'esaf';
+  /** Claude CLI's read of their interest after our nudges went unanswered (19 Nov 2026). */
+  interest?: { level: 'high' | 'medium' | 'low' | 'not_interested'; reason?: string | null; at?: string | null } | null;
   disposition?: string | null;
   csp_centre?: { name: string; code: string | null; distance_km: number } | null;
   /** The persona: the business's Google Maps category, from the campaign that reached them. */

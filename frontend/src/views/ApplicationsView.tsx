@@ -11,6 +11,7 @@ import { TestRecordingsCard } from '../components/CallRecordings';
 import { QualifiedLeadsView } from './QualifiedLeadsView';
 import { LeadJourneyView } from './LeadJourneyView';
 import { useShowMore, ShowMoreButton } from '../components/ShowMore';
+import { InterestChip, INTEREST } from '../components/InterestChip';
 
 /**
  * Everyone who started onboarding through the WhatsApp bot: how far they got,
@@ -163,7 +164,7 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
   const [search, setSearch] = useState('');
   const [stage, setStage] = useState('');
   // A filter under every column heading (19 Nov 2026, Kavya's view and everyone's).
-  const [col, setCol] = useState({ who: '', next: '', place: '', programme: '', verdict: '', comment: '' });
+  const [col, setCol] = useState({ who: '', next: '', place: '', programme: '', verdict: '', comment: '', interest: '' });
   const setColumn = (k: keyof typeof col, v: string) => setCol(c => ({ ...c, [k]: v }));
   const [briefFor, setBriefFor] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -222,13 +223,14 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
       && (!col.programme || (a.programme || 'sbi') === col.programme)
       && (!col.verdict || a.verdict === col.verdict)
       && (!col.comment || (col.comment === 'with' ? a.comments.length > 0 : a.comments.length === 0))
+      && (!col.interest || (col.interest === 'none' ? !a.interest : a.interest?.level === col.interest))
       && (!q || [a.name, a.phone, a.pincode, a.state, a.district, a.tehsil, a.category, a.source?.campaign,
         a.sbi_branch?.branch_name, a.sbi_branch?.branch_code, a.sbi_branch?.ao].some(v => (v || '').toLowerCase().includes(q))));
   }, [items, filter, search, stage, col]);
   const nextSteps = useMemo(() => Array.from(new Set(items.map(a => nextStep(a).text))).sort(), [items]);
   const verdicts = useMemo(() => Array.from(new Set(items.map(a => a.verdict))).sort(), [items]);
   const filtering = Object.values(col).some(Boolean) || !!stage;
-  const clearFilters = () => { setCol({ who: '', next: '', place: '', programme: '', verdict: '', comment: '' }); setStage(''); };
+  const clearFilters = () => { setCol({ who: '', next: '', place: '', programme: '', verdict: '', comment: '', interest: '' }); setStage(''); };
 
   const exportCsv = () => {
     const head = ['Name', 'Phone', 'Lead at', 'Category (persona)', 'Qualification', 'Verdict', 'Not qualified because', 'Franchise background',
@@ -424,6 +426,11 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                 <tr className="normal-case tracking-normal border-t border-slate-800 align-top">
                   <th className="px-2 py-2 font-normal">
                     <input value={col.who} onChange={e => setColumn('who', e.target.value)} placeholder="Name or phone" className={FILTER_INPUT} />
+                    <select value={col.interest} onChange={e => setColumn('interest', e.target.value)} className={`${FILTER_INPUT} mt-1`}>
+                      <option value="">Any interest</option>
+                      {(Object.keys(INTEREST) as (keyof typeof INTEREST)[]).map(k => <option key={k} value={k}>{INTEREST[k].label}</option>)}
+                      <option value="none">Not rated yet</option>
+                    </select>
                   </th>
                   {simple && <th className="px-2 py-2 font-normal">
                     <select value={col.next} onChange={e => setColumn('next', e.target.value)} className={FILTER_INPUT}>
@@ -483,6 +490,7 @@ export const ApplicationsView: React.FC<{ readOnly?: boolean; can?: (t: NavTab) 
                             <div className="font-mono text-xs text-slate-400 whitespace-nowrap">{a.phone}</div>
                             {a.lead_at && <div className="text-[11px] text-slate-500 whitespace-nowrap mt-0.5" title="When the lead came in">
                               <Icon name="schedule" className="text-[13px] align-[-2px] mr-0.5" />{formatDateTime(a.lead_at)}</div>}
+                            {a.interest && <div className="mt-1"><InterestChip interest={a.interest} /></div>}
                           </div>
                         </div>
                       </td>

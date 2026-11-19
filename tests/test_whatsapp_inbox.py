@@ -4541,3 +4541,50 @@ def test_who_are_you_is_answered_from_ekos_faq(asked):
     """19 Nov 2026: "who are you?" went to the team; Eko's own answer covers it."""
     from src.services import eko_knowledge
     assert eko_knowledge.match(asked)[:1] == ["real"]
+
+
+def test_a_learned_answer_missing_in_their_language_goes_back_to_claude(db, client):
+    """19 Nov 2026: never the wrong language; Claude's new version joins the learned answer."""
+    from src.services import claude_answers, learning_loop
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "Kya aap Sunday ko bhi baat karte ho?")
+    ask_id = claude_answers.pending(db)[0]["id"]
+    claude_answers.ingest(db, ask_id, _claude_json(can_answer=True, answer="Haan ji, Sunday ko bhi likh sakte hain.",
+                                                   answer_en="Yes, you can write on Sunday too."))
+    entry = [p for p in learning_loop._load(db)["accepted"] if p["kind"] == "claude_answer"][0]
+    # No Gujarati version: nothing to reuse (no English sent instead).
+    assert claude_answers.answer_in(entry, "gu") == "" and claude_answers.answer_in(entry, "en")
+    # Asked again for Gujarati: Claude's reply joins the same learned answer.
+    c = conv(db)
+    c.needs_attention = True
+    from src.services import tickets
+    tickets.raise_or_update(db, c)
+    claude_answers.ask(db, c, "Sunday ko bhi baat karte ho?", "gu", learned_id=entry["id"])
+    db.commit()
+    waiting = claude_answers.pending_questions(db)
+    assert len(waiting) == 1
+    claude_answers.ingest(db, waiting[0]["id"], _claude_json(can_answer=True, answer="હા, રવિવારે પણ લખી શકો છો."))
+    entries = [p for p in learning_loop._load(db)["accepted"] if p["kind"] == "claude_answer"]
+    assert len(entries) == 1 and entries[0]["answers"]["gu"] == "હા, રવિવારે પણ લખી શકો છો."
+
+
+def test_after_three_unanswered_nudges_claude_rates_their_interest(db, client):
+    """19 Nov 2026: shown on Applications and in the chat; a label only."""
+    from src.services import claude_answers
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    last_in = db.query(WhatsAppMessage).filter_by(phone=PHONE, direction="IN").order_by(WhatsAppMessage.created_at.desc()).first()
+    assert claude_answers.interest_pending(db) == []
+    for h in (2, 26, 50):
+        db.add(WhatsAppMessage(message_id=uuid.uuid4().hex, phone=PHONE, direction="OUT", kind="text",
+                               body="Just checking in", status="SENT", sent_by="bot",
+                               created_at=last_in.created_at + timedelta(hours=h)))
+    db.commit()
+    waiting = claude_answers.interest_pending(db)
+    assert len(waiting) == 1 and "THEM:" in waiting[0]["prompt"] and "3 messages since their last reply" in waiting[0]["prompt"]
+    done = claude_answers.ingest(db, waiting[0]["id"], _claude_json(level="low", reason="Went quiet after giving the PIN."))
+    assert done["done"] and conv(db).bot_data["interest"]["level"] == "low"
+    assert claude_answers.interest_pending(db) == []          # rated on these messages
+    s = client.get(f"/api/v1/inbox/conversations/{PHONE.lstrip('+')}/summary").json()
+    assert s["interest"]["level"] == "low"

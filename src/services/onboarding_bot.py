@@ -1251,7 +1251,7 @@ def _fallback(db, conv, body, gap=FALLBACK_GAP, kind_intro=False, **kw):
         else:
             flag(conv, f"Voice note: {said}" if voice and said else ("Voice note" if voice else said))
             if said and not voice:
-                claude_answers.ask(db, conv, said, _lang(db, conv))
+                claude_answers.ask(db, conv, said, _lang(db, conv), learned_id=learned["id"] if learned else None)
                 data = conv.bot_data   # kept when the pacing below writes bot_data again
             ack = _t(db, conv, "question_ack")
             body = ack if body == _t(db, conv, "acknowledge") else f"{ack}\n\n{body}"
