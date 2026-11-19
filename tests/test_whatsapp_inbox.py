@@ -4657,15 +4657,43 @@ def test_someone_quiet_in_a_dc_district_still_gets_the_offer_as_a_reminder(db, c
     assert dc_visit.queue_quiet(db) == 0
 
 
-def test_claude_cli_plans_where_the_offer_goes(db, monkeypatch):
+def test_loading_the_dc_list_sends_the_visit_templates_to_meta_and_claude_plans_nothing(db, monkeypatch):
+    """19 Nov 2026: Claude is used only for questions; the offer keeps its point (a doubt, by default)."""
     from src.services import claude_answers, dc_network, dc_visit, nudge_templates
     submitted = []
     monkeypatch.setattr(nudge_templates, "submit", lambda db, purpose, by: submitted.append(purpose) or [])
-    assert dc_visit.plan_pending(db) == []                       # no DCs yet
     dc_network.save(db, [{"state": "Haryana", "district": "Ambala", "dc": "X", "phone": ""}])
-    tasks = dc_visit.plan_pending(db)
-    assert len(tasks) == 1 and "after_pin" in tasks[0]["prompt"]
+    assert submitted == ["dc_visit"]
+    assert dc_visit.plan(db)["point"] == "trust"
+    assert claude_answers.pending(db) == []
+
+
+def test_claude_answers_once_in_every_language_and_never_loops(db, client):
+    """19 Nov 2026: one Claude call per new question; the bot answers it in any language after."""
     import json
-    out = claude_answers.ingest(db, tasks[0]["id"], json.dumps({"result": json.dumps({"point": "after_pin", "why": "Most stop after the PIN."})}))
-    assert out["done"] and dc_visit.plan(db)["point"] == "after_pin" and submitted == ["dc_visit"]
-    assert dc_visit.plan_pending(db) == []                       # planned this week
+    from src.services import claude_answers, learning_loop
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "Kya aap Sunday ko bhi baat karte ho?")
+    waiting = claude_answers.pending(db)
+    assert len(waiting) == 1 and all(k not in waiting[0]["id"] for k in ("int:", "dcplan:"))
+    every = {"en": "Yes, write to us on Sunday too.", "hi": "हाँ, रविवार को भी लिखिए।",
+             "hinglish": "Haan, Sunday ko bhi likhiye.", "gu": "હા, રવિવારે પણ લખો."}
+    count = len(StubMeta.sent)
+    claude_answers.ingest(db, waiting[0]["id"], json.dumps({"result": json.dumps(
+        {"can_answer": True, "answer": "Haan, Sunday ko bhi likhiye.", "answers": every})}))
+    assert [b for _k, b in _sent_kinds(count)] == ["Haan, Sunday ko bhi likhiye."]     # only their language
+    entry = [p for p in learning_loop._load(db)["accepted"] if p["kind"] == "claude_answer"][0]
+    assert entry["answers"]["gu"] == "હા, રવિવારે પણ લખો."
+    assert claude_answers.answer_in(entry, "gu") == "હા, રવિવારે પણ લખો."
+    assert claude_answers.pending(db) == []
+
+
+def test_a_question_claude_cannot_answer_is_not_asked_again(db, client):
+    from src.services import claude_answers
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    say(db, "Kya aap Sunday ko bhi baat karte ho?")
+    ask_id = claude_answers.pending(db)[0]["id"]
+    claude_answers.ingest(db, ask_id, "not json at all")
+    assert claude_answers.pending(db) == [] and conv(db).needs_attention     # with the team, not retried

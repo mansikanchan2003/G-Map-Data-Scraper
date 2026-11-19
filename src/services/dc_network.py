@@ -57,6 +57,13 @@ def save(db: Session, rows: List[dict]) -> int:
         db.add(row)
     row.value = json.dumps(clean)
     db.commit()
+    if clean:
+        # The visit offer's templates go to Meta, so it reaches people after 24 hours too.
+        try:
+            from src.services import nudge_templates
+            nudge_templates.submit(db, "dc_visit", "dc_network")
+        except Exception:
+            pass
     return len(clean)
 
 

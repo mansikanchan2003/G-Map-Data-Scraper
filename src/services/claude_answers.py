@@ -161,14 +161,34 @@ EKO'S CONFIRMED FACTS (use only these):
 THE QUESTION (language code: {lang}; "hinglish" means Hindi in Latin letters):
 {item.get("question")}
 
-Reply with ONLY a JSON object, no other text:
-{{"can_answer": true or false, "answer": "the reply in the person's own language and script, warm and polite, plain WhatsApp text, under 80 words", "answer_en": "the same in English", "answer_hi": "the same in Hindi (Devanagari)", "answer_hinglish": "the same in Hinglish", "why": "if can_answer is false, why"}}"""
+Reply with ONLY a JSON object, no other text. "answer" is the one message they will get. "answers" is the same
+answer in every language the bot speaks, kept so the bot can answer this question itself next time, in whatever
+language it is asked:
+{{"can_answer": true or false, "answer": "the reply in the person's own language and script, warm and polite, plain WhatsApp text, under 80 words", "answers": {{"en": "English", "hi": "Hindi (Devanagari)", "hinglish": "Hindi in Latin letters", "gu": "Gujarati", "pa": "Punjabi (Gurmukhi)", "mr": "Marathi", "bn": "Bengali", "ta": "Tamil", "te": "Telugu", "kn": "Kannada", "ml": "Malayalam", "or": "Odia"}}, "why": "if can_answer is false, why"}}"""
+
+
+# Claude is used for one thing only (the user, 19 Nov 2026, after a retry loop used up her limit):
+# a question not in the bot's knowledge. At most PER_RUN a run and PER_DAY a day; a question that
+# fails is left with the team, never asked again.
+PER_RUN = 3
+PER_DAY = 40
 
 
 def pending(db: Session) -> List[dict]:
-    """Everything waiting for Claude, each with its prompt: questions, then interest ratings."""
-    from src.services import dc_visit
-    return pending_questions(db) + interest_pending(db) + dc_visit.plan_pending(db)
+    """The questions waiting for Claude, each with its prompt: nothing else goes to Claude."""
+    return pending_questions(db)
+
+
+def asked_today(db: Session) -> int:
+    from src.models.inbox import WhatsAppConversation
+    today = _now().date()
+    n = 0
+    for conv in db.query(WhatsAppConversation).all():
+        a = (conv.bot_data or {}).get("claude_ask") or {}
+        done = _iso(a.get("answered_at") or a.get("left_at"))
+        if a.get("state") in ("answered", "left") and done and done.date() == today:
+            n += 1
+    return n
 
 
 def pending_questions(db: Session) -> List[dict]:
@@ -177,9 +197,14 @@ def pending_questions(db: Session) -> List[dict]:
     from src.services import tickets
     if not on(db):
         return []
+    room = min(PER_RUN, PER_DAY - asked_today(db))
+    if room <= 0:
+        return []
     out = []
     now = _now()
     for conv in db.query(WhatsAppConversation).filter(WhatsAppConversation.needs_attention.is_(True)).all():
+        if len(out) >= room:
+            break
         a = (conv.bot_data or {}).get("claude_ask")
         if not a or a.get("state") != "waiting":
             continue
@@ -221,7 +246,7 @@ def ingest(db: Session, ask_id: str, claude_output: str) -> dict:
     a = dict(conv.bot_data["claude_ask"])
 
     def leave(why: str) -> dict:
-        a.update(state="left", why=why[:300])
+        a.update(state="left", why=why[:300], left_at=_now().isoformat())
         conv.bot_data = {**conv.bot_data, "claude_ask": a}
         flag_modified(conv, "bot_data")
         db.commit()
@@ -236,8 +261,10 @@ def ingest(db: Session, ask_id: str, claude_output: str) -> dict:
         return leave(f"Claude could not answer: {got.get('why') or 'no answer'}")
     if len(answer) > MAX_ANSWER_CHARS:
         return leave("Claude's answer was too long")
-    answers = {"en": got.get("answer_en"), "hi": got.get("answer_hi"), "hinglish": got.get("answer_hinglish")}
-    answers = {k: str(v).strip() for k, v in answers.items() if v and str(v).strip()}
+    given = got.get("answers") if isinstance(got.get("answers"), dict) else {}
+    given = {**{"en": got.get("answer_en"), "hi": got.get("answer_hi"), "hinglish": got.get("answer_hinglish")}, **given}
+    answers = {k: " ".join(str(v).split()) for k, v in given.items()
+               if k in LANGS and v and str(v).strip() and len(str(v)) <= MAX_ANSWER_CHARS}
     lang = a.get("lang") if a.get("lang") in LANGS else "hi"
     answers[lang] = answer          # what they are sent, in their own language, always kept
     problems = [p for text in answers.values() for p in ek.vocabulary_problems(text)]
