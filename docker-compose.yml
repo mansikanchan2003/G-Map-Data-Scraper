@@ -105,8 +105,11 @@ services:
       META_APP_SECRET: ${META_APP_SECRET:-}
       META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-gmap_scraper_verify_token}
 
-      # Template Studio. Free models: text through g4f (no key), photos from
+      # Template Studio. Free models: text and photo checks through Google's
+      # Gemini API free tier (GEMINI_API_KEY; g4f behind it), photos from
       # FLUX.1 on Hugging Face Spaces with this token's daily allowance.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODELS: ${GEMINI_MODELS:-}
       HF_TOKEN: ${HF_TOKEN:-}
       STUDIO_PHOTO_QUEUE_THREAD: ${STUDIO_PHOTO_QUEUE_THREAD:-true}
 

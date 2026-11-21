@@ -55,6 +55,13 @@ def no_call_transcription(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_gemini_api(monkeypatch):
+    """Tests never reach Google's Gemini API with a real key (gemini_client); a test sets its own."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_MODELS", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def no_insights_cache(monkeypatch):
     """Every Campaign Insights request works its parts out afresh in tests (insights_cache)."""
     monkeypatch.setenv("INSIGHTS_CACHE_SECONDS", "0")

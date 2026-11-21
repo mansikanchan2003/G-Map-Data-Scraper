@@ -399,6 +399,63 @@ def test_no_made_up_draft_when_every_model_fails(monkeypatch):
         gc.GeminiClient().generate_json("write")
 
 
+class FakeGeminiAPI:
+    """Google's generateContent endpoint: per model, an answer, or an HTTP error code."""
+
+    def __init__(self, answers):
+        self.answers, self.calls = answers, []
+
+    def __call__(self, url, headers=None, json=None, timeout=None):
+        model = url.split("/models/")[1].split(":")[0]
+        self.calls.append((model, headers.get("x-goog-api-key"), json))
+        answer = self.answers.get(model, 429)
+        if isinstance(answer, int):
+            return type("R", (), {"status_code": answer, "text": "quota",
+                                  "json": lambda self: {"error": {"message": "Resource has been exhausted"}}})()
+        body = {"candidates": [{"content": {"parts": [{"text": answer}]}}]}
+        return type("R", (), {"status_code": 200, "text": "", "json": lambda self: body})()
+
+
+def test_the_gemini_api_writes_first_and_the_next_model_takes_over_when_one_is_used_up(monkeypatch):
+    # 21 Nov 2026: g4f's free endpoints stopped answering; the Gemini API's free tier writes now.
+    from src.services import gemini_client as gc
+
+    api = FakeGeminiAPI({"gemini-flash-latest": 503, "gemini-3.5-flash-lite": '{"variants": [1]}'})
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(gc.requests, "post", api)
+    monkeypatch.setattr(gc, "G4FClient", lambda: FakeG4F({}))
+    client = gc.GeminiClient()
+    assert client.generate_json("write", temperature=0.3) == {"variants": [1]}
+    assert [c[0] for c in api.calls] == ["gemini-flash-latest", "gemini-3.5-flash-lite"]
+    assert api.calls[0][1] == "test-key" and api.calls[0][2]["generationConfig"]["temperature"] == 0.3
+    assert client.text_model() == "gemini-3.5-flash-lite (via Gemini API)"
+
+
+def test_g4f_is_still_tried_when_every_gemini_model_is_used_up(monkeypatch):
+    from src.services import gemini_client as gc
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(gc.requests, "post", FakeGeminiAPI({}))
+    monkeypatch.setattr(gc, "G4FClient", lambda: FakeG4F({"llama-3.3-70b": '{"ok": true}'}))
+    client = gc.GeminiClient()
+    assert client.generate_json("write") == {"ok": True}
+    assert client.text_model() == "llama-3.3-70b (via g4f)"
+    monkeypatch.setattr(gc, "G4FClient", lambda: FakeG4F({}))
+    with pytest.raises(gc.GeminiError, match="tomorrow"):
+        gc.GeminiClient().generate_json("write")
+
+
+def test_the_gemini_api_reads_an_image(monkeypatch):
+    from src.services import gemini_client as gc
+
+    api = FakeGeminiAPI({"gemini-flash-latest": '{"sign_text": "ok", "issues": []}'})
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(gc.requests, "post", api)
+    assert gc.GeminiClient().inspect_image(PNG, "image/png", "read the sign")["sign_text"] == "ok"
+    parts = api.calls[0][2]["contents"][0]["parts"]
+    assert parts[0]["inline_data"]["mime_type"] == "image/png" and "read the sign" in parts[1]["text"]
+
+
 def test_an_unsupported_claim_is_sent_back_for_repair(db):
     # The first real round offered "cash deposit", which is not a listed service.
     FakeGemini.unsupported = [["ਜਮ੍ਹਾਂ — cash deposit is not a listed service"], []]

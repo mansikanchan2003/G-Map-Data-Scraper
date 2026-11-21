@@ -1,9 +1,12 @@
 """
 The agent's models, all free: writing, photographs, and checking photographs.
 
-- Text and image checks go through g4f (GPT4Free), which reaches free model
-  endpoints without a key. gemini-2.0-flash both writes the best Hindi of what
-  answers and can read an image, so it leads both lists.
+- Text and image checks go first to Google's Gemini API on its free tier, with
+  GEMINI_API_KEY (21 Nov 2026: g4f's free endpoints stopped answering. One
+  asked for paid "cake credits", one sent back audio, one a "Copilot moved"
+  page). Each model has its own daily free allowance, so when the first is
+  used up for the day the next takes over (GEMINI_MODELS).
+- g4f (GPT4Free) stays behind it, for a day it answers again.
 - Photos come from FLUX.1 on Hugging Face Spaces, called with gradio_client.
   Spaces run on a free daily GPU allowance tied to HF_TOKEN; the Inference API
   that this used to call no longer serves FLUX for free.
@@ -11,12 +14,15 @@ The agent's models, all free: writing, photographs, and checking photographs.
 Free endpoints come and go, so every call walks a list and the error names
 what was tried. The class keeps its old name so the agents need no changes.
 """
+import base64
 import io
 import json
 import logging
 import os
 import re
-from typing import Optional
+from typing import List, Optional
+
+import requests
 
 from g4f.client import Client as G4FClient
 
@@ -56,6 +62,48 @@ def _json_in(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+# Best first; each has its own free daily allowance. GEMINI_MODELS (comma-separated) overrides.
+# The "-latest" names follow Google's newest Flash, so a retired version does not stop the
+# Studio: on 21 Nov 2026 a new key could no longer use gemini-2.5-* or 2.0-flash at all.
+GEMINI_MODELS = ["gemini-flash-latest", "gemini-3.5-flash-lite", "gemini-flash-lite-latest"]
+GEMINI_TIMEOUT = 90
+
+
+def _gemini_key() -> str:
+    return (os.environ.get("GEMINI_API_KEY") or "").strip()
+
+
+def _gemini_models() -> List[str]:
+    named = [m.strip() for m in (os.environ.get("GEMINI_MODELS") or "").split(",") if m.strip()]
+    return named or list(GEMINI_MODELS)
+
+
+def _gemini(model: str, parts: list, temperature: float) -> str:
+    """One generateContent call on the free tier: the answer's text, or an error naming why."""
+    response = requests.post(
+        GEMINI_URL.format(model=model),
+        headers={"x-goog-api-key": _gemini_key(), "Content-Type": "application/json"},
+        json={"contents": [{"role": "user", "parts": parts}],
+              "generationConfig": {"temperature": temperature, "responseMimeType": "application/json"}},
+        timeout=GEMINI_TIMEOUT,
+    )
+    if response.status_code != 200:
+        # The key is in a header, never in the URL, so the error is safe to log.
+        try:
+            why = response.json().get("error", {}).get("message") or response.text
+        except ValueError:
+            why = response.text
+        raise RuntimeError(f"HTTP {response.status_code}: {why[:200]}")
+    data = response.json()
+    texts = [p.get("text", "") for c in data.get("candidates") or [] for p in (c.get("content") or {}).get("parts") or []]
+    if not any(texts):
+        reason = ((data.get("candidates") or [{}])[0].get("finishReason")
+                  or (data.get("promptFeedback") or {}).get("blockReason") or "empty answer")
+        raise RuntimeError(f"no text ({reason})")
+    return "".join(texts)
+
+
 class GeminiClient:
     # Best Hindi first. These answered through g4f on 2026-10-09; the earlier
     # list (llama-3.1-*, mixtral, gpt-4o-mini first) no longer did.
@@ -74,18 +122,31 @@ class GeminiClient:
         self.text_models = list(self.TEXT_MODELS)
         self.last_used_text_model = self.text_models[0]
         self.last_used_image_model = self.IMAGE_SPACES[0][0]
+        self.last_text_via = "g4f"
 
     def is_configured(self) -> bool:
-        return True  # The free endpoints need no key; HF_TOKEN only raises the photo allowance.
+        return True  # g4f needs no key; GEMINI_API_KEY and HF_TOKEN only make it work better.
 
     def text_model(self) -> str:
-        return f"{self.last_used_text_model} (via g4f)"
+        return f"{self.last_used_text_model} (via {self.last_text_via})"
 
     def generate_json(self, prompt: str, temperature: float = 1.0) -> dict:
         """Runs a prompt that must answer with one JSON object, trying each model."""
+        ask = prompt + "\n\nReply ONLY with valid JSON, no markdown or explanation."
+        tried = []
+        if _gemini_key():
+            for model in _gemini_models():
+                tried.append(model)
+                try:
+                    answer = _json_in(_gemini(model, [{"text": ask}], temperature))
+                    self.last_used_text_model, self.last_text_via = model, "Gemini API"
+                    return answer
+                except Exception as e:
+                    logger.warning(f"gemini event=GEMINI_API_FAILED model={model} reason={str(e)[:200]}")
         for model in self.text_models:
+            tried.append(f"{model} (g4f)")
             try:
-                self.last_used_text_model = model
+                self.last_used_text_model, self.last_text_via = model, "g4f"
                 response = self.client.chat.completions.create(
                     model=model,
                     messages=[{"role": "user", "content": prompt + "\n\nReply ONLY with valid JSON, no markdown or explanation."}],
@@ -96,7 +157,9 @@ class GeminiClient:
 
         # No made-up draft: a stand-in English one once reached the Studio as
         # if the agent had written it. The round fails and says why instead.
-        raise GeminiError(f"No free text model answered (tried: {', '.join(self.text_models)}). Try again in a few minutes.")
+        raise GeminiError(f"No free text model answered (tried: {', '.join(tried)}). "
+                          + ("Try again in a few minutes; if the free daily allowance is used up, tomorrow."
+                             if _gemini_key() else "GEMINI_API_KEY is not set on the server."))
 
     def generate_image(self, prompt: str, seed: Optional[int] = None) -> bytes:
         """One square image as JPEG bytes, from the first FLUX Space that answers."""
@@ -144,6 +207,14 @@ class GeminiClient:
         ext = "png" if mime_type == "image/png" else "jpg"
         ask = (question + "\n\nReply with the JSON object only, on a single line, no code fence. "
                "Keep every string short.")
+        if _gemini_key():
+            parts = [{"inline_data": {"mime_type": mime_type, "data": base64.b64encode(image).decode()}},
+                     {"text": ask}]
+            for model in _gemini_models():
+                try:
+                    return _json_in(_gemini(model, parts, 0.2))
+                except Exception as e:
+                    logger.warning(f"gemini event=GEMINI_API_VISION_FAILED model={model} reason={str(e)[:200]}")
         for model in self.VISION_MODELS:
             for attempt in range(1, self.VISION_TRIES + 1):
                 try:
