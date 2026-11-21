@@ -52,11 +52,31 @@ FAQ: List[dict] = [
         "id": "fees", "question": "Apply karne ki fees?",
         "keys": ["fees", "fee", "registration", "apply karne", "apply ka", "allotment", "paise dene", "charge apply", "फीस", "शुल्क", "ફી", "ਫੀਸ"],
         "answer": {
-            "hinglish": "Apply karna free hai. Allotment ke naam par kisi ko paise na dein.",
-            "en": "Applying is free. Do not pay anyone in the name of an allotment.",
-            "hi": "अप्लाई करना फ्री है। अलॉटमेंट के नाम पर किसी को पैसे न दें।",
-            "gu": "અરજી કરવી મફત છે. ફાળવણીના નામે કોઈને પૈસા ન આપો.",
-            "pa": "ਅਪਲਾਈ ਕਰਨਾ ਮੁਫ਼ਤ ਹੈ। ਅਲਾਟਮੈਂਟ ਦੇ ਨਾਮ 'ਤੇ ਕਿਸੇ ਨੂੰ ਪੈਸੇ ਨਾ ਦਿਓ।",
+            # "Free che?" was read as "the whole business is free" (TKT-00050, 20 Nov 2026), so the
+            # answer says what SBI's kiosk costs and that ESAF Small Finance Bank's needs no investment,
+            # only its registration fee (the user, 21 Nov 2026).
+            "hinglish": "Apply karna free hai. Allotment ke naam par kisi ko paise na dein.\n\n"
+                        "SBI Kiosk Banking Outlet shuru karne mein location ke hisaab se ₹3–5 lakh lagte hain. "
+                        "Agar itna nahi lagana, to *ESAF Small Finance Bank* ka Banking Agent banne ka option hai: "
+                        "usme koi investment nahi, bas ek baar ₹1,999 ki registration fee hai. Micro ATM device "
+                        "lena ho to uske ₹1,300 + GST alag.",
+            "en": "Applying is free. Do not pay anyone in the name of an allotment.\n\n"
+                  "Starting an SBI Kiosk Banking Outlet takes ₹3–5 lakh, depending on the location. If that is too "
+                  "much, you can become a Banking Agent of *ESAF Small Finance Bank*: you do not have to invest "
+                  "anything, there is only a one-time registration fee of ₹1,999. A Micro ATM device, if you want "
+                  "one, costs ₹1,300 + GST.",
+            "hi": "अप्लाई करना फ्री है। अलॉटमेंट के नाम पर किसी को पैसे न दें।\n\n"
+                  "SBI कियोस्क बैंकिंग आउटलेट शुरू करने में लोकेशन के हिसाब से ₹3–5 लाख लगते हैं। अगर इतना नहीं "
+                  "लगाना, तो *ESAF Small Finance Bank* का बैंकिंग एजेंट बनने का विकल्प है: उसमें कोई निवेश नहीं, "
+                  "बस एक बार ₹1,999 की रजिस्ट्रेशन फ़ीस है। Micro ATM डिवाइस लेना हो तो उसके ₹1,300 + GST अलग।",
+            "gu": "અરજી કરવી મફત છે. ફાળવણીના નામે કોઈને પૈસા ન આપો.\n\n"
+                  "SBI કિઓસ્ક બેંકિંગ આઉટલેટ શરૂ કરવામાં લોકેશન પ્રમાણે ₹3–5 લાખ લાગે છે. જો એટલું ન રોકવું હોય, "
+                  "તો *ESAF Small Finance Bank*ના બેંકિંગ એજન્ટ બનવાનો વિકલ્પ છે: તેમાં કોઈ રોકાણ નથી, ફક્ત એક વાર "
+                  "₹1,999ની રજિસ્ટ્રેશન ફી છે. Micro ATM ડિવાઇસ લેવું હોય તો તેના ₹1,300 + GST અલગ.",
+            "pa": "ਅਪਲਾਈ ਕਰਨਾ ਮੁਫ਼ਤ ਹੈ। ਅਲਾਟਮੈਂਟ ਦੇ ਨਾਮ 'ਤੇ ਕਿਸੇ ਨੂੰ ਪੈਸੇ ਨਾ ਦਿਓ।\n\n"
+                  "SBI ਕਿਓਸਕ ਬੈਂਕਿੰਗ ਆਊਟਲੈੱਟ ਸ਼ੁਰੂ ਕਰਨ ਵਿੱਚ ਲੋਕੇਸ਼ਨ ਮੁਤਾਬਕ ₹3–5 ਲੱਖ ਲੱਗਦੇ ਹਨ। ਜੇ ਇੰਨਾ ਨਹੀਂ ਲਾਉਣਾ, "
+                  "ਤਾਂ *ESAF Small Finance Bank* ਦਾ ਬੈਂਕਿੰਗ ਏਜੰਟ ਬਣਨ ਦਾ ਵਿਕਲਪ ਹੈ: ਇਸ ਵਿੱਚ ਕੋਈ ਨਿਵੇਸ਼ ਨਹੀਂ, ਸਿਰਫ਼ "
+                  "ਇੱਕ ਵਾਰ ₹1,999 ਦੀ ਰਜਿਸਟ੍ਰੇਸ਼ਨ ਫ਼ੀਸ ਹੈ। Micro ATM ਡਿਵਾਈਸ ਲੈਣਾ ਹੋਵੇ ਤਾਂ ਉਸਦੇ ₹1,300 + GST ਵੱਖਰੇ।",
         },
     },
     {

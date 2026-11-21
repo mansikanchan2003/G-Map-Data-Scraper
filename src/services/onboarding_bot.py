@@ -676,6 +676,79 @@ _NOT_NOW = ("not interested", "interested nahi", "interested nhi", "nahi chahiye
             "nhi karna", "abhi nahi", "no thanks", "नहीं चाहिए", "इंटरेस्टेड नहीं")
 
 
+# Saying they cannot or will not put money in, at any step (20 Nov 2026: "free ma na hoy to mane
+# koi contact na karta", "if it is not free, don't contact me", went to a person and was never
+# offered ESAF). Each phrase carries its own "no" or "only if free"; "free che?" alone is a
+# question for the FAQ, not this.
+_CANNOT_AFFORD = (
+    "free nahi", "free nhi", "free na ho", "free na hoy", "free ma na", "free me nahi", "free mein nahi",
+    "free nathi",
+    "paise nahi", "paisa nahi", "paise nhi", "paisa nhi", "paise nahin", "itne paise nahi", "itna paisa nahi",
+    "no money", "don't have money", "dont have money", "cannot afford", "can't afford", "cant afford",
+    "invest nahi", "invest nhi", "investment nahi", "investment nhi", "nivesh nahi", "lakh nahi", "lakh nhi",
+    "budget nahi", "budget nhi", "paisa nathi", "paise nathi", "rokan nathi",
+    "पैसे नहीं", "पैसा नहीं", "निवेश नहीं", "फ्री नहीं", "मुफ्त नहीं", "लाख नहीं",
+    "પૈસા નથી", "પૈસા ન", "ફ્રી ન", "ફ્રીમાં ન", "મફત ન", "રોકાણ નથી", "રોકાણ ન",
+    "ਪੈਸੇ ਨਹੀਂ", "ਪੈਸਾ ਨਹੀਂ", "ਨਿਵੇਸ਼ ਨਹੀਂ", "ਫ੍ਰੀ ਨਹੀਂ", "ਮੁਫ਼ਤ ਨਹੀਂ",
+)
+# "For now": money short at the moment.
+_FOR_NOW = (" abhi ", " abhi,", " filhal ", " fillhal ", " is time ", " is samay ", " अभी ", " फिलहाल ",
+            " હમણાં ", " હાલ ", " ਹੁਣੇ ", " ਫ਼ਿਲਹਾਲ ")
+# "Only if it is free": a condition, so not when they are asking ("free hai to batao?").
+_ONLY_IF_FREE = ("free ho to", "free hoy to", "free hai to", "free hoga to", "free ma hoy to", "free mein ho to",
+                 "free me ho to", "फ्री हो तो", "मुफ्त हो तो", "ફ્રી હોય તો", "મફત હોય તો")
+
+
+def cannot_afford(text: Optional[str]) -> bool:
+    """Whether someone says they cannot, or will not unless it is free, put money in."""
+    said = " ".join((text or "").lower().split())
+    if not said:
+        return False
+    if "free" not in said and any(w in f" {said} " for w in _FOR_NOW):
+        # "Abhi paise nahi hai": short of money for now, a financial hold the team checks back on
+        # (the golden set's rd-20), not a lasting "cannot afford".
+        return False
+    return any(p in said for p in _CANNOT_AFFORD) or ("?" not in said and any(p in said for p in _ONLY_IF_FREE))
+
+
+def _offer_esaf(db: Session, conv: WhatsAppConversation, lang: str, note: str) -> None:
+    """ESAF Small Finance Bank's banking agent, for someone who cannot invest ₹3–5 lakh (11 Nov 2026)."""
+    _move(conv, ESAF_OFFERED, can_invest=False, esaf_pending=None)
+    said = _say(db, conv, _t(db, conv, "esaf_offer"), buttons=YES_NO("esaf", lang))
+    # The sheet's "Investment issue": its reply offers the lower-investment
+    # option, and the team hears so a person follows it up.
+    from src.services import dc_visit, followups, handover
+    handover.record(db, conv, "ni_investment", "bot", note=note, run_now=False)
+    followups.mark_sent(db, conv, "lower_investment", said)
+    dc_visit.offer_at(db, conv, "cannot_invest")
+
+
+def _afford_reply(db: Session, conv: WhatsAppConversation, msg) -> bool:
+    """
+    "Paise nahi hain", "free na hoy to nahi karna", at any step: ESAF Small Finance Bank is
+    offered there and then or, when the bot does not know their education yet, that is asked
+    first (ESAF too needs 12th pass). Not where ESAF is already offered or done with, after
+    documents, or for someone below 12th. True if handled.
+    """
+    if conv.bot_step in (ESAF_OFFERED, ESAF_DETAILS, ESAF_INTERESTED, ESAF_DECLINED, SUBMITTED, NOT_ELIGIBLE) \
+            or (conv.bot_data or {}).get("esaf"):
+        return False
+    said = message_text(msg) if msg.kind == "text" or getattr(msg, "voice", False) else ""
+    if not cannot_afford(said):
+        return False
+    _understood(conv)
+    lang = _lang(db, conv)
+    note = f"Said they cannot invest: “{said[:200]}”"
+    logger.info(f"onboarding_bot event=CANNOT_AFFORD phone=...{conv.phone[-4:]} step={conv.bot_step}")
+    if (conv.bot_data or {}).get("education") in ("12", "grad"):
+        _offer_esaf(db, conv, lang, note)
+    else:
+        _move(conv, AWAIT_EDUCATION, esaf_pending=True)
+        _say(db, conv, _t(db, conv, "esaf_education_first") + "\n\n" + _t(db, conv, "ask_education"),
+             buttons=education_buttons(lang))
+    return True
+
+
 def wants_to_start(text: Optional[str]) -> bool:
     """Whether someone asking about personal guidance says they want to begin the application."""
     said = " " + " ".join(re.findall(r"[\w\u0900-\u0DFF]+", (text or "").lower())) + " "
@@ -1519,6 +1592,10 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
     if _auto_reply(db, conv, msg):
         return
 
+    # "Cannot afford it" at any step gets ESAF Small Finance Bank's offer (21 Nov 2026).
+    if _afford_reply(db, conv, msg):
+        return
+
     if _reply_disposition(db, conv, msg):
         return
 
@@ -1594,6 +1671,11 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
             _understood(conv)
             _move(conv, NOT_ELIGIBLE, education=level)
             _say(db, conv, _t(db, conv, "not_eligible"))
+        elif level and (conv.bot_data or {}).get("esaf_pending"):
+            # They already said they cannot afford SBI's kiosk: ESAF straight away.
+            _understood(conv)
+            _move(conv, AWAIT_EDUCATION, education=level)
+            _offer_esaf(db, conv, lang, "Said they cannot invest, before the education question")
         elif level:
             # One question now covers the investment and the franchise
             # (the user's choice, 2026-10-14).
@@ -1624,15 +1706,7 @@ def _handle(db: Session, conv: WhatsAppConversation, msg, cfg: dict) -> None:
         elif answer is False:
             _understood(conv)
             # ESAF's banking agent needs no big investment: offered at once (11 Nov 2026).
-            _move(conv, ESAF_OFFERED, can_invest=False)
-            said = _say(db, conv, _t(db, conv, "esaf_offer"), buttons=YES_NO("esaf", lang))
-            # The sheet's "Investment issue": its reply offers the lower-investment
-            # option, and the team hears so a person follows it up.
-            from src.services import followups, handover
-            handover.record(db, conv, "ni_investment", "bot", note="Said they cannot invest ₹3–5 lakh", run_now=False)
-            followups.mark_sent(db, conv, "lower_investment", said)
-            from src.services import dc_visit
-            dc_visit.offer_at(db, conv, "cannot_invest")
+            _offer_esaf(db, conv, lang, "Said they cannot invest ₹3–5 lakh")
         else:
             _fallback(db, conv, _t(db, conv, "remind_choice") + "\n\n" + _t(db, conv, "ask_invest"),
                       buttons=YES_NO("invest", lang))

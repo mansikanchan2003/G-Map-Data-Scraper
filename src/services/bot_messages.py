@@ -1394,8 +1394,48 @@ _ESAF = {
         "esaf_no": "କିଛି ଅସୁବିଧା ନାହିଁ, ଆପଣଙ୍କ ସମୟ ପାଇଁ ଧନ୍ୟବାଦ। 🙏 ମତ ବଦଳିଲେ, କେବଳ ଏଠାରେ ଉତ୍ତର ଦିଅନ୍ତୁ।",
     },
 }
+# Someone who says they cannot afford it before the bot knows their education (20 Nov 2026:
+# "free ma na hoy to mane koi contact na karta" went to a person): ESAF needs 12th pass too,
+# so that is asked first, then ESAF is offered. Languages not here fall back to English.
+_ESAF_FIRST = {
+    "en": "Understood. 🙏 There is an option without the ₹3–5 lakh: a Banking Agent of *ESAF Small Finance Bank*. "
+          "You do not have to invest anything, there is only a one-time registration fee of ₹1,999 "
+          "(a Micro ATM device, if you want one, is ₹1,300 + GST). It needs 12th pass or above.",
+    "hi": "समझ गए। 🙏 ₹3–5 लाख के बिना भी एक विकल्प है: *ESAF Small Finance Bank* का बैंकिंग एजेंट। "
+          "इसमें कोई निवेश नहीं, बस एक बार ₹1,999 की रजिस्ट्रेशन फ़ीस है (Micro ATM डिवाइस लेना हो तो ₹1,300 + GST)। "
+          "इसके लिए 12वीं पास या उससे ज़्यादा पढ़ाई ज़रूरी है।",
+    "gu": "સમજી ગયા. 🙏 ₹3–5 લાખ વગરનો પણ એક વિકલ્પ છે: *ESAF Small Finance Bank*ના બેંકિંગ એજન્ટ. "
+          "તેમાં કોઈ રોકાણ નથી, ફક્ત એક વાર ₹1,999ની રજિસ્ટ્રેશન ફી છે (Micro ATM ડિવાઇસ લેવું હોય તો ₹1,300 + GST). "
+          "તેના માટે 12મું પાસ કે તેથી વધુ ભણતર જરૂરી છે.",
+    "pa": "ਸਮਝ ਗਏ। 🙏 ₹3–5 ਲੱਖ ਤੋਂ ਬਿਨਾਂ ਵੀ ਇੱਕ ਵਿਕਲਪ ਹੈ: *ESAF Small Finance Bank* ਦਾ ਬੈਂਕਿੰਗ ਏਜੰਟ। "
+          "ਇਸ ਵਿੱਚ ਕੋਈ ਨਿਵੇਸ਼ ਨਹੀਂ, ਸਿਰਫ਼ ਇੱਕ ਵਾਰ ₹1,999 ਦੀ ਰਜਿਸਟ੍ਰੇਸ਼ਨ ਫ਼ੀਸ ਹੈ (Micro ATM ਡਿਵਾਈਸ ਲੈਣਾ ਹੋਵੇ ਤਾਂ "
+          "₹1,300 + GST)। ਇਸ ਲਈ 12ਵੀਂ ਪਾਸ ਜਾਂ ਉਸ ਤੋਂ ਵੱਧ ਪੜ੍ਹਾਈ ਜ਼ਰੂਰੀ ਹੈ।",
+    "mr": "समजले. 🙏 ₹3–5 लाखांशिवायही एक पर्याय आहे: *ESAF Small Finance Bank* चे बँकिंग एजंट. "
+          "यात कोणतीही गुंतवणूक नाही, फक्त एकदाच ₹1,999 नोंदणी शुल्क आहे (Micro ATM डिव्हाइस घ्यायचे असल्यास ₹1,300 + GST). "
+          "यासाठी 12वी उत्तीर्ण किंवा त्यापेक्षा जास्त शिक्षण आवश्यक आहे.",
+    "bn": "বুঝেছি। 🙏 ₹3–5 লাখ ছাড়াও একটি বিকল্প আছে: *ESAF Small Finance Bank*-এর ব্যাঙ্কিং এজেন্ট। "
+          "এতে কোনো বিনিয়োগ নেই, শুধু একবার ₹1,999 রেজিস্ট্রেশন ফি (Micro ATM ডিভাইস নিতে চাইলে ₹1,300 + GST)। "
+          "এর জন্য 12 ক্লাস পাস বা তার বেশি পড়াশোনা দরকার।",
+    "ta": "புரிந்தது. 🙏 ₹3–5 லட்சம் இல்லாமலும் ஒரு வாய்ப்பு உள்ளது: *ESAF Small Finance Bank*-இன் வங்கி முகவர். "
+          "இதில் எந்த முதலீடும் இல்லை, ஒருமுறை ₹1,999 பதிவுக் கட்டணம் மட்டும் (Micro ATM சாதனம் வேண்டுமென்றால் ₹1,300 + GST). "
+          "இதற்கு 12ஆம் வகுப்பு தேர்ச்சி அல்லது அதற்கு மேல் படிப்பு தேவை.",
+    "te": "అర్థమైంది. 🙏 ₹3–5 లక్షలు లేకుండా కూడా ఒక అవకాశం ఉంది: *ESAF Small Finance Bank* బ్యాంకింగ్ ఏజెంట్. "
+          "ఇందులో ఎలాంటి పెట్టుబడి లేదు, ఒకసారి ₹1,999 రిజిస్ట్రేషన్ ఫీజు మాత్రమే (Micro ATM పరికరం కావాలంటే ₹1,300 + GST). "
+          "దీనికి 12వ తరగతి పాస్ లేదా అంతకంటే ఎక్కువ చదువు అవసరం.",
+    "kn": "ಅರ್ಥವಾಯಿತು. 🙏 ₹3–5 ಲಕ್ಷ ಇಲ್ಲದೆಯೂ ಒಂದು ಆಯ್ಕೆ ಇದೆ: *ESAF Small Finance Bank*‌ನ ಬ್ಯಾಂಕಿಂಗ್ ಏಜೆಂಟ್. "
+          "ಇದರಲ್ಲಿ ಯಾವುದೇ ಹೂಡಿಕೆ ಇಲ್ಲ, ಒಮ್ಮೆ ₹1,999 ನೋಂದಣಿ ಶುಲ್ಕ ಮಾತ್ರ (Micro ATM ಸಾಧನ ಬೇಕಿದ್ದರೆ ₹1,300 + GST). "
+          "ಇದಕ್ಕೆ 12ನೇ ತರಗತಿ ಪಾಸ್ ಅಥವಾ ಅದಕ್ಕಿಂತ ಹೆಚ್ಚು ಓದು ಬೇಕು.",
+    "ml": "മനസ്സിലായി. 🙏 ₹3–5 ലക്ഷം ഇല്ലാതെയും ഒരു ഓപ്ഷൻ ഉണ്ട്: *ESAF Small Finance Bank*-ന്റെ ബാങ്കിംഗ് ഏജന്റ്. "
+          "ഇതിൽ നിക്ഷേപം ഒന്നുമില്ല, ഒരു തവണ ₹1,999 രജിസ്ട്രേഷൻ ഫീസ് മാത്രം (Micro ATM ഉപകരണം വേണമെങ്കിൽ ₹1,300 + GST). "
+          "ഇതിന് 12-ാം ക്ലാസ് പാസ് അല്ലെങ്കിൽ അതിൽ കൂടുതൽ പഠനം വേണം.",
+    "or": "ବୁଝିଗଲୁ। 🙏 ₹3–5 ଲକ୍ଷ ବିନା ମଧ୍ୟ ଗୋଟିଏ ବିକଳ୍ପ ଅଛି: *ESAF Small Finance Bank*ର ବ୍ୟାଙ୍କିଙ୍ଗ ଏଜେଣ୍ଟ। "
+          "ଏଥିରେ କୌଣସି ନିବେଶ ନାହିଁ, କେବଳ ଥରେ ₹1,999 ପଞ୍ଜୀକରଣ ଶୁଳ୍କ (Micro ATM ଉପକରଣ ନେବାକୁ ଚାହିଁଲେ ₹1,300 + GST)। "
+          "ଏଥିପାଇଁ 12ଶ ପାସ୍ କିମ୍ବା ତାଠାରୁ ଅଧିକ ପାଠ ଆବଶ୍ୟକ।",
+}
 for _lang, _texts in _ESAF.items():
     MESSAGES[_lang].update(_texts)
+for _lang, _text in _ESAF_FIRST.items():
+    MESSAGES[_lang]["esaf_education_first"] = _text
 
 HINGLISH.update({
     "esaf_offer": (
@@ -1421,4 +1461,9 @@ HINGLISH.update({
         "Apna Aadhaar, PAN aur bank proof taiyaar rakhein. Koi sawaal ho to yahin poochiye."
     ),
     "esaf_no": "Koi baat nahi, aapke samay ke liye dhanyavaad. 🙏 Agar aapka mann badle, to bas yahan reply kar dijiye.",
+    "esaf_education_first": (
+        "Samajh gaye. 🙏 ₹3–5 lakh ke bina bhi ek option hai: *ESAF Small Finance Bank* ka Banking Agent. "
+        "Usme koi investment nahi, bas ek baar ₹1,999 ki registration fee hai (Micro ATM device lena ho to "
+        "₹1,300 + GST). Iske liye 12th pass ya usse zyada padhai zaroori hai."
+    ),
 })

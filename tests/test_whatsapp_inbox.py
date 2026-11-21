@@ -4280,6 +4280,53 @@ def test_cannot_invest_leads_to_esaf_and_a_yes_reaches_the_team(db, client, team
     assert "Wanted to know about ESAF" in whats
 
 
+def test_saying_it_must_be_free_before_the_education_question_leads_to_esaf(db):
+    # TKT-00051, 20 Nov 2026: three bad PINs, then "if it is not free, don't contact me". It went to a
+    # person and was never offered ESAF Small Finance Bank, which needs no investment.
+    tap_campaign(db)
+    for bad in ("abc", "xyz", "nope"):
+        say(db, bad)
+    assert conv(db).bot_step == onboarding_bot.HANDOVER
+    say(db, "Free ma na hoy to Mane koi contact na krta")
+    c = conv(db)
+    body, buttons = StubMeta.sent[-1][2], StubMeta.sent[-1][3]
+    assert c.bot_step == onboarding_bot.AWAIT_EDUCATION and (c.bot_data or {}).get("esaf_pending") is True
+    assert "ESAF Small Finance Bank" in body and "₹1,999" in body and "₹1,300 + GST" in body
+    assert [b["id"] for b in buttons] == ["edu:12", "edu:grad", "edu:other"]
+    qualify(db, "grad")
+    c = conv(db)
+    assert c.bot_step == onboarding_bot.ESAF_OFFERED and c.bot_data["education"] == "grad"
+    assert StubMeta.sent[-1][2] == bot_messages.MESSAGES["en"]["esaf_offer"]
+    assert c.disposition == "ni_investment"
+
+
+def test_saying_they_have_no_money_after_the_education_offers_esaf_at_once(db):
+    tap_campaign(db)
+    say(db, SERVED_PIN)
+    qualify(db)
+    assert conv(db).bot_step == onboarding_bot.AWAIT_INVEST
+    say(db, "mere paas itne paise nahi hain")
+    assert conv(db).bot_step == onboarding_bot.ESAF_OFFERED
+    # Written in Hinglish, so answered in it.
+    assert StubMeta.sent[-1][2] == bot_messages.HINGLISH["esaf_offer"]
+
+
+def test_cannot_afford_is_heard_but_a_question_about_fees_is_not():
+    for said in ("Free ma na hoy to Mane koi contact na krta", "free nahi hai to mat karo", "free ho to hi karunga",
+                 "5 lakh nahi hai", "પૈસા નથી", "पैसे नहीं हैं", "I can't afford it"):
+        assert onboarding_bot.cannot_afford(said), said
+    for said in ("Free che?", "free hai to batao?", "fees kitni hai?", "Interested", "haan"):
+        assert not onboarding_bot.cannot_afford(said), said
+
+
+def test_the_fees_answer_names_esaf_small_finance_bank_and_its_fees():
+    from src.services import eko_knowledge
+    for lang in ("hinglish", "en", "hi", "gu", "pa"):
+        text = eko_knowledge.answer("fees", lang)
+        assert "ESAF Small Finance Bank" in text and "₹1,999" in text and "₹1,300 + GST" in text and "₹3–5" in text
+        assert not eko_knowledge.vocabulary_problems(text), (lang, text)
+
+
 def test_someone_who_said_yes_to_esaf_before_the_documents_step_gets_it_on_their_next_message(db):
     tap_campaign(db)
     say(db, SERVED_PIN)
