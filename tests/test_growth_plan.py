@@ -488,7 +488,8 @@ def test_the_branch_plan_puts_a_campaign_a_day_where_people_answered(db):
     p = gp.plan(db)["branch_plan"]
     first = p["days"][0]
     assert first["slots"][0]["branch_name"] == "Vinchhiya"        # it answered
-    assert first["label"].startswith(("Today", "Tomorrow"))
+    # Sunday has no campaign, so on a Saturday past the slot the plan starts on Monday.
+    assert first["label"].startswith(("Today", "Tomorrow", "Monday"))
     assert first["people"] == p["daily"] >= gp.CAMPAIGN_MIN
     assert first["slots"][0]["kinds"][0]["category"] == "Kiosk"
     by = {b["branch_name"]: b for b in p["branches"]}
