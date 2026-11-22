@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { SystemHealthPanel } from '../components/SystemHealthPanel';
 import { BackToParent } from '../components/SubPage';
 import type { NavTab } from '../components/Header';
 import {
@@ -1173,6 +1174,9 @@ export const AgentQualityView: React.FC<{ can?: (t: NavTab) => boolean; isAdmin?
           </Card>
         )}
 
+        {/* Whether the website, the worker and the scraper are alive, beside the switches that stop
+            what misbehaves (moved here from the Dashboard, the user, 22 Nov 2026). */}
+        <SystemHealthPanel />
         <ControlsCard isAdmin={isAdmin} tokens={contextTokens} />
         <PersonalDataCard isAdmin={isAdmin} />
         {canAudit && <AuditCard />}

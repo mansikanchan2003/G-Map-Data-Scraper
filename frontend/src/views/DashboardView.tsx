@@ -5,7 +5,6 @@ import { DispositionAlertCard } from '../components/DispositionAlertCard';
 import React, { useState } from 'react';
 import { DiscoveryRunner } from '../components/DiscoveryRunner';
 import { AutopilotPanel } from '../components/AutopilotPanel';
-import { SystemHealthPanel } from '../components/SystemHealthPanel';
 import { LeadsPanel } from '../components/LeadsPanel';
 import { ScaleBars } from '../components/ScaleBars';
 import { JobDistributionDonut } from '../components/JobDistributionDonut';
@@ -258,9 +257,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           />
         </div>
       </section>
-
-      {/* Are the website, the worker and the scraper alive (22 Nov 2026). */}
-      <SystemHealthPanel />
 
       <AutopilotPanel />
 
