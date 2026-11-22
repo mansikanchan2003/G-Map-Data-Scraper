@@ -2,112 +2,37 @@
 Copies submitted onboarding documents into Google Drive.
 
 Each person gets a folder, named for them, inside GOOGLE_DRIVE_FOLDER_ID, and
-their files go into it. It uses the same service account as the live Google
-Sheet (GOOGLE_CREDENTIALS_BASE64).
-
-A service account has no Drive storage of its own, so it cannot put a file in
-someone's personal "My Drive" even when a folder there is shared with it;
-Google refuses with storageQuotaExceeded. The folder therefore has to be in a
-shared drive, with the service account added to it as a Content manager.
+their files go into it. Talking to Drive is the google_drive adapter's (Phase 2,
+22 Nov 2026); this module decides whose documents go, into which folder, and what
+is recorded about them.
 
 A file is deleted locally only once Drive holds it. If the upload fails, the
 local file stays, the reason is recorded, and the inbox offers to try again.
 """
-import base64
-import json
 import logging
 import os
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from src.models.inbox import OnboardingDocument, WhatsAppConversation
+from src.services import google_drive as gd
 from src.services import onboarding_bot
 
 logger = logging.getLogger("gmap_scraper.drive")
 
-SCOPES = ["https://www.googleapis.com/auth/drive"]
-FILES_URL = "https://www.googleapis.com/drive/v3/files"
-UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files"
-FOLDER_MIME = "application/vnd.google-apps.folder"
-
-
-def folder_id() -> str:
-    return (os.environ.get("GOOGLE_DRIVE_FOLDER_ID") or "").strip()
-
-
-def configured() -> bool:
-    return bool(folder_id() and (os.environ.get("GOOGLE_CREDENTIALS_BASE64") or "").strip())
-
-
-def service_account_email() -> Optional[str]:
-    """The address the Drive folder has to be shared with, for the inbox to show."""
-    raw = os.environ.get("GOOGLE_CREDENTIALS_BASE64")
-    if not raw:
-        return None
-    try:
-        return json.loads(base64.b64decode(raw).decode("utf-8")).get("client_email")
-    except Exception:
-        return None
-
-
-def _session():
-    from google.auth.transport.requests import AuthorizedSession
-    from google.oauth2.service_account import Credentials
-
-    info = json.loads(base64.b64decode(os.environ["GOOGLE_CREDENTIALS_BASE64"]).decode("utf-8"))
-    return AuthorizedSession(Credentials.from_service_account_info(info, scopes=SCOPES))
-
-
-def _check(resp) -> dict:
-    if resp.status_code >= 400:
-        try:
-            err = resp.json().get("error", {})
-            reason = (err.get("errors") or [{}])[0].get("reason") or err.get("status")
-            message = err.get("message") or resp.text
-        except ValueError:
-            reason, message = None, resp.text
-        if reason == "storageQuotaExceeded":
-            message = ("The Drive folder is not in a shared drive. A service account has no "
-                       "storage of its own, so the folder must be in a shared drive with "
-                       "the service account added as Content manager.")
-        raise RuntimeError(f"Google Drive refused ({resp.status_code}): {message}"[:500])
-    return resp.json()
-
-
-def _create_folder(session, name: str, parent: str) -> dict:
-    return _check(session.post(
-        FILES_URL,
-        params={"supportsAllDrives": "true", "fields": "id,webViewLink"},
-        json={"name": name, "mimeType": FOLDER_MIME, "parents": [parent]},
-        timeout=30,
-    ))
+# The adapter's, under the names the Inbox and the tests already use.
+FILES_URL = gd.FILES_URL
+folder_id = gd.folder_id
+configured = gd.configured
+service_account_email = gd.service_account_email
+_session = gd.session
+_create_folder = gd.create_folder
+_upload = gd.upload
 
 
 def trash(file_id: str) -> None:
-    """Move a file or folder to Drive's trash (services/retention): recoverable there for 30 days, not deleted."""
-    if not configured():
-        raise RuntimeError("Google Drive is not set up, so the Drive copy was left as it is.")
-    _check(_session().patch(f"{FILES_URL}/{file_id}", params={"supportsAllDrives": "true", "fields": "id"},
-                            json={"trashed": True}, timeout=30))
-
-
-def _upload(session, path: str, name: str, content_type: str, parent: str) -> dict:
-    boundary = "autogmap-onboarding-upload"
-    meta = json.dumps({"name": name, "parents": [parent]})
-    with open(path, "rb") as fh:
-        data = fh.read()
-    body = (
-        f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{meta}\r\n"
-        f"--{boundary}\r\nContent-Type: {content_type}\r\n\r\n"
-    ).encode("utf-8") + data + f"\r\n--{boundary}--\r\n".encode("utf-8")
-    return _check(session.post(
-        UPLOAD_URL,
-        params={"uploadType": "multipart", "supportsAllDrives": "true", "fields": "id,webViewLink"},
-        data=body,
-        headers={"Content-Type": f"multipart/related; boundary={boundary}"},
-        timeout=120,
-    ))
+    """Move a file or folder to Drive's trash (services/retention): recoverable there for 30 days."""
+    gd.trash(file_id)
 
 
 def _folder_name(conv: WhatsAppConversation) -> str:

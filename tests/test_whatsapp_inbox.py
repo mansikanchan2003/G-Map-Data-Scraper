@@ -3718,7 +3718,8 @@ from src.services import retention  # noqa: E402
 @pytest.fixture
 def trashed(monkeypatch):
     out = []
-    monkeypatch.setattr(drive_uploads, "trash", lambda file_id: out.append(file_id))
+    from src.services import google_drive
+    monkeypatch.setattr(google_drive, "trash", lambda file_id: out.append(file_id))
     return out
 
 

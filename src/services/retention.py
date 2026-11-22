@@ -146,7 +146,7 @@ def _remove_file(path: Optional[str]) -> None:
 
 def erase(db: Session, phone: str, by: str, reason: str, scope: str = ALL, note: str = ERASED) -> dict:
     """Erase this person's documents, chat, or both (see the module notes). The caller commits."""
-    from src.services import drive_uploads
+    from src.services import google_drive
 
     conv = db.query(WhatsAppConversation).filter(WhatsAppConversation.phone == phone).first()
     if conv is None:
@@ -161,7 +161,7 @@ def erase(db: Session, phone: str, by: str, reason: str, scope: str = ALL, note:
         drive_ids = [folder] if folder else [d.drive_file_id for d in docs if d.drive_file_id]
         for drive_id in drive_ids:
             try:
-                drive_uploads.trash(drive_id)
+                google_drive.trash(drive_id)
             except Exception as e:
                 drive_errors.append(str(e)[:200])
                 logger.warning(f"retention event=DRIVE_NOT_TRASHED phone=...{phone[-4:]} error={str(e)[:200]}")
