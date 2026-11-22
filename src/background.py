@@ -22,6 +22,9 @@ def _switch(name: str) -> bool:
 def start() -> None:
     if "pytest" in sys.modules:
         return
+    # Every process says it is alive, for the Dashboard's System health (system_health).
+    from src.services import system_health
+    system_health.start()
     # Kills the scraper's browsers before they fill the container's memory
     # and stall the whole app (see browser_processes).
     if roles.runs("memory_guard"):

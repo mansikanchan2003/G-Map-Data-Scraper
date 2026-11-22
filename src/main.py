@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from src.routers import (config, jobs, businesses, discovery, export, runs,
                          whatsapp, tracking, audience, template_studio, insights,
-                         inbox, ai_calls, onboarding, applications, partners, agents, auth as auth_router)
+                         inbox, ai_calls, onboarding, applications, partners, agents, system, auth as auth_router)
 from src.database import init_db, get_db
 from src.utils.logging import setup_logging
 
@@ -249,6 +249,7 @@ app.include_router(call_recorder.team)
 app.include_router(partners.router)
 app.include_router(applications.router)
 app.include_router(agents.router)
+app.include_router(system.router)
 # The document upload page, opened from WhatsApp by people with no account.
 # Outside /api/, so the session gate never applies to it.
 app.include_router(onboarding.router)

@@ -817,3 +817,31 @@ export interface NumberUsage {
   note: string;
 }
 export const fetchNumberUsage = (days = 7) => request<NumberUsage>(`/api/v1/whatsapp/number-usage?days=${days}`);
+
+// --- System health: are the website, the worker and the scraper alive (22 Nov 2026) ---------
+export type HealthStatus = 'ok' | 'warning' | 'stopped';
+export interface HealthPart {
+  role: 'api' | 'worker' | 'scraper' | 'all';
+  label: string;
+  job: string;
+  status: HealthStatus;
+  why: string;
+  seen_seconds_ago: number | null;
+  up_since: string | null;
+  memory: { used_mb: number; limit_mb: number } | null;
+  threads: { name: string; label: string; alive: boolean }[];
+  errors: { at: string; where: string; text: string }[];
+  error_count?: number;
+}
+export interface SystemHealth {
+  checked_at: string;
+  overall: HealthStatus;
+  split: boolean;
+  parts: HealthPart[];
+  queue: { queued: number; running: number; failed_today: number; oldest_waiting_seconds: number | null };
+  last_run: {
+    status: string; trigger: string; started_at: string | null; finished_at: string | null;
+    jobs_completed: number; jobs_failed: number; businesses_new: number;
+  } | null;
+}
+export const fetchSystemHealth = () => request<SystemHealth>('/api/v1/system/health');
