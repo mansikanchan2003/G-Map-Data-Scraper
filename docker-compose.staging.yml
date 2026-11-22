@@ -13,6 +13,8 @@ services:
     mem_limit: ${BACKEND_MEMORY_LIMIT:-2g}
     memswap_limit: ${BACKEND_MEMORY_LIMIT:-2g}
     environment:
+      # Everything in its one container, with the senders and scraping switched off below.
+      APP_ROLE: all
       ENVIRONMENT: staging
       MOCK_WHATSAPP_API: "true"
       DISCOVERY_AUTOPILOT_THREAD: "false"

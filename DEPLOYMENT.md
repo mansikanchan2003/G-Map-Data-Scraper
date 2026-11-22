@@ -6,6 +6,29 @@ controlled deployment, rollback, incident response). Production is
 Everything here runs as root in that folder and touches nothing outside it
 (staging lives beside it in `/home/mansi/AUTOGMAP-staging`).
 
+## The containers (since 22 Nov 2026)
+
+One image, three containers, each running its own share of the app
+(`APP_ROLE`, `src/roles.py`). This is phase 1 of making AutoGMap more than one
+monolith:
+
+| Container | `APP_ROLE` | Runs | Memory |
+|---|---|---|---|
+| `autogmap-backend-1` | `api` | the website, the WhatsApp webhook, the bot, the Inbox | `BACKEND_MEMORY_LIMIT` (3g) |
+| `autogmap-worker-1` | `worker` | nudges, follow-ups (with the journey sync and reports), call recordings, the Studio's photo queue | `WORKER_MEMORY_LIMIT` (2g) |
+| `autogmap-scraper-1` | `scraper` | Google Maps in Chrome: the autopilot and the batches the API queues | `SCRAPER_MEMORY_LIMIT` (3g) |
+
+The API never opens Chrome. A batch or a "Run" asked for on the website goes
+into the `queued_tasks` table, and the scraper picks it up within seconds. A
+stuck browser therefore stops scraping, not the website; on 19 Nov 2026 one
+took the whole site down for four hours.
+
+Logs: `docker compose logs scraper --since 15m` (scraping),
+`docker compose logs worker --since 15m` (reminders and follow-ups),
+`docker compose logs backend --since 15m` (everything else). The worker and the
+scraper report healthy while their heartbeat file is fresh. Staging still runs
+everything in one container (`APP_ROLE=all`), as does development.
+
 ## 1. Before deploying: CI must be green
 
 Every push to `main` runs GitHub Actions (`.github/workflows/ci.yml`): the full
@@ -94,6 +117,9 @@ then open http://localhost:8100.
   team's Grafana (point it at https://indev.eko.in/autogmap/health: healthy
   is HTTP 200 with `"status":"healthy"`). On the server: `docker compose ps`,
   `docker compose logs backend --since 15m`.
+- **Scraping is stuck, or reminders stopped.** `docker compose ps`: each of
+  backend, worker and scraper should be "healthy". Restart just that one with
+  `docker compose restart scraper` (or `worker`); the website stays up.
 - **An agent or an automatic action misbehaves.** Agent quality → Controls
   (admin): every one has its own switch, and it stops at once. Besides the
   template agents and the bot's FAQ answers: **Campaign sending** (running

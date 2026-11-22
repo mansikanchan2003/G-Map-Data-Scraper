@@ -103,7 +103,21 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
 
 @router.post("/{job_id}/run")
 def run_job(job_id: str, db: Session = Depends(get_db)):
-    result = job_manager.execute_single_job(job_id, db)
+    from src import roles
+    if roles.queue_scraping():
+        # Chrome runs in the scraper container; the Jobs page waits for its answer.
+        from src.services import work_queue
+        if not db.query(Job).filter(Job.job_id == job_id).first():
+            raise HTTPException(status_code=404, detail="Job not found")
+        try:
+            task = work_queue.wait(work_queue.enqueue(db, work_queue.RUN_JOB, {"job_id": job_id}), 20 * 60)
+        except TimeoutError:
+            raise HTTPException(status_code=504, detail="The scraper has not finished this job yet. Check the job in a few minutes.")
+        if task.status == "FAILED":
+            raise HTTPException(status_code=500, detail=f"The job failed in the scraper: {task.error}")
+        result = task.result or {}
+    else:
+        result = job_manager.execute_single_job(job_id, db)
     if result.get("error") and "not found" in result["error"].lower():
         raise HTTPException(status_code=404, detail=result["error"])
     return result

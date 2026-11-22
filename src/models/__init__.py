@@ -9,6 +9,7 @@ from .user import User
 from .opt_out import OptOut
 from .audit import AuditEntry
 from .autopilot import DiscoveryRound
+from .work_queue import QueuedTask
 from .insights import CampaignInsight, InsightSnapshot
 from .agent_runs import AgentRun
 from .reports import ActionItem, DispositionDaily, DispositionMix, GoalDaily, LeadAlert, NumberUsageDaily
@@ -18,6 +19,7 @@ from .application import ApplicationComment, ApplicationRemoval, QualifiedLead
 from .whatsapp import WhatsAppAccount, WhatsAppTemplate, WhatsAppCampaign, WhatsAppCampaignRecipient, WhatsAppCampaignLog, WhatsAppLinkClick, WhatsAppButtonClick, WhatsAppReply, NumberActivity
 
 __all__ = [
+    "QueuedTask",
     "Location",
     "SbiBranch",
     "Category",

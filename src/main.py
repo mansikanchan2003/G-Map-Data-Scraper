@@ -25,11 +25,6 @@ async def lifespan(app: FastAPI):
     )
     init_db()
 
-    # Kills the scraper's browsers before they fill the container's memory
-    # and stall the whole app (see browser_processes).
-    from src.utils import browser_processes
-    browser_processes.start_memory_guard()
-
     # Someone has to be able to read the approvals queue before anyone can be
     # approved, so the first admin is seeded rather than requested.
     try:
@@ -82,46 +77,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Could not load what the bot was taught: {e}")
 
-    # The scraping autopilot. It idles until switched on from the dashboard,
-    # and runs in this process so it shares the one browser-capable worker.
-    # Off under pytest, where a background thread would race the tests' own
-    # databases.
-    import sys
-    if os.environ.get("DISCOVERY_AUTOPILOT_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
-        from src.services import discovery_autopilot
-        discovery_autopilot.start()
-    # Finishes Studio drafts waiting for the free image allowance to return.
-    if os.environ.get("STUDIO_PHOTO_QUEUE_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
-        from src.services import photo_queue
-        photo_queue.start()
-    # Reminds people who stopped answering the bot, an hour on.
-    if os.environ.get("BOT_NUDGE_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
-        from src.services import nudges
-        nudges.start()
-    # Carries out what each disposition calls for: nudges, callbacks, next-day retries.
-    if os.environ.get("FOLLOWUP_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
-        from src.services import followups
-        followups.start()
-    # Fetches new call recordings from the call-recorder app, when its endpoint is set.
-    if os.environ.get("CALL_RECORDINGS_THREAD", "true").lower() == "true" and "pytest" not in sys.modules:
-        from src.services import call_recordings
-        call_recordings.start()
-    # Campaign Insights' slow parts, worked out ahead (insights_cache, 19 Nov 2026).
-    if "pytest" not in sys.modules:
-        from src.services import insights_cache
-        insights_cache.start()
+    # This process's share of the background threads (src.roles: the API's in production,
+    # all of them in development, the tests and staging).
+    from src import background
+    background.start()
     yield
     # --- Shutdown ---
-    try:
-        from src.services import discovery_autopilot, followups, nudges, photo_queue
-        discovery_autopilot.stop()
-        photo_queue.stop()
-        nudges.stop()
-        followups.stop()
-        from src.services import call_recordings
-        call_recordings.stop()
-    except Exception:
-        pass
+    background.stop()
     logger.info("Shutdown complete")
 
 

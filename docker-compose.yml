@@ -1,6 +1,10 @@
 # =============================================================================
 # G-Map Data Scraper 2.0 — Docker Compose
-# Services: backend, postgres, n8n
+# Services: backend (the API), worker, scraper, postgres, n8n
+#
+# backend, worker and scraper are one image and one codebase, each running its
+# own share (APP_ROLE, src/roles.py; 22 Nov 2026): the API never opens Chrome,
+# so a stuck browser stops scraping, never the website.
 #
 # USAGE:
 #   1. Copy .env.example to .env and fill in all required values.
@@ -36,10 +40,10 @@ services:
       start_period: 10s
 
   # ---------------------------------------------------------------------------
-  # Backend — FastAPI + Playwright
+  # Backend — the API: website, WhatsApp webhook, bot, Inbox (APP_ROLE=api)
   # ---------------------------------------------------------------------------
   backend:
-    build:
+    build: &backend_build
       context: .
       dockerfile: Dockerfile
       args:
@@ -53,14 +57,17 @@ services:
     # kernel kills a process inside this container instead, and at worst this
     # container restarts. Swap is capped at the same figure so the limit
     # cannot be dodged by paging, which is what makes a machine unresponsive.
-    mem_limit: ${BACKEND_MEMORY_LIMIT:-4g}
-    memswap_limit: ${BACKEND_MEMORY_LIMIT:-4g}
+    mem_limit: ${BACKEND_MEMORY_LIMIT:-3g}
+    memswap_limit: ${BACKEND_MEMORY_LIMIT:-3g}
     # No single runaway can fork without end either.
     pids_limit: 2048
     # A tiny init as PID 1, so browser processes that exit are reaped rather
     # than left as zombies; uvicorn does not reap children it did not start.
     init: true
-    environment:
+    environment: &backend_env
+      # Which share of the app this container runs (src/roles.py). The worker and
+      # scraper below set their own.
+      APP_ROLE: api
       # Database — point to the postgres service above
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-gmap_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gmap_scraper}
 
@@ -198,7 +205,7 @@ services:
       # The reverse proxy is the only thing that should reach this.
       # BACKEND_HOST_PORT is chosen per server, never hardcoded.
       - "127.0.0.1:${BACKEND_HOST_PORT:-8000}:8000"
-    volumes:
+    volumes: &backend_volumes
       # Mount data files if you want to update them without rebuilding
       - ./data:/app/data
       - ./Geocoded_Ad_Targeting_Locations_FINAL.xlsx:/app/Geocoded_Ad_Targeting_Locations_FINAL.xlsx:ro
@@ -212,6 +219,55 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Worker — the background senders: nudges, follow-ups (with the journey sync
+  # and reports), call recordings, the Studio's photo queue (APP_ROLE=worker)
+  # ---------------------------------------------------------------------------
+  worker:
+    build: *backend_build
+    restart: unless-stopped
+    command: [ "python", "-m", "src.worker" ]
+    mem_limit: ${WORKER_MEMORY_LIMIT:-2g}
+    memswap_limit: ${WORKER_MEMORY_LIMIT:-2g}
+    pids_limit: 512
+    init: true
+    environment:
+      <<: *backend_env
+      APP_ROLE: worker
+    volumes: *backend_volumes
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: &heartbeat
+      # src/worker.py touches this file every 30 seconds while its threads' process lives.
+      test: [ "CMD-SHELL", "python -c \"import os,sys,time; sys.exit(0 if time.time()-os.path.getmtime('/tmp/autogmap_heartbeat')<120 else 1)\"" ]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # Scraper — Google Maps in Chrome: the autopilot and the batches the API
+  # queues (APP_ROLE=scraper). Its own memory limit: a stuck browser stops
+  # scraping here, never the website.
+  # ---------------------------------------------------------------------------
+  scraper:
+    build: *backend_build
+    restart: unless-stopped
+    command: [ "python", "-m", "src.worker" ]
+    mem_limit: ${SCRAPER_MEMORY_LIMIT:-3g}
+    memswap_limit: ${SCRAPER_MEMORY_LIMIT:-3g}
+    pids_limit: 2048
+    init: true
+    environment:
+      <<: *backend_env
+      APP_ROLE: scraper
+    volumes: *backend_volumes
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: *heartbeat
 
   # ---------------------------------------------------------------------------
   # n8n — workflow automation

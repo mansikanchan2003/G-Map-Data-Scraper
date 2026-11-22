@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from src.database import get_db, SessionLocal
 from src.models import Job, RunLog
 from src.config import settings
-from src.services import job_manager
+from src.services import job_manager, work_queue
+from src import roles
 from src.utils.logging import logger
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
@@ -163,7 +164,7 @@ def custom_discovery_run(
         ).limit(payload.batch_size).count()
 
         if eligible:
-            background_tasks.add_task(_run_batch_detached, batch)
+            _start_batch(batch, background_tasks, db)
             response["status"] = "started"
             response["jobs_queued"] = eligible
         else:
@@ -303,7 +304,7 @@ def run_batch_discovery(
             }
 
         started = payload.model_copy(update={"run_in_background": False})
-        background_tasks.add_task(_run_batch_detached, started)
+        _start_batch(started, background_tasks, db)
         logger.info(
             f"discovery event=BATCH_QUEUED jobs={eligible} "
             f"states={payload.states} anchors={payload.anchor_names} "
@@ -315,7 +316,26 @@ def run_batch_discovery(
             "jobs_queued": eligible,
         }
 
+    if roles.queue_scraping():
+        # n8n waits for the result: the scraper runs it and the answer comes back here.
+        task = work_queue.wait(work_queue.enqueue(db, work_queue.DISCOVERY_BATCH, payload.model_dump()),
+                               BATCH_WAIT_SECONDS)
+        if task.status == "FAILED":
+            raise HTTPException(status_code=500, detail=f"The batch failed in the scraper: {task.error}")
+        return task.result
     return _run_batch(payload, db)
+
+
+# How long a caller waiting on a batch (n8n) is held before it is told to look at the run.
+BATCH_WAIT_SECONDS = 3 * 3600
+
+
+def _start_batch(payload: "BatchRequest", background_tasks: BackgroundTasks, db: Session) -> None:
+    """A batch started without waiting: queued for the scraper container, or run here in the background."""
+    if roles.queue_scraping():
+        work_queue.enqueue(db, work_queue.DISCOVERY_BATCH, payload.model_dump())
+    else:
+        background_tasks.add_task(_run_batch_detached, payload)
 
 
 def _run_batch_detached(payload: "BatchRequest"):

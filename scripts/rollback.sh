@@ -37,8 +37,13 @@ read -r -p "Go back to ${TO:0:7}? [y/N] " OK
 mkdir -p .deploy
 echo "$STAMP rollback ${NOW:0:7} -> ${TO:0:7} started" >> .deploy/history
 git checkout -q --detach "$TO"
-docker compose build backend
-docker compose up -d backend
+# The containers that commit's compose file has (before 22 Nov 2026: backend only). The
+# rest are removed, so no worker or scraper keeps running newer code beside an older API.
+SERVICES="$(docker compose config --services 2>/dev/null | grep -E '^(backend|worker|scraper)$' | xargs)"
+# shellcheck disable=SC2086
+docker compose build $SERVICES
+# shellcheck disable=SC2086
+docker compose up -d --remove-orphans $SERVICES
 # Read as text, never run: a .env value may hold spaces or $.
 PORT="$(grep -E '^BACKEND_HOST_PORT=' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d "\"'")"; PORT="${PORT:-8000}"
 for _ in $(seq 1 30); do

@@ -8,7 +8,7 @@
 # 3. Notes the commit running now, for scripts/rollback.sh.
 # 4. Pulls, builds, and runs the golden set on the new image: stops if it fails.
 # 5. Backs the database up (backups/), then runs the migrations.
-# 6. Starts the new backend and waits for /health to say healthy.
+# 6. Starts the new backend, worker and scraper, and waits for /health to say healthy.
 #
 # Touches only this folder and its own containers. Never deletes anything.
 set -euo pipefail
@@ -20,6 +20,9 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 mkdir -p .deploy backups
 say() { printf '\n== %s\n' "$*"; }
 stop() { printf '\nSTOPPED: %s\n' "$*" >&2; exit 1; }
+# The app's containers this commit's compose file has: the API (backend), and since
+# 22 Nov 2026 the worker and the scraper, from the same image (src/roles.py).
+app_services() { docker compose config --services 2>/dev/null | grep -E '^(backend|worker|scraper)$' | xargs; }
 # One setting from .env, read as text (never run: a value may hold spaces or $).
 envval() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d "\"'"; }
 
@@ -70,7 +73,9 @@ echo "$STAMP ${CURRENT:0:7} -> ${TARGET:0:7} started" >> .deploy/history
 # -- 4. Pull, build, golden set -------------------------------------------------------------
 say "3/6 Pull and build"
 git pull -q --ff-only origin main
-docker compose build backend
+SERVICES="$(app_services)"
+# shellcheck disable=SC2086
+docker compose build $SERVICES
 say "4/6 Golden set on the new image"
 docker compose run --rm --name "autogmap-golden-$STAMP" backend python -m src.evals.golden --save \
   || stop "The golden set failed. Nothing was changed: the old backend is still running."
@@ -86,12 +91,16 @@ echo "Backed up to $BACKUP ($(du -h "$BACKUP" | cut -f1))."
 docker compose run --rm --name "autogmap-migrate-$STAMP" backend alembic upgrade head
 
 # -- 6. Start and check ---------------------------------------------------------------------------
-say "6/6 Start"
-docker compose up -d backend
+say "6/6 Start: $SERVICES"
+# --remove-orphans: a container this compose file no longer has is stopped, never left
+# running old code beside the new.
+# shellcheck disable=SC2086
+docker compose up -d --remove-orphans $SERVICES
 PORT="$(envval BACKEND_HOST_PORT)"; PORT="${PORT:-8000}"
 for _ in $(seq 1 30); do
   if curl -fsS "http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q '"status":"healthy"'; then
     echo "$STAMP ${CURRENT:0:7} -> ${TARGET:0:7} healthy" >> .deploy/history
+    docker compose ps --format "table {{.Service}}	{{.Status}}" $SERVICES 2>/dev/null || true
     say "Deployed ${TARGET:0:7}. Healthy. To go back: bash scripts/rollback.sh"
     exit 0
   fi
