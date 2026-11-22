@@ -135,7 +135,7 @@ export const SystemHealthPanel: React.FC = () => {
   const q = data.queue;
   const run = data.last_run;
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-900 shadow-sm overflow-hidden">
+    <section id="system-health" className="rounded-2xl border border-slate-800 bg-slate-900 shadow-sm overflow-hidden scroll-mt-4">
       <div className="relative px-5 py-4 text-white flex flex-wrap items-center gap-3" style={{ background: look.band }}>
         <span className="material-symbols-outlined absolute -right-6 -bottom-10 text-[150px] text-white/10 pointer-events-none select-none">monitor_heart</span>
         <span className="material-symbols-outlined text-[30px]">{look.icon}</span>

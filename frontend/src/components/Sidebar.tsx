@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { PARENT_TAB } from './SubPage';
-import { triggerBatchDiscovery } from '../api';
+import { fetchSystemHealth, triggerBatchDiscovery } from '../api';
+import type { HealthStatus } from '../api';
 import type { NavTab } from './Header';
 import { canOpen } from '../utils/permissions';
 import { fetchInboxSummary } from '../api/inbox';
@@ -40,6 +41,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // is noticed from any tab.
   const [unread, setUnread] = useState(0);
   const showsInbox = !role || canOpen(role, 'whatsapp-inbox', allowedTabs);
+
+  // The System health panel's verdict (website, worker, scraper), for those who can open
+  // Agent Quality, where the panel is; a click takes them there (22 Nov 2026).
+  const showsHealth = !role || canOpen(role, 'agent-quality', allowedTabs);
+  const [health, setHealth] = useState<HealthStatus | null>(null);
+  useEffect(() => {
+    if (!showsHealth) return;
+    const load = () => fetchSystemHealth().then(h => setHealth(h.overall)).catch(() => setHealth(null));
+    load();
+    const i = setInterval(load, 30000);
+    return () => clearInterval(i);
+  }, [showsHealth]);
+  const openHealth = () => {
+    onTabChange('agent-quality');
+    onClose?.();
+    // The page draws first; then the panel is brought into view.
+    let tries = 0;
+    const find = () => {
+      const el = document.getElementById('system-health');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      else if (tries++ < 20) setTimeout(find, 150);
+    };
+    setTimeout(find, 150);
+  };
 
   useEffect(() => {
     if (!showsInbox) return;
@@ -203,29 +228,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="text-sky-400 font-semibold shrink-0">v2.0</span>
         </div>
 
-        <div className="flex items-center justify-between px-2.5 py-1 text-[11px] font-mono-code">
-          <div className="flex items-center gap-1.5 text-slate-400">
-            <span
-              className={`material-symbols-outlined text-[14px] ${
-                isBackendConnected ? 'text-emerald-400' : 'text-amber-400'
-              }`}
-            >
-              dns
-            </span>
-            <span>System Health</span>
-          </div>
-          <span
-            className={`font-semibold ${
-              isBackendConnected ? 'text-emerald-400' : 'text-amber-400'
-            }`}
-          >
-            {isBackendConnected
-              ? latencyMs !== undefined
-                ? `Nominal (${latencyMs}ms)`
-                : 'Nominal'
-              : 'Offline'}
-          </span>
-        </div>
+        {(() => {
+          // Offline beats everything; then the panel's verdict; then the old latency reading.
+          const look = !isBackendConnected ? { text: 'Offline', cls: 'text-amber-400', dot: 'bg-amber-400' }
+            : health === 'stopped' ? { text: 'Part stopped', cls: 'text-rose-400', dot: 'bg-rose-500' }
+            : health === 'warning' ? { text: 'Needs a look', cls: 'text-amber-400', dot: 'bg-amber-400' }
+            : { text: latencyMs !== undefined ? `Nominal (${latencyMs}ms)` : 'Nominal', cls: 'text-emerald-400', dot: 'bg-emerald-400' };
+          const body = (
+            <>
+              <div className="flex items-center gap-1.5 text-slate-400">
+                <span className="relative flex h-2 w-2">
+                  {health === 'stopped' && <span className={`absolute inline-flex h-full w-full rounded-full ${look.dot} opacity-70 animate-ping`} />}
+                  <span className={`relative inline-flex h-2 w-2 rounded-full ${look.dot}`} />
+                </span>
+                <span>System Health</span>
+              </div>
+              <span className={`font-semibold ${look.cls}`}>{look.text}</span>
+            </>
+          );
+          return showsHealth ? (
+            <button onClick={openHealth} title="Open System health in Agent Quality"
+              className="flex items-center justify-between px-2.5 py-1 text-[11px] font-mono-code rounded hover:bg-slate-800/60 cursor-pointer text-left">
+              {body}
+            </button>
+          ) : (
+            <div className="flex items-center justify-between px-2.5 py-1 text-[11px] font-mono-code">{body}</div>
+          );
+        })()}
       </div>
       </aside>
     </>
