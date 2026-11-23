@@ -261,6 +261,22 @@ const exportQuery = (f: ExportFilters = {}) => {
 const exportName = (f: ExportFilters, ext: string) =>
   `businesses_${f.hiring_for ? f.hiring_for.toLowerCase() + '_' : ''}${new Date().toISOString().slice(0, 10)}.${ext}`;
 
+/** The DC Data tab's figures: District Coordinator leads by state, district, category and day. */
+export interface DcSummary {
+  total: number;
+  last_7_days: number;
+  today: number;
+  last_found_at: string | null;
+  with_phone: number;
+  with_email: number;
+  with_website: number;
+  states: { state: string; count: number; districts: { district: string; count: number }[] }[];
+  categories: { category: string; count: number }[];
+  daily: { date: string; count: number }[];
+}
+export const fetchDcSummary = (days = 30) =>
+  request<DcSummary>(`/api/v1/businesses/dc-summary?days=${days}`);
+
 /** How many businesses were found for each hiring type. */
 export const fetchBusinessTypes = () =>
   request<{ type: HiringFor; label: string; count: number }[]>('/api/v1/businesses/types');

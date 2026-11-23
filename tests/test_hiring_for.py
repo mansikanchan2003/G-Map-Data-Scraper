@@ -203,3 +203,20 @@ def test_a_lead_near_an_sbi_csp_centre_is_labelled():
     assert hit and hit["code"] == "CISBI 340526" and hit["distance_km"] < 10
     assert _near_centre(centres, [30.90, 74.60]) is None        # Firozpur, far away
     assert _near_centre([], [30.50, 77.15]) is None
+
+
+def test_dc_data_counts_only_dc_leads_by_state_district_category_and_day(db, client):
+    """23 Nov 2026: Biswajit Sir's DC Data tab."""
+    _three(db)
+    _business(db, "dc2", "+919844444444", for_csp=False, for_dc=True, email="a@b.in")
+    db.add(Business(business_id="dc3", job_id="j", name="Shop dc3", phone="+919855555555", category="Manpower consultancy",
+                    district="Ludhiana", state="Punjab", source_query="q", dedup_key="dc3", for_csp=False, for_dc=True))
+    db.commit()
+    s = client.get("/api/v1/businesses/dc-summary").json()
+    assert (s["total"], s["today"], s["last_7_days"]) == (3, 3, 3)
+    assert (s["with_phone"], s["with_email"], s["with_website"]) == (3, 1, 0)
+    assert [(st["state"], st["count"]) for st in s["states"]] == [("Gujarat", 2), ("Punjab", 1)]
+    assert s["states"][0]["districts"] == [{"district": "Rajkot", "count": 2}]
+    assert {c["category"]: c["count"] for c in s["categories"]} == {"Insurance agency": 2, "Manpower consultancy": 1}
+    assert len(s["daily"]) == 30 and s["daily"][-1]["count"] == 3 and sum(d["count"] for d in s["daily"]) == 3
+    assert client.get("/api/v1/businesses/dc-summary", params={"days": 7}).json()["daily"].__len__() == 7

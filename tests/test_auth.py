@@ -953,9 +953,9 @@ class TestHowTheAppOpens:
         assert r.json()["home_tab"] is None and r.json()["simple_view"] is False
 
 
-def test_biswajit_gets_the_same_easy_applications_page():
-    """19 Nov 2026: Biswajit Sir, like Kavya Ma'am."""
+def test_biswajit_opens_on_dc_data_with_the_easy_applications_page():
+    """19 Nov 2026: Biswajit Sir, like Kavya Ma'am; since 23 Nov 2026 he lands on DC Data."""
     from src.models import User
     from src.services import auth_service
-    assert auth_service.ui_prefs(User(email="biswajit@eko.co.in")) == {"home_tab": "applications", "simple_view": True}
+    assert auth_service.ui_prefs(User(email="biswajit@eko.co.in")) == {"home_tab": "dc-data", "simple_view": True}
     assert auth_service.ui_prefs(User(email="Biswajit@Eko.co.in"))["simple_view"] is True
