@@ -581,3 +581,66 @@ def set_user_tabs(user_id: str, payload: TabsRequest, db: Session = Depends(get_
     db.commit()
     db.refresh(user)
     return user
+
+
+class CreateUserRequest(BaseModel):
+    email: str = Field(..., max_length=200)
+    full_name: Optional[str] = Field(None, max_length=200)
+    role: str = Field("member", max_length=20)
+    # A starting password, if the admin gives one; they pass it on and the person
+    # changes it (Change password). Left out, the account has none: the person signs in
+    # with Google, or asks for a reset code from the sign-in page.
+    password: Optional[str] = Field(None, max_length=200)
+    tabs: Optional[List[str]] = None
+    inbox_scope: Optional[str] = None
+
+
+@router.post("/users", response_model=UserResponse, status_code=201)
+def create_user(payload: CreateUserRequest, background: BackgroundTasks, db: Session = Depends(get_db),
+                admin: User = Depends(current_admin)):
+    """
+    Creates an account the admin lets in at once, from Access Requests (23 Nov 2026), for
+    someone who has not asked through the sign-in page. Same rules as a request: an
+    @eko.co.in address, a role that can be granted (never admin), and a sound password if one
+    is given. The person is emailed that they have access; the password never is.
+    """
+    email = auth.normalise_email(payload.email)
+    if not auth.email_is_allowed(email):
+        raise HTTPException(status_code=400, detail=f"Only @{auth.ALLOWED_DOMAIN} addresses can have an account.")
+    role = (payload.role or "member").strip().lower()
+    if role not in auth.GRANTABLE_ROLES:
+        raise HTTPException(status_code=400, detail=f"Role must be one of: {', '.join(auth.GRANTABLE_ROLES)}.")
+    password = payload.password or None
+    if password:
+        problem = auth.password_problem(password)
+        if problem:
+            raise HTTPException(status_code=400, detail=problem)
+    unknown = sorted(set(payload.tabs or []) - TAB_KEYS)
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown tabs: {', '.join(unknown)}")
+    if payload.inbox_scope and payload.inbox_scope not in INBOX_SCOPES:
+        raise HTTPException(status_code=400, detail="Unknown inbox scope")
+    existing = db.query(User).filter(User.email == email).first()
+    if existing:
+        hint = {"PENDING": " It is waiting in the requests above: approve it there.",
+                "REJECTED": " It was declined earlier: approve it from the list to let them in."}.get(existing.status, "")
+        raise HTTPException(status_code=409, detail="An account already exists for this address." + hint)
+
+    now = datetime.now(timezone.utc)
+    user = User(
+        user_id=uuid.uuid4().hex, email=email, full_name=(payload.full_name or "").strip() or None,
+        # No password: "!" never matches, so the person signs in with Google or a reset code.
+        password_hash=auth.hash_password(password) if password else "!",
+        password_changed_at=now if password else None,
+        role=role, status="APPROVED", decided_by=admin.email, decided_at=now,
+        allowed_tabs=list(dict.fromkeys(payload.tabs)) if payload.tabs else None,
+        inbox_scope=payload.inbox_scope or None,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    logger.info(f"auth event=USER_CREATED email={email} role={role} by={admin.email} password={'set' if password else 'none'}")
+    background.add_task(notifier.notify_account_created, email, _public_app_url(), bool(password),
+                        bool(google_client_id()))
+    return user
+

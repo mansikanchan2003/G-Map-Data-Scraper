@@ -714,6 +714,63 @@ class TestAllowedTabs:
         assert client.put(f"/api/v1/auth/users/{uid}/tabs", json={"tabs": None}).status_code == 403
 
 
+class TestCreatingAUser:
+    """The admin creates an account from Access Requests, let in at once (23 Nov 2026)."""
+
+    def _admin(self, client):
+        admin = make_admin()
+        client.post("/api/v1/auth/login", json={"email": admin, "password": GOOD_PASSWORD})
+
+    def test_with_a_starting_password_they_sign_in_with_it(self, client, monkeypatch):
+        sent = []
+        monkeypatch.setattr("src.services.notifier.notify_account_created",
+                            lambda email, url, has_password, google: sent.append((email, has_password)))
+        self._admin(client)
+        r = client.post("/api/v1/auth/users", json={
+            "email": "Kavya.New@eko.co.in", "full_name": "Kavya", "role": "operator", "password": GOOD_PASSWORD,
+            "tabs": ["whatsapp-inbox", "applications"], "inbox_scope": "autogmap"})
+        assert r.status_code == 201, r.text
+        u = r.json()
+        assert u["email"] == "kavya.new@eko.co.in" and u["status"] == "APPROVED" and u["role"] == "operator"
+        assert u["allowed_tabs"] == ["whatsapp-inbox", "applications"] and u["inbox_scope"] == "autogmap"
+        assert sent == [("kavya.new@eko.co.in", True)]        # emailed, never the password itself
+        client.post("/api/v1/auth/logout")
+        assert client.post("/api/v1/auth/login", json={"email": "kavya.new@eko.co.in",
+                                                        "password": GOOD_PASSWORD}).status_code == 200
+
+    def test_without_one_no_password_works_until_they_set_one(self, client, monkeypatch):
+        monkeypatch.setattr("src.services.notifier.notify_account_created", lambda *a: None)
+        self._admin(client)
+        r = client.post("/api/v1/auth/users", json={"email": "ravi@eko.co.in", "role": "member"})
+        assert r.status_code == 201
+        db = TestingSessionLocal()
+        assert db.query(User).filter(User.email == "ravi@eko.co.in").one().password_hash == "!"
+        db.close()
+        client.post("/api/v1/auth/logout")
+        assert client.post("/api/v1/auth/login", json={"email": "ravi@eko.co.in", "password": "!"}).status_code == 401
+
+    def test_the_rules_of_a_request_still_hold(self, client, monkeypatch):
+        monkeypatch.setattr("src.services.notifier.notify_account_created", lambda *a: None)
+        self._admin(client)
+        post = lambda **kw: client.post("/api/v1/auth/users", json={"email": "x@eko.co.in", "role": "member", **kw})
+        assert client.post("/api/v1/auth/users", json={"email": "x@gmail.com", "role": "member"}).status_code == 400
+        assert post(role="admin").status_code == 400                    # admin is never given
+        assert post(password="short").status_code == 400
+        assert post(tabs=["nope"]).status_code == 400
+        assert post(inbox_scope="nope").status_code == 400
+        assert post().status_code == 201
+        assert post().status_code == 409                                # one account per address
+
+    def test_only_the_admin_may_create_one(self, client):
+        client.post("/api/v1/auth/signup", json={"email": "mgr@eko.co.in", "password": GOOD_PASSWORD, "role": "manager"})
+        self._admin(client)
+        uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
+        client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "manager"})
+        client.post("/api/v1/auth/logout")
+        client.post("/api/v1/auth/login", json={"email": "mgr@eko.co.in", "password": GOOD_PASSWORD})
+        assert client.post("/api/v1/auth/users", json={"email": "y@eko.co.in", "role": "member"}).status_code == 403
+
+
 class TestInboxScope:
     def test_an_account_kept_to_other_chats_can_reply_there_and_change_nothing_else(self, client):
         client.post("/api/v1/auth/signup", json={"email": "amit.singh@eko.co.in", "password": GOOD_PASSWORD})

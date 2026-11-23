@@ -145,6 +145,22 @@ def notify_decision(applicant_email: str, approved: bool, app_url: str,
     )
 
 
+def notify_account_created(email: str, app_url: str, has_password: bool, google: bool) -> bool:
+    """An account the admin made: how to get in. Never the password itself."""
+    ways = []
+    if google:
+        ways.append("Sign in with Google, using this address.")
+    ways.append("Sign in with the starting password the administrator gives you, then change it "
+                "(Change password on the sign-in page)." if has_password else
+                ("Or, to" if google else "To") + " use a password: on the sign-in page choose \"Forgot password\"; "
+                "the administrator will give you the code.")
+    return _send(
+        email,
+        "AutoGMap: an account has been created for you",
+        f"An AutoGMap account has been created for you. Sign in here:\n{app_url}\n\n" + "\n".join(ways) + "\n",
+    )
+
+
 def notify_button_click(admin_email: str, lead: dict) -> bool:
     """
     Tell the admin someone asked to be contacted.

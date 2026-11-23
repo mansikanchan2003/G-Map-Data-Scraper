@@ -845,3 +845,19 @@ export interface SystemHealth {
   } | null;
 }
 export const fetchSystemHealth = () => request<SystemHealth>('/api/v1/system/health');
+
+
+/** An account the admin creates and lets in at once (Access Requests, 23 Nov 2026). */
+export interface CreateUserInput {
+  email: string;
+  full_name?: string;
+  role: GrantRole;
+  password?: string;
+  tabs?: string[] | null;
+  inbox_scope?: 'autogmap' | 'not_autogmap' | null;
+}
+export async function createUser(input: CreateUserInput): Promise<AuthUser> {
+  return request<AuthUser>('/api/v1/auth/users', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+  });
+}

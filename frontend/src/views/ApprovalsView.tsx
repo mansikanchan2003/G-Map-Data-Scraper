@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { approveUser, fetchUsers, rejectUser, revokeUser, setInboxScope, setUserTabs, type AuthUser, type GrantRole } from '../api';
+import { approveUser, createUser, fetchUsers, rejectUser, revokeUser, setInboxScope, setUserTabs, type AuthUser, type GrantRole } from '../api';
 
 /**
  * The approvals queue.
@@ -32,6 +32,133 @@ const TABS: [string, string][] = [
 ];
 const SCOPES: [string, string][] = [['', 'All chats'], ['not_autogmap', 'Only chats not from AutoGMap'], ['autogmap', 'Only AutoGMap chats']];
 const tabLabel = (key: string) => TABS.find(([k]) => k === key)?.[1] || key;
+
+const ROLE_INFO: [GrantRole, string, string][] = [
+  ['member', 'Member', 'Sees the data, changes nothing'],
+  ['operator', 'Operator', 'Works on everything: campaigns, Inbox, Applications'],
+  ['manager', 'Manager', 'Everything an operator does, and approves large campaigns'],
+];
+
+/** A new account, let in at once (23 Nov 2026). The person is emailed that they have access; never the password. */
+const CreateUserForm: React.FC<{ onCreated: (u: AuthUser) => void; onClose: () => void }> = ({ onCreated, onClose }) => {
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [role, setRole] = useState<GrantRole>('member');
+  const [withPassword, setWithPassword] = useState(false);
+  const [password, setPassword] = useState('');
+  const [show, setShow] = useState(false);
+  const [tabs, setTabs] = useState<string[]>([]);
+  const [scope, setScope] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const toggle = (k: string) => setTabs(t => t.includes(k) ? t.filter(x => x !== k) : [...t, k]);
+  const typed = email.trim();
+  const fullEmail = typed.includes('@') ? typed : typed ? `${typed}@eko.co.in` : '';
+  const field = 'h-9 w-full px-3 rounded-lg border border-slate-700 bg-slate-950 text-sm text-slate-100 outline-none focus:border-sky-500';
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError(null);
+    try {
+      const u = await createUser({
+        email: fullEmail, full_name: name.trim() || undefined, role,
+        password: withPassword && password ? password : undefined,
+        tabs: tabs.length ? TABS.map(([k]) => k).filter(k => tabs.includes(k)) : null,
+        inbox_scope: (scope || null) as 'autogmap' | 'not_autogmap' | null,
+      });
+      onCreated(u);
+    } catch (err: any) { setError(err?.message || 'Could not create the account.'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <form onSubmit={submit} className="mb-5 shrink-0 rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-sm">
+      <div className="relative px-5 py-4 text-white" style={{ background: 'linear-gradient(120deg, #0a3543 0%, #16435a 55%, #1d5a6e 100%)' }}>
+        <span className="material-symbols-outlined absolute -right-4 -bottom-8 text-[120px] text-white/10 pointer-events-none select-none">person_add</span>
+        <div className="relative flex items-center gap-3">
+          <span className="material-symbols-outlined text-[28px]">person_add</span>
+          <div>
+            <div className="text-lg font-semibold">Create a user</div>
+            <div className="text-[12px] text-white/75">They can sign in at once. They are emailed that they have access; never a password.</div>
+          </div>
+        </div>
+      </div>
+      <div className="p-5 grid gap-4 md:grid-cols-2">
+        <label className="block">
+          <span className="text-[11px] font-semibold text-slate-400">Work email</span>
+          <input autoFocus required value={email} onChange={e => setEmail(e.target.value)} placeholder="name or name@eko.co.in" className={`${field} mt-1`} />
+          {fullEmail && !typed.includes('@') && <span className="text-[11px] text-slate-500">{fullEmail}</span>}
+        </label>
+        <label className="block">
+          <span className="text-[11px] font-semibold text-slate-400">Full name <span className="font-normal text-slate-500">(optional)</span></span>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="As the team knows them" className={`${field} mt-1`} />
+        </label>
+
+        <div className="md:col-span-2">
+          <span className="text-[11px] font-semibold text-slate-400">Role</span>
+          <div className="mt-1 grid gap-2 sm:grid-cols-3">
+            {ROLE_INFO.map(([k, label, note]) => (
+              <button type="button" key={k} onClick={() => setRole(k)}
+                className={`text-left rounded-lg border px-3 py-2 cursor-pointer transition-colors ${role === k
+                  ? 'border-sky-600 bg-sky-950 text-sky-100' : 'border-slate-700 text-slate-300 hover:border-slate-600'}`}>
+                <div className="text-sm font-semibold flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[16px]">{role === k ? 'radio_button_checked' : 'radio_button_unchecked'}</span>{label}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">{note}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="md:col-span-2 rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+          <label className="flex items-center gap-2 text-sm text-slate-200 cursor-pointer">
+            <input type="checkbox" checked={withPassword} onChange={e => setWithPassword(e.target.checked)} className="accent-sky-500" />
+            Give a starting password
+          </label>
+          {withPassword ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input type={show ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                autoComplete="new-password" placeholder="At least 8 characters" className={`${field} max-w-sm`} />
+              <button type="button" onClick={() => setShow(v => !v)} className="text-[12px] text-sky-300 hover:underline cursor-pointer">{show ? 'Hide' : 'Show'}</button>
+              <span className="text-[11px] text-slate-500">Tell it to them yourself; they change it after signing in.</span>
+            </div>
+          ) : (
+            <div className="mt-1 text-[11.5px] text-slate-500">
+              Without one they sign in with Google, or set a password with a code from Forgot password on the sign-in page.
+            </div>
+          )}
+        </div>
+
+        <div className="md:col-span-2">
+          <span className="text-[11px] font-semibold text-slate-400">Tabs <span className="font-normal text-slate-500">(none ticked: every tab the role allows)</span></span>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {TABS.map(([k, label]) => (
+              <label key={k} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded border text-[11.5px] cursor-pointer ${tabs.includes(k)
+                ? 'border-sky-700 bg-sky-950 text-sky-200' : 'border-slate-700 text-slate-400 hover:border-slate-600'}`}>
+                <input type="checkbox" checked={tabs.includes(k)} onChange={() => toggle(k)} className="accent-sky-500" />{label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <label className="flex flex-wrap items-center gap-2 md:col-span-2">
+          <span className="text-[11px] font-semibold text-slate-400">Inbox shows</span>
+          <select value={scope} onChange={e => setScope(e.target.value)}
+            className="h-8 px-2 rounded text-[12px] border border-slate-700 bg-slate-950 text-slate-200 cursor-pointer">
+            {SCOPES.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="px-5 pb-5 flex flex-wrap items-center justify-end gap-2">
+        {error && <span className="mr-auto text-[12px] text-rose-300">{error}</span>}
+        <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg text-sm text-slate-400 hover:text-slate-200 cursor-pointer">Cancel</button>
+        <button type="submit" disabled={saving || !fullEmail}
+          className="h-9 px-4 rounded-lg bg-emerald-500 text-white text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 cursor-pointer">
+          <span className="material-symbols-outlined text-[18px]">person_add</span>{saving ? 'Creating...' : 'Create user'}
+        </button>
+      </div>
+    </form>
+  );
+};
 
 /** What an account may see: its tabs and which chats its Inbox shows. Saved on the server, which enforces it. */
 const AccessEditor: React.FC<{ user: AuthUser; onSaved: () => void; onClose: () => void }> = ({ user, onSaved, onClose }) => {
@@ -89,6 +216,8 @@ const AccessEditor: React.FC<{ user: AuthUser; onSaved: () => void; onClose: () 
 
 export const ApprovalsView: React.FC = () => {
   const [editing, setEditing] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [created, setCreated] = useState<AuthUser | null>(null);
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -182,6 +311,10 @@ export const ApprovalsView: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => { setCreating(c => !c); setCreated(null); }}
+            className="h-8 px-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded flex items-center gap-1.5 cursor-pointer">
+            <span className="material-symbols-outlined text-[16px]">person_add</span>Create user
+          </button>
           {pendingCount > 0 && (
             <span className="text-[11px] font-mono-code font-bold uppercase px-2 py-1 rounded border
                              text-amber-400 border-amber-800 bg-amber-950/50">
@@ -200,6 +333,20 @@ export const ApprovalsView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {creating && (
+        <CreateUserForm onClose={() => setCreating(false)}
+          onCreated={u => { setCreating(false); setCreated(u); load(); }} />
+      )}
+      {created && (
+        <div className="mb-4 shrink-0 rounded-lg border border-emerald-800/60 bg-emerald-950 px-4 py-3 text-[13px] text-emerald-200 flex items-center gap-2">
+          <span className="material-symbols-outlined text-[18px]">check_circle</span>
+          <span><b>{created.email}</b> can sign in now, as {created.role}. They have been emailed.</span>
+          <button onClick={() => setCreated(null)} className="ml-auto text-emerald-300 hover:text-white cursor-pointer">
+            <span className="material-symbols-outlined text-[16px]">close</span>
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="bg-rose-950/30 border border-rose-900 rounded p-3 text-rose-300 text-xs mb-4">
