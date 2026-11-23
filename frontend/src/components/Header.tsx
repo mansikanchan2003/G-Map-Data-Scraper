@@ -2,7 +2,7 @@ import React from 'react';
 import { ThemeToggle } from './ThemeToggle';
 import type { Theme } from '../hooks/useTheme';
 
-export type NavTab = 'dashboard' | 'businesses' | 'jobs' | 'config' | 'whatsapp-campaign' | 'whatsapp-templates' | 'whatsapp-studio' | 'whatsapp-insights' | 'whatsapp-history' | 'whatsapp-inbox' | 'applications' | 'dispositions' | 'agent-quality' | 'partners' | 'approvals';
+export type NavTab = 'dashboard' | 'businesses' | 'jobs' | 'config' | 'whatsapp-campaign' | 'whatsapp-templates' | 'whatsapp-studio' | 'whatsapp-insights' | 'whatsapp-history' | 'whatsapp-inbox' | 'applications' | 'dispositions' | 'agent-quality' | 'partners' | 'approvals' | 'dc-data';
 
 interface HeaderProps {
   activeTab: NavTab;
@@ -56,6 +56,7 @@ export const Header: React.FC<HeaderProps> = ({
     dispositions: { section: 'whatsapp', sub: 'dispositions' },
     'agent-quality': { section: 'operations', sub: 'agent quality' },
     partners: { section: 'records', sub: 'partner-organisations' },
+    'dc-data': { section: 'records', sub: 'district-coordinators' },
     'approvals': { section: 'admin', sub: 'access-requests' },
   };
 

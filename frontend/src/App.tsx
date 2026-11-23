@@ -26,6 +26,7 @@ const WhatsAppTemplatesView = lazy(() => import('./views/WhatsAppTemplatesView')
 const TemplateStudioView = lazy(() => import('./views/TemplateStudioView').then(m => ({ default: m.TemplateStudioView })));
 const CampaignInsightsView = lazy(() => import('./views/CampaignInsightsView').then(m => ({ default: m.CampaignInsightsView })));
 const PartnersView = lazy(() => import('./views/PartnersView').then(m => ({ default: m.PartnersView })));
+const DcDataView = lazy(() => import('./views/DcDataView').then(m => ({ default: m.DcDataView })));
 const ApplicationsView = lazy(() => import('./views/ApplicationsView').then(m => ({ default: m.ApplicationsView })));
 const DispositionsView = lazy(() => import('./views/DispositionsView').then(m => ({ default: m.DispositionsView })));
 const AgentQualityView = lazy(() => import('./views/AgentQualityView').then(m => ({ default: m.AgentQualityView })));
@@ -66,7 +67,7 @@ export default function App() {
       if (hash === 'admin-approvals') hash = 'approvals';
       // 'approvals' is listed so the email link and a refresh land on the
       // queue; it still renders only for admins.
-      if (['businesses', 'jobs', 'config', 'dashboard', 'whatsapp-campaign', 'whatsapp-templates', 'whatsapp-studio', 'whatsapp-history', 'whatsapp-insights', 'whatsapp-inbox', 'applications', 'dispositions', 'agent-quality', 'partners', 'approvals'].includes(hash)) {
+      if (['businesses', 'jobs', 'config', 'dashboard', 'whatsapp-campaign', 'whatsapp-templates', 'whatsapp-studio', 'whatsapp-history', 'whatsapp-insights', 'whatsapp-inbox', 'applications', 'dispositions', 'agent-quality', 'partners', 'approvals', 'dc-data'].includes(hash)) {
         setActiveTab(hash as NavTab);
       }
     };
@@ -246,6 +247,7 @@ export default function App() {
           {shownTab === 'dispositions' && <DispositionsView readOnly={readOnly} can={can} />}
           {shownTab === 'agent-quality' && <AgentQualityView can={can} isAdmin={user.role === 'admin'} canAudit={user.role === 'admin' || user.role === 'manager'} />}
           {shownTab === 'partners' && <PartnersView />}
+          {shownTab === 'dc-data' && <DcDataView />}
 
           {shownTab === 'whatsapp-history' && <WhatsAppHistoryView can={can} />}
 

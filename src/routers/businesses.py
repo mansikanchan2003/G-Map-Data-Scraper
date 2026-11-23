@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from src.database import get_db
 from src.models import Business, Job, Location
 from src.models.business import CONTACTABLE, HIRING_FOR, NOT_PARTNER, hiring_flag
@@ -109,6 +109,54 @@ def business_states(db: Session = Depends(get_db)):
             .filter(CONTACTABLE, NOT_PARTNER, Business.state.isnot(None), Business.state != "")
             .group_by(Business.state).order_by(func.count(Business.business_id).desc()).all())
     return [{"state": s, "count": n} for s, n in rows]
+
+
+@router.get("/dc-summary")
+def dc_summary(days: int = Query(30, ge=7, le=180), db: Session = Depends(get_db)):
+    """
+    The DC Data tab (Biswajit Sir, 23 Nov 2026): the businesses found for District
+    Coordinators, counted by state, district and category, how many each day, and how
+    many can be reached by phone, email or website. The rows themselves come from the
+    list endpoint with hiring_for=DC.
+    """
+    from datetime import timedelta, timezone
+    from sqlalchemy import func
+
+    base = db.query(Business).filter(CONTACTABLE, NOT_PARTNER, Business.for_dc.is_(True))
+    now = datetime.now(timezone.utc)
+    has = lambda col: and_(col.isnot(None), col != "")
+
+    def grouped(*cols, limit=None):
+        q = (base.with_entities(*cols, func.count(Business.business_id))
+             .group_by(*cols).order_by(func.count(Business.business_id).desc()))
+        return q.limit(limit).all() if limit else q.all()
+
+    since = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    per_day = dict(base.filter(Business.discovered_at >= since)
+                   .with_entities(func.date(Business.discovered_at), func.count(Business.business_id))
+                   .group_by(func.date(Business.discovered_at)).all())
+    per_day = {str(d): n for d, n in per_day.items()}
+
+    by_state: dict = {}
+    for state, district, n in grouped(Business.state, Business.district):
+        entry = by_state.setdefault(state or "Unknown", {"state": state or "Unknown", "count": 0, "districts": []})
+        entry["count"] += n
+        entry["districts"].append({"district": district or "Unknown", "count": n})
+
+    last = base.with_entities(func.max(Business.discovered_at)).scalar()
+    return {
+        "total": base.count(),
+        "last_7_days": base.filter(Business.discovered_at >= now - timedelta(days=7)).count(),
+        "today": base.filter(Business.discovered_at >= now.replace(hour=0, minute=0, second=0, microsecond=0)).count(),
+        "last_found_at": last.isoformat() if last else None,
+        "with_phone": base.filter(has(Business.phone)).count(),
+        "with_email": base.filter(has(Business.email)).count(),
+        "with_website": base.filter(has(Business.website)).count(),
+        "states": sorted(by_state.values(), key=lambda s: -s["count"]),
+        "categories": [{"category": c or "General", "count": n} for c, n in grouped(Business.category, limit=12)],
+        "daily": [{"date": str((since + timedelta(days=i)).date()),
+                   "count": per_day.get(str((since + timedelta(days=i)).date()), 0)} for i in range(days)],
+    }
 
 
 @router.get("/{business_id}", response_model=BusinessPublicResponse)

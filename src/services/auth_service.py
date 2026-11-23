@@ -57,7 +57,8 @@ READ_ONLY_SAFE_POSTS = (
 # replaces it when set.
 DEFAULT_UI_PREFS = {"kavya.shukla@eko.co.in": {"home_tab": "applications", "simple_view": True},
                     # Biswajit Sir (19 Nov 2026): the same easy Applications page as Kavya Ma'am.
-                    "biswajit@eko.co.in": {"home_tab": "applications", "simple_view": True}}
+                    # Since 23 Nov 2026 he opens on DC Data, the District Coordinators we scraped.
+                    "biswajit@eko.co.in": {"home_tab": "dc-data", "simple_view": True}}
 
 
 def ui_prefs(user: "User") -> dict:
