@@ -25,7 +25,7 @@ const when = (iso: string | null) =>
 
 // The tabs an admin can give an account, in the sidebar's order.
 const TABS: [string, string][] = [
-  ['dashboard', 'Dashboard'], ['businesses', 'Business Data'], ['dc-data', 'DC Data'], ['partners', 'Partner Organisations'],
+  ['dashboard', 'Dashboard'], ['businesses', 'Business Data'], ['dc-data', 'DC & CSPs near DC'], ['partners', 'Partner Organisations'],
   ['jobs', 'Jobs Monitor'], ['config', 'Configuration'], ['whatsapp-inbox', 'Inbox'], ['applications', 'Applications'],
   ['dispositions', 'Dispositions'], ['whatsapp-campaign', 'WhatsApp Campaign'], ['whatsapp-templates', 'Templates'],
   ['whatsapp-studio', 'Template Studio'], ['whatsapp-history', 'Campaign History'], ['whatsapp-insights', 'Campaign Insights'],
