@@ -171,8 +171,13 @@ export const SystemHealthPanel: React.FC = () => {
                 </div>
               ))}
             </div>
-            {q.oldest_waiting_seconds != null && q.oldest_waiting_seconds > 120 && (
-              <div className="mt-2 text-[12px] text-amber-300">The oldest has waited {ago(q.oldest_waiting_seconds).replace(' ago', '')}: is the scraper running?</div>
+            {/* Tasks wait their turn behind a running one: only a queue that waits with nothing
+                running means the scraper is not picking work up. */}
+            {q.queued > 0 && q.running > 0 && (
+              <div className="mt-2 text-[12px] text-slate-500">The waiting ones run one after another, after the one running now.</div>
+            )}
+            {q.running === 0 && q.oldest_waiting_seconds != null && q.oldest_waiting_seconds > 120 && (
+              <div className="mt-2 text-[12px] text-amber-300">Nothing has run for {ago(q.oldest_waiting_seconds).replace(' ago', '')} while work waits: is the scraper running?</div>
             )}
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
