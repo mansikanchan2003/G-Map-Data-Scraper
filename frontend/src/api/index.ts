@@ -270,12 +270,14 @@ export interface DcSummary {
   with_phone: number;
   with_email: number;
   with_website: number;
+  hiring_for: 'DC' | 'CSP_NEAR_DC';
+  totals: Record<'DC' | 'CSP_NEAR_DC', number>;
   states: { state: string; count: number; districts: { district: string; count: number }[] }[];
   categories: { category: string; count: number }[];
   daily: { date: string; count: number }[];
 }
-export const fetchDcSummary = (days = 30) =>
-  request<DcSummary>(`/api/v1/businesses/dc-summary?days=${days}`);
+export const fetchDcSummary = (days = 30, hiringFor: 'DC' | 'CSP_NEAR_DC' = 'DC') =>
+  request<DcSummary>(`/api/v1/businesses/dc-summary?days=${days}&hiring_for=${hiringFor}`);
 
 /** How many businesses were found for each hiring type. */
 export const fetchBusinessTypes = () =>

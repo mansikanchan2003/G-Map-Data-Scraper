@@ -220,3 +220,17 @@ def test_dc_data_counts_only_dc_leads_by_state_district_category_and_day(db, cli
     assert {c["category"]: c["count"] for c in s["categories"]} == {"Insurance agency": 2, "Manpower consultancy": 1}
     assert len(s["daily"]) == 30 and s["daily"][-1]["count"] == 3 and sum(d["count"] for d in s["daily"]) == 3
     assert client.get("/api/v1/businesses/dc-summary", params={"days": 7}).json()["daily"].__len__() == 7
+
+
+def test_dc_data_switches_to_csps_near_dcs_and_counts_both(db, client):
+    """24 Nov 2026: Biswajit Sir's tab shows DCs or CSPs near DCs, with both counts on the switch."""
+    _three(db)
+    _business(db, "near1", "+919866666666", near_dc=True)
+    _business(db, "near2", "+919877777777", near_dc=True, website="shop.in")
+    db.commit()
+    s = client.get("/api/v1/businesses/dc-summary", params={"hiring_for": "CSP_NEAR_DC"}).json()
+    assert s["hiring_for"] == "CSP_NEAR_DC" and s["totals"] == {"DC": 1, "CSP_NEAR_DC": 2}
+    assert (s["total"], s["with_website"]) == (2, 1)
+    assert [(st["state"], st["count"]) for st in s["states"]] == [("Gujarat", 2)]
+    assert client.get("/api/v1/businesses/dc-summary").json()["total"] == 1                     # DC by default
+    assert client.get("/api/v1/businesses/dc-summary", params={"hiring_for": "CSP"}).status_code == 422

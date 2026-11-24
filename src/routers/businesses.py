@@ -112,17 +112,22 @@ def business_states(db: Session = Depends(get_db)):
 
 
 @router.get("/dc-summary")
-def dc_summary(days: int = Query(30, ge=7, le=180), db: Session = Depends(get_db)):
+def dc_summary(days: int = Query(30, ge=7, le=180),
+               hiring_for: str = Query("DC", pattern="^(DC|CSP_NEAR_DC)$"),
+               db: Session = Depends(get_db)):
     """
     The DC Data tab (Biswajit Sir, 23 Nov 2026): the businesses found for District
-    Coordinators, counted by state, district and category, how many each day, and how
-    many can be reached by phone, email or website. The rows themselves come from the
-    list endpoint with hiring_for=DC.
+    Coordinators, or since 24 Nov 2026 the CSPs near DCs (hiring_for), counted by state,
+    district and category, how many each day, and how many can be reached by phone,
+    email or website. The rows themselves come from the list endpoint with the same
+    hiring_for. `totals` has both kinds' counts, for the tab's switch.
     """
     from datetime import timedelta, timezone
     from sqlalchemy import func
 
-    base = db.query(Business).filter(CONTACTABLE, NOT_PARTNER, Business.for_dc.is_(True))
+    shown = db.query(Business).filter(CONTACTABLE, NOT_PARTNER)
+    totals = {key: shown.filter(hiring_flag(key).is_(True)).count() for key in ("DC", "CSP_NEAR_DC")}
+    base = shown.filter(hiring_flag(hiring_for).is_(True))
     now = datetime.now(timezone.utc)
     has = lambda col: and_(col.isnot(None), col != "")
 
@@ -145,7 +150,9 @@ def dc_summary(days: int = Query(30, ge=7, le=180), db: Session = Depends(get_db
 
     last = base.with_entities(func.max(Business.discovered_at)).scalar()
     return {
-        "total": base.count(),
+        "hiring_for": hiring_for,
+        "totals": totals,
+        "total": totals[hiring_for],
         "last_7_days": base.filter(Business.discovered_at >= now - timedelta(days=7)).count(),
         "today": base.filter(Business.discovered_at >= now.replace(hour=0, minute=0, second=0, microsecond=0)).count(),
         "last_found_at": last.isoformat() if last else None,

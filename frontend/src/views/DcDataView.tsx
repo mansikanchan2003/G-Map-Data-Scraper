@@ -4,9 +4,18 @@ import { fetchBusinesses, fetchDcSummary, triggerCsvStream, triggerExcelStream, 
 
 /**
  * DC Data (Biswajit Sir, 23 Nov 2026): the businesses we scraped for District
- * Coordinators and nothing else. The figures on top, then the leads themselves,
- * which a click on a state or district narrows down. Only reads.
+ * Coordinators and, since 24 Nov 2026, the CSPs near DCs, one or the other by the
+ * switch on top. The figures, then the leads themselves, which a click on a state
+ * or district narrows down. Only reads.
  */
+
+type Kind = 'DC' | 'CSP_NEAR_DC';
+const KINDS: Record<Kind, { label: string; leads: string; icon: string; about: string }> = {
+  DC: { label: 'District Coordinators', leads: 'DC leads', icon: 'hub',
+        about: 'Businesses found on Google Maps for District Coordinator hiring' },
+  CSP_NEAR_DC: { label: 'CSPs near DCs', leads: 'CSP leads', icon: 'share_location',
+                 about: "CSP prospects found around the SBI CSP centres in our District Coordinators' districts" },
+};
 
 const PAGE_SIZE = 50;
 const n = (v: number) => v.toLocaleString('en-IN');
@@ -33,6 +42,7 @@ const Panel: React.FC<{ title: string; children: React.ReactNode; className?: st
 );
 
 export const DcDataView: React.FC = () => {
+  const [kind, setKind] = useState<Kind>('DC');
   const [summary, setSummary] = useState<DcSummary | null>(null);
   const [summaryError, setSummaryError] = useState<ApiError | null>(null);
 
@@ -48,11 +58,16 @@ export const DcDataView: React.FC = () => {
   const [district, setDistrict] = useState('');
   const [openState, setOpenState] = useState<string | null>(null);
 
+  // A slow answer for the kind just left must not fill the page for the new one.
+  const latestSummary = React.useRef(0);
   const loadSummary = () => {
+    const ticket = ++latestSummary.current;
     setSummaryError(null);
-    fetchDcSummary(30).then(setSummary).catch(setSummaryError);
+    fetchDcSummary(30, kind)
+      .then(res => { if (ticket === latestSummary.current) setSummary(res); })
+      .catch(err => { if (ticket === latestSummary.current) setSummaryError(err); });
   };
-  useEffect(loadSummary, []);
+  useEffect(loadSummary, [kind]);
 
   // Only the latest load may fill the table, so a slow answer cannot overwrite a newer one.
   const latest = React.useRef(0);
@@ -62,7 +77,7 @@ export const DcDataView: React.FC = () => {
     setError(null);
     try {
       const res = await fetchBusinesses({
-        page: targetPage, page_size: PAGE_SIZE, hiring_for: 'DC',
+        page: targetPage, page_size: PAGE_SIZE, hiring_for: kind,
         search: search.trim() || undefined, state: state || undefined, district: district || undefined,
       });
       if (ticket !== latest.current) return;
@@ -79,11 +94,17 @@ export const DcDataView: React.FC = () => {
   useEffect(() => {
     const t = setTimeout(() => loadRows(1), 300);
     return () => clearTimeout(t);
-  }, [search, state, district]);
+  }, [search, state, district, kind]);
 
   const refresh = () => { loadSummary(); loadRows(page); };
   const pick = (st: string, d = '') => { setState(st); setDistrict(d); };
-  const exportFilters = { hiring_for: 'DC' as const, state: state || undefined, search: search.trim() || undefined };
+  // A state picked for one kind may have none of the other, so the switch starts afresh.
+  const switchTo = (k: Kind) => {
+    if (k === kind) return;
+    setKind(k); setSummary(null); pick(''); setOpenState(null);
+  };
+  const exportFilters = { hiring_for: kind, state: state || undefined, search: search.trim() || undefined };
+  const K = KINDS[kind];
 
   const s = summary;
   const peak = s ? Math.max(1, ...s.daily.map(d => d.count)) : 1;
@@ -94,9 +115,9 @@ export const DcDataView: React.FC = () => {
     <div className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto bg-slate-950 text-slate-100">
       <div className="px-6 py-4 border-b border-slate-800 bg-slate-900 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">District Coordinator Data</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{K.label}</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Businesses found on Google Maps for District Coordinator hiring · last found {when(s?.last_found_at ?? null)}
+            {K.about} · last found {when(s?.last_found_at ?? null)}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -118,14 +139,32 @@ export const DcDataView: React.FC = () => {
       </div>
 
       <div className="p-4 md:p-6 flex flex-col gap-4">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Which leads">
+          {(Object.keys(KINDS) as Kind[]).map(k => {
+            const on = k === kind;
+            const count = s?.totals?.[k];
+            return (
+              <button key={k} role="tab" aria-selected={on} onClick={() => switchTo(k)}
+                className={`h-10 pl-3 pr-4 rounded-full border text-sm font-semibold flex items-center gap-2 cursor-pointer transition-colors ${
+                  on ? 'bg-purple-600 border-purple-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-purple-500'}`}>
+                <span className="material-symbols-outlined text-[18px]">{KINDS[k].icon}</span>
+                {KINDS[k].label}
+                {count !== undefined && (
+                  <span className={`rounded-full px-2 text-xs tabular-nums ${on ? 'bg-white/25' : 'bg-slate-800'}`}>{n(count)}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         {summaryError && (
           <div className="p-3 bg-rose-950/70 border border-rose-800 rounded text-rose-200 text-xs">
-            Could not load the DC figures: {summaryError.message}
+            Could not load the figures: {summaryError.message}
           </div>
         )}
 
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <Tile icon="hub" label="DC leads" value={s ? n(s.total) : '…'} note="found so far" />
+          <Tile icon={K.icon} label={K.leads} value={s ? n(s.total) : '…'} note="found so far" />
           <Tile icon="today" label="Today" value={s ? n(s.today) : '…'} note={s ? `${n(s.last_7_days)} in the last 7 days` : undefined} />
           <Tile icon="map" label="Coverage" value={s ? `${s.states.length} states` : '…'} note={s ? `${districts} districts` : undefined} />
           <Tile icon="call" label="With phone" value={s ? `${pct(s.with_phone, s.total)}%` : '…'} note={s ? `${n(s.with_phone)} leads` : undefined} />
@@ -178,7 +217,7 @@ export const DcDataView: React.FC = () => {
                   )}
                 </div>
               ))}
-              {s && !s.states.length && <p className="text-xs text-slate-500 py-2">No DC leads yet.</p>}
+              {s && !s.states.length && <p className="text-xs text-slate-500 py-2">No {K.leads} yet.</p>}
             </div>
           </Panel>
 
@@ -199,7 +238,7 @@ export const DcDataView: React.FC = () => {
           </Panel>
         </div>
 
-        <Panel title="DC leads">
+        <Panel title={K.leads}>
           <div className="flex flex-col md:flex-row md:items-center gap-2">
             <div className="relative flex-1 max-w-xl">
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-[16px] material-symbols-outlined">search</span>
@@ -223,6 +262,7 @@ export const DcDataView: React.FC = () => {
               <thead className="bg-slate-900 text-[10px] uppercase tracking-wider text-slate-400">
                 <tr className="h-9">
                   <th className="px-3 min-w-[200px]">Name</th>
+                  <th className="px-3 min-w-[280px]">Address</th>
                   <th className="px-3 min-w-[120px]">Phone</th>
                   <th className="px-3 min-w-[160px]">Category</th>
                   <th className="px-3 min-w-[120px]">District</th>
@@ -233,22 +273,23 @@ export const DcDataView: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-800">
                 {loading ? (
-                  <tr><td colSpan={7} className="py-10 text-center text-slate-400">Loading…</td></tr>
+                  <tr><td colSpan={8} className="py-10 text-center text-slate-400">Loading…</td></tr>
                 ) : !rows.length ? (
-                  <tr><td colSpan={7} className="py-10 text-center text-slate-400">No DC leads match.</td></tr>
+                  <tr><td colSpan={8} className="py-10 text-center text-slate-400">No {K.leads} match.</td></tr>
                 ) : rows.map((b, i) => (
                   <tr key={`${b.phone}-${i}`} className="h-9 hover:bg-slate-900/60">
-                    <td className="px-3 font-medium text-slate-100" title={b.address || ''}>{b.name}</td>
-                    <td className="px-3 text-slate-200 tabular-nums">{b.phone || '—'}</td>
-                    <td className="px-3 text-slate-300">{b.category || '—'}</td>
-                    <td className="px-3 text-slate-300">{b.district || '—'}</td>
-                    <td className="px-3 text-slate-300">{b.state || '—'}</td>
-                    <td className="px-3 text-sky-400 truncate max-w-[200px]">
+                    <td className="px-3 py-2 font-medium text-slate-100 align-top">{b.name}</td>
+                    <td className="px-3 py-2 text-slate-400 whitespace-normal break-words align-top">{b.address || '—'}</td>
+                    <td className="px-3 py-2 align-top text-slate-200 tabular-nums">{b.phone || '—'}</td>
+                    <td className="px-3 py-2 align-top text-slate-300">{b.category || '—'}</td>
+                    <td className="px-3 py-2 align-top text-slate-300">{b.district || '—'}</td>
+                    <td className="px-3 py-2 align-top text-slate-300">{b.state || '—'}</td>
+                    <td className="px-3 py-2 align-top text-sky-400 truncate max-w-[200px]">
                       {b.email ? <a href={`mailto:${b.email}`} className="hover:underline">{b.email}</a>
                         : b.website ? <a href={b.website.startsWith('http') ? b.website : `https://${b.website}`} target="_blank" rel="noreferrer" className="hover:underline">{b.website.replace(/^https?:\/\//, '')}</a>
                         : <span className="text-slate-500">—</span>}
                     </td>
-                    <td className="px-3 text-slate-400 tabular-nums">{b.pincode || '—'}</td>
+                    <td className="px-3 py-2 align-top text-slate-400 tabular-nums">{b.pincode || '—'}</td>
                   </tr>
                 ))}
               </tbody>
