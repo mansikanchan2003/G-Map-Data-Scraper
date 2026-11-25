@@ -128,11 +128,31 @@ GUARD_INTERVAL_SECONDS = 5
 _guard_started = False
 
 
+def _reclaimable(stat_path: str, key: str) -> int:
+    """File cache the kernel can drop at once (inactive_file), from memory.stat; 0 if unknown."""
+    try:
+        with open(stat_path) as f:
+            for line in f:
+                name, _, value = line.partition(" ")
+                if name == key:
+                    return int(value)
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
 def _cgroup_memory() -> Tuple[int, int]:
-    """(used, limit) in bytes for this container, or (0, 0) where unknown."""
-    for used_path, limit_path in (("/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory.max"),
-                                  ("/sys/fs/cgroup/memory/memory.usage_in_bytes",
-                                   "/sys/fs/cgroup/memory/memory.limit_in_bytes")):
+    """
+    (used, limit) in bytes for this container, or (0, 0) where unknown. "Used" leaves out
+    file cache the kernel can drop at once (inactive_file), as `docker stats` does: on 25 Nov
+    2026 a gigabyte of it, from reading Whisper's model files, made the website look 83% full
+    when the app itself held about half that.
+    """
+    for used_path, limit_path, stat_path, key in (
+            ("/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory.max",
+             "/sys/fs/cgroup/memory.stat", "inactive_file"),
+            ("/sys/fs/cgroup/memory/memory.usage_in_bytes", "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+             "/sys/fs/cgroup/memory/memory.stat", "total_inactive_file")):
         try:
             with open(used_path) as f:
                 used = int(f.read().strip())
@@ -141,7 +161,7 @@ def _cgroup_memory() -> Tuple[int, int]:
             limit = 0 if raw == "max" else int(raw)
             # cgroup v1 reports "no limit" as a huge number.
             if limit and limit < (1 << 50):
-                return used, limit
+                return max(used - _reclaimable(stat_path, key), 0), limit
         except (OSError, ValueError):
             continue
     return 0, 0

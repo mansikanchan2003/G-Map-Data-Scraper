@@ -85,3 +85,24 @@ def test_the_endpoint_answers_a_signed_in_person():
     finally:
         app.dependency_overrides.pop(get_db, None)
         app.dependency_overrides.pop(current_user, None)
+
+
+def test_file_cache_the_kernel_can_drop_is_not_counted_as_used(tmp_path):
+    # 25 Nov 2026: a gigabyte of cache from Whisper's model files showed the website 83% full.
+    from src.utils import browser_processes as bp
+    stat = tmp_path / "memory.stat"
+    stat.write_text("anon 1479614464\nfile 1121669120\ninactive_file 987234304\nactive_file 134410240\n")
+    assert bp._reclaimable(str(stat), "inactive_file") == 987234304
+    assert bp._reclaimable(str(tmp_path / "missing"), "inactive_file") == 0
+
+
+def test_whisper_models_unused_for_a_while_are_let_go(monkeypatch):
+    from src.services import transcribe
+    clock = [1000.0]
+    monkeypatch.setattr(transcribe, "_now", lambda: clock[0])
+    monkeypatch.setattr(transcribe, "_models", {"small": object(), "hindi": object()})
+    monkeypatch.setattr(transcribe, "_last_used", {"small": 1000.0, "hindi": 1000.0 - 20 * 60})
+    assert transcribe.unload_idle(15 * 60) == ["hindi"]
+    assert list(transcribe._models) == ["small"]
+    clock[0] += 16 * 60
+    assert transcribe.unload_idle(15 * 60) == ["small"] and transcribe._models == {}

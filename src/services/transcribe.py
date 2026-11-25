@@ -43,6 +43,12 @@ BOT_LANGUAGES = {"en", "hi", "mr", "pa", "gu", "bn", "ta", "te", "kn", "ml"}
 
 _models: dict = {}
 _lock = threading.Lock()
+# Both models together hold about a gigabyte. Voice notes come a few a day, so a model
+# unused this long is let go and loaded again for the next note, in a few seconds
+# (25 Nov 2026: kept for good, they held the website at half its memory all day).
+IDLE_MINUTES = float(os.environ.get("WHISPER_IDLE_MINUTES", "15"))
+_last_used: dict = {}
+_reaper: Optional[threading.Thread] = None
 
 
 def _load(name: str = None):
@@ -55,7 +61,49 @@ def _load(name: str = None):
             logger.info(f"transcribe event=LOADING model={name}")
             _models[name] = WhisperModel(name, device="cpu", compute_type="int8",
                                          cpu_threads=THREADS, download_root=CACHE_DIR)
+        _last_used[name] = _now()
+        _start_reaper()
     return _models[name]
+
+
+def _now() -> float:
+    import time
+    return time.monotonic()
+
+
+def unload_idle(idle_seconds: Optional[float] = None) -> list:
+    """Lets go of models unused for idle_seconds (IDLE_MINUTES by default); returns their names."""
+    import gc
+    limit = IDLE_MINUTES * 60 if idle_seconds is None else idle_seconds
+    gone = []
+    with _lock:
+        for name in list(_models):
+            if _now() - _last_used.get(name, 0) >= limit:
+                del _models[name]
+                _last_used.pop(name, None)
+                gone.append(name)
+    if gone:
+        gc.collect()
+        logger.info(f"transcribe event=UNLOADED models={gone}")
+    return gone
+
+
+def _start_reaper() -> None:
+    global _reaper
+    if IDLE_MINUTES <= 0 or (_reaper and _reaper.is_alive()):
+        return
+
+    def loop():
+        import time
+        while True:
+            time.sleep(60)
+            try:
+                unload_idle()
+            except Exception:
+                logger.warning("transcribe event=UNLOAD_FAILED", exc_info=True)
+
+    _reaper = threading.Thread(target=loop, name="whisper-unload", daemon=True)
+    _reaper.start()
 
 
 def _audio(path: str):
