@@ -82,7 +82,7 @@ class TestEmailDomain:
         assert auth.email_is_allowed(email) is False
 
     @pytest.mark.parametrize("email", [
-        "mansi.kanchan.intern@eko.co.in",
+        "admin.test@eko.co.in",
         "A.Person@EKO.CO.IN",
     ])
     def test_allowed(self, email):
@@ -285,7 +285,7 @@ class TestManagerRole:
     approvals queue stays with the administrator: nothing grants it.
     """
 
-    def _pending(self, client, email="kavya.shukla@eko.co.in"):
+    def _pending(self, client, email="team.member@eko.co.in"):
         client.post("/api/v1/auth/signup", json={"email": email, "password": GOOD_PASSWORD})
         client.post("/api/v1/auth/login", json={"email": make_admin(), "password": GOOD_PASSWORD})
         return client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
@@ -302,7 +302,7 @@ class TestManagerRole:
         client.post("/api/v1/auth/logout")
 
         me = client.post("/api/v1/auth/login",
-                         json={"email": "kavya.shukla@eko.co.in", "password": GOOD_PASSWORD})
+                         json={"email": "team.member@eko.co.in", "password": GOOD_PASSWORD})
         assert me.status_code == 200 and me.json()["role"] == "manager"
         assert client.get("/api/v1/stats").status_code == 200
         assert client.get("/api/v1/whatsapp/templates").status_code == 200
@@ -799,14 +799,14 @@ class TestInboxScope:
 
     def test_a_manager_kept_to_autogmap_chats_may_approve_a_large_campaign_but_not_launch_one(self, client):
         # Kavya's account (13 Nov 2026): manager, Inbox kept to AutoGMap's chats.
-        client.post("/api/v1/auth/signup", json={"email": "kavya.shukla@eko.co.in", "password": GOOD_PASSWORD})
+        client.post("/api/v1/auth/signup", json={"email": "team.member@eko.co.in", "password": GOOD_PASSWORD})
         admin = make_admin()
         client.post("/api/v1/auth/login", json={"email": admin, "password": GOOD_PASSWORD})
         uid = client.get("/api/v1/auth/users?status=PENDING").json()[0]["user_id"]
         client.post(f"/api/v1/auth/users/{uid}/approve", json={"role": "manager"})
         client.put(f"/api/v1/auth/users/{uid}/inbox-scope", json={"scope": "autogmap"})
         client.post("/api/v1/auth/logout")
-        client.post("/api/v1/auth/login", json={"email": "kavya.shukla@eko.co.in", "password": GOOD_PASSWORD})
+        client.post("/api/v1/auth/login", json={"email": "team.member@eko.co.in", "password": GOOD_PASSWORD})
         # Approve and reject reach the campaign (none here: 404), not the Inbox-only refusal.
         assert client.post("/api/v1/whatsapp/campaigns/c1/approve", json={}).status_code == 404
         assert client.post("/api/v1/whatsapp/campaigns/c1/reject", json={"reason": "not now"}).status_code == 404
@@ -936,7 +936,7 @@ class TestHowTheAppOpens:
     """Kavya lands on Applications, in its simple view; nobody else's app changes (16 Nov 2026)."""
 
     def test_only_kavya_gets_her_home_tab_and_the_simple_view(self, client):
-        for email in ("kavya.shukla@eko.co.in", "someone.else@eko.co.in"):
+        for email in ("team.member@eko.co.in", "someone.else@eko.co.in"):
             client.post("/api/v1/auth/signup", json={"email": email, "password": GOOD_PASSWORD})
         admin = make_admin()
         client.post("/api/v1/auth/login", json={"email": admin, "password": GOOD_PASSWORD})
@@ -945,7 +945,7 @@ class TestHowTheAppOpens:
         for u in client.get("/api/v1/auth/users?status=PENDING").json():
             client.post(f"/api/v1/auth/users/{u['user_id']}/approve", json={"role": "manager"})
         client.post("/api/v1/auth/logout")
-        r = client.post("/api/v1/auth/login", json={"email": "kavya.shukla@eko.co.in", "password": GOOD_PASSWORD})
+        r = client.post("/api/v1/auth/login", json={"email": "team.member@eko.co.in", "password": GOOD_PASSWORD})
         assert r.json()["home_tab"] == "applications" and r.json()["simple_view"] is True
         assert client.get("/api/v1/auth/me").json()["simple_view"] is True
         client.post("/api/v1/auth/logout")
@@ -953,9 +953,11 @@ class TestHowTheAppOpens:
         assert r.json()["home_tab"] is None and r.json()["simple_view"] is False
 
 
-def test_biswajit_opens_on_dc_data_with_the_easy_applications_page():
-    """19 Nov 2026: Biswajit Sir, like Kavya Ma'am; since 23 Nov 2026 he lands on DC Data."""
+def test_how_the_app_opens_is_set_per_address_in_user_ui_prefs():
+    """USER_UI_PREFS (set by conftest here): the tab an address lands on, matched in any case."""
     from src.models import User
     from src.services import auth_service
-    assert auth_service.ui_prefs(User(email="biswajit@eko.co.in")) == {"home_tab": "dc-data", "simple_view": True}
-    assert auth_service.ui_prefs(User(email="Biswajit@Eko.co.in"))["simple_view"] is True
+    assert auth_service.ui_prefs(User(email="dc.lead@eko.co.in")) == {"home_tab": "dc-data", "simple_view": True}
+    assert auth_service.ui_prefs(User(email="Dc.Lead@Eko.co.in"))["simple_view"] is True
+    # Nobody's address is kept in the code: without the setting, nobody gets a special view.
+    assert auth_service.DEFAULT_UI_PREFS == {}

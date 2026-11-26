@@ -20,7 +20,7 @@ logger = logging.getLogger("gmap_scraper.notifier")
 # someone tapped Interested or asked for personal guidance: those go to the admin
 # alone (the user, 2026-10-22). Uploaded documents go to both, with the next step
 # (documents_report, 15 Nov 2026). Comma-separated.
-NOTIFY_ALSO = os.environ.get("NOTIFY_ALSO", "kavya.shukla@eko.co.in")
+NOTIFY_ALSO = os.environ.get("NOTIFY_ALSO", "")
 
 
 def team(admin_email: str) -> str:

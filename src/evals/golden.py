@@ -258,7 +258,7 @@ def _check_sheet(case: dict) -> List[str]:
         conv = db.query(WhatsAppConversation).filter(WhatsAppConversation.phone == PHONE).one()
         before = db.query(WhatsAppMessage).filter(WhatsAppMessage.direction == "OUT").count()
         at = inbox.now() + (timedelta(hours=3) if sub.asks == "time" else timedelta(days=10))
-        handover.record(db, conv, sub.key, "kavya.shukla@eko.co.in", note="golden", at=at if sub.asks else None)
+        handover.record(db, conv, sub.key, "team.member@eko.co.in", note="golden", at=at if sub.asks else None)
         db.commit()
         db.refresh(conv)
         fups = db.query(FollowUp).filter(FollowUp.phone == PHONE).all()
@@ -291,7 +291,7 @@ def _check_sheet(case: dict) -> List[str]:
         block = lead_journey.build(db, conv)["dispositions"][0]
         if block["label"] != row["label"] or not block["current"]:
             problems.append(f"Lead Journey shows {block['label']!r} (current: {block['current']}) as the disposition now")
-        if block["recorded_by"] != "Kavya Shukla":
+        if block["recorded_by"] != "Team Member":
             problems.append(f"Lead Journey says recorded by {block['recorded_by']!r}")
         if sent_now and not any(i["status"] == "done" for i in block["items"]):
             problems.append("a message went out, but Lead Journey shows no done action item for it")

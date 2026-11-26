@@ -9,9 +9,22 @@ if the gate ever changes again.
 `tests/test_auth.py` opts out: it is the suite that exercises the real thing,
 and a bypass would make it pass no matter what.
 """
+import json
+import os
 import uuid
 
 import pytest
+
+# People's settings live in .env, not the code (26 Nov 2026): the tests use made-up
+# addresses. Set before any app module is imported, since some read them at import.
+os.environ.setdefault("BOOTSTRAP_ADMIN_EMAIL", "admin.test@eko.co.in")
+os.environ.setdefault("NOTIFY_ALSO", "team.member@eko.co.in")
+os.environ.setdefault("DC_VISIT_NOTIFY", "dc.lead@eko.co.in")
+os.environ.setdefault("EMAIL_LANGUAGES", "dc.lead@eko.co.in:hi,team.member@eko.co.in:hinglish")
+os.environ.setdefault("USER_UI_PREFS", json.dumps({
+    "team.member@eko.co.in": {"home_tab": "applications", "simple_view": True},
+    "dc.lead@eko.co.in": {"home_tab": "dc-data", "simple_view": True},
+}))
 
 from src.models import User
 

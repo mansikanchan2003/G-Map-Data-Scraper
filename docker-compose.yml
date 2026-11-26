@@ -137,9 +137,17 @@ services:
       # the app makes a random key once in data/.auth_jwt_secret; never the
       # database password. SMTP is optional: approvals still appear in the queue.
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
-      # First password for the seeded admin. Read only while that account
-      # has none; it never overwrites one already set.
+      # The first admin's address (required; deploy.sh checks) and its first password,
+      # read only while that account has none; it never overwrites one already set.
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      # People's own settings, kept out of the code: who else hears of the team's work
+      # (comma-separated), who arranges a DC's visit, each person's email language
+      # ("email:hi,email:hinglish") and how the app opens for them (JSON by email).
+      NOTIFY_ALSO: ${NOTIFY_ALSO:-}
+      DC_VISIT_NOTIFY: ${DC_VISIT_NOTIFY:-}
+      EMAIL_LANGUAGES: ${EMAIL_LANGUAGES:-}
+      USER_UI_PREFS: ${USER_UI_PREFS:-}
       # Google sign-in: the OAuth Web client id from Google Cloud (public, not a secret).
       # Empty: the Google button is hidden and only email + password works.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}

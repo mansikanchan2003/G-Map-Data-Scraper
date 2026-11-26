@@ -612,9 +612,9 @@ def test_the_documents_email_says_how_far_our_nearest_branch_is_and_to_pitch_esa
     assert "Verified through DigiLocker" in documents_report.email(documents_report.build(db, c), "https://x")[1]
     sent = []
     monkeypatch.setattr(notifier, "_send", lambda to, s, b: sent.append(to) or True)
-    monkeypatch.setattr(notifier, "NOTIFY_ALSO", "kavya.shukla@eko.co.in")
+    monkeypatch.setattr(notifier, "NOTIFY_ALSO", "team.member@eko.co.in")
     assert documents_report.send("+919000000002", "https://indev.eko.in/autogmap", TestingSessionLocal)
-    assert "kavya.shukla@eko.co.in" in sent[0] and "mansi" in sent[0]
+    assert "team.member@eko.co.in" in sent[0] and "admin.test@eko.co.in" in sent[0]
     db.close()
 
 
@@ -696,7 +696,7 @@ def test_only_the_owner_may_hear_or_list_recordings(client, recordings_dir):
     from src.models import User
     from src.routers.auth import current_user
     _upload(client, "09000000001")
-    app.dependency_overrides[current_user] = lambda: User(email="kavya.shukla@eko.co.in", role="manager", status="APPROVED")
+    app.dependency_overrides[current_user] = lambda: User(email="team.member@eko.co.in", role="manager", status="APPROVED")
     assert client.get("/api/v1/call-recordings/summary").status_code == 403
     assert client.get("/api/v1/call-recordings/export").status_code == 403
     assert client.get("/api/v1/inbox/conversations/919000000001/recordings").json() == []

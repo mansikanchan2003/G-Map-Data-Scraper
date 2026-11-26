@@ -44,13 +44,16 @@ echo "Staging: ${COMMIT:0:7} $(git log -1 --format=%s | cut -c1-70)"
 
 # -- Its own settings, made once: new secrets, its own ports, no real keys -------------------
 if [ ! -f .env ]; then
-  read -r -s -p "Choose a password for the staging admin (mansi.kanchan.intern@eko.co.in): " ADMIN_PW; echo
+  ADMIN_EMAIL="$(grep -E '^BOOTSTRAP_ADMIN_EMAIL=' "$PROD/.env" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d "\"'")"
+  [ -n "$ADMIN_EMAIL" ] || stop "Set BOOTSTRAP_ADMIN_EMAIL in production's .env first: staging's admin is the same person."
+  read -r -s -p "Choose a password for the staging admin ($ADMIN_EMAIL): " ADMIN_PW; echo
   [ ${#ADMIN_PW} -ge 10 ] || stop "Use at least 10 characters."
   umask 077
   cat > .env <<EOF
 # Staging only (scripts/staging.sh). Not production's: its own database and secrets.
 POSTGRES_PASSWORD=$(openssl rand -hex 24)
 AUTH_JWT_SECRET=$(openssl rand -hex 32)
+BOOTSTRAP_ADMIN_EMAIL=$ADMIN_EMAIL
 BOOTSTRAP_ADMIN_PASSWORD=$ADMIN_PW
 BACKEND_HOST_PORT=8100
 POSTGRES_HOST_PORT=5433
@@ -71,8 +74,8 @@ for _ in $(seq 1 30); do
   if curl -fsS "http://127.0.0.1:8100/health" 2>/dev/null | grep -q '"status":"healthy"'; then
     echo
     echo "Staging is up on ${COMMIT:0:7}. From your laptop:"
-    echo "  ssh -p 2222 -L 8100:127.0.0.1:8100 mansi@indev.eko.in"
-    echo "then open http://localhost:8100 and sign in as mansi.kanchan.intern@eko.co.in."
+    echo "  ssh -L 8100:127.0.0.1:8100 <you>@<this server>"
+    echo "then open http://localhost:8100 and sign in with the staging admin's address."
     exit 0
   fi
   sleep 4

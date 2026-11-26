@@ -1364,8 +1364,8 @@ def test_a_ticket_is_raised_once_and_solved_with_question_resolved(db, client, e
 
 def test_team_emails_go_to_the_admin_and_kavya_once_each(monkeypatch):
     from src.services import notifier
-    monkeypatch.setattr(notifier, "NOTIFY_ALSO", "kavya.shukla@eko.co.in, Admin@Eko.in")
-    assert notifier.team("admin@eko.in") == "admin@eko.in, kavya.shukla@eko.co.in"
+    monkeypatch.setattr(notifier, "NOTIFY_ALSO", "team.member@eko.co.in, Admin@Eko.in")
+    assert notifier.team("admin@eko.in") == "admin@eko.in, team.member@eko.co.in"
 
 
 def test_a_chat_that_did_not_come_from_a_campaign_is_summarised_for_what_it_is(db, client):
@@ -1383,10 +1383,10 @@ def test_a_chat_that_did_not_come_from_a_campaign_is_summarised_for_what_it_is(d
     assert "Interested" not in s["next"]["action"] and "support team" in s["next"]["action"]
     assert s["next"]["reply"].startswith("Namaste") and s["next"]["reply_language"] == "Hinglish"
     # The team's own reply shows in the conversation and in short.
-    inbox.send(db, PHONE, "Ji, hum aapko call karte hain", sent_by="kavya.shukla@eko.co.in")
+    inbox.send(db, PHONE, "Ji, hum aapko call karte hain", sent_by="team.member@eko.co.in")
     db.commit()
     s = chat_summary.summarise(db, conv(db))
-    assert any(t["kind"] == "team" and t["text"].startswith("Kavya Shukla ne reply kiya") for t in s["timeline"])
+    assert any(t["kind"] == "team" and t["text"].startswith("Team Member ne reply kiya") for t in s["timeline"])
     assert "Team ne" in s["in_short"] and "reply kiya" in s["in_short"]
 
 
@@ -1476,7 +1476,7 @@ def test_the_bot_solves_what_it_knows_and_escalates_the_rest(db, client, emailed
 
 def test_the_team_emails_go_to_mansi_and_kavya():
     from src.services import auth_service, notifier
-    assert "kavya.shukla@eko.co.in" in notifier.team(auth_service.BOOTSTRAP_ADMIN)
+    assert "team.member@eko.co.in" in notifier.team(auth_service.BOOTSTRAP_ADMIN)
 
 
 # --- The bot understands a question however it is put ---------------------------
@@ -2397,7 +2397,7 @@ def test_a_chat_the_team_handled_without_recording_an_outcome_is_flagged(db, cli
     tap_campaign(db)
     _recipient(db).sent_at = inbox.now()
     db.add(WhatsAppMessage(message_id=uuid.uuid4().hex, phone=PHONE, direction="OUT", kind="text", body="Hello",
-                           status="SENT", sent_by="kavya.shukla@eko.co.in", created_at=inbox.now() - timedelta(hours=3)))
+                           status="SENT", sent_by="team.member@eko.co.in", created_at=inbox.now() - timedelta(hours=3)))
     db.commit()
     flagged = _checks(client)["no_outcome_after_team"]
     assert flagged["group"] == "disposition"
@@ -2468,7 +2468,7 @@ def test_each_disposition_shows_its_action_items_done_planned_and_missed_with_ow
     statuses = {(i["owner"], i["status"]) for i in block["items"]}
     assert ("human", "done") in statuses and ("bot", "missed") in statuses
     team = next(i for i in block["items"] if i["owner"] == "human")
-    assert team["owner_label"].startswith("Team: ") and "Kavya Shukla" in team["owner_label"]
+    assert team["owner_label"].startswith("Team: ") and "Team Member" in team["owner_label"]
     assert j["dispositions"][1]["label"] == "Call at specific time" and not j["dispositions"][1]["current"]
     row = client.get("/api/v1/inbox/dispositions/journeys").json()[0]
     assert row["actions"]["missed"] >= 1 and row["actions"]["done"] >= 2
@@ -2507,7 +2507,7 @@ def test_kavya_is_emailed_only_when_a_chat_goes_to_a_person(monkeypatch):
     from src.services import notifier
     sent = []
     monkeypatch.setattr(notifier, "_send", lambda to, subject, body: sent.append((subject, to)) or True)
-    monkeypatch.setattr(notifier, "NOTIFY_ALSO", "kavya.shukla@eko.co.in")
+    monkeypatch.setattr(notifier, "NOTIFY_ALSO", "team.member@eko.co.in")
     notifier.notify_button_click("mansi@eko.co.in", {"name": "Ravi", "phone": "+919000000001", "button_text": "Interested"})
     notifier.notify_webinar("mansi@eko.co.in", {"name": "Ravi", "phone": "+919000000001", "answer": "yes"})
     notifier.notify_attention("mansi@eko.co.in", {"person": {"name": "Ravi", "phone": "+919000000001"},
@@ -2515,7 +2515,7 @@ def test_kavya_is_emailed_only_when_a_chat_goes_to_a_person(monkeypatch):
     notifier.notify_team("mansi@eko.co.in", "AutoGMap: Investment issue — Ravi", "body")
     to = [t for _, t in sent]
     assert to[:2] == ["mansi@eko.co.in"] * 2
-    assert all("kavya.shukla@eko.co.in" in t for t in to[2:]) and len(to) == 4
+    assert all("team.member@eko.co.in" in t for t in to[2:]) and len(to) == 4
 
 
 def test_a_trust_concern_is_answered_with_the_website_and_goes_to_a_person_to_call(db, emailed):
@@ -2906,7 +2906,7 @@ def test_every_ticket_and_email_to_the_team_shows_under_the_disposition_of_the_t
     assert blocks[0]["label"] == "Other"
     docs = next(b for b in blocks if b["label"] == "Documents pending")
     told = [i for i in docs["items"] if i["text"].startswith("Handed to the team: ticket and email to")]
-    assert len(told) == 1 and "Kavya Shukla" in told[0]["text"] and told[0]["status"] == "done"
+    assert len(told) == 1 and "Team Member" in told[0]["text"] and told[0]["status"] == "done"
     assert "Mere ghar ka pata badalna hai" in told[0]["result"] and told[0]["result"].endswith("· open")
 
 
@@ -3871,11 +3871,11 @@ def test_a_large_campaign_waits_for_someone_other_than_its_launcher(db, client, 
     r = client.post(f"/api/v1/whatsapp/campaigns/{cid}/approve", json={})
     assert r.status_code == 403 and "someone else" in r.json()["detail"]
 
-    _as("kavya.shukla@eko.co.in", "manager")
+    _as("team.member@eko.co.in", "manager")
     r = client.post(f"/api/v1/whatsapp/campaigns/{cid}/approve", json={"note": "Checked the list"})
     assert r.status_code == 200
     out = r.json()
-    assert out["status"] == "PENDING" and out["approved_by"] == "kavya.shukla@eko.co.in"
+    assert out["status"] == "PENDING" and out["approved_by"] == "team.member@eko.co.in"
     assert launching["started"] == [cid]
     # Decided once.
     assert client.post(f"/api/v1/whatsapp/campaigns/{cid}/approve", json={}).status_code == 403
@@ -3883,7 +3883,7 @@ def test_a_large_campaign_waits_for_someone_other_than_its_launcher(db, client, 
 
 def test_a_large_campaign_can_be_turned_down_and_nothing_is_sent(db, client, launching):
     cid = _launch(client, launching, 4)["campaign_id"]
-    _as("kavya.shukla@eko.co.in", "manager")
+    _as("team.member@eko.co.in", "manager")
     r = client.post(f"/api/v1/whatsapp/campaigns/{cid}/reject", json={"reason": "Wrong district"})
     assert r.json()["status"] == "CANCELLED" and r.json()["review_note"] == "Rejected: Wrong district"
     assert launching["started"] == []
@@ -3919,7 +3919,7 @@ def test_a_refused_change_is_recorded_too(db, client, launching, monkeypatch):
 def test_only_the_admin_and_managers_read_the_audit_log(db, client, launching):
     _as("op@eko.co.in", "operator")
     assert client.get("/api/v1/agents/audit").status_code == 403
-    _as("kavya.shukla@eko.co.in", "manager")
+    _as("team.member@eko.co.in", "manager")
     out = client.get("/api/v1/agents/audit").json()
     assert out["approval_min"] == 3 and isinstance(out["entries"], list)
 
@@ -3977,7 +3977,7 @@ def test_campaign_sending_switched_off_refuses_launches_and_approvals(db, client
         "name": "x", "template_id": launching["template"], "account_id": launching["account"],
         "data_source_type": "upload", "contacts": [{"name": "A", "phone": "+919000001111"}]})
     assert r.status_code == 409 and "turned off" in r.json()["detail"]
-    _as("kavya.shukla@eko.co.in", "manager")
+    _as("team.member@eko.co.in", "manager")
     assert client.post(f"/api/v1/whatsapp/campaigns/{cid}/approve", json={}).status_code == 409
 
 
@@ -4474,10 +4474,10 @@ def test_a_person_choosing_esaf_or_sbi_moves_the_programme_too(db, client):
     from src.services import handover
     tap_campaign(db)
     c = conv(db)
-    handover.record(db, c, "int_esaf", "kavya.shukla@eko.co.in")
+    handover.record(db, c, "int_esaf", "team.member@eko.co.in")
     assert onboarding_bot.is_esaf(c)
     c.bot_data = {**c.bot_data, "can_invest": False}
-    handover.record(db, c, "int_sbi", "kavya.shukla@eko.co.in")
+    handover.record(db, c, "int_sbi", "team.member@eko.co.in")
     assert not onboarding_bot.is_esaf(c) and c.bot_data.get("can_invest") is None
 
 
@@ -4706,7 +4706,7 @@ def test_in_a_dc_district_a_doubt_gets_the_visit_offer_and_a_yes_tells_biswajit_
     assert c.disposition == "int_dc_visit" and c.bot_data["dc_offer"]["answer"] == "yes"
     import time
     time.sleep(0.3)                     # the team email goes on a thread
-    assert any("biswajit@eko.co.in" in t for t in sent_to)
+    assert any("dc.lead@eko.co.in" in t for t in sent_to)
     # Offered once only.
     assert dc_visit.offer_at(db, c, "trust") is False
 
@@ -4814,7 +4814,7 @@ def test_meet_the_dc_button_asks_their_day_and_emails_biswajit_sir(db, client, m
     import time
     time.sleep(0.3)
     to, subject, body = [x for x in sent if "DC visit wanted" in x[1]][0]
-    assert to == "biswajit@eko.co.in" and "Shanivaar ko subah 11 baje" in body
+    assert to == "dc.lead@eko.co.in" and "Shanivaar ko subah 11 baje" in body
     assert "Rakesh Kumar" in body and "Sunil" in body and "Ambala" in body
 
 
@@ -4846,15 +4846,15 @@ def test_each_person_gets_the_email_in_their_language_with_the_design(monkeypatc
         monkeypatch.setenv(k, v)
     monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
     body = "Sunita Devi wants our District Coordinator to visit them.\n\nAvailable    Saturday, 11 AM\nName         Sunita Devi\n"
-    assert notifier._send("mansi@eko.co.in, biswajit@eko.co.in, kavya.shukla@eko.co.in", "AutoGMap: DC visit wanted — Sunita Devi", body)
+    assert notifier._send("mansi@eko.co.in, dc.lead@eko.co.in, team.member@eko.co.in", "AutoGMap: DC visit wanted — Sunita Devi", body)
     by = {m["To"]: m for m in sent}
-    assert set(by) == {"mansi@eko.co.in", "biswajit@eko.co.in", "kavya.shukla@eko.co.in"}
+    assert set(by) == {"mansi@eko.co.in", "dc.lead@eko.co.in", "team.member@eko.co.in"}
     text = lambda m: m.get_body(("plain",)).get_content()          # noqa: E731
     html = lambda m: m.get_body(("html",)).get_content()           # noqa: E731
     assert "wants our District Coordinator" in text(by["mansi@eko.co.in"])
-    assert "District Coordinator उनसे मिलने" in text(by["biswajit@eko.co.in"]) and "नाम" in html(by["biswajit@eko.co.in"])
-    assert "chahte hain" in text(by["kavya.shukla@eko.co.in"]) and "Naam" in html(by["kavya.shukla@eko.co.in"])
-    assert "Saturday, 11 AM" in html(by["biswajit@eko.co.in"]) and "AUTOGMAP" in html(by["biswajit@eko.co.in"])
+    assert "District Coordinator उनसे मिलने" in text(by["dc.lead@eko.co.in"]) and "नाम" in html(by["dc.lead@eko.co.in"])
+    assert "chahte hain" in text(by["team.member@eko.co.in"]) and "Naam" in html(by["team.member@eko.co.in"])
+    assert "Saturday, 11 AM" in html(by["dc.lead@eko.co.in"]) and "AUTOGMAP" in html(by["dc.lead@eko.co.in"])
 
 
 # --- After the 24-hour window, only the interested hear from us (20 Nov 2026) ------------

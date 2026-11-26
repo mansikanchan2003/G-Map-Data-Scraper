@@ -24,7 +24,9 @@ logger = logging.getLogger("gmap_scraper.auth")
 ALLOWED_DOMAIN = "eko.co.in"
 # The first admin. Seeded on startup so there is someone able to approve the
 # very first signup — an approval queue with nobody to read it is a deadlock.
-BOOTSTRAP_ADMIN = "mansi.kanchan.intern@eko.co.in"
+# Set BOOTSTRAP_ADMIN_EMAIL in .env; the default is only a placeholder (no one's
+# address is kept in the code, 26 Nov 2026), and deploy.sh refuses to run without it.
+BOOTSTRAP_ADMIN = (os.environ.get("BOOTSTRAP_ADMIN_EMAIL") or "admin@eko.co.in").strip().lower()
 
 # What an admin can make someone when approving them.
 #   member             sees the dashboard, business data, templates,
@@ -53,12 +55,10 @@ READ_ONLY_SAFE_POSTS = (
 
 # How the app opens for a particular person (16 Nov 2026): the tab they land on after
 # signing in, and the simple Applications page for someone without a technical
-# background. Kavya's only, as the user asked; USER_UI_PREFS (JSON, by email)
-# replaces it when set.
-DEFAULT_UI_PREFS = {"kavya.shukla@eko.co.in": {"home_tab": "applications", "simple_view": True},
-                    # Biswajit Sir (19 Nov 2026): the same easy Applications page as Kavya Ma'am.
-                    # Since 23 Nov 2026 he opens on DC Data, the District Coordinators we scraped.
-                    "biswajit@eko.co.in": {"home_tab": "dc-data", "simple_view": True}}
+# background. Set per address in USER_UI_PREFS (JSON), for example
+# {"name@eko.co.in": {"home_tab": "applications", "simple_view": true}}. Nobody's
+# address is kept in the code (26 Nov 2026), so the default is empty.
+DEFAULT_UI_PREFS: dict = {}
 
 
 def ui_prefs(user: "User") -> dict:

@@ -63,6 +63,10 @@ if [ "$RUNNING" != "0" ] && [ "$RUNNING" != "?" ]; then
 fi
 echo "No scraping job running."
 
+# The first admin's address lives in .env, not the code (26 Nov 2026). Without it the
+# app would seed a placeholder admin and send the admin's emails nowhere.
+[ -n "$(envval BOOTSTRAP_ADMIN_EMAIL)" ] || stop "Set BOOTSTRAP_ADMIN_EMAIL in .env first (the admin's address). Nothing was changed."
+
 # The settings hold every key: readable by their owner only.
 chmod 600 .env 2>/dev/null || true
 

@@ -175,8 +175,9 @@ def _team_email_text(db: Session, conv: WhatsAppConversation, s: "dz.Sub", by: s
     return "\n".join(lines) + "\n"
 
 
-# Who arranges a District Coordinator's visit (Biswajit Sir, 19 Nov 2026): emailed with the team.
-DC_VISIT_NOTIFY = os.environ.get("DC_VISIT_NOTIFY", "biswajit@eko.co.in")
+# Who arranges a District Coordinator's visit (19 Nov 2026): emailed with the team. Set in
+# DC_VISIT_NOTIFY; empty, the team alone hears.
+DC_VISIT_NOTIFY = os.environ.get("DC_VISIT_NOTIFY", "")
 
 
 def _email_team(subject: str, body: str, also: Optional[str] = None) -> None:

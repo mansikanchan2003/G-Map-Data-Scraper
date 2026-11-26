@@ -1,7 +1,7 @@
 """
-Each person's emails in their own language (Mansi, 20 Nov 2026): Biswajit Sir in Hindi, Kavya
-Ma'am in Hinglish, everyone else in English (EMAIL_LANGUAGES overrides, as
-"email:lang,email:lang").
+Each person's emails in their own language (20 Nov 2026): set in EMAIL_LANGUAGES as
+"email:lang,email:lang" (hi, hinglish); everyone else gets English. Nobody's address is
+kept in the code (26 Nov 2026).
 
 Only the emails' fixed words are put into the language: labels, headings, buttons, tags and the
 sentences the app always writes the same way. What a person wrote, names, numbers, places and
@@ -11,7 +11,7 @@ import os
 import re
 from typing import Dict, List, Optional, Tuple
 
-DEFAULT = {"biswajit@eko.co.in": "hi", "kavya.shukla@eko.co.in": "hinglish"}
+DEFAULT: Dict[str, str] = {}
 
 
 def language_of(address: str) -> str:

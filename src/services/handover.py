@@ -297,7 +297,7 @@ def as_dict(r: ChatActivity) -> dict:
 
 
 def who(email: Optional[str]) -> str:
-    """kavya.shukla@eko.co.in -> Kavya Shukla."""
+    """first.last@eko.co.in -> First Last."""
     if not email or "@" not in email:
         return email or "the team"
     return email.split("@")[0].replace(".", " ").replace("_", " ").title()

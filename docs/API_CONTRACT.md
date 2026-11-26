@@ -462,7 +462,7 @@ List discovered businesses with filters and server-side pagination.
       "business_id": "1234567890abcdef",
       "name": "Axis Bank ATM",
       "address": "C-104, Block CD, Pitampura, New Delhi, 110034",
-      "phone": "7848918181",
+      "phone": "9000000001",
       "email": null,
       "website": null,
       "category": "ATM",
@@ -521,7 +521,7 @@ in a flat format suitable for spreadsheet rows.
     {
       "name": "Axis Bank ATM",
       "address": "C-104, Block CD, Pitampura, New Delhi, 110034",
-      "phone": "7848918181",
+      "phone": "9000000001",
       "email": null,
       "website": null,
       "category": "ATM",
