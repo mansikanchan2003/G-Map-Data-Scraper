@@ -106,3 +106,34 @@ backups/
 
 # The session key the app makes when AUTH_JWT_SECRET is not set (auth_service.SECRET_FILE)
 data/.auth_jwt_secret
+
+# ---------------------------------------------------------------------------
+# Not for a public repository (checked 26 Nov 2026)
+# ---------------------------------------------------------------------------
+# What people sent and what we hold about them: chat media, uploaded documents,
+# call recordings, bot videos, speech models, and any local export.
+data/inbox_media/
+data/onboarding_documents/
+data/call_recordings/
+data/bot_media/
+data/whisper/
+data/*.html
+data/*.xlsx
+data/*.json
+
+# Spreadsheets and exports of real businesses, CSPs, branches and tasks. The two
+# files the app reads (locations and categories) stay tracked.
+*.xlsx
+!Geocoded_Ad_Targeting_Locations_FINAL.xlsx
+!G-Map Scraper Categories.xlsx
+*.xls
+*.tsv
+~$*
+
+# Old scraped data and experiments, not part of the app.
+Scraped Data/
+scratch/
+
+# Local tool settings with personal paths.
+.claude/launch.json
+.claude/settings.local.json

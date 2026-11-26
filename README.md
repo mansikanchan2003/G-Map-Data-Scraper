@@ -1,1294 +1,435 @@
-# AutoGMap — Business Discovery & WhatsApp Outreach
+# AutoGMap Acquisition Platform
 
-Discovers Indian businesses on Google Maps, enriches them with contact details,
-and runs WhatsApp campaigns to them through the Meta Cloud API — from a single
-dashboard.
+**Finds local businesses on Google Maps, reaches them through WhatsApp campaigns, and
+onboards interested owners as banking agents (CSPs).** A multilingual bot handles the
+conversation, then the app collects documents, runs follow-ups and calls, and tracks
+every lead from discovery to hand-over.
+
+AutoGMap is built for agent-network businesses such as banks, business correspondents
+and fintechs. They grow by finding people in the right places who can run a banking
+outlet, and by turning them into active agents.
 
 ```
-┌──────────────────────────── React Dashboard ───────────────────────────┐
-│  Discovery  │  Business Data  │  Campaign Builder  │  Campaign History │
-└────────────────────────────────┬───────────────────────────────────────┘
-                                 │  REST
-                        ┌────────▼────────┐
-                        │  FastAPI        │
-                        └────┬───────┬────┘
-              Playwright ◄───┘       └───► Meta WhatsApp Cloud API
-             (Google Maps)                 (templates · sends · media)
-                        ┌─────────────────┐
-                        │   PostgreSQL    │  businesses · jobs · campaigns
-                        └─────────────────┘
-                                 ▲
-                        n8n scheduled workflow
+Google Maps ──► Businesses ──► WhatsApp campaign ──► "Interested" ──► Onboarding bot
+                                                                         │
+     Hand-over to the acquisition team ◄── Applications & follow-ups ◄── Documents
 ```
 
-| Layer | Stack |
-|---|---|
-| Backend | Python 3.12 · FastAPI · SQLAlchemy · Alembic |
-| Browser | Playwright (Chromium, headless) |
-| Database | PostgreSQL (production) · SQLite (development) |
-| Messaging | Meta WhatsApp Cloud API |
-| Orchestration | n8n scheduled workflow |
-| Frontend | React 19 · TypeScript · Vite · Tailwind CSS v4 |
+---
+
+## Contents
+
+- [What it does](#what-it-does)
+- [How it is built](#how-it-is-built)
+- [Tech stack](#tech-stack)
+- [Repository layout](#repository-layout)
+- [Quick start (local development)](#quick-start-local-development)
+- [Configuration](#configuration)
+- [Running in production](#running-in-production)
+- [Operating it](#operating-it)
+- [Testing](#testing)
+- [Security and privacy](#security-and-privacy)
+- [Further documentation](#further-documentation)
+- [Contributing](#contributing)
 
 ---
 
 ## What it does
 
-### Discovery
-- Searches Google Maps per **(pincode × category)** pair and extracts name,
-  address, phone and website from each listing's detail page.
-- **Radius filtering.** Google treats the map viewport as a hint, not a
-  constraint, and regularly returns results hundreds of km away. Anything
-  outside the location's radius is discarded rather than stored as a
-  name-only row.
-- **Email enrichment** crawls each business website for a contact address,
-  on a strict time budget so a slow site cannot hold up a batch.
-- **Deduplication** on place ID, name, phone and coordinates, so the same
-  shop discovered under several categories is stored once.
-- CAPTCHA is detected and the batch stops early rather than escalating.
+### 1. Discovery: finding businesses on Google Maps
 
-### Scraping autopilot
+- **Searches.** Target places (PIN codes with coordinates) and business categories are
+  loaded from two spreadsheets. Each place × category pair becomes a *job*: one Google
+  Maps search such as "Insurance agency near 360050".
+- **Scraping.** A headless Chromium (Playwright) reads every listing: name, phone,
+  website, address, category and position.
+  - Results are normalised, checked against the target area and de-duplicated.
+  - An email is looked for on the business's own website. Social, directory and Google
+    links are skipped.
+- **Autopilot.** Batches run on their own, state by state:
+  - a daily target, gaps between batches, and retries for failed jobs first;
+  - CAPTCHA cool-downs and a pause when the network is down;
+  - the round plan is saved, so a restart resumes where it stopped.
+- **Hiring targets.** A search can be for agents (CSP), for agents near a District
+  Coordinator, for District Coordinators, or for state heads. Each business carries a
+  flag for what it was found for.
+- **Bank branches.** A branch code is turned into a PIN code (through its IFSC), and
+  that branch's surroundings are searched.
+- **Exports.** Excel, CSV and an optional live Google Sheet.
 
-**Dashboard → Scraping autopilot** runs discovery on its own. Switch it on and
-it works in **rounds**:
+### 2. Campaigns: reaching businesses on WhatsApp
 
-- A round is **one state** and **5 batches of 25 jobs**. Each batch is a
-  different tehsil — in a different district while the state has unused ones —
-  and no category is repeated within the round.
-- Batches run **one at a time, 15 minutes apart**, whether or not a round ends
-  between them. The next round is in a **different state**, the one visited
-  longest ago.
-- It stops for the day at **10 batches** (IST) and carries on after midnight,
-  picking up a round left part-done. A 25-job batch takes 15–20 minutes, so a
-  day's ten take about five and a quarter hours.
-- **Only a batch that scraped something counts.** One whose jobs all failed is
-  not one of the day's ten. So that this cannot run without end, ten wholly
-  failed batches in a day stop it until midnight with a note to look at why.
-- Before each round it runs job generation, so newly added PINs join the queue.
+- **Sending.** Approved templates go out through the **Meta WhatsApp Cloud API**. Every
+  template carries two quick-reply buttons: **"Interested"** and a request for
+  **personal guidance**, in the campaign's language.
+- **Tracking.** Each recipient gets a tracking link. A click is recorded (with a hashed
+  IP and bot filtering) and redirected to the sign-up page with UTM tags.
+- **Delivery status.** Sent, delivered, read and failed come back by webhook, and
+  campaign counts are kept accurate.
+- **Safety:**
+  - **maker-checker:** large campaigns wait for a second person's approval;
+  - a global kill switch;
+  - opt-outs (STOP) are honoured, including Meta's own;
+  - sending resumes safely after a restart.
 
-To stay clear of Google's CAPTCHA it paces itself like a person, not a
-machine: randomised pauses between jobs, batches and rounds; a browser that
-reports its real version with an Indian locale. If a CAPTCHA appears anyway,
-everything stops for a cool-down that grows each time it recurs (30 min, 1 h,
-2 h, 4 h), the pace slows afterwards, and the blocked job goes back in the
-queue. Three clean batches reset it. It never tries to solve a CAPTCHA.
+### 3. Conversation: the Inbox and the onboarding bot
 
-Every setting — batches per day, batch size, gaps, which states — is under
-**Pacing**. **Stop** on a running batch also switches the autopilot off. It
-never runs alongside a batch started by hand, and after a restart it resumes
-the round it was in.
+- **Inbox.** One place for every WhatsApp chat. It shows media, voice notes transcribed
+  on the server (Whisper, no external API), the 24-hour window, ready replies and a
+  plain-language chat summary.
+- **Onboarding bot.** It walks an interested person through:
+  1. their language (English, Hindi and the campaign's language; more Indian languages
+     are supported);
+  2. their PIN code, checked against the service area;
+  3. their education;
+  4. their ability to invest, with an explainer video or text;
+  5. their documents.
+- **A lower-investment programme** is offered to anyone who cannot afford the main one,
+  at whatever step they say so.
+- **Personal guidance.** Questions are answered from a curated FAQ in the person's own
+  language. A question the bot cannot answer raises a **ticket**, emails the team, and
+  can be answered by an AI model that only drafts answers, under strict wording rules.
+- **Reminders.** A person who goes quiet gets one reminder an hour later, only inside
+  WhatsApp's 24-hour window.
+- **Taking over.** A team member can pause the bot for a chat and hand it back later.
 
-**Failed jobs are tried again.** Before each round, failed jobs go back in the
-queue and are scraped in the ordinary batches — the same ten a day, fifteen
-minutes apart, with no extra ones. Retries go first: a batch takes the jobs
-being tried again before ones never tried, so a failure is not left waiting
-behind thousands of untouched jobs. A job that failed because the internet was
-down goes back with that attempt not counted. Any other failure is retried
-until the job has used its attempts (`JOB_RETRY_LIMIT`, 3 by default), then it
-stays failed. **Try failed jobs again** under Pacing turns this off.
+### 4. Documents
 
-**It waits out a dead internet connection.** The connection is checked before
-every batch, so nothing is started into an outage. A batch that loses it
-part-way stops after three failed jobs in a row and puts them back in the
-queue, with the attempt not counted against them. The autopilot then checks
-again after 5, 15, 30 and then every 60 minutes, and carries on by itself when
-the connection is back. None of this uses up the day's batches. (On 3 October
-2026 the server's link dropped and it ran 30 batches a day into it for two
-days, failing 1,490 jobs.)
+- **How they come in.** An upload page with a personal link (PDF, JPG or PNG, checked
+  by content, not by name), photos sent in the chat (read with OCR and classified), or
+  DigiLocker.
+- **Where they go.** Into a per-person folder in a **Google Drive shared drive**. The
+  server copy is deleted once Drive holds it.
+- **Who is told.** The team gets an email summary (never the files themselves) and a
+  ticket.
 
-**It cannot take the server down.** The machine is shared with other
-applications, so three things bound what scraping can use:
+### 5. Applications, dispositions and calls (CRM)
 
-- Every browser a job starts is recorded against it. When the job ends —
-  finished, or timed out and abandoned — anything it left running is killed.
-  A wedged job used to leave its Chromium alive, a few hundred megabytes each.
-- The backend container has a memory ceiling (`BACKEND_MEMORY_LIMIT`, 4 GB by
-  default, swap included). Past it the kernel kills a process inside the
-  container; at worst this container restarts, and nothing else is touched.
-- A change of pace in the code is adopted once at the next start and leaves
-  the autopilot **switched off**. A deploy never starts it; a person does.
+- **Applications.** Everyone who started applying, with qualification, the nearest
+  branch, documents, interest level, comments and the campaign they came from.
+- **Dispositions.** An 11-category scheme (Interested, Not interested, Busy/Callback,
+  RNR, …). Each disposition plans its own follow-ups (WhatsApp nudges, callbacks, team
+  tasks) and retries.
+- **Calls:**
+  - AI calls come back by webhook;
+  - a call-recorder app uploads recordings, which are transcribed on the server;
+  - a choice made in a call updates the disposition.
+- **Lead journey.** Every stage with its time, kept for reporting. Dashboard alerts flag
+  leads whose steps do not add up.
+- **Hand-over** to the acquisition team's API once documents are in.
 
-### Target locations
-- **The PIN list is editable.** The spreadsheets seed it, but new PIN codes and
-  towns are added from **Configuration → Add PIN** as the business expands into
-  new geography, without touching the source files.
-- **Look up** resolves a place through Google Maps and fills in the
-  coordinates, and the state and PIN where Maps names them.
-- **State and district are required.** Every business discovered at a location
-  copies its state, district and tehsil, so a PIN saved without them yields
-  rows that can never be filtered by geography. Maps states the state for a PIN
-  code search but never the district, so that one is always typed rather than
-  guessed.
-- A PIN with jobs against it cannot be deleted, so businesses already
-  discovered there are never orphaned.
+### 6. Template Studio
 
-### Who can sign in
+- **AI drafts.** Template copy and posters are drafted with free AI models: Google
+  Gemini's free tier for text, FLUX on Hugging Face for images, real uploaded photos
+  first.
+- **Checks.** A word-rule checker blocks drafts that over-promise, use banned words or
+  misspell the image text.
+- **Approval.** Nothing reaches Meta without a person's approval.
 
-Access is two gates, not one.
+### 7. Insights and growth plan
 
-1. **The domain decides who may ask.** Only `@eko.co.in` addresses can submit
-   a signup request; anything else is refused at the API.
-2. **An admin decides who gets in.** A signup creates a `PENDING` account that
-   cannot sign in. It works only once an admin approves it.
+- **Campaign insights.** Which template, angle, place, category and send time moved
+  people furthest down the funnel, with evidence thresholds so that thin data is not
+  over-read.
+- **Growth plan.** A lead goal set from the business's own figures, a revenue goal,
+  funnel leaks, a call list and suggested next steps.
 
-The second gate is the point: the address proves the person is a colleague,
-not that this particular colleague should see campaign data and send messages
-from the company's WhatsApp number.
+### 8. Administration
 
-`mansi.kanchan.intern@eko.co.in` is seeded as the first admin at startup —
-otherwise the approvals queue would have nobody able to read it. That account
-gets its first password from `BOOTSTRAP_ADMIN_PASSWORD`, applied at startup
-only while it has none; an existing password is never overwritten. The signup
-form cannot set it: signup checks that an address is on the domain, not that
-the person typing it owns the mailbox, so whoever submitted it first would
-otherwise become admin.
-
-**Roles.** Someone asking for access chooses the role they need; the
-administrator sees what was asked for and can give a different one when
-approving, or change it later from the same list.
-
-| Role | Sees | Can change things |
-|---|---|---|
-| Member | Dashboard, Business Data, Templates, Campaign History, Campaign Insights | No — view only |
-| Operator | Every tab except Access Requests, and carries the operator tag | Yes |
-| Manager | The same, and carries the manager tag | Yes |
-| Admin | Everything, including Access Requests | Yes |
-
-Member is what a request gets unless more is asked for or given, so the
-least access is the default. A member's limits are enforced by the server on
-every request, not by hiding buttons: anything that is not a read is refused
-with "You have view-only access", whichever route it goes through. The page
-hides the tabs and controls a member cannot use so that it never offers them.
-
-**Remove access** on an approved account takes effect on that person's next
-request, since every request looks the account up afresh; **Restore access**
-undoes it. The administrator's role cannot be granted, asked for, changed or
-removed from the app, so the approvals queue stays with that one account.
-
-**Passwords.** Nobody can read a password: only a one-way hash is stored.
-
-- **Change password**, in the account menu once signed in, asks for the
-  current password and the new one.
-- **Forgot password?**, on the sign-in page, sends a 6-digit code **to the
-  administrator**, not to the person asking. The email names the account it
-  is for; the administrator passes the code on if the request is genuine, and
-  the person enters it with a new password. The code works once, for 10
-  minutes, and is thrown away after 5 wrong guesses; another is not sent for
-  60 seconds. Needs the SMTP settings. The page answers the same whether or
-  not the address has an account.
-- Either way, changing a password ends every session that was signed in with
-  the old one.
-
-Admins see **Access Requests** in the sidebar: approve, decline with a reason,
-or reinstate someone previously declined. Every decision records who made it.
-Requests also go out by email when SMTP is configured; when it is not, the
-queue is still the source of truth and signup is unaffected.
-
-Everything under `/api/` requires a session, enforced as middleware so a route
-added later is protected by default. The exceptions are the endpoints that
-cannot carry a cookie: `/health`, `/ready`, `/api/v1/auth/*`, the campaign
-redirect `/r/{token}`, and the Meta webhook — which is guarded by its
-signature instead.
-
-### Deploying behind a reverse proxy
-
-Set `VITE_BASE_PATH` (with trailing slash) to the public sub-path before
-building — Vite rewrites every asset URL with it, so it cannot be changed
-afterwards. `PUBLIC_BASE_URL`, `BACKEND_HOST_PORT` and `POSTGRES_HOST_PORT`
-are runtime settings; the two ports bind to `127.0.0.1` only.
-
-**The media directory needs the container's uid.** `./data` is bind-mounted,
-so the host's ownership wins over the image's. The app runs as `appuser`
-(uid 996) and cannot write into a directory owned by whoever cloned the repo,
-which surfaces as "Failed to upload media" when saving a template with an
-image header:
-
-```bash
-sudo chown -R 996:996 data
-```
-
-Run it once after cloning, before starting the stack.
-
-### Turning the webhook on
-
-Everything below the line is built and tested; these are the four steps that
-connect it to Meta.
-
-1. **Expose the backend over HTTPS** and set `PUBLIC_BASE_URL` to it (e.g.
-   `https://link.eko.in`). The same URL serves the click-tracking redirect, so
-   this one variable switches both on.
-2. **Set `META_APP_SECRET`** to the app secret from the Meta app dashboard.
-   Until it is set, `POST /api/v1/whatsapp/webhook` answers **403 to every
-   call**, including Meta's — the signature cannot be verified without it.
-3. **Register the callback** in Meta → WhatsApp → Configuration:
-   - Callback URL: `<PUBLIC_BASE_URL>/api/v1/whatsapp/webhook`
-   - Verify token: the value of `META_WEBHOOK_VERIFY_TOKEN`
-4. **Subscribe the fields** `messages` (delivery statuses *and* quick-reply
-   taps both arrive under it) and, optionally,
-   `message_template_status_update` for template approvals.
-
-Then send one message to your own number and confirm the row in **Campaign
-History → View Details** turns Delivered, then Read.
-
-Note that Meta does not replay events for messages already sent, so campaigns
-run before this is switched on will never show delivery data.
-
-### The live Google Sheet
-
-**Business Data → Export** holds CSV, Excel and one shared spreadsheet named
-**All Scraped Data from AutoGMap**.
-
-Unlike the downloads, the sheet is a single document that is reused and
-rewritten rather than a new export each time, so a bookmarked link keeps
-working. "Update the sheet now" replaces its contents with the current table —
-appending would duplicate every row, and there is no key in the sheet to merge
-against.
-
-Two settings are needed before it can exist:
-
-| Variable | Why |
-|---|---|
-| `GOOGLE_CREDENTIALS_BASE64` | Service account JSON, base64-encoded. It creates and writes the sheet. |
-| `GOOGLE_SHEET_OWNER_EMAIL` | Who the sheet is shared with. |
-
-The second is not optional in practice: a service account owns what it creates,
-so without an explicit share the sheet exists and nobody — including you — can
-open it. The sync endpoint refuses to run until it is set.
-
-**Access is Google's, not this app's.** The sheet is shared with that one
-address; anyone else following the link gets Google's request-access page. This
-app never sees who opens it and cannot grant or revoke anything.
-
-### Delivery & engagement tracking
-- **Campaign History** shows delivered, read and button clicks per campaign;
-  **View Details** adds a Delivery & Engagement panel and per-recipient
-  Delivered / Read / Clicked columns.
-- **Stages are timestamps, not one status.** A message that was read was also
-  delivered, so the stages accumulate. Collapsed into a single status field,
-  READ overwrites DELIVERED and the delivered count is lost for good.
-- **A dash is not a zero.** A sent message Meta has not reported on is unknown,
-  not undelivered — only messages Meta actually failed are counted as such.
-- **Quick-reply taps are attributed** through the `context.id` on the inbound
-  message. Meta sends **no event at all** when a call-to-action URL button is
-  tapped, so those are measured by the tracking link instead.
-- Events arrive out of order and are repeated until acknowledged, so handling
-  is monotonic and idempotent: a late "delivered" never undoes a "read", and a
-  redelivered tap is never counted twice.
-- **Requires the webhook.** Data only flows once `/api/v1/whatsapp/webhook` is
-  reachable at a public HTTPS URL and subscribed to `messages` in the Meta app.
-  Meta does not replay events for messages already sent, so campaigns run
-  before that show no delivery data.
-
-### WhatsApp campaigns
-- **Template lifecycle against Meta.** Templates are composed in the UI with a
-  live preview, submitted for review automatically, and their status and
-  billing category are synced back from the WhatsApp Business Account.
-- **Pre-flight checks.** Before a campaign sends anything it verifies the
-  template is `APPROVED` in the WABA and that its header media exists and fits
-  Meta's per-type size limit. A misconfigured campaign fails once with a
-  readable reason instead of one rejected recipient at a time.
-- **Contact validation** normalises Indian numbers to `+91XXXXXXXXXX`,
-  separating landlines, malformed entries and duplicates before sending.
-- **Resumable campaigns.** A campaign stopped mid-run can continue for the
-  recipients it never reached, without re-contacting anyone already sent to.
-- **Per-campaign execution log** with Meta's own error codes, visible in the
-  dashboard rather than only in container logs.
-
-### Inbox and the onboarding bot
-
-**Inbox** lists everyone who has written to the business number: a typed
-message, a quick-reply tap, a photo. Each thread also shows the campaign
-messages that reached that number, so a reply is read under what it answers.
-A typed reply can be sent only within 24 hours of the person's last message,
-which is Meta's rule; after that the box says why it is closed instead.
-
-**The onboarding bot** starts when someone taps a trigger button on a
-campaign (default "Interested", set under Inbox → Bot):
-
-1. It asks for their PIN code.
-2. The PIN is served if it is on our location list or within
-   `ONBOARDING_RADIUS_KM` (20 km) of one. A PIN not on the list is placed on
-   the map through OpenStreetMap, falling back to India Post; only the PIN
-   is sent. Outside the area, they are told so politely.
-3. "Can you invest ₹5 Lakh?" — Yes / No.
-4. The documents needed, and "Do you have them?" — Yes / No.
-5. A link to the upload page, `/onboard/{token}`, which is public, Eko
-   branded and lapses after 7 days. Files are checked by their contents
-   (PDF, JPG or PNG, up to 5 MB each).
-6. On submit the page returns them to the WhatsApp chat, the bot thanks
-   them, and the admin is emailed.
-
-It answers only what it asked; anything else waits for a person. **Pause the
-bot here** in a thread hands that conversation to whoever is replying, and
-the switch under Inbox → Bot turns it off everywhere.
-
-**Documents go to Google Drive**, one folder per person, inside
-`GOOGLE_DRIVE_FOLDER_ID`, using the same service account as the live sheet.
-The folder must be in a **shared drive** with that service account as
-Content manager: a service account has no storage of its own, so a folder in
-someone's My Drive is refused. Once Drive holds a file the server copy is
-deleted. If the copy fails the file stays on the server, the reason is shown
-in the thread, and **Try again** retries it.
-
-### Dashboard
-- Light and dark themes, remembered per browser.
-- Campaign history with a detail view: delivery counters, failure reasons
-  grouped by cause, the template that was sent, and the full execution log.
-- Timestamps render in the viewer's own timezone.
+- **Sign-in.** Email and password, or Google, restricted to the organisation's domain.
+- **Access requests.** People request access and an admin approves them. An admin can
+  also **create users** directly.
+- **Roles:**
+  - *member*: view only;
+  - *operator*: full working access;
+  - *manager*: also approves large campaigns;
+  - *admin*.
+- **Narrower access.** An account can be limited to chosen tabs and to part of the
+  Inbox.
+- **Agent Quality:**
+  - what every AI or automatic step did and what a person did with it;
+  - a golden test set of real conversations;
+  - an on/off **switch for every automatic action**;
+  - **System health**, which shows whether the website, worker and scraper are alive;
+  - an audit log of every change.
 
 ---
 
-## Quick Start — Local Development
+## How it is built
+
+One codebase and one Docker image, run as three containers. The process's
+`APP_ROLE` decides what each container runs (`src/roles.py`):
+
+| Container | `APP_ROLE` | Runs |
+|---|---|---|
+| `backend` | `api` | The website, REST API, WhatsApp webhook, bot and Inbox |
+| `worker` | `worker` | Reminders, follow-ups, journey and report sync, call recordings, Studio photo queue |
+| `scraper` | `scraper` | Google Maps in Chrome: the autopilot and queued batches, behind its own memory limit |
+
+- **Work queue.** The API never opens a browser. Scraping requests go into a work queue
+  in the database (`queued_tasks`), which the scraper claims with `SKIP LOCKED`. A
+  stuck browser therefore stops scraping, never the website.
+- **Memory guard.** Kills the scraper's browsers before the container runs out of memory.
+- **One process for development.** `APP_ROLE=all` (the default) runs everything in one
+  process, for development, tests and staging.
+
+The code is a **modular monolith** (see [ARCHITECTURE.md](ARCHITECTURE.md)). Every file
+belongs to one module, listed in `src/architecture/modules.py`:
+
+| Module | Owns |
+|---|---|
+| platform | database, settings, sign-in, audit, switches, work queue, health |
+| integrations | adapters to WhatsApp, Gemini, Google Drive and Sheets, email, DigiLocker, the hand-over API, speech-to-text |
+| discovery | places, categories, jobs, the scraper and its autopilot |
+| campaigns | templates, campaigns, tracking links, opt-outs |
+| conversation | Inbox, onboarding bot, FAQ, tickets, reminders |
+| crm | applications, dispositions, follow-ups, calls, lead journey |
+| studio | AI templates and posters |
+| insights | campaign insights, growth plan |
+
+A test (`tests/test_architecture.py`) fails on any new import that reaches across
+modules. Adapters may never import business code.
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Backend | Python 3.12, FastAPI, SQLAlchemy, Alembic, Pydantic |
+| Database | PostgreSQL 16 (production), SQLite (development and tests) |
+| Scraping | Playwright with headless Chromium, psutil for browser clean-up |
+| Messaging | Meta WhatsApp Cloud API (templates, webhook, media) |
+| AI | Google Gemini API (free tier) for text and image checks, FLUX on Hugging Face Spaces for images, faster-whisper for speech, Tesseract for OCR |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, served by the backend |
+| Google | Drive (documents), Sheets (live export), Google Sign-In |
+| Ops | Docker Compose, GitHub Actions CI, deploy and rollback scripts |
+
+---
+
+## Repository layout
+
+```
+├── src/
+│   ├── main.py              # FastAPI app: routers, middleware, the built frontend
+│   ├── roles.py             # what each container runs (APP_ROLE)
+│   ├── background.py        # starts this role's background threads
+│   ├── worker.py            # entrypoint of the worker and scraper containers
+│   ├── architecture/        # module map and the boundary checker
+│   ├── routers/             # HTTP endpoints, one file per area
+│   ├── services/            # business logic and adapters
+│   ├── models/              # SQLAlchemy models
+│   ├── schemas/             # Pydantic schemas
+│   ├── evals/               # golden test set of bot conversations
+│   └── utils/               # logging, connectivity, browser processes
+├── alembic/                 # database migrations
+├── frontend/                # React app (built into the backend image)
+├── tests/                   # pytest suite
+├── scripts/                 # deploy, rollback, staging, data export helpers
+├── n8n/                     # optional n8n workflow for scheduled batches
+├── docs/                    # early design documents (older than the code)
+├── Dockerfile
+├── docker-compose.yml       # backend, worker, scraper, postgres, n8n
+├── docker-compose.staging.yml
+└── .env.example             # every setting, with placeholders
+```
+
+---
+
+## Quick start (local development)
 
 ### Prerequisites
 
-- Python 3.12+
-- Node.js 20+
-- Git
+- Python 3.12, Node.js 20+, Git
+- Optional: Docker, and Tesseract OCR (for reading documents sent in chats)
 
-### 1. Clone and set up environment
+### 1. Clone and configure
 
 ```bash
-git clone https://github.com/mansikanchan2003/G-Map-Data-Scraper.git
-cd G-Map-Data-Scraper
+git clone https://github.com/ekoindia/autogmap-acquisition-platform.git
+cd autogmap-acquisition-platform
 cp .env.example .env
-# Edit .env if needed — SQLite defaults work for local dev
 ```
 
-### 2. Install Python dependencies
+The defaults use SQLite and a mocked WhatsApp API, so nothing reaches a real person.
+Set `BOOTSTRAP_ADMIN_PASSWORD` in `.env` to sign in as the first admin.
+
+### 2. Backend
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+playwright install chromium
+alembic upgrade head               # or let the app create the tables on start
+uvicorn src.main:app --reload --port 8000
 ```
 
-### 3. Install Playwright Chromium browser
+Check it at http://localhost:8000/health.
 
-```bash
-python -m playwright install chromium
-python -m playwright install-deps chromium   # Linux only
-```
-
-### 4. Initialize the database (SQLite — local dev)
-
-```bash
-# Option A: let the app create it on startup (automatic)
-uvicorn src.main:app --reload
-
-# Option B: use Alembic explicitly
-alembic upgrade head
-uvicorn src.main:app --reload
-```
-
-### 5. Verify the backend
-
-```bash
-curl http://localhost:8000/health
-# Expected: {"status": "healthy", "database": "healthy", ...}
-```
-
-### 6. Install and start the frontend
+### 3. Frontend
 
 ```bash
 cd frontend
 npm install
-npm run dev
-# Open http://localhost:5173
+npm run dev                        # http://localhost:5173
 ```
 
----
+### 4. Load targets and run a first search
 
-## Production Deployment
-
-### Prerequisites
-
-- Linux server (Ubuntu 22.04+ or Debian 12+ recommended)
-- Docker 24+ and Docker Compose v2
-- PostgreSQL 16+ (or use the provided docker-compose)
-- Minimum 2 GB RAM (Playwright Chromium requires ~500 MB per browser context)
-
-### Environment Variables
-
-Copy `.env.example` to `.env` and configure all required values:
-
-| Variable | Required | Description |
-|---|---|---|
-| `DATABASE_URL` | ✅ | PostgreSQL connection string: `postgresql+psycopg://user:pass@host:5432/db` |
-| `POSTGRES_PASSWORD` | ✅ | PostgreSQL password (Docker Compose only) |
-| `N8N_BACKEND_BASE_URL` | ✅ | URL n8n uses to call the backend (e.g. `http://backend:8000`) |
-| `CORS_ORIGINS` | ✅ | Comma-separated frontend origins (e.g. `https://dashboard.example.com`) |
-| `N8N_OUTPUT_SPREADSHEET_ID` | For export | Google Sheets ID for daily export |
-| `BATCH_SIZE` | Optional | Jobs per n8n batch run (default: 15) |
-| `JOB_RETRY_LIMIT` | Optional | Max auto-retries per job (default: 3) |
-| `DEFAULT_RADIUS_KM` | Optional | Discovery radius in km (default: 20) |
-| `LOG_LEVEL` | Optional | `INFO` or `DEBUG` (default: INFO) |
-
-**WhatsApp (Meta Cloud API)**
-
-| Variable | Required | Description |
-|---|---|---|
-| `META_ACCESS_TOKEN` | For campaigns | Graph API token. Use a **System User** token — a personal user token expires and every send then fails with `#131005`. |
-| `META_PHONE_NUMBER_ID` | For campaigns | The sending number's ID, from WhatsApp → API Setup |
-| `META_WABA_ID` | For campaigns | WhatsApp Business Account ID. Required to read and submit templates. |
-| `META_APP_SECRET` | For webhooks | Verifies webhook signatures |
-| `META_API_VERSION` | Optional | Graph API version (default: `v21.0`) |
-| `MOCK_WHATSAPP_API` | Optional | `true` simulates sends without contacting Meta. For local testing only. |
-
-**Discovery tuning** — defaults are tuned from measured job profiles; detail-page
-fetching is roughly 78% of a job, so the per-listing pause is the cheapest thing
-to trim.
-
-| Variable | Default | Description |
-|---|---|---|
-| `LISTING_DELAY_SECONDS` | `0.3` | Pause after each detail page |
-| `MAX_SCROLL_ATTEMPTS` | `3` | Result-feed scroll iterations |
-| `ELEMENT_TIMEOUT_MS` | `4000` | Wait for the place panel to render |
-| `EMAIL_MAX_CONCURRENCY` | `8` | Parallel website crawls during enrichment |
-| `EMAIL_ENRICHMENT_TIMEOUT_SECONDS` | `15` | Per-business enrichment budget |
-| `EMAIL_ENRICHMENT_BATCH_TIMEOUT_SECONDS` | `60` | Whole-batch enrichment budget |
-
-**Campaign link tracking** (optional)
-
-| Variable | Description |
-|---|---|
-| `PUBLIC_BASE_URL` | A URL a phone can reach over the internet, e.g. `https://link.example.com`. Without it, messages carry the plain destination and no clicks are recorded. |
-| `CAMPAIGN_LINK_TARGET_URL` | Where a tracked link forwards to. Default `https://kiosk.eko.in/signup?utm_source=AutoGMap`: the signup page opens on the form (the home page's `#apply-now` jump stops short of it), and the kiosk site records `utm_source` against the signup, so leads show AutoGMap as their source. |
-| `CAMPAIGN_LINK_FALLBACK_URL` | Destination for an unknown or expired token (same default) |
-| `CAMPAIGN_UTM_SOURCE` | Source added when the destination names none. Default `AutoGMap` |
-| `CAMPAIGN_LINK_HASH_SALT` | Salt for hashing visitor IPs |
-
-**Never commit your `.env` file. It is excluded by `.gitignore`.**
-
-### Option A — Docker Compose (Recommended)
+In the app, open **Configuration** and sync the locations and categories, then run a
+batch from the **Dashboard**. You can also use the API:
 
 ```bash
-# 1. Configure environment
-cp .env.example .env
-# Edit .env: set POSTGRES_PASSWORD, DATABASE_URL, BACKEND_BASE_URL, CORS_ORIGINS
-
-# 2. Build and start all services
-docker compose up -d
-
-# 3. Run database migrations (first deployment only)
-docker compose exec backend alembic upgrade head
-
-# 4. Verify health
-curl http://localhost:8000/health
-
-# 5. Import n8n workflow
-# Open http://localhost:5678
-# Settings → Import workflow → select n8n/autonomous_google_maps_daily.json
-
-# 6. Configure n8n environment variables in n8n UI:
-#    N8N_BACKEND_BASE_URL = http://backend:8000
-#    BATCH_SIZE = 15
-#    N8N_OUTPUT_SPREADSHEET_ID = your-sheet-id
-
-# 7. Sync configuration data
 curl -X POST http://localhost:8000/api/v1/config/sync
-
-# 8. Generate job queue
-curl -X POST http://localhost:8000/api/v1/jobs/generate
+curl -X POST http://localhost:8000/api/v1/discovery/batch \
+     -H "Content-Type: application/json" -d '{"batch_size": 5}'
 ```
 
-### Option B — Bare Metal (without Docker)
-
-```bash
-# PostgreSQL setup (on Ubuntu/Debian)
-sudo apt install postgresql-16
-sudo -u postgres createuser gmap_user
-sudo -u postgres createdb gmap_scraper -O gmap_user
-sudo -u postgres psql -c "ALTER USER gmap_user PASSWORD 'your_strong_password';"
-
-# Install dependencies
-pip install -r requirements.txt
-python -m playwright install chromium
-python -m playwright install-deps chromium
-
-# Configure
-cp .env.example .env
-# Set DATABASE_URL=postgresql+psycopg://gmap_user:your_strong_password@localhost:5432/gmap_scraper
-
-# Run migrations
-alembic upgrade head
-
-# Start backend (production — single worker because of Playwright)
-uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1
-
-# Start frontend (production build)
-cd frontend
-npm install
-npm run build
-# Serve dist/ with nginx or any static file server
-```
+Interactive API docs are at http://localhost:8000/docs.
 
 ---
 
-## WhatsApp Campaigns
+## Configuration
 
-### How a message actually gets sent
+All settings come from environment variables. `.env.example` lists every one with a
+placeholder. **Never commit a real `.env`.** The main groups:
 
-This is the part that surprises people, and most campaign failures trace back
-to it:
-
-> **A template's text lives with Meta, not here.** A send transmits only the
-> template *name*, *language* and *parameters*. Meta renders the message from
-> its own approved copy.
-
-Two consequences:
-
-- A template must be **submitted to Meta and approved** before it can be sent.
-  A local draft cannot be delivered — Meta answers `#132001 Template name does
-  not exist`.
-- Editing a template locally changes the dashboard preview but **not** what
-  recipients receive. The app therefore pushes edits to Meta, which sends the
-  template back through review.
-
-### Credentials
-
-| Variable | Notes |
+| Group | Variables |
 |---|---|
-| `META_ACCESS_TOKEN` | Use a **System User** token from Business Settings. A personal user token expires — often within hours — and every send then fails with `#131005 Access denied`. |
-| `META_PHONE_NUMBER_ID` | The sending number, from WhatsApp → API Setup |
-| `META_WABA_ID` | Needed to list, submit and edit templates |
-| `META_APP_SECRET` | Webhook signature verification |
+| Database | `DATABASE_URL`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` |
+| App and roles | `APP_ROLE`, `ENVIRONMENT`, `PUBLIC_BASE_URL`, `CORS_ORIGINS`, `LOG_LEVEL`, `BACKEND_MEMORY_LIMIT`, `WORKER_MEMORY_LIMIT`, `SCRAPER_MEMORY_LIMIT` |
+| Sign-in | `AUTH_JWT_SECRET`, `BOOTSTRAP_ADMIN_PASSWORD`, `GOOGLE_CLIENT_ID` |
+| Discovery | `LOCATIONS_FILE`, `CATEGORIES_FILE`, `BATCH_SIZE`, `JOB_TIMEOUT_SECONDS`, `BROWSER_TIMEOUT_MS`, `MAX_RESULTS_PER_JOB`, `EMAIL_MAX_CONCURRENCY`, `EMAIL_ENRICHMENT_*` |
+| WhatsApp | `META_ACCESS_TOKEN`, `META_PHONE_NUMBER_ID`, `META_WABA_ID`, `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`, `META_API_VERSION`, `MOCK_WHATSAPP_API`, `WHATSAPP_BUSINESS_NUMBER` |
+| Campaigns | `CAMPAIGN_LINK_TARGET_URL`, `CAMPAIGN_LINK_FALLBACK_URL`, `CAMPAIGN_LINK_HASH_SALT`, `CAMPAIGN_UTM_SOURCE`, `CAMPAIGN_UTM_MEDIUM`, `CAMPAIGN_APPROVAL_MIN` |
+| Bot and Inbox | `ONBOARDING_RADIUS_KM`, `WHISPER_MODEL`, `WHISPER_HINDI_MODEL`, `WHISPER_IDLE_MINUTES`, `INBOX_MEDIA_DIR`, `ONBOARDING_DOCS_DIR` |
+| Google | `GOOGLE_CREDENTIALS_BASE64`, `GOOGLE_DRIVE_FOLDER_ID`, `GOOGLE_SHEET_ID`, `GOOGLE_SHEET_OWNER_EMAIL` |
+| Email | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `NOTIFY_ALSO` |
+| AI | `GEMINI_API_KEY`, `GEMINI_MODELS`, `HF_TOKEN` |
+| DigiLocker | `EKO_DEVELOPER_KEY`, `EKO_ACCESS_KEY`, `EKO_INITIATOR_ID`, `EKO_BASE_URL`, `EKO_DIGILOCKER_DOCUMENTS` |
+| Hand-over | `EKO_ACQUISITION_API_URL`, `EKO_ACQUISITION_API_KEY` |
+| Calls | `CALL_RECORDER_API_KEY`, `CALL_RECORDINGS_SOURCE_URL`, `CALL_RECORDINGS_SOURCE_KEY`, `TRANSCRIBE_CALLS` |
+| Privacy | `PRIVACY_CONTACT_EMAIL` |
 
-Credentials live in `.env` (git-ignored) or your secret manager. They are never
-sent to the frontend, and error messages are redacted before being logged.
-Connection is only reported as **Connected** after a successful Meta API call,
-never merely because the variables are set.
-
-### Template workflow
-
-```
-Compose in UI  →  auto-submitted to Meta  →  PENDING  →  APPROVED  →  sendable
-                                                     ↘  REJECTED  →  edit & resubmit
-```
-
-- Creating a template submits it for review automatically. If Meta refuses the
-  submission the template stays a local draft and the reason is shown.
-- **Sync Status** pulls each template's current review state and billing
-  category from the WABA. Meta can reclassify a template during review, so the
-  category shown is the one Meta assigned, not the one requested.
-- Deleting a template keeps past campaign history; the campaign's link to it is
-  cleared. The copy registered with Meta is left untouched.
-
-### Template Studio: the agent for business data
-
-**WhatsApp → Template Studio → Agent · business data** writes templates
-addressed to the scraped businesses themselves.
-
-1. Upload an export from **Business Data**. The agent is told the states,
-   districts and kinds of business in it.
-2. It writes 1–3 variants in the state's language, each testing a different
-   angle. They use the business's own details as blanks: `{{name}}` always,
-   plus `{{category}}`, `{{district}}` or `{{state}}`. A field is only offered
-   when at least 98% of the businesses have it.
-3. What it learns from is read fresh every round, so each campaign's results
-   reach the next one as soon as they are recorded:
-   - every template already sent, with its wording and how it did per state;
-   - the Campaign Insights playbook;
-   - the reasons reviewers rejected earlier drafts, and the reasons Meta
-     rejected earlier templates;
-   - templates Meta has approved in the same language, as examples of how
-     the team writes it (see [How the agents write good Hindi](#how-the-agents-write-good-hindi-punjabi));
-   - its own earlier mistakes: problems the checker found and sentences a
-     reviewer corrected.
-
-   Nothing is fine-tuned: all of this is given to the model as evidence.
-4. Every draft is checked: language and script, allowed facts only, the
-   contact number present, no URL in the body, Meta's limits. A draft that
-   fails is sent back once with its problems listed.
-5. **A draft goes to Meta only when someone approves it.** Edit and Reject are
-   on the same card, and a rejection's reason steers the next round. Once
-   approved, the page follows Meta's review.
-
-The tracked link is written into the message itself as `{{link}}`, exactly once
-and never as the last thing (Meta refuses a body that ends with a blank). Each
-business's message carries its own `/r/<token>`, which records the visit and
-forwards to `kiosk.eko.in/?utm_source=AutoGMap&utm_medium=whatsapp#apply-now`
-by default. The template's one button is **Call me back**. A campaign fills the blanks from the uploaded
-export, or, for an audience picked from Business Data, from each business's
-own record. A business missing a value is skipped, with the reason shown.
-
-**The image** is made once the text is written, the same way as the poster
-agent's (below). With the message the agent writes the same poster text —
-headline, subline, callout, six benefits, the opportunity box and the labels,
-with no blanks, since one picture goes to every business — checked by the same
-rules. A photo with the draft's image phrase, 2–5 words from the headline or
-message, printed on a sign is kept only if the sign reads back letter for
-letter; otherwise the full poster is typeset around a photo with no text. When
-the free image allowance is spent the draft waits for its photo like the
-poster agent's. If the photo fails for any other reason, the message can still
-be approved and sent without one, and the card says why. **New photo** asks
-for another; if an edit took the phrase out of the message, the new photo
-leaves it out too.
-
-Uses the free models described under [Which models](#which-models-all-free).
-
-### Template Studio: from a messages sheet
-
-**WhatsApp → Template Studio → From a messages sheet** turns a spreadsheet of
-messages the team already wrote, one row per person, into the single template
-Meta needs. The wording is the team's own, so it is submitted to Meta
-automatically, with no Approve step.
-
-1. Upload a CSV or Excel file with a phone column, a message column, and the
-   columns the messages were put together from (name, amount, date…).
-2. A column whose value appears in every row's message and changes between
-   rows becomes a placeholder (`{{customer_name}}`, `{{amount}}`). Every row
-   must reduce to the same template. If not, the sheet is refused with the
-   rows and words that differ, rather than guessing.
-3. Meta's own rules are checked first: a template may not start or end with a
-   placeholder, and the body is limited to 1,024 characters.
-4. A template with the same wording (punctuation and emoji aside) that Meta has
-   already approved is reused. Otherwise one is submitted, and the page checks
-   Meta's review every minute until it is approved, or rejected with Meta's
-   reason. Running the same sheet again never submits twice.
-5. Once it is approved, **Start a campaign with this sheet** opens the campaign
-   builder with the sheet and the template. Each recipient is sent their own
-   row's values. Anyone missing one is skipped, with the reason shown.
-
-**The tracked link goes in the message text.** Write a `kiosk.eko.in` link
-in the messages, or a link to the destination's own site. It becomes `{{link}}`:
-each recipient's own `/r/<token>`, which records the visit against that person
-and forwards to
-`https://kiosk.eko.in/?utm_source=AutoGMap&utm_medium=whatsapp#apply-now`,
-with `utm_campaign` set to the campaign name. The destination can be changed
-per sheet. Links to other sites are left as written. A sheet whose messages
-carry no such link makes a template whose visits cannot be tracked, and the
-Studio says so. Tracking needs `PUBLIC_BASE_URL`; without it the link opens
-the destination directly and no visit is recorded.
-
-### Template Studio (AI-drafted templates)
-
-**WhatsApp → Template Studio** has an agent draft templates for a state and
-hold them for a person to approve. **Nothing reaches Meta until someone clicks
-Approve**; unapproved drafts are kept out of the Templates list and the
-campaign picker, and the generic submit endpoint refuses them.
-
-Each round:
-
-1. Pick a state. Its language is fixed by `STATE_LANGUAGES` in
-   `src/services/creative_brief.py` (Punjab → Punjabi, Gujarat → Gujarati,
-   Maharashtra → Marathi, Uttar Pradesh/Haryana/Rajasthan → Hindi). A new
-   state needs a line there before it can be generated for.
-2. **The text comes first.** The agent writes 1–4 variants at once, each
-   testing a different angle, from the standing brief, approved templates in
-   the same language, how each template has performed per state, reviewers'
-   rejection reasons, and its own earlier mistakes. Each variant also names an
-   **image phrase**: 2–5 words copied exactly from its headline or body.
-3. Every variant is checked: all text in the state's script, only the allowed
-   facts, the contact number present, no URL in the body, no `**double
-   asterisks**` (WhatsApp would show them), the image phrase really taken
-   from the copy, Meta's length limits. A failing variant is sent back once.
-4. **Then the image, built from the text.** FLUX.1 is asked for a photograph
-   of an SBI Customer Service Point with the image phrase printed on one sign.
-   A vision model reads the sign back, and the code compares the reading with
-   the phrase letter by letter, vowel signs included. If they match, the photo
-   is the header, with the Eko logo added.
-5. **If the sign is misspelt**, which free image models usually do with Indic
-   scripts, one photo with no text is made instead and the poster is typeset
-   around it in Chromium: Eko logo, SBI signboard, headline, benefits and
-   contact footer, all in real fonts, so every word is spelled right.
-
-A draft costs at most two images: one try at the sign, one plain photo. A photo
-the check dislikes is shown to the reviewer with its problems, not replaced.
-
-Approving submits the draft to Meta (it then follows the usual review above).
-Rejecting asks for a reason, which the agent reads next time for that state.
-**Edit text** re-renders the poster; **New photo** keeps the copy. An edited
-sentence is remembered as a correction and shown to the agent in later rounds.
-
-The table at the bottom — sent, delivered, read, link visits and button taps per
-template and recipient state — is what the agent learns from. It only means
-something once the webhook is live: campaigns sent before it show "not tracked".
-
-### How the agents write good Hindi, Punjabi…
-
-Both agents are shown, every round, up to five templates **Meta has approved**
-in the language they are writing, read from the WhatsApp Business Account
-(templates made by other tools on the same account included) and refreshed
-hourly. They are told to copy the grammar, spelling, polite forms and WhatsApp
-formatting, not the content. Language is judged by script, since most Hindi
-templates were registered as `en_US`; tests, English and Hinglish fall out, and
-resubmissions of one campaign count once. A language with no approved template
-yet (Gujarati, Marathi today) gets none; Marathi is never given Hindi examples.
-
-They are also shown **their own mistakes** in that language: sentences a
-reviewer corrected ("you wrote …, a reviewer corrected it to …") and the
-problems the checker most often found in first attempts.
-
-### How the photos get better
-
-Every image the Studio asks for is recorded (`studio_image_prompts`): the
-prompt, its style, the seed, how the check judged it (a sign that read back
-right, or came out as gibberish; stray lettering; an artificial look) and what
-the reviewer did with it — kept it by approving the draft, or replaced it with
-**New photo**. **Photo prompts: what has worked**, at the foot of the Studio,
-shows the record. Three things are learned from it:
-
-- **The wording.** A scene is wrapped in one of two styles: `short`, the brief
-  prompt behind the photo the team liked, and `documentary`, the original
-  longer one. The style with the better record is used; an untried one is
-  tried before a failing one is used again.
-- **The scene.** Before writing, the agent is shown the scenes that made good
-  photos and the ones that failed, with the reason, and asked for a photo
-  better than the best so far.
-- **Whether to try a sign.** While signs keep coming out misspelt (none right
-  in five or more tries), the sign is skipped and the image goes to the photo
-  for the typeset poster; a sign is tried again every fifth photo or so.
-
-### Which models (all free)
-
-| For | Model | Notes |
-|---|---|---|
-| Text, fact check | `gemini-2.0-flash`, then `llama-3.3-70b`, `gpt-4o-mini`, through g4f | No key. If none answers the round fails and says so; nothing is made up. |
-| Reading the photo | `gemini-2.0-flash` through g4f | |
-| Photos | FLUX.1-dev, then FLUX.1-schnell, on Hugging Face Spaces | Uses `HF_TOKEN`, then anonymous access. |
-
-**The free photo allowance is small**: about three runs a day per Hugging Face
-account, renewed 24 hours after the day's first use, plus a smaller anonymous
-one. When it is spent, a draft does not fail. It keeps its text, shows
-"photo pending" under *In progress* with the time of the next try, and a
-background loop (`src/services/photo_queue.py`, every 5 minutes) finishes it
-when the allowance returns — at the time Hugging Face gives, or after 30 min,
-1 h, 2 h, then every 4 h. **Try now** and **Reject** work meanwhile. After ten
-tries (about a day and a half) the draft fails and says why. Hugging Face PRO
-on the same account raises the allowance to 40 GPU minutes a day.
-
-Needs `HF_TOKEN` for photos, and internet access from the backend to Hugging
-Face, the g4f providers and Google Fonts. `STUDIO_PHOTO_QUEUE_THREAD=false`
-turns the waiting loop off.
-
-### Media limits
-
-Meta enforces different ceilings per media type and rejects anything larger at
-send time with an opaque `(#100) Invalid parameter`. The same limits are applied
-at upload instead, so an oversized file is refused while you are still looking at
-the dialog.
-
-| Header type | Limit |
-|---|---|
-| Image | 5 MB |
-| Video | 16 MB |
-
-Header media is uploaded to Meta **once per campaign** and reused for every
-recipient.
-
-### Costs
-
-Marketing and utility templates are priced very differently. Real figures for
-your account come from Meta:
-
-```bash
-# Per-message cost and volume, by category
-curl -s -G "https://graph.facebook.com/v21.0/$META_WABA_ID" \
-  -H "Authorization: Bearer $META_ACCESS_TOKEN" \
-  --data-urlencode "fields=currency,pricing_analytics.start(<unix>).end(<unix>).granularity(DAILY).dimensions([\"PRICING_CATEGORY\"])"
-```
-
-### Delivery visibility
-
-`SENT` means **Meta accepted the request**, not that the message arrived.
-Aggregate delivery counts are available without any webhook setup:
-
-```bash
-curl -s -G "https://graph.facebook.com/v21.0/$META_WABA_ID" \
-  -H "Authorization: Bearer $META_ACCESS_TOKEN" \
-  --data-urlencode "fields=analytics.start(<unix>).end(<unix>).granularity(DAY)"
-# → {"sent": 1270, "delivered": 1239}
-```
-
-Per-recipient delivery and read receipts require Meta to reach this backend over
-the internet, which means a public URL and a subscribed webhook.
-
-Note that Meta may accept a marketing message and silently not deliver it if the
-recipient has received many marketing messages without engaging. This is
-deliberate on Meta's side and is not reported back through the send response.
-
-### Click tracking (optional)
-
-WhatsApp does not report clicks on a link written in a message body, and a URL
-identical for every recipient cannot attribute a visit to anyone. Each recipient
-therefore gets their own short link:
-
-```
-https://<PUBLIC_BASE_URL>/r/<token>  →  click recorded  →  302 to the destination
-```
-
-Campaign History then shows **Unique Visits** (recipients who opened the link at
-least once) and **Repeated Visits** (opens beyond each recipient's first).
-
-Requirements: a publicly reachable `PUBLIC_BASE_URL`, and a template whose body
-contains `{{link}}`. Without `PUBLIC_BASE_URL` the plain destination is sent and
-no clicks are recorded — messages always carry a working link. Visitor IPs are
-hashed, never stored, and a tracking failure never blocks the redirect.
+Every outside service is optional. If it is not configured, its feature switches off
+and says so, and the rest keeps working.
 
 ---
 
-## Lead Journey
-
-Every campaign lead's journey (Applications → **Lead Journey**) is read from the records AutoGMap already keeps and copied every 15 minutes into the `lead_journeys` and `lead_journey_steps` tables. Which step is recorded where, and by what, is in [LEAD_JOURNEY.md](LEAD_JOURNEY.md). The Dashboard flags leads whose steps do not add up.
-
-## Playwright Browser Setup
-
-The discovery engine and email enricher both use Playwright Chromium.
-
-The following flags are already configured in the code for container execution:
-```
---no-sandbox
---disable-setuid-sandbox
---disable-dev-shm-usage
---disable-blink-features=AutomationControlled
-```
-
-If Chromium fails to launch in your environment:
-```bash
-# Verify browser is installed
-python -m playwright install chromium
-
-# Linux: install OS dependencies
-python -m playwright install-deps chromium
-
-# Test launch
-python -c "from playwright.sync_api import sync_playwright; p = sync_playwright().start(); b = p.chromium.launch(headless=True); b.close(); p.stop(); print('OK')"
-```
-
----
-
-## Database Migrations
-
-### First deployment (PostgreSQL)
-
-```bash
-alembic upgrade head
-```
-
-### After schema changes
-
-```bash
-# Generate a new migration from model changes
-alembic revision --autogenerate -m "describe_your_change"
-
-# Review and edit the generated file in alembic/versions/
-# Then apply:
-alembic upgrade head
-```
-
-### Current status
-
-```bash
-alembic current
-alembic history --verbose
-```
-
-### Migrations in this project
-
-| Revision | Adds |
-|---|---|
-| `0001` | Locations, categories, jobs, businesses, run log |
-| `0e08654b0f18` | WhatsApp accounts, templates, campaigns, recipients, logs |
-| `1a7c3b9e2d40` | Template's Meta name and approved language |
-| `2b9f4c7d1e88` | Per-recipient tracking token and link-click records |
-| `3c1a8e5f7b22` | Template billing category as reported by Meta |
-| `4d2b7a9c3e51` | Template delete clears the campaign link instead of blocking |
-| `a1d8e6f3c2b4` | Template Studio: origin, target state, generation record, reviewer decision |
-| `b2e9f7a4d3c5` | Campaign insights and playbook snapshots |
-| `c4a7e2d9b8f1` | Automated link hits flagged, never counted as clicks |
-| `d5b8f3a1c6e2` | Scraping autopilot rounds |
-| `a8f3c5d1e7b9` | Studio image prompts and how each turned out |
-
----
-
-## n8n Workflow
-
-The daily automation workflow file: `n8n/autonomous_google_maps_daily.json`
-
-**Schedule**: Runs at 02:00 UTC daily (configurable in the Schedule Trigger node).
-
-**Flow**:
-1. Health check → fail fast if backend is down
-2. Config sync → load locations and categories
-3. Job maintenance → recover stale jobs, auto-retry failed jobs
-4. Generate jobs → create pending jobs for all (location × category) pairs
-5. Check stats → count pending jobs
-6. Batch discovery → run `BATCH_SIZE` jobs (Playwright scraping + email enrichment)
-7. Export → fetch new businesses since run start
-8. Google Sheets → append results to spreadsheet
-
-**Required n8n environment variables** (set in n8n UI under Settings → Variables):
-
-| Variable | Value |
-|---|---|
-| `N8N_BACKEND_BASE_URL` | `http://backend:8000` (Docker) or `http://your-server:8000` |
-| `BATCH_SIZE` | `15` (or as configured) |
-| `N8N_OUTPUT_SPREADSHEET_ID` | Your Google Sheets ID |
-
-**Google Sheets credential**: Add a Google OAuth2 credential in n8n (Settings → Credentials → Google Sheets OAuth2 API). The credential never leaves n8n's encrypted store.
-
----
-
-## Dashboard
-
-```bash
-cd frontend && npm run dev     # http://localhost:5173
-```
-
-| View | Purpose |
-|---|---|
-| Dashboard | Job queue state, last orchestration run, engine health |
-| Business Data | Discovered businesses, searchable, exportable to CSV / Excel / Sheets |
-| Jobs Monitor | Per-job status, retries, and a job inspector |
-| Configuration | Locations (pincode, district, tehsil, anchor) and categories |
-| WhatsApp Campaign | Four-step builder: data → template → preview → confirm |
-| Templates | Compose with live WhatsApp preview; search, edit, submit, status |
-| Campaign History | Counters, visit tracking, and a per-campaign detail view |
-
-The theme toggle sits in the header and is remembered per browser.
-
----
-
-## Health Verification
-
-```bash
-# Liveness check
-curl http://localhost:8000/health
-
-# Readiness check
-curl http://localhost:8000/ready
-
-# System stats
-curl http://localhost:8000/api/v1/stats
-```
-
-Expected healthy response:
-```json
-{
-  "status": "healthy",
-  "version": "1.0.0",
-  "database": "healthy",
-  "db_backend": "postgresql",
-  "environment": "production",
-  "timestamp": "2026-09-15T12:00:00.000000+00:00"
-}
-```
-
----
-
-## Logs
+## Running in production
 
 ### Docker Compose
 
 ```bash
-# All services
-docker compose logs -f
-
-# Backend only
-docker compose logs -f backend
-
-# Tail last 100 lines
-docker compose logs --tail=100 backend
+cp .env.example .env        # fill in real values; keep this file private (chmod 600)
+docker compose build
+docker compose run --rm backend alembic upgrade head
+docker compose up -d backend worker scraper postgres
+curl http://127.0.0.1:${BACKEND_HOST_PORT:-8000}/health
 ```
 
-### Bare metal
+- **Network exposure.** Every port binds to `127.0.0.1`. Put a reverse proxy with TLS
+  in front of `backend`, and set `PUBLIC_BASE_URL` to the public address.
+- **Frontend path.** The frontend is built into the image. `VITE_BASE_PATH` serves it
+  under a sub-path.
+- **WhatsApp webhook.** Point the Meta app's webhook at
+  `https://<your-domain>/api/v1/whatsapp/webhook`, using `META_WEBHOOK_VERIFY_TOKEN`.
+  Every call is checked against `META_APP_SECRET`.
 
-```bash
-# Redirect uvicorn logs to a file
-uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1 \
-  --log-level info --access-log 2>&1 | tee /var/log/gmap_scraper.log
-```
+### Deploying updates
 
-Log events you will see:
-- `Starting Autonomous Google Maps Business Discovery Agent` — startup
-- `Database schema initialized` — DB ready
-- `Starting discovery for Job <id>` — job begins
-- `Discovered N listing cards` — Playwright found results
-- `Enriching email for <name>` — email enrichment in progress
-- `Recovered N stale RUNNING jobs` — maintenance
-- `Shutdown complete` — clean exit
+`scripts/deploy.sh` deploys the newest `main` the same way every time:
 
-**Logs never contain**: passwords, tokens, private keys, OAuth credentials, or cookie values.
+1. It stops unless CI is green.
+2. It waits for the gap between scraping batches.
+3. It runs the golden test set on the new image.
+4. It backs up the database and runs the migrations.
+5. It starts every container and waits for the health check.
+
+`scripts/rollback.sh` returns to the previous version. `scripts/staging.sh` runs a
+separate staging copy in which nothing can reach a real person.
 
 ---
 
-## Backup and Recovery
+## Operating it
 
-### What to back up
-
-| Data | Location | Frequency |
-|---|---|---|
-| PostgreSQL database | `postgres_data` Docker volume | Daily |
-| n8n workflows | `n8n_data` Docker volume | After changes |
-| Source data files | `Geocoded_Ad_Targeting_Locations_FINAL.xlsx`, `G-Map Scraper Categories.xlsx` | On change |
-
-### PostgreSQL backup
-
-```bash
-# Full database dump (replace placeholders)
-pg_dump \
-  --host=YOUR_DB_HOST \
-  --port=5432 \
-  --username=YOUR_DB_USER \
-  --dbname=YOUR_DB_NAME \
-  --no-password \
-  --format=custom \
-  --file=gmap_scraper_$(date +%Y%m%d).dump
-
-# Docker Compose (backup from running container)
-docker compose exec -T postgres \
-  pg_dump -U gmap_user -d gmap_scraper --format=custom \
-  > gmap_scraper_$(date +%Y%m%d).dump
-```
-
-### PostgreSQL restore
-
-> ⚠️ **WARNING**: Restore overwrites the target database. Test in staging first.
-
-```bash
-pg_restore \
-  --host=YOUR_DB_HOST \
-  --port=5432 \
-  --username=YOUR_DB_USER \
-  --dbname=YOUR_DB_NAME \
-  --no-password \
-  --clean \
-  gmap_scraper_20260915.dump
-
-# Docker Compose restore
-docker compose exec -T postgres \
-  pg_restore -U gmap_user -d gmap_scraper --clean \
-  < gmap_scraper_20260915.dump
-```
+- **System health** (Agent Quality, also shown in the sidebar):
+  - whether the website, worker and scraper are running;
+  - their memory and threads;
+  - their recent errors;
+  - the scraping queue and the last batch.
+- **Logs.** `docker compose logs backend|worker|scraper --since 15m`.
+- **Kill switches.** Agent Quality → Controls. Every automatic action has its own
+  switch: campaign sending, bot replies, reminders, follow-ups, AI drafting, DigiLocker
+  and more. The scraping autopilot has its own switch on the Dashboard.
+- **Retention.** Admin-confirmed deletion of personal data after a set period.
+  Server files are deleted, Drive copies are moved to the trash, and message text is
+  redacted.
 
 ---
 
-## Troubleshooting
-
-### Backend won't start
+## Testing
 
 ```bash
-# Check Python version
-python --version  # must be 3.12+
-
-# Check for import errors
-python -c "from src.main import app; print('OK')"
-
-# Check .env configuration
-python -c "from src.config import settings; print(settings.database_url[:20])"
+pytest -q                                  # the whole suite (about 1,300 tests)
+python -m src.evals.golden                 # golden set of real bot conversations
+python -m src.architecture.boundaries      # module boundary report
+cd frontend && npm run build               # type-check and build the frontend
 ```
 
-### Database connection fails
-
-```bash
-# PostgreSQL — test connection
-python -c "
-import psycopg
-conn = psycopg.connect('YOUR_DATABASE_URL')
-print('Connected OK')
-conn.close()
-"
-
-# Verify host/port/credentials in DATABASE_URL
-```
-
-### Playwright / Chromium fails to launch
-
-```bash
-# Linux — install OS dependencies
-python -m playwright install-deps chromium
-
-# Test launch manually
-python -c "
-from playwright.sync_api import sync_playwright
-with sync_playwright() as p:
-    b = p.chromium.launch(headless=True, args=['--no-sandbox'])
-    print('Browser OK:', b.version)
-    b.close()
-"
-```
-
-### CAPTCHA / blocked discovery jobs
-
-This is expected behavior. Google Maps rate-limits automated access. The system:
-- Detects CAPTCHA and marks the job as `BLOCKED`
-- Stops the batch early to prevent escalation
-- The job can be retried later via `/api/v1/jobs/retry-all`
-- Reduce `BATCH_SIZE` and increase `SEARCH_DELAY_SECONDS` to reduce blocking
-
-### WhatsApp campaign failures
-
-Every campaign failure is written to `whatsapp_campaign_logs` and shown in
-Campaign History → **View Details**, with Meta's own error code.
-
-| What you see | Cause | Fix |
-|---|---|---|
-| `#132001 Template name does not exist` | The template was never approved in the WABA, or the language does not match | Submit it for review; check **Sync Status** |
-| `#131005 Access denied` | Token expired, or it lacks messaging permission on this WABA | Use a **System User** token that does not expire |
-| `#100 Invalid parameter` on media upload | Header image over 5 MB / video over 16 MB | Compress and re-upload |
-| `#100 Content in this language already exists` | A template with that name and language is already in the WABA | The app links to the existing one automatically |
-| Campaign `FAILED`, 0 sent, 0 failed | Pre-flight stopped it before sending | Read the reason in the campaign log |
-| Status `SENT` but no message received | Meta accepted it but did not deliver — often a recipient who has received many marketing messages without engaging | Test with a number that has not been messaged recently |
-
-```bash
-# Campaign execution log
-curl -s http://localhost:8000/api/v1/whatsapp/campaigns/<campaign_id>/logs
-
-# What Meta actually has approved
-curl -s http://localhost:8000/api/v1/whatsapp/templates/meta
-```
-
-### Discovery returns names but no phone or website
-
-Check the per-job summary in the logs:
-
-```bash
-docker compose logs backend | grep "extraction summary"
-# in_range=18 out_of_range_discarded=2 no_contact_data=0 errors=0
-```
-
-- `out_of_range_discarded` high → Google is returning results far outside the
-  radius. Expected for sparse categories in rural pincodes; those listings are
-  dropped rather than stored empty.
-- `no_contact_data` high → the place panel is not rendering before extraction.
-  Raise `ELEMENT_TIMEOUT_MS`.
-
-### Stopping a running batch
-
-```bash
-curl -X POST http://localhost:8000/api/v1/discovery/stop
-```
-
-The batch finishes the job it is on and then stops, so nothing is lost and
-anything else sharing the process — a campaign mid-send, for instance — is
-unaffected. Restarting the backend is not required.
-
-### Frontend can't connect to backend
-
-```bash
-# Check VITE_API_BASE_URL in .env (frontend)
-# Or use the Settings modal in the dashboard to override the API URL at runtime
-```
+GitHub Actions runs the test suite, the golden set and the frontend build on every
+push. Deploys refuse a commit whose CI is not green.
 
 ---
 
-## API Reference
+## Security and privacy
 
-Full API contract: [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)
+- **No secrets in the repository.**
+  - Keys, tokens and passwords live only in `.env`, which is git-ignored, as are
+    service-account files, certificates and databases.
+  - `.env.example` holds placeholders only.
+- **No personal data in the repository.** The following are all git-ignored:
+  - scraped business data and exports;
+  - chat media, uploaded documents and call recordings;
+  - database backups.
+- **Identity documents** are kept in a Google Drive shared drive, not on the server.
+  They are never attached to emails, and the hand-over sends Drive links, not files.
+- **Sign-in.** Every API route needs a session (an httpOnly, signed cookie) except:
+  - the WhatsApp webhook, checked by Meta's signature;
+  - the call webhooks, checked by shared secrets;
+  - tracking redirects and the personal upload page, checked by their tokens.
+- **Least privilege.**
+  - View-only members cannot change anything; the server enforces it.
+  - Admin-only actions are checked on the server.
+  - Every change is audited.
+- **Opt-outs.** STOP and Meta's own opt-outs are honoured before any message is sent.
 
-Key endpoints:
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/health` | Liveness + DB check |
-| GET | `/ready` | Readiness probe |
-| GET | `/api/v1/stats` | System statistics |
-| POST | `/api/v1/config/sync` | Load locations and categories from xlsx |
-| POST | `/api/v1/config/locations/resolve` | Look a place up on Maps without saving it |
-| POST | `/api/v1/config/locations` | Add a target PIN |
-| DELETE | `/api/v1/config/locations/{id}` | Remove a target PIN that has no jobs |
-| POST | `/api/v1/jobs/generate` | Generate (location × category) job matrix |
-| POST | `/api/v1/jobs/maintenance` | Recover stale + auto-retry failed jobs |
-| POST | `/api/v1/discovery/batch` | Run a batch of discovery jobs |
-| POST | `/api/v1/discovery/stop` | Stop the running batch after its current job |
-| GET | `/api/v1/businesses` | Paginated business list |
-| GET | `/api/v1/export/businesses` | Export businesses (JSON or CSV) |
-
-`/discovery/batch` can be narrowed to a subset of the job queue — all filters
-combine with AND:
-
-```jsonc
-{
-  "batch_size": 25,
-  "delay_between_jobs_seconds": 5,
-  "states": ["Punjab"],              // or pincodes / anchor_names
-  "categories": ["Kiosk", "Print shop"]
-}
-```
-
-**WhatsApp**
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/v1/whatsapp/accounts/connect` | Verify Meta connectivity and register the sending number |
-| GET | `/api/v1/whatsapp/templates` | Local templates |
-| POST | `/api/v1/whatsapp/templates` | Create, and submit to Meta for review |
-| PATCH | `/api/v1/whatsapp/templates/{id}` | Edit, and push the change to Meta |
-| DELETE | `/api/v1/whatsapp/templates/{id}` | Delete locally, keeping campaign history |
-| GET | `/api/v1/whatsapp/templates/meta` | Templates as registered in the WABA |
-| POST | `/api/v1/whatsapp/templates/sync-status` | Refresh review status and category from Meta |
-| POST | `/api/v1/whatsapp/templates/{id}/submit` | Submit an existing draft for review |
-| POST | `/api/v1/whatsapp/media/upload` | Upload header media (validated against Meta's limits) |
-| POST | `/api/v1/whatsapp/contacts/validate` | Normalise and deduplicate phone numbers |
-| POST | `/api/v1/whatsapp/campaigns` | Create a campaign and start sending |
-| GET | `/api/v1/whatsapp/campaigns` | Campaign list with visit counters |
-| GET | `/api/v1/whatsapp/campaigns/{id}/recipients` | Per-recipient status and reason |
-| GET | `/api/v1/whatsapp/campaigns/{id}/logs` | Execution log with Meta error codes |
-| POST | `/api/v1/whatsapp/campaigns/{id}/resume` | Continue for recipients never reached |
-| POST | `/api/v1/whatsapp/campaigns/{id}/cancel` | Stop a running campaign |
-| GET | `/r/{token}` | Campaign link redirect — records the click |
+To report a security issue, please contact the maintainers privately rather than
+opening a public issue.
 
 ---
 
-## Development
+## Further documentation
 
-### Running tests
-
-```bash
-pytest -q
-```
-
-### TypeScript type check
-
-```bash
-cd frontend
-npx tsc -b
-```
-
-### Frontend production build
-
-```bash
-cd frontend
-npm run build
-```
-
-### Validate n8n workflow JSON
-
-```bash
-python -m json.tool n8n/autonomous_google_maps_daily.json > /dev/null && echo "Valid JSON"
-```
+| File | About |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Modules, their rules, and the plan from monolith to modules |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Deploying, going back, staging, and what to do when something goes wrong |
+| [LEAD_JOURNEY.md](LEAD_JOURNEY.md) | The lead's journey through the bot |
+| [PROJECT_DOCUMENTATION.md](PROJECT_DOCUMENTATION.md) | Longer project notes |
+| `docs/` | Early design documents. Where they disagree with the code, the code is right. |
 
 ---
 
-## Security Notes
+## Contributing
 
-- **CORS**: Configured via `CORS_ORIGINS` env var. Never use `*` with credentials.
-- **Secrets**: All credentials are environment-variable based. The `.gitignore` excludes `.env`, `*.env.*`, `service_account*.json`, and private key files.
-- **Database**: Passwords never appear in logs. `DATABASE_URL` is only referenced by the backend process.
-- **Google Sheets**: Credentials are stored in n8n's encrypted credential store — never in the backend or frontend.
-- **Browser**: Playwright runs headless with container-safe flags. No proxy rotation, stealth plugins, or CAPTCHA solvers are used.
-- **Non-root**: The Docker image runs as `appuser` (non-root).
-
----
-
-## Production Readiness Checklist
-
-- [ ] `DATABASE_URL` points to PostgreSQL (not SQLite)
-- [ ] `POSTGRES_PASSWORD` is a strong random password
-- [ ] `CORS_ORIGINS` lists only your actual frontend origin(s)
-- [ ] `N8N_BACKEND_BASE_URL` is reachable from n8n
-- [ ] `alembic upgrade head` has been run on the production database
-- [ ] `/health` returns `{"status": "healthy"}`
-- [ ] Playwright Chromium launches successfully in the backend container
-- [ ] n8n workflow imported and schedule confirmed
-- [ ] n8n Google Sheets credential configured
-- [ ] Daily backup of PostgreSQL configured
-- [ ] Log monitoring in place
-
-**WhatsApp campaigns**
-
-- [ ] `META_ACCESS_TOKEN` is a **System User** token (never expires)
-- [ ] `META_WABA_ID` set — templates cannot be read or submitted without it
-- [ ] At least one template shows `APPROVED` in the Templates view
-- [ ] Header media is within Meta's limits (5 MB image / 16 MB video)
-- [ ] A test campaign to a single number completed with `sent=1, failed=0`
-- [ ] `PUBLIC_BASE_URL` set if click tracking is wanted
+1. Branch from `main` and open a pull request. CI must be green, and a review is
+   expected before merging.
+2. Keep each change to one module where you can. Do not add imports across modules
+   (`tests/test_architecture.py` will fail).
+3. Add or update tests with the change. Add a migration for any schema change
+   (`alembic revision`).
+4. Never commit `.env`, data exports, chat media, documents or anything with a real
+   person's name, phone or email.
