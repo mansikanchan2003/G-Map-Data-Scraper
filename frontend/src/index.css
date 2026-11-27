@@ -17,17 +17,19 @@
      built for smaller text. The dashboard is read by people of every age and
      16px was tight for a lot of them. */
   html {
-    font-size: 17px;
+    font-size: 16px;
   }
   /* Laptops at 125–150% Windows scaling show the page 1280–1439px wide: at
      17px it looked oversized there (the user, 11 Nov 2026). One step down
-     keeps the proportions and fits more on screen; big monitors keep 17px. */
+     keeps the proportions and fits more on screen; big monitors keep 17px.
+     27 Nov 2026: the user asked for it a bit smaller everywhere, so each size
+     is one step down (16 / 14 / 15px). */
   @media (min-width: 1024px) and (max-width: 1439px) {
-    html { font-size: 15px; }
+    html { font-size: 14px; }
   }
   /* Phones: 16px, so cards and tables fit the narrow screen. */
   @media (max-width: 639px) {
-    html { font-size: 16px; }
+    html { font-size: 15px; }
     /* A long email or number wraps instead of pushing out of its card. */
     main { overflow-wrap: break-word; }
   }
